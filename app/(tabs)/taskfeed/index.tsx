@@ -445,6 +445,8 @@ export default function TaskFeedScreen() {
   const [workOrderPriority, setWorkOrderPriority] = useState<'low' | 'medium' | 'high' | 'critical'>('medium');
 
   const [showPurchaseRequestModal, setShowPurchaseRequestModal] = useState(false);
+  const [showPurchaseDatePicker, setShowPurchaseDatePicker] = useState(false);
+  const [purchaseNeededBy, setPurchaseNeededBy] = useState<string | null>(null);
 
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<TaskFeedTemplate | null>(null);
