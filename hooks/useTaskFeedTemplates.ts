@@ -70,7 +70,7 @@ const mapPostFromDb = (row: any): TaskFeedPost => ({
   updatedAt: row.updated_at,
 });
 
-const mapDepartmentTaskFromDb = (row: any): TaskFeedDepartmentTask => ({
+const mapDepartmentTaskFromDb = (row: any): TaskFeedDepartmentTask & { task_feed_posts?: any } => ({
   id: row.id,
   organizationId: row.organization_id,
   postId: row.post_id,
@@ -87,6 +87,7 @@ const mapDepartmentTaskFromDb = (row: any): TaskFeedDepartmentTask => ({
   assignedAt: row.assigned_at,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
+  task_feed_posts: row.task_feed_posts,
 });
 
 export function useTaskFeedTemplatesQuery(options?: {
