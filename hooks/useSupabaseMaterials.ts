@@ -565,7 +565,13 @@ async function logInventoryHistory({
     });
     
     if (error) {
-      console.error('[logInventoryHistory] Error:', error.message || error.code || JSON.stringify(error));
+      // RLS policy error - log but don't block the operation
+      if (error.message?.includes('row-level security') || error.code === '42501') {
+        console.warn('[logInventoryHistory] RLS policy missing for inventory_history table. History not recorded.');
+        console.warn('[logInventoryHistory] Run the migration in supabase/migrations/add-inventory-history-rls.sql to fix this.');
+      } else {
+        console.error('[logInventoryHistory] Error:', error.message || error.code);
+      }
     } else {
       console.log('[logInventoryHistory] Logged:', action, 'for material:', materialId);
     }
