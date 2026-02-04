@@ -11,6 +11,9 @@ export type POStatus =
   | 'ordered' 
   | 'partial_received'
   | 'received' 
+  | 'pending_service'
+  | 'service_complete'
+  | 'pending_invoice'
   | 'closed'
   | 'cancelled';
 
@@ -139,6 +142,9 @@ export const PO_STATUS_LABELS: Record<POStatus, string> = {
   ordered: 'Ordered',
   partial_received: 'Partial Received',
   received: 'Received',
+  pending_service: 'Pending Service',
+  service_complete: 'Service Complete',
+  pending_invoice: 'Pending Invoice',
   closed: 'Closed',
   cancelled: 'Cancelled',
 };
@@ -152,6 +158,9 @@ export const PO_STATUS_COLORS: Record<POStatus, string> = {
   ordered: '#8B5CF6',
   partial_received: '#F97316',
   received: '#059669',
+  pending_service: '#F97316',
+  service_complete: '#06B6D4',
+  pending_invoice: '#8B5CF6',
   closed: '#374151',
   cancelled: '#DC2626',
 };

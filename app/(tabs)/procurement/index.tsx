@@ -24,6 +24,7 @@ import {
   Send,
   Wrench,
   Building2,
+  HardHat,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -473,7 +474,14 @@ export default function ProcurementDashboardScreen() {
               onPress={() => handleNavigate('/procurement/pocreate-material')}
             >
               <ShoppingCart size={18} color="#fff" />
-              <Text style={styles.quickActionText}>Create PO</Text>
+              <Text style={styles.quickActionText}>Material PO</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.quickAction, { backgroundColor: '#F97316' }]}
+              onPress={() => handleNavigate('/procurement/pocreate-service')}
+            >
+              <HardHat size={18} color="#fff" />
+              <Text style={styles.quickActionText}>Service PO</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.quickAction, { backgroundColor: '#10B981' }]}

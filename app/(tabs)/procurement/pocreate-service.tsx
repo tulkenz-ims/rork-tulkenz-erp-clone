@@ -17,30 +17,27 @@ import {
   X,
   Plus,
   Trash2,
-  Building2,
+  Search,
   Users,
   Calendar,
-  Wrench,
   CheckCircle,
   FileText,
   ChevronDown,
   Info,
-  Save,
   Send,
-  AlertTriangle,
-  Clock,
-  ClipboardCheck,
+  HardHat,
+  Wrench,
+  ClipboardList,
+  Phone,
+  AlertCircle,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useUser } from '@/contexts/UserContext';
-import {
-  useProcurementVendorsQuery,
-  useCreateProcurementPurchaseOrder,
-  useSubmitPurchaseOrder,
-  useMarkRequisitionConverted,
-  POLineItem,
-} from '@/hooks/useSupabaseProcurement';
+import { useProcurementVendorsQuery, useCreateProcurementPurchaseOrder, useSubmitPurchaseOrder, POLineItem } from '@/hooks/useSupabaseProcurement';
+import { Tables } from '@/lib/supabase';
+
+type ProcurementVendor = Tables['procurement_vendors'];
 
 interface DepartmentGLMapping {
   id: string;
@@ -62,29 +59,31 @@ const DEPARTMENT_GL_ACCOUNTS: DepartmentGLMapping[] = [
 ];
 
 const SERVICE_CATEGORIES = [
-  { id: 'repair', name: 'Repair', color: '#EF4444' },
-  { id: 'maintenance', name: 'Maintenance', color: '#F59E0B' },
-  { id: 'calibration', name: 'Calibration', color: '#3B82F6' },
-  { id: 'consulting', name: 'Consulting', color: '#8B5CF6' },
-  { id: 'installation', name: 'Installation', color: '#10B981' },
-  { id: 'inspection', name: 'Inspection', color: '#06B6D4' },
-  { id: 'training', name: 'Training', color: '#EC4899' },
-  { id: 'cleaning', name: 'Cleaning', color: '#14B8A6' },
-  { id: 'other', name: 'Other', color: '#6B7280' },
+  { id: 'electrical', name: 'Electrical', icon: 'zap' },
+  { id: 'plumbing', name: 'Plumbing', icon: 'droplet' },
+  { id: 'hvac', name: 'HVAC', icon: 'thermometer' },
+  { id: 'mechanical', name: 'Mechanical', icon: 'cog' },
+  { id: 'refrigeration', name: 'Refrigeration', icon: 'snowflake' },
+  { id: 'janitorial', name: 'Janitorial', icon: 'sparkles' },
+  { id: 'pest_control', name: 'Pest Control', icon: 'bug' },
+  { id: 'landscaping', name: 'Landscaping', icon: 'trees' },
+  { id: 'security', name: 'Security', icon: 'shield' },
+  { id: 'it_services', name: 'IT Services', icon: 'monitor' },
+  { id: 'construction', name: 'Construction', icon: 'hard-hat' },
+  { id: 'consulting', name: 'Consulting', icon: 'users' },
+  { id: 'other', name: 'Other', icon: 'more-horizontal' },
 ];
 
-interface ServiceLineItemDraft {
+interface ServiceLineItem {
   id: string;
   lineNumber: number;
   description: string;
-  category: string;
-  isPlanned: boolean;
-  quantity: number;
-  rate: number;
-  rateTBD: boolean;
-  maxAmount: number;
-  lineTotal: number;
+  serviceCategory: string;
+  estimatedHours: number;
+  hourlyRate: number;
+  estimatedTotal: number;
   isDeleted: boolean;
+  notes: string;
 }
 
 const generateServicePONumber = () => {
@@ -93,7 +92,7 @@ const generateServicePONumber = () => {
   const month = String(now.getMonth() + 1).padStart(2, '0');
   const day = String(now.getDate()).padStart(2, '0');
   const random = Math.floor(Math.random() * 900) + 100;
-  return `PO-SVC-${year}${month}${day}-${random}`;
+  return `SVC-PO-${year}${month}${day}-${random}`;
 };
 
 const formatDisplayDate = (dateString: string) => {
@@ -106,178 +105,107 @@ const formatDisplayDate = (dateString: string) => {
   });
 };
 
-interface SelectedVendor {
-  id: string;
-  vendor_id?: string;
-  name: string;
-  contact_name?: string | null;
-  phone?: string | null;
-}
-
 export default function POCreateServiceScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   const { user } = useUser();
   const params = useLocalSearchParams<{
-    fromRequisition?: string;
-    requisitionId?: string;
-    requisitionNumber?: string;
-    vendorId?: string;
-    vendorName?: string;
+    fromTaskFeed?: string;
+    taskId?: string;
+    taskNumber?: string;
     departmentId?: string;
     departmentName?: string;
-    subtotal?: string;
-    neededByDate?: string;
-    notes?: string;
-    lineItems?: string;
+    serviceDescription?: string;
   }>();
 
-  const isFromRequisition = params.fromRequisition === 'true';
-  const sourceRequisitionId = params.requisitionId;
-  const sourceRequisitionNumber = params.requisitionNumber;
-
-  const [poNumber] = useState(generateServicePONumber());
-  const [poDate] = useState(new Date().toISOString().split('T')[0]);
-  const [selectedVendor, setSelectedVendor] = useState<SelectedVendor | null>(null);
-  const [selectedDepartment, setSelectedDepartment] = useState<DepartmentGLMapping | null>(null);
-  const [lineItems, setLineItems] = useState<ServiceLineItemDraft[]>([]);
-  const [taxAmount, setTaxAmount] = useState('0.00');
-  const [shippingAmount, setShippingAmount] = useState('0.00');
-  const [notes, setNotes] = useState('');
-  const [isSaving, setIsSaving] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [requisitionLoaded, setRequisitionLoaded] = useState(false);
-
-  const [showVendorPicker, setShowVendorPicker] = useState(false);
-  const [showDepartmentPicker, setShowDepartmentPicker] = useState(false);
-  const [showCategoryPicker, setShowCategoryPicker] = useState(false);
-  const [editingLineIndex, setEditingLineIndex] = useState<number | null>(null);
-  const [showReviewModal, setShowReviewModal] = useState(false);
-
-  const { data: vendorsData = [], isLoading: isLoadingVendors } = useProcurementVendorsQuery({
+  const { data: vendors = [], isLoading: vendorsLoading } = useProcurementVendorsQuery({ 
     activeOnly: true,
+    vendorType: 'service',
   });
+  
+  const { data: allVendors = [] } = useProcurementVendorsQuery({ activeOnly: true });
+
+  const isFromTaskFeed = params.fromTaskFeed === 'true';
+  const sourceTaskNumber = params.taskNumber;
 
   const createPOMutation = useCreateProcurementPurchaseOrder({
     onSuccess: (data) => {
       console.log('[POCreateService] PO created:', data.id);
     },
     onError: (error) => {
-      console.error('[POCreateService] Error creating PO:', error);
-      Alert.alert('Error', 'Failed to create purchase order. Please try again.');
+      console.error('[POCreateService] Create error:', error);
+      Alert.alert('Error', 'Failed to create service PO');
     },
   });
 
   const submitPOMutation = useSubmitPurchaseOrder({
-    onSuccess: (data) => {
-      console.log('[POCreateService] PO submitted:', data.id);
-    },
-    onError: (error) => {
-      console.error('[POCreateService] Error submitting PO:', error);
-      Alert.alert('Error', 'Failed to submit purchase order. Please try again.');
-    },
-  });
-
-  const markRequisitionConvertedMutation = useMarkRequisitionConverted({
     onSuccess: () => {
-      console.log('[POCreateService] Requisition marked as converted');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert('Success', 'Service PO created and marked as ordered. Invoice will be processed when received.', [
+        { text: 'OK', onPress: () => router.back() }
+      ]);
     },
     onError: (error) => {
-      console.error('[POCreateService] Failed to mark requisition as converted:', error);
+      console.error('[POCreateService] Submit error:', error);
+      Alert.alert('Error', 'Failed to submit service PO');
     },
   });
 
-  const activeVendors = useMemo(() => vendorsData, [vendorsData]);
+  const [poNumber] = useState(generateServicePONumber());
+  const [poDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedVendor, setSelectedVendor] = useState<ProcurementVendor | null>(null);
+  const [selectedDepartment, setSelectedDepartment] = useState<DepartmentGLMapping | null>(null);
+  const [serviceDescription, setServiceDescription] = useState(params.serviceDescription || '');
+  const [scopeOfWork, setScopeOfWork] = useState('');
+  const [serviceCategory, setServiceCategory] = useState<string>('');
+  const [lineItems, setLineItems] = useState<ServiceLineItem[]>([]);
+  const [estimatedTotal, setEstimatedTotal] = useState('0.00');
+  const [notToExceed, setNotToExceed] = useState('');
+  const [notes, setNotes] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   React.useEffect(() => {
-    if (isFromRequisition && !requisitionLoaded) {
-      console.log('[POCreateService] Loading from requisition:', sourceRequisitionNumber);
-      
-      if (params.vendorId && params.vendorName) {
-        const matchingVendor = vendorsData.find(v => v.id === params.vendorId);
-        if (matchingVendor) {
-          setSelectedVendor({
-            id: matchingVendor.id,
-            name: matchingVendor.name,
-            contact_name: matchingVendor.contact_name,
-            phone: matchingVendor.phone,
-          });
-        } else {
-          setSelectedVendor({
-            id: params.vendorId,
-            name: params.vendorName,
-          });
-        }
+    if (isFromTaskFeed && params.departmentId && params.departmentName) {
+      const matchingDept = DEPARTMENT_GL_ACCOUNTS.find(
+        d => d.id === params.departmentId || d.name === params.departmentName
+      );
+      if (matchingDept) {
+        setSelectedDepartment(matchingDept);
       }
-      
-      if (params.departmentId && params.departmentName) {
-        const matchingDept = DEPARTMENT_GL_ACCOUNTS.find(d => d.id === params.departmentId || d.name === params.departmentName);
-        if (matchingDept) {
-          setSelectedDepartment(matchingDept);
-        }
-      }
-      
-      if (params.notes) {
-        setNotes(params.notes);
-      }
-      
-      if (params.lineItems) {
-        try {
-          const parsedLineItems = JSON.parse(decodeURIComponent(params.lineItems));
-          const convertedLineItems: ServiceLineItemDraft[] = parsedLineItems.map((item: any, index: number) => ({
-            id: item.line_id || `svc-line-${Date.now()}-${index}`,
-            lineNumber: item.line_number || index + 1,
-            description: item.description || '',
-            category: 'other',
-            isPlanned: true,
-            quantity: item.quantity || 1,
-            rate: item.unit_price || 0,
-            rateTBD: false,
-            maxAmount: 0,
-            lineTotal: item.line_total || (item.quantity * item.unit_price) || 0,
-            isDeleted: false,
-          }));
-          setLineItems(convertedLineItems);
-          console.log('[POCreateService] Loaded', convertedLineItems.length, 'line items from requisition');
-        } catch (e) {
-          console.error('[POCreateService] Failed to parse line items:', e);
-        }
-      }
-      
-      setRequisitionLoaded(true);
     }
-  }, [isFromRequisition, requisitionLoaded, params, vendorsData, sourceRequisitionNumber]);
+  }, [isFromTaskFeed, params.departmentId, params.departmentName]);
 
-  const activeLines = useMemo(() => 
-    lineItems.filter(item => !item.isDeleted),
-    [lineItems]
-  );
+  const [showVendorPicker, setShowVendorPicker] = useState(false);
+  const [showDepartmentPicker, setShowDepartmentPicker] = useState(false);
+  const [showCategoryPicker, setShowCategoryPicker] = useState(false);
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [vendorSearchQuery, setVendorSearchQuery] = useState('');
 
-  const hasTBDRates = useMemo(() => 
-    activeLines.some(item => item.rateTBD),
-    [activeLines]
-  );
+  const serviceVendors = useMemo(() => {
+    const svcs = vendors.length > 0 ? vendors : allVendors.filter(v => 
+      v.vendor_type === 'service' || v.categories?.includes('service')
+    );
+    
+    if (!vendorSearchQuery.trim()) return svcs;
+    
+    const query = vendorSearchQuery.toLowerCase();
+    return svcs.filter(v => 
+      v.name.toLowerCase().includes(query) ||
+      v.contact_name?.toLowerCase().includes(query)
+    );
+  }, [vendors, allVendors, vendorSearchQuery]);
 
   const subtotal = useMemo(() => {
-    return activeLines
-      .filter(item => !item.rateTBD)
-      .reduce((sum, item) => sum + item.lineTotal, 0);
-  }, [activeLines]);
-
-  const maxPossibleTotal = useMemo(() => {
-    return activeLines.reduce((sum, item) => {
-      if (item.rateTBD) {
-        return sum + item.maxAmount;
-      }
-      return sum + item.lineTotal;
-    }, 0);
-  }, [activeLines]);
+    return lineItems
+      .filter(item => !item.isDeleted)
+      .reduce((sum, item) => sum + item.estimatedTotal, 0);
+  }, [lineItems]);
 
   const total = useMemo(() => {
-    const tax = parseFloat(taxAmount) || 0;
-    const shipping = parseFloat(shippingAmount) || 0;
-    return subtotal + tax + shipping;
-  }, [subtotal, taxAmount, shippingAmount]);
+    const est = parseFloat(estimatedTotal) || 0;
+    return subtotal > 0 ? subtotal : est;
+  }, [subtotal, estimatedTotal]);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -287,52 +215,31 @@ export default function POCreateServiceScreen() {
     }).format(amount);
   };
 
-  const getCategoryInfo = (categoryId: string) => {
-    return SERVICE_CATEGORIES.find(c => c.id === categoryId) || SERVICE_CATEGORIES[SERVICE_CATEGORIES.length - 1];
-  };
-
   const handleAddLineItem = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const newLine: ServiceLineItemDraft = {
+    const newLine: ServiceLineItem = {
       id: `svc-line-${Date.now()}`,
       lineNumber: lineItems.length + 1,
       description: '',
-      category: 'other',
-      isPlanned: true,
-      quantity: 1,
-      rate: 0,
-      rateTBD: false,
-      maxAmount: 0,
-      lineTotal: 0,
+      serviceCategory: serviceCategory || 'other',
+      estimatedHours: 0,
+      hourlyRate: 0,
+      estimatedTotal: 0,
       isDeleted: false,
+      notes: '',
     };
     setLineItems(prev => [...prev, newLine]);
   };
 
-  const handleUpdateLineItem = (index: number, field: keyof ServiceLineItemDraft, value: any) => {
+  const handleUpdateLineItem = (index: number, field: keyof ServiceLineItem, value: any) => {
     setLineItems(prev => {
       const updated = [...prev];
       updated[index] = { ...updated[index], [field]: value };
       
-      if (field === 'isPlanned') {
-        if (value === true) {
-          updated[index].rateTBD = false;
-          updated[index].maxAmount = 0;
-          const qty = updated[index].quantity;
-          const rate = updated[index].rate;
-          updated[index].lineTotal = qty * rate;
-        } else {
-          updated[index].rateTBD = true;
-          updated[index].lineTotal = 0;
-        }
-      }
-      
-      if (field === 'quantity' || field === 'rate') {
-        if (!updated[index].rateTBD) {
-          const qty = field === 'quantity' ? value : updated[index].quantity;
-          const rate = field === 'rate' ? value : updated[index].rate;
-          updated[index].lineTotal = (parseFloat(qty) || 0) * (parseFloat(rate) || 0);
-        }
+      if (field === 'estimatedHours' || field === 'hourlyRate') {
+        const hours = field === 'estimatedHours' ? value : updated[index].estimatedHours;
+        const rate = field === 'hourlyRate' ? value : updated[index].hourlyRate;
+        updated[index].estimatedTotal = (parseFloat(hours) || 0) * (parseFloat(rate) || 0);
       }
       
       return updated;
@@ -350,11 +257,15 @@ export default function POCreateServiceScreen() {
 
   const handleSaveDraft = async () => {
     if (!selectedVendor) {
-      Alert.alert('Error', 'Please select a vendor');
+      Alert.alert('Error', 'Please select a service vendor');
       return;
     }
     if (!selectedDepartment) {
       Alert.alert('Error', 'Please select a department');
+      return;
+    }
+    if (!serviceDescription.trim()) {
+      Alert.alert('Error', 'Please enter a service description');
       return;
     }
 
@@ -362,92 +273,73 @@ export default function POCreateServiceScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
     try {
-      const poLineItems: POLineItem[] = activeLines.map((line) => ({
-        line_id: line.id,
-        line_number: line.lineNumber,
-        description: line.description,
-        quantity: line.quantity,
-        unit_price: line.rateTBD ? 0 : line.rate,
-        line_total: line.rateTBD ? line.maxAmount : line.lineTotal,
-        is_stock: false,
-        is_deleted: false,
-        received_qty: 0,
-        notes: line.rateTBD ? `Rate TBD - Max Amount: ${line.maxAmount.toFixed(2)}` : undefined,
-      }));
+      const activeLines = lineItems.filter(item => !item.isDeleted);
+      const poLineItems: POLineItem[] = activeLines.length > 0 
+        ? activeLines.map(line => ({
+            line_id: line.id,
+            line_number: line.lineNumber,
+            description: line.description || serviceDescription,
+            quantity: line.estimatedHours || 1,
+            unit_price: line.hourlyRate || 0,
+            line_total: line.estimatedTotal,
+            is_stock: false,
+            is_deleted: false,
+            received_qty: 0,
+            uom: 'HR',
+            notes: line.notes,
+          }))
+        : [{
+            line_id: `svc-line-${Date.now()}`,
+            line_number: 1,
+            description: serviceDescription,
+            quantity: 1,
+            unit_price: total,
+            line_total: total,
+            is_stock: false,
+            is_deleted: false,
+            received_qty: 0,
+            uom: 'JOB',
+            notes: scopeOfWork,
+          }];
 
       await createPOMutation.mutateAsync({
         po_type: 'service',
         vendor_id: selectedVendor.id,
         vendor_name: selectedVendor.name,
+        department_id: selectedDepartment.id,
         department_name: selectedDepartment.name,
-        created_by: user?.first_name && user?.last_name ? `${user.first_name} ${user.last_name}` : user?.email || 'Unknown User',
+        created_by: user?.first_name && user?.last_name ? `${user.first_name} ${user.last_name}` : user?.email || 'Unknown',
         created_by_id: user?.id,
-        source_requisition_id: sourceRequisitionId || undefined,
-        source_requisition_number: sourceRequisitionNumber || undefined,
-        subtotal: subtotal,
-        tax: parseFloat(taxAmount) || 0,
-        shipping: parseFloat(shippingAmount) || 0,
-        notes: notes || `G/L Account: ${selectedDepartment.glAccount} - ${selectedDepartment.glDescription}${hasTBDRates ? '\nContains services with TBD rates' : ''}`,
+        subtotal: total,
+        tax: 0,
+        shipping: 0,
+        notes: `${notes}\n\nScope of Work: ${scopeOfWork}\n\nService Category: ${serviceCategory || 'General'}\n\nNot to Exceed: ${notToExceed ? formatCurrency(parseFloat(notToExceed)) : 'N/A'}${sourceTaskNumber ? `\n\nLinked Task: ${sourceTaskNumber}` : ''}`.trim(),
         line_items: poLineItems,
       });
 
-      if (sourceRequisitionId && sourceRequisitionNumber) {
-        await markRequisitionConvertedMutation.mutateAsync({
-          requisitionId: sourceRequisitionId,
-          poId: 'draft',
-          poNumber: poNumber,
-        });
-      }
-
-      setIsSaving(false);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert('Success', 'Service PO saved as draft', [
         { text: 'OK', onPress: () => router.back() }
       ]);
     } catch (error) {
-      setIsSaving(false);
       console.error('[POCreateService] Save draft error:', error);
+      Alert.alert('Error', 'Failed to save service PO');
+    } finally {
+      setIsSaving(false);
     }
   };
 
-  const handleSubmitForApproval = () => {
+  const handleCreateAndOrder = () => {
     if (!selectedVendor) {
-      Alert.alert('Validation Error', 'Please select a vendor');
+      Alert.alert('Validation Error', 'Please select a service vendor');
       return;
     }
     if (!selectedDepartment) {
       Alert.alert('Validation Error', 'Please select a department');
       return;
     }
-    if (activeLines.length === 0) {
-      Alert.alert('Validation Error', 'Please add at least one service line item');
-      return;
-    }
-
-    const invalidLines = activeLines.filter(
-      line => !line.description.trim()
-    );
-
-    if (invalidLines.length > 0) {
-      Alert.alert('Validation Error', 'Please add a description for all service lines');
-      return;
-    }
-
-    const plannedWithoutRate = activeLines.filter(
-      line => line.isPlanned && line.rate <= 0
-    );
-
-    if (plannedWithoutRate.length > 0) {
-      Alert.alert('Validation Error', 'All planned services must have a rate specified');
-      return;
-    }
-
-    const unplannedWithoutMax = activeLines.filter(
-      line => !line.isPlanned && line.maxAmount <= 0
-    );
-
-    if (unplannedWithoutMax.length > 0) {
-      Alert.alert('Validation Error', 'All unplanned services must have a max amount specified');
+    if (!serviceDescription.trim()) {
+      Alert.alert('Validation Error', 'Please enter a service description');
       return;
     }
 
@@ -455,58 +347,61 @@ export default function POCreateServiceScreen() {
     setShowReviewModal(true);
   };
 
-  const confirmSubmit = async () => {
+  const confirmCreateAndOrder = async () => {
     setIsSubmitting(true);
     
     try {
-      const poLineItems: POLineItem[] = activeLines.map((line) => ({
-        line_id: line.id,
-        line_number: line.lineNumber,
-        description: line.description,
-        quantity: line.quantity,
-        unit_price: line.rateTBD ? 0 : line.rate,
-        line_total: line.rateTBD ? line.maxAmount : line.lineTotal,
-        is_stock: false,
-        is_deleted: false,
-        received_qty: 0,
-        notes: line.rateTBD ? `Rate TBD - Max Amount: ${line.maxAmount.toFixed(2)}` : undefined,
-      }));
+      const activeLines = lineItems.filter(item => !item.isDeleted);
+      const poLineItems: POLineItem[] = activeLines.length > 0 
+        ? activeLines.map(line => ({
+            line_id: line.id,
+            line_number: line.lineNumber,
+            description: line.description || serviceDescription,
+            quantity: line.estimatedHours || 1,
+            unit_price: line.hourlyRate || 0,
+            line_total: line.estimatedTotal,
+            is_stock: false,
+            is_deleted: false,
+            received_qty: 0,
+            uom: 'HR',
+            notes: line.notes,
+          }))
+        : [{
+            line_id: `svc-line-${Date.now()}`,
+            line_number: 1,
+            description: serviceDescription,
+            quantity: 1,
+            unit_price: total,
+            line_total: total,
+            is_stock: false,
+            is_deleted: false,
+            received_qty: 0,
+            uom: 'JOB',
+            notes: scopeOfWork,
+          }];
 
       const createdPO = await createPOMutation.mutateAsync({
         po_type: 'service',
         vendor_id: selectedVendor!.id,
         vendor_name: selectedVendor!.name,
+        department_id: selectedDepartment!.id,
         department_name: selectedDepartment!.name,
-        created_by: user?.first_name && user?.last_name ? `${user.first_name} ${user.last_name}` : user?.email || 'Unknown User',
+        created_by: user?.first_name && user?.last_name ? `${user.first_name} ${user.last_name}` : user?.email || 'Unknown',
         created_by_id: user?.id,
-        source_requisition_id: sourceRequisitionId || undefined,
-        source_requisition_number: sourceRequisitionNumber || undefined,
-        subtotal: subtotal,
-        tax: parseFloat(taxAmount) || 0,
-        shipping: parseFloat(shippingAmount) || 0,
-        notes: notes || `G/L Account: ${selectedDepartment!.glAccount} - ${selectedDepartment!.glDescription}${hasTBDRates ? '\nContains services with TBD rates' : ''}`,
+        subtotal: total,
+        tax: 0,
+        shipping: 0,
+        notes: `${notes}\n\nScope of Work: ${scopeOfWork}\n\nService Category: ${serviceCategory || 'General'}\n\nNot to Exceed: ${notToExceed ? formatCurrency(parseFloat(notToExceed)) : 'N/A'}${sourceTaskNumber ? `\n\nLinked Task: ${sourceTaskNumber}` : ''}`.trim(),
         line_items: poLineItems,
       });
 
-      if (sourceRequisitionId) {
-        await markRequisitionConvertedMutation.mutateAsync({
-          requisitionId: sourceRequisitionId,
-          poId: createdPO.id,
-          poNumber: createdPO.po_number,
-        });
-      }
-
       await submitPOMutation.mutateAsync(createdPO.id);
-
-      setIsSubmitting(false);
       setShowReviewModal(false);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert('Success', 'Service PO submitted for approval\n\nNote: Services require approval before SES creation', [
-        { text: 'OK', onPress: () => router.back() }
-      ]);
     } catch (error) {
+      console.error('[POCreateService] Create and order error:', error);
+      Alert.alert('Error', 'Failed to create service PO');
+    } finally {
       setIsSubmitting(false);
-      console.error('[POCreateService] Submit error:', error);
     }
   };
 
@@ -522,51 +417,79 @@ export default function POCreateServiceScreen() {
           <TouchableOpacity onPress={() => setShowVendorPicker(false)}>
             <X size={24} color={colors.text} />
           </TouchableOpacity>
-          <Text style={[styles.modalTitle, { color: colors.text }]}>Select Vendor</Text>
+          <Text style={[styles.modalTitle, { color: colors.text }]}>Select Service Vendor</Text>
           <View style={{ width: 24 }} />
         </View>
-        <ScrollView style={styles.modalContent}>
-          {isLoadingVendors ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="small" color={colors.primary} />
-              <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Loading vendors...</Text>
-            </View>
-          ) : activeVendors.length === 0 ? (
-            <View style={styles.emptyContainer}>
-              <Building2 size={32} color={colors.textTertiary} />
-              <Text style={[styles.emptyText, { color: colors.textSecondary }]}>No active vendors found</Text>
-            </View>
-          ) : (
-            activeVendors.map(vendor => (
-              <TouchableOpacity
-                key={vendor.id}
-                style={[styles.pickerOption, { borderBottomColor: colors.border }]}
-                onPress={() => {
-                  Haptics.selectionAsync();
-                  setSelectedVendor({
-                    id: vendor.id,
-                    name: vendor.name,
-                    contact_name: vendor.contact_name,
-                    phone: vendor.phone,
-                  });
-                  setShowVendorPicker(false);
-                }}
-              >
-                <View style={[styles.pickerIcon, { backgroundColor: '#3B82F615' }]}>
-                  <Building2 size={18} color="#3B82F6" />
-                </View>
-                <View style={styles.pickerOptionContent}>
-                  <Text style={[styles.pickerOptionTitle, { color: colors.text }]}>{vendor.name}</Text>
-                  <Text style={[styles.pickerOptionSubtitle, { color: colors.textSecondary }]}>
-                    {vendor.contact_name || 'No contact'} • {vendor.phone || 'No phone'}
-                  </Text>
-                </View>
-                {selectedVendor?.id === vendor.id && (
-                  <CheckCircle size={20} color={colors.primary} />
-                )}
+        
+        <View style={[styles.searchSection, { backgroundColor: colors.surface }]}>
+          <View style={[styles.searchBar, { backgroundColor: colors.background, borderColor: colors.border }]}>
+            <Search size={18} color={colors.textSecondary} />
+            <TextInput
+              style={[styles.searchInput, { color: colors.text }]}
+              placeholder="Search vendors..."
+              placeholderTextColor={colors.textSecondary}
+              value={vendorSearchQuery}
+              onChangeText={setVendorSearchQuery}
+            />
+            {vendorSearchQuery.length > 0 && (
+              <TouchableOpacity onPress={() => setVendorSearchQuery('')}>
+                <X size={18} color={colors.textSecondary} />
               </TouchableOpacity>
-            ))
-          )}
+            )}
+          </View>
+        </View>
+
+        <ScrollView style={styles.modalContent}>
+          {vendorsLoading ? (
+            <View style={styles.searchHint}>
+              <ActivityIndicator size="small" color={colors.primary} />
+              <Text style={[styles.searchHintText, { color: colors.textSecondary }]}>Loading vendors...</Text>
+            </View>
+          ) : serviceVendors.length === 0 ? (
+            <View style={styles.searchHint}>
+              <HardHat size={32} color={colors.textTertiary} />
+              <Text style={[styles.searchHintText, { color: colors.textSecondary }]}>No service vendors found</Text>
+              <Text style={[styles.searchHintSubtext, { color: colors.textTertiary }]}>
+                Add vendors in Vendor Management
+              </Text>
+            </View>
+          ) : serviceVendors.map(vendor => (
+            <TouchableOpacity
+              key={vendor.id}
+              style={[styles.pickerOption, { borderBottomColor: colors.border }]}
+              onPress={() => {
+                Haptics.selectionAsync();
+                setSelectedVendor(vendor);
+                setShowVendorPicker(false);
+                setVendorSearchQuery('');
+              }}
+            >
+              <View style={[styles.pickerIcon, { backgroundColor: '#F9731615' }]}>
+                <HardHat size={18} color="#F97316" />
+              </View>
+              <View style={styles.pickerOptionContent}>
+                <Text style={[styles.pickerOptionTitle, { color: colors.text }]}>{vendor.name}</Text>
+                <View style={styles.vendorContactRow}>
+                  {vendor.contact_name && (
+                    <Text style={[styles.pickerOptionSubtitle, { color: colors.textSecondary }]}>
+                      {vendor.contact_name}
+                    </Text>
+                  )}
+                </View>
+                <View style={styles.vendorContactRow}>
+                  {vendor.phone && (
+                    <View style={styles.vendorContactItem}>
+                      <Phone size={12} color={colors.textTertiary} />
+                      <Text style={[styles.vendorContactText, { color: colors.textTertiary }]}>{vendor.phone}</Text>
+                    </View>
+                  )}
+                </View>
+              </View>
+              {selectedVendor?.id === vendor.id && (
+                <CheckCircle size={20} color={colors.primary} />
+              )}
+            </TouchableOpacity>
+          ))}
         </ScrollView>
       </View>
     </Modal>
@@ -590,7 +513,7 @@ export default function POCreateServiceScreen() {
         <View style={[styles.glInfoBanner, { backgroundColor: `${colors.primary}10`, borderColor: colors.primary }]}>
           <Info size={16} color={colors.primary} />
           <Text style={[styles.glInfoText, { color: colors.primary }]}>
-            Department selection determines the G/L account for this service
+            Department selection determines the G/L account for this service expense
           </Text>
         </View>
         <ScrollView style={styles.modalContent}>
@@ -635,29 +558,27 @@ export default function POCreateServiceScreen() {
           <TouchableOpacity onPress={() => setShowCategoryPicker(false)}>
             <X size={24} color={colors.text} />
           </TouchableOpacity>
-          <Text style={[styles.modalTitle, { color: colors.text }]}>Select Service Category</Text>
+          <Text style={[styles.modalTitle, { color: colors.text }]}>Service Category</Text>
           <View style={{ width: 24 }} />
         </View>
         <ScrollView style={styles.modalContent}>
-          {SERVICE_CATEGORIES.map(category => (
+          {SERVICE_CATEGORIES.map(cat => (
             <TouchableOpacity
-              key={category.id}
+              key={cat.id}
               style={[styles.pickerOption, { borderBottomColor: colors.border }]}
               onPress={() => {
                 Haptics.selectionAsync();
-                if (editingLineIndex !== null) {
-                  handleUpdateLineItem(editingLineIndex, 'category', category.id);
-                }
+                setServiceCategory(cat.id);
                 setShowCategoryPicker(false);
               }}
             >
-              <View style={[styles.pickerIcon, { backgroundColor: `${category.color}15` }]}>
-                <Wrench size={18} color={category.color} />
+              <View style={[styles.pickerIcon, { backgroundColor: '#8B5CF615' }]}>
+                <Wrench size={18} color="#8B5CF6" />
               </View>
               <View style={styles.pickerOptionContent}>
-                <Text style={[styles.pickerOptionTitle, { color: colors.text }]}>{category.name}</Text>
+                <Text style={[styles.pickerOptionTitle, { color: colors.text }]}>{cat.name}</Text>
               </View>
-              {editingLineIndex !== null && lineItems[editingLineIndex]?.category === category.id && (
+              {serviceCategory === cat.id && (
                 <CheckCircle size={20} color={colors.primary} />
               )}
             </TouchableOpacity>
@@ -668,6 +589,8 @@ export default function POCreateServiceScreen() {
   );
 
   const renderReviewModal = () => {
+    const activeLines = lineItems.filter(item => !item.isDeleted);
+    
     return (
       <Modal
         visible={showReviewModal}
@@ -680,24 +603,28 @@ export default function POCreateServiceScreen() {
             <TouchableOpacity onPress={() => setShowReviewModal(false)} disabled={isSubmitting}>
               <X size={24} color={isSubmitting ? colors.textTertiary : colors.text} />
             </TouchableOpacity>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>Review & Submit</Text>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Review Service PO</Text>
             <View style={{ width: 24 }} />
           </View>
 
           <ScrollView style={styles.modalContent}>
+            <View style={[styles.infoBanner, { backgroundColor: '#F9731615', borderColor: '#F97316' }]}>
+              <AlertCircle size={18} color="#F97316" />
+              <View style={styles.infoBannerContent}>
+                <Text style={[styles.infoBannerTitle, { color: '#F97316' }]}>Service PO Flow</Text>
+                <Text style={[styles.infoBannerText, { color: colors.textSecondary }]}>
+                  This PO will be created and marked as Ordered. When the service is complete and 
+                  you receive the invoice, a requisition will be created for approval before payment.
+                </Text>
+              </View>
+            </View>
+
             <View style={[styles.reviewCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <Text style={[styles.reviewCardTitle, { color: colors.text }]}>Service PO Summary</Text>
+              <Text style={[styles.reviewCardTitle, { color: colors.text }]}>PO Summary</Text>
               
               <View style={styles.reviewRow}>
                 <Text style={[styles.reviewLabel, { color: colors.textSecondary }]}>PO Number</Text>
                 <Text style={[styles.reviewValue, { color: colors.text }]}>{poNumber}</Text>
-              </View>
-              
-              <View style={styles.reviewRow}>
-                <Text style={[styles.reviewLabel, { color: colors.textSecondary }]}>Type</Text>
-                <View style={[styles.typeBadge, { backgroundColor: '#10B98115' }]}>
-                  <Text style={[styles.typeBadgeText, { color: '#10B981' }]}>SERVICE</Text>
-                </View>
               </View>
               
               <View style={styles.reviewRow}>
@@ -709,113 +636,73 @@ export default function POCreateServiceScreen() {
                 <Text style={[styles.reviewLabel, { color: colors.textSecondary }]}>Department</Text>
                 <Text style={[styles.reviewValue, { color: colors.text }]}>{selectedDepartment?.name}</Text>
               </View>
-            </View>
 
-            <View style={[styles.reviewCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <Text style={[styles.reviewCardTitle, { color: colors.text }]}>G/L Account</Text>
-              
-              <View style={[styles.glHighlight, { backgroundColor: '#10B98115' }]}>
-                <Text style={[styles.glHighlightLabel, { color: '#10B981' }]}>G/L ACCOUNT (Department Charge)</Text>
-                <Text style={[styles.glHighlightValue, { color: '#10B981' }]}>
-                  {selectedDepartment?.glAccount} - {selectedDepartment?.glDescription}
+              <View style={styles.reviewRow}>
+                <Text style={[styles.reviewLabel, { color: colors.textSecondary }]}>Category</Text>
+                <Text style={[styles.reviewValue, { color: colors.text }]}>
+                  {SERVICE_CATEGORIES.find(c => c.id === serviceCategory)?.name || 'General'}
                 </Text>
               </View>
             </View>
 
             <View style={[styles.reviewCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <Text style={[styles.reviewCardTitle, { color: colors.text }]}>Service Lines ({activeLines.length})</Text>
+              <Text style={[styles.reviewCardTitle, { color: colors.text }]}>Service Details</Text>
               
-              {activeLines.map((line, idx) => {
-                const categoryInfo = getCategoryInfo(line.category);
-                return (
-                  <View key={line.id} style={[styles.reviewLineItem, idx < activeLines.length - 1 && { borderBottomColor: colors.border, borderBottomWidth: 1 }]}>
-                    <View style={styles.reviewLineHeader}>
-                      <Text style={[styles.reviewLineNumber, { color: colors.textSecondary }]}>#{line.lineNumber}</Text>
-                      <View style={styles.reviewLineBadges}>
-                        <View style={[styles.categoryBadgeSmall, { backgroundColor: `${categoryInfo.color}15` }]}>
-                          <Text style={[styles.categoryBadgeSmallText, { color: categoryInfo.color }]}>
-                            {categoryInfo.name}
-                          </Text>
-                        </View>
-                        <View style={[styles.plannedBadge, { backgroundColor: line.isPlanned ? '#3B82F615' : '#F59E0B15' }]}>
-                          <Text style={[styles.plannedBadgeText, { color: line.isPlanned ? '#3B82F6' : '#F59E0B' }]}>
-                            {line.isPlanned ? 'Planned' : 'Unplanned'}
-                          </Text>
-                        </View>
-                      </View>
-                    </View>
-                    <Text style={[styles.reviewLineDescription, { color: colors.text }]}>{line.description}</Text>
-                    <View style={styles.reviewLineFooter}>
-                      {line.isPlanned ? (
-                        <>
-                          <Text style={[styles.reviewLineQty, { color: colors.textSecondary }]}>
-                            {line.quantity} × {formatCurrency(line.rate)}
-                          </Text>
-                          <Text style={[styles.reviewLineTotal, { color: colors.text }]}>{formatCurrency(line.lineTotal)}</Text>
-                        </>
-                      ) : (
-                        <>
-                          <Text style={[styles.reviewLineQty, { color: colors.textSecondary }]}>
-                            Rate: TBD
-                          </Text>
-                          <Text style={[styles.reviewLineTotal, { color: '#F59E0B' }]}>
-                            Max: {formatCurrency(line.maxAmount)}
-                          </Text>
-                        </>
-                      )}
-                    </View>
-                  </View>
-                );
-              })}
-            </View>
-
-            <View style={[styles.reviewCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <Text style={[styles.reviewCardTitle, { color: colors.text }]}>Totals</Text>
+              <Text style={[styles.reviewDescription, { color: colors.text }]}>{serviceDescription}</Text>
               
-              <View style={styles.reviewRow}>
-                <Text style={[styles.reviewLabel, { color: colors.textSecondary }]}>Known Subtotal</Text>
-                <Text style={[styles.reviewValue, { color: colors.text }]}>{formatCurrency(subtotal)}</Text>
-              </View>
-              
-              {hasTBDRates && (
-                <View style={styles.reviewRow}>
-                  <Text style={[styles.reviewLabel, { color: colors.textSecondary }]}>Max Possible Total</Text>
-                  <Text style={[styles.reviewValue, { color: '#F59E0B' }]}>{formatCurrency(maxPossibleTotal)}</Text>
+              {scopeOfWork && (
+                <View style={styles.scopeSection}>
+                  <Text style={[styles.scopeLabel, { color: colors.textSecondary }]}>Scope of Work:</Text>
+                  <Text style={[styles.scopeText, { color: colors.text }]}>{scopeOfWork}</Text>
                 </View>
               )}
-              
-              <View style={styles.reviewRow}>
-                <Text style={[styles.reviewLabel, { color: colors.textSecondary }]}>Tax</Text>
-                <Text style={[styles.reviewValue, { color: colors.text }]}>{formatCurrency(parseFloat(taxAmount) || 0)}</Text>
-              </View>
-              <View style={styles.reviewRow}>
-                <Text style={[styles.reviewLabel, { color: colors.textSecondary }]}>Shipping</Text>
-                <Text style={[styles.reviewValue, { color: colors.text }]}>{formatCurrency(parseFloat(shippingAmount) || 0)}</Text>
-              </View>
-              <View style={[styles.reviewRow, styles.grandTotalRow, { borderTopColor: colors.border }]}>
-                <Text style={[styles.grandTotalLabel, { color: colors.text }]}>Total</Text>
-                {hasTBDRates ? (
-                  <View style={styles.pendingTotal}>
-                    <Clock size={16} color="#F59E0B" />
-                    <Text style={[styles.pendingTotalText, { color: '#F59E0B' }]}>Pending</Text>
-                  </View>
-                ) : (
-                  <Text style={[styles.grandTotalValue, { color: colors.primary }]}>{formatCurrency(total)}</Text>
-                )}
-              </View>
             </View>
 
-            <View style={[styles.approvalNotice, { backgroundColor: '#F59E0B15', borderColor: '#F59E0B' }]}>
-              <AlertTriangle size={18} color="#F59E0B" />
-              <Text style={[styles.approvalNoticeText, { color: '#F59E0B' }]}>
-                Services require approval before SES (Service Entry Sheet) creation
-              </Text>
+            {activeLines.length > 0 && (
+              <View style={[styles.reviewCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Text style={[styles.reviewCardTitle, { color: colors.text }]}>Line Items ({activeLines.length})</Text>
+                
+                {activeLines.map((line, idx) => (
+                  <View key={line.id} style={[styles.reviewLineItem, idx < activeLines.length - 1 && { borderBottomColor: colors.border, borderBottomWidth: 1 }]}>
+                    <Text style={[styles.reviewLineDescription, { color: colors.text }]}>{line.description}</Text>
+                    <View style={styles.reviewLineFooter}>
+                      <Text style={[styles.reviewLineQty, { color: colors.textSecondary }]}>
+                        {line.estimatedHours} hrs × {formatCurrency(line.hourlyRate)}/hr
+                      </Text>
+                      <Text style={[styles.reviewLineTotal, { color: colors.text }]}>{formatCurrency(line.estimatedTotal)}</Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            <View style={[styles.reviewCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <Text style={[styles.reviewCardTitle, { color: colors.text }]}>Estimated Amounts</Text>
+              
+              <View style={styles.reviewRow}>
+                <Text style={[styles.reviewLabel, { color: colors.textSecondary }]}>Estimated Total</Text>
+                <Text style={[styles.reviewValue, { color: colors.text }]}>{formatCurrency(total)}</Text>
+              </View>
+              
+              {notToExceed && (
+                <View style={styles.reviewRow}>
+                  <Text style={[styles.reviewLabel, { color: colors.textSecondary }]}>Not to Exceed</Text>
+                  <Text style={[styles.reviewValue, { color: '#EF4444' }]}>{formatCurrency(parseFloat(notToExceed))}</Text>
+                </View>
+              )}
+
+              <View style={[styles.noteBox, { backgroundColor: colors.backgroundTertiary }]}>
+                <Info size={14} color={colors.textSecondary} />
+                <Text style={[styles.noteText, { color: colors.textSecondary }]}>
+                  Final amount will be determined when invoice is received
+                </Text>
+              </View>
             </View>
 
             <View style={styles.submitSection}>
               <TouchableOpacity
-                style={[styles.submitButton, { backgroundColor: colors.primary, opacity: isSubmitting ? 0.7 : 1 }]}
-                onPress={confirmSubmit}
+                style={[styles.submitButton, { backgroundColor: '#F97316', opacity: isSubmitting ? 0.7 : 1 }]}
+                onPress={confirmCreateAndOrder}
                 disabled={isSubmitting}
               >
                 {isSubmitting ? (
@@ -823,7 +710,7 @@ export default function POCreateServiceScreen() {
                 ) : (
                   <>
                     <Send size={18} color="#fff" />
-                    <Text style={styles.submitButtonText}>Submit for Approval</Text>
+                    <Text style={styles.submitButtonText}>Create & Order Service</Text>
                   </>
                 )}
               </TouchableOpacity>
@@ -836,28 +723,8 @@ export default function POCreateServiceScreen() {
     );
   };
 
-  const renderLineItem = (item: ServiceLineItemDraft, index: number) => {
-    const categoryInfo = getCategoryInfo(item.category);
-    
-    if (item.isDeleted) {
-      return (
-        <View
-          key={item.id}
-          style={[styles.lineItemCard, styles.lineItemDeleted, { backgroundColor: colors.surface, borderColor: colors.border }]}
-        >
-          <View style={styles.lineItemHeader}>
-            <Text style={[styles.lineNumber, { color: colors.textTertiary }]}>#{item.lineNumber}</Text>
-            <View style={[styles.deletedBadge, { backgroundColor: '#EF444415' }]}>
-              <Trash2 size={12} color="#EF4444" />
-              <Text style={[styles.deletedBadgeText, { color: '#EF4444' }]}>Deleted</Text>
-            </View>
-          </View>
-          <Text style={[styles.deletedDescription, { color: colors.textTertiary }]}>
-            {item.description || 'No description'}
-          </Text>
-        </View>
-      );
-    }
+  const renderLineItem = (item: ServiceLineItem, index: number) => {
+    if (item.isDeleted) return null;
 
     return (
       <View
@@ -875,121 +742,48 @@ export default function POCreateServiceScreen() {
         </View>
 
         <View style={styles.formField}>
-          <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Service Description *</Text>
+          <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Description</Text>
           <TextInput
-            style={[styles.descriptionInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
+            style={[styles.textInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
             value={item.description}
             onChangeText={(text) => handleUpdateLineItem(index, 'description', text)}
-            placeholder="Enter service description..."
+            placeholder="Service line description..."
             placeholderTextColor={colors.textTertiary}
-            multiline
-            numberOfLines={2}
           />
         </View>
 
-        <View style={styles.formField}>
-          <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Category</Text>
-          <TouchableOpacity
-            style={[styles.categorySelector, { backgroundColor: colors.background, borderColor: colors.border }]}
-            onPress={() => {
-              setEditingLineIndex(index);
-              setShowCategoryPicker(true);
-            }}
-          >
-            <View style={styles.categoryDisplay}>
-              <View style={[styles.categoryDot, { backgroundColor: categoryInfo.color }]} />
-              <Text style={[styles.categoryText, { color: colors.text }]}>{categoryInfo.name}</Text>
+        <View style={styles.lineItemRow}>
+          <View style={styles.inputGroup}>
+            <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Est. Hours</Text>
+            <TextInput
+              style={[styles.numberInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
+              value={item.estimatedHours.toString()}
+              onChangeText={(text) => handleUpdateLineItem(index, 'estimatedHours', parseFloat(text) || 0)}
+              keyboardType="numeric"
+              placeholder="0"
+              placeholderTextColor={colors.textTertiary}
+            />
+          </View>
+          <View style={styles.inputGroup}>
+            <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Hourly Rate</Text>
+            <TextInput
+              style={[styles.numberInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
+              value={item.hourlyRate.toFixed(2)}
+              onChangeText={(text) => handleUpdateLineItem(index, 'hourlyRate', parseFloat(text) || 0)}
+              keyboardType="decimal-pad"
+              placeholder="0.00"
+              placeholderTextColor={colors.textTertiary}
+            />
+          </View>
+          <View style={styles.inputGroup}>
+            <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Est. Total</Text>
+            <View style={[styles.readOnlyInput, { backgroundColor: colors.backgroundTertiary }]}>
+              <Text style={[styles.readOnlyText, { color: colors.text }]}>
+                {formatCurrency(item.estimatedTotal)}
+              </Text>
             </View>
-            <ChevronDown size={18} color={colors.textSecondary} />
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.plannedToggleContainer}>
-          <View style={[styles.plannedToggle, { backgroundColor: colors.background }]}>
-            <TouchableOpacity
-              style={[
-                styles.plannedToggleOption,
-                item.isPlanned && { backgroundColor: '#3B82F6' },
-              ]}
-              onPress={() => handleUpdateLineItem(index, 'isPlanned', true)}
-            >
-              <ClipboardCheck size={14} color={item.isPlanned ? '#fff' : colors.textSecondary} />
-              <Text style={[styles.plannedToggleText, { color: item.isPlanned ? '#fff' : colors.textSecondary }]}>
-                Planned
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.plannedToggleOption,
-                !item.isPlanned && { backgroundColor: '#F59E0B' },
-              ]}
-              onPress={() => handleUpdateLineItem(index, 'isPlanned', false)}
-            >
-              <Clock size={14} color={!item.isPlanned ? '#fff' : colors.textSecondary} />
-              <Text style={[styles.plannedToggleText, { color: !item.isPlanned ? '#fff' : colors.textSecondary }]}>
-                Unplanned
-              </Text>
-            </TouchableOpacity>
           </View>
         </View>
-
-        {item.isPlanned ? (
-          <View style={styles.lineItemRow}>
-            <View style={styles.inputGroup}>
-              <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Qty</Text>
-              <TextInput
-                style={[styles.numberInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
-                value={item.quantity.toString()}
-                onChangeText={(text) => handleUpdateLineItem(index, 'quantity', parseFloat(text) || 0)}
-                keyboardType="numeric"
-                placeholder="0"
-                placeholderTextColor={colors.textTertiary}
-              />
-            </View>
-            <View style={styles.inputGroup}>
-              <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Rate</Text>
-              <TextInput
-                style={[styles.numberInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
-                value={item.rate > 0 ? item.rate.toFixed(2) : ''}
-                onChangeText={(text) => handleUpdateLineItem(index, 'rate', parseFloat(text) || 0)}
-                keyboardType="decimal-pad"
-                placeholder="0.00"
-                placeholderTextColor={colors.textTertiary}
-              />
-            </View>
-            <View style={styles.inputGroup}>
-              <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Line Total</Text>
-              <View style={[styles.readOnlyInput, { backgroundColor: colors.backgroundTertiary }]}>
-                <Text style={[styles.readOnlyText, { color: colors.text }]}>
-                  {formatCurrency(item.lineTotal)}
-                </Text>
-              </View>
-            </View>
-          </View>
-        ) : (
-          <View style={styles.unplannedSection}>
-            <View style={[styles.tbdRateBanner, { backgroundColor: '#F59E0B15' }]}>
-              <Clock size={14} color="#F59E0B" />
-              <Text style={[styles.tbdRateText, { color: '#F59E0B' }]}>
-                Rate TBD - Specify max amount for approval
-              </Text>
-            </View>
-            <View style={styles.maxAmountRow}>
-              <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Max Amount *</Text>
-              <View style={styles.currencyInputSmall}>
-                <Text style={[styles.currencySymbol, { color: colors.textSecondary }]}>$</Text>
-                <TextInput
-                  style={[styles.maxAmountInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
-                  value={item.maxAmount > 0 ? item.maxAmount.toFixed(2) : ''}
-                  onChangeText={(text) => handleUpdateLineItem(index, 'maxAmount', parseFloat(text) || 0)}
-                  keyboardType="decimal-pad"
-                  placeholder="0.00"
-                  placeholderTextColor={colors.textTertiary}
-                />
-              </View>
-            </View>
-          </View>
-        )}
       </View>
     );
   };
@@ -1007,14 +801,20 @@ export default function POCreateServiceScreen() {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
+          {isFromTaskFeed && sourceTaskNumber && (
+            <View style={[styles.linkedTaskBanner, { backgroundColor: '#3B82F615', borderColor: '#3B82F6' }]}>
+              <ClipboardList size={18} color="#3B82F6" />
+              <View style={styles.linkedTaskContent}>
+                <Text style={[styles.linkedTaskLabel, { color: '#3B82F6' }]}>Linked to Task</Text>
+                <Text style={[styles.linkedTaskNumber, { color: colors.text }]}>{sourceTaskNumber}</Text>
+              </View>
+            </View>
+          )}
+
           <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <View style={styles.sectionHeader}>
-              <FileText size={18} color={colors.primary} />
-              <Text style={[styles.sectionTitle, { color: colors.text }]}>PO Header</Text>
-              <View style={[styles.typeBadge, { backgroundColor: '#10B98115' }]}>
-                <Wrench size={12} color="#10B981" />
-                <Text style={[styles.typeBadgeText, { color: '#10B981' }]}>SERVICE</Text>
-              </View>
+              <HardHat size={18} color="#F97316" />
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Service PO Header</Text>
             </View>
 
             <View style={styles.headerGrid}>
@@ -1034,19 +834,19 @@ export default function POCreateServiceScreen() {
             </View>
 
             <View style={styles.formField}>
-              <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Vendor *</Text>
+              <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Service Vendor *</Text>
               <TouchableOpacity
                 style={[styles.selector, { backgroundColor: colors.background, borderColor: colors.border }]}
                 onPress={() => setShowVendorPicker(true)}
               >
                 {selectedVendor ? (
                   <View style={styles.selectedValue}>
-                    <Building2 size={16} color={colors.primary} />
+                    <HardHat size={16} color="#F97316" />
                     <Text style={[styles.selectedValueText, { color: colors.text }]}>{selectedVendor.name}</Text>
                   </View>
                 ) : (
                   <Text style={[styles.selectorPlaceholder, { color: colors.textSecondary }]}>
-                    Select a vendor...
+                    Select a service vendor...
                   </Text>
                 )}
                 <ChevronDown size={18} color={colors.textSecondary} />
@@ -1077,118 +877,146 @@ export default function POCreateServiceScreen() {
                 <ChevronDown size={18} color={colors.textSecondary} />
               </TouchableOpacity>
             </View>
+
+            <View style={styles.formField}>
+              <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Service Category</Text>
+              <TouchableOpacity
+                style={[styles.selector, { backgroundColor: colors.background, borderColor: colors.border }]}
+                onPress={() => setShowCategoryPicker(true)}
+              >
+                {serviceCategory ? (
+                  <View style={styles.selectedValue}>
+                    <Wrench size={16} color="#8B5CF6" />
+                    <Text style={[styles.selectedValueText, { color: colors.text }]}>
+                      {SERVICE_CATEGORIES.find(c => c.id === serviceCategory)?.name}
+                    </Text>
+                  </View>
+                ) : (
+                  <Text style={[styles.selectorPlaceholder, { color: colors.textSecondary }]}>
+                    Select a category...
+                  </Text>
+                )}
+                <ChevronDown size={18} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
           </View>
 
           <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <View style={styles.sectionHeader}>
-              <Wrench size={18} color={colors.primary} />
-              <Text style={[styles.sectionTitle, { color: colors.text }]}>Service Lines</Text>
+              <FileText size={18} color="#F97316" />
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Service Details</Text>
+            </View>
+
+            <View style={styles.formField}>
+              <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Service Description *</Text>
+              <TextInput
+                style={[styles.textInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
+                value={serviceDescription}
+                onChangeText={setServiceDescription}
+                placeholder="Brief description of the service needed..."
+                placeholderTextColor={colors.textTertiary}
+              />
+            </View>
+
+            <View style={styles.formField}>
+              <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Scope of Work</Text>
+              <TextInput
+                style={[styles.textArea, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
+                value={scopeOfWork}
+                onChangeText={setScopeOfWork}
+                placeholder="Detailed scope of work, expectations, requirements..."
+                placeholderTextColor={colors.textTertiary}
+                multiline
+                numberOfLines={4}
+                textAlignVertical="top"
+              />
+            </View>
+          </View>
+
+          <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={styles.sectionHeaderRow}>
+              <View style={styles.sectionHeader}>
+                <ClipboardList size={18} color="#F97316" />
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>Line Items (Optional)</Text>
+              </View>
               <TouchableOpacity
-                style={[styles.addLineButton, { backgroundColor: colors.primary }]}
+                style={[styles.addButton, { backgroundColor: '#F9731615' }]}
                 onPress={handleAddLineItem}
               >
-                <Plus size={16} color="#fff" />
-                <Text style={styles.addLineButtonText}>Add Service</Text>
+                <Plus size={16} color="#F97316" />
+                <Text style={[styles.addButtonText, { color: '#F97316' }]}>Add Line</Text>
               </TouchableOpacity>
             </View>
 
-            {lineItems.length === 0 ? (
-              <View style={styles.emptyLines}>
-                <Wrench size={32} color={colors.textTertiary} />
-                <Text style={[styles.emptyLinesText, { color: colors.textSecondary }]}>
-                  No service lines yet. Tap &quot;Add Service&quot; to begin.
-                </Text>
-              </View>
-            ) : (
-              lineItems.map((item, index) => renderLineItem(item, index))
-            )}
+            <View style={[styles.lineItemsHint, { backgroundColor: colors.backgroundTertiary }]}>
+              <Info size={14} color={colors.textSecondary} />
+              <Text style={[styles.lineItemsHintText, { color: colors.textSecondary }]}>
+                Line items are optional. You can enter an estimated total below if you do not have line-by-line details.
+              </Text>
+            </View>
+
+            {lineItems.filter(i => !i.isDeleted).map((item, index) => renderLineItem(item, index))}
           </View>
 
           <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 14 }]}>PO Totals</Text>
-
-            <View style={styles.totalsRow}>
-              <Text style={[styles.totalLabel, { color: colors.textSecondary }]}>Known Subtotal</Text>
-              <Text style={[styles.totalValue, { color: colors.text }]}>{formatCurrency(subtotal)}</Text>
+            <View style={styles.sectionHeader}>
+              <FileText size={18} color="#F97316" />
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Estimated Costs</Text>
             </View>
 
-            {hasTBDRates && (
-              <View style={[styles.tbdTotalRow, { backgroundColor: '#F59E0B10' }]}>
-                <View style={styles.tbdTotalInfo}>
-                  <Clock size={14} color="#F59E0B" />
-                  <Text style={[styles.tbdTotalLabel, { color: '#F59E0B' }]}>Max Possible Total</Text>
-                </View>
-                <Text style={[styles.tbdTotalValue, { color: '#F59E0B' }]}>{formatCurrency(maxPossibleTotal)}</Text>
+            {lineItems.filter(i => !i.isDeleted).length === 0 && (
+              <View style={styles.formField}>
+                <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Estimated Total</Text>
+                <TextInput
+                  style={[styles.textInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
+                  value={estimatedTotal}
+                  onChangeText={setEstimatedTotal}
+                  placeholder="0.00"
+                  placeholderTextColor={colors.textTertiary}
+                  keyboardType="decimal-pad"
+                />
               </View>
             )}
 
-            <View style={styles.totalsInputRow}>
-              <Text style={[styles.totalLabel, { color: colors.textSecondary }]}>Tax</Text>
-              <View style={styles.currencyInput}>
-                <Text style={[styles.currencySymbol, { color: colors.textSecondary }]}>$</Text>
-                <TextInput
-                  style={[styles.totalsInput, { color: colors.text, borderColor: colors.border }]}
-                  value={taxAmount}
-                  onChangeText={setTaxAmount}
-                  keyboardType="decimal-pad"
-                  placeholder="0.00"
-                  placeholderTextColor={colors.textTertiary}
-                />
-              </View>
+            <View style={styles.formField}>
+              <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Not to Exceed (NTE)</Text>
+              <TextInput
+                style={[styles.textInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
+                value={notToExceed}
+                onChangeText={setNotToExceed}
+                placeholder="Maximum amount (optional)"
+                placeholderTextColor={colors.textTertiary}
+                keyboardType="decimal-pad"
+              />
             </View>
 
-            <View style={styles.totalsInputRow}>
-              <Text style={[styles.totalLabel, { color: colors.textSecondary }]}>Shipping (if applicable)</Text>
-              <View style={styles.currencyInput}>
-                <Text style={[styles.currencySymbol, { color: colors.textSecondary }]}>$</Text>
-                <TextInput
-                  style={[styles.totalsInput, { color: colors.text, borderColor: colors.border }]}
-                  value={shippingAmount}
-                  onChangeText={setShippingAmount}
-                  keyboardType="decimal-pad"
-                  placeholder="0.00"
-                  placeholderTextColor={colors.textTertiary}
-                />
-              </View>
-            </View>
-
-            <View style={[styles.grandTotal, { borderTopColor: colors.border }]}>
-              <Text style={[styles.grandTotalLabel, { color: colors.text }]}>Total</Text>
-              {hasTBDRates ? (
-                <View style={styles.pendingTotal}>
-                  <Clock size={18} color="#F59E0B" />
-                  <Text style={[styles.pendingTotalText, { color: '#F59E0B' }]}>Pending</Text>
-                </View>
-              ) : (
-                <Text style={[styles.grandTotalValue, { color: colors.primary }]}>{formatCurrency(total)}</Text>
-              )}
+            <View style={[styles.totalRow, { borderTopColor: colors.border }]}>
+              <Text style={[styles.totalLabel, { color: colors.text }]}>Estimated Total</Text>
+              <Text style={[styles.totalValue, { color: '#F97316' }]}>{formatCurrency(total)}</Text>
             </View>
           </View>
 
           <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 10 }]}>Notes</Text>
+            <View style={styles.sectionHeader}>
+              <FileText size={18} color={colors.textSecondary} />
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Notes</Text>
+            </View>
+
             <TextInput
-              style={[styles.notesInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
+              style={[styles.textArea, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
               value={notes}
               onChangeText={setNotes}
-              placeholder="Add notes for this service PO..."
-              placeholderTextColor={colors.textSecondary}
+              placeholder="Additional notes, special instructions..."
+              placeholderTextColor={colors.textTertiary}
               multiline
               numberOfLines={3}
               textAlignVertical="top"
             />
           </View>
 
-          <View style={[styles.approvalNotice, { backgroundColor: '#F59E0B15', borderColor: '#F59E0B' }]}>
-            <AlertTriangle size={16} color="#F59E0B" />
-            <Text style={[styles.approvalNoticeText, { color: '#F59E0B' }]}>
-              All service POs require approval before SES creation
-            </Text>
-          </View>
-
           <View style={styles.actionButtons}>
             <TouchableOpacity
-              style={[styles.actionButton, styles.draftButton, { borderColor: colors.border, opacity: isSaving ? 0.7 : 1 }]}
+              style={[styles.secondaryButton, { borderColor: colors.border }]}
               onPress={handleSaveDraft}
               disabled={isSaving}
             >
@@ -1196,17 +1024,18 @@ export default function POCreateServiceScreen() {
                 <ActivityIndicator size="small" color={colors.text} />
               ) : (
                 <>
-                  <Save size={18} color={colors.text} />
-                  <Text style={[styles.draftButtonText, { color: colors.text }]}>Save as Draft</Text>
+                  <FileText size={18} color={colors.text} />
+                  <Text style={[styles.secondaryButtonText, { color: colors.text }]}>Save Draft</Text>
                 </>
               )}
             </TouchableOpacity>
+
             <TouchableOpacity
-              style={[styles.actionButton, styles.submitActionButton, { backgroundColor: colors.primary }]}
-              onPress={handleSubmitForApproval}
+              style={[styles.primaryButton, { backgroundColor: '#F97316' }]}
+              onPress={handleCreateAndOrder}
             >
               <Send size={18} color="#fff" />
-              <Text style={styles.submitActionButtonText}>Submit for Approval</Text>
+              <Text style={styles.primaryButtonText}>Create & Order</Text>
             </TouchableOpacity>
           </View>
 
@@ -1232,6 +1061,26 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: 16,
   },
+  linkedTaskBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginBottom: 16,
+    gap: 10,
+  },
+  linkedTaskContent: {
+    flex: 1,
+  },
+  linkedTaskLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  linkedTaskNumber: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
   section: {
     borderRadius: 12,
     borderWidth: 1,
@@ -1244,72 +1093,63 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 16,
   },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600' as const,
-    flex: 1,
-  },
-  typeBadge: {
+  sectionHeaderRow: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
+    marginBottom: 12,
   },
-  typeBadgeText: {
-    fontSize: 11,
-    fontWeight: '600' as const,
+  sectionTitle: {
+    fontSize: 15,
+    fontWeight: '600',
   },
   headerGrid: {
     flexDirection: 'row',
     gap: 12,
-    marginBottom: 14,
+    marginBottom: 16,
   },
   headerField: {
     flex: 1,
   },
+  formField: {
+    marginBottom: 16,
+  },
   fieldLabel: {
     fontSize: 13,
-    fontWeight: '500' as const,
+    fontWeight: '500',
     marginBottom: 6,
   },
   readOnlyField: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    height: 44,
+    padding: 12,
     borderRadius: 8,
-    paddingHorizontal: 12,
+    gap: 8,
   },
   readOnlyFieldText: {
-    fontSize: 15,
-    fontWeight: '500' as const,
-  },
-  formField: {
-    marginBottom: 14,
+    fontSize: 14,
+    fontWeight: '500',
   },
   selector: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    height: 48,
+    padding: 12,
     borderRadius: 8,
     borderWidth: 1,
-    paddingHorizontal: 12,
   },
   selectorPlaceholder: {
-    fontSize: 15,
+    fontSize: 14,
   },
   selectedValue: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
     flex: 1,
   },
   selectedValueText: {
-    fontSize: 15,
-    fontWeight: '500' as const,
+    fontSize: 14,
+    fontWeight: '500',
   },
   departmentValue: {
     flex: 1,
@@ -1318,36 +1158,49 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 2,
   },
-  addLineButton: {
+  textInput: {
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    fontSize: 14,
+  },
+  textArea: {
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    fontSize: 14,
+    minHeight: 100,
+  },
+  addButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 8,
+    gap: 6,
   },
-  addLineButtonText: {
-    color: '#fff',
+  addButtonText: {
     fontSize: 13,
-    fontWeight: '600' as const,
+    fontWeight: '600',
   },
-  emptyLines: {
-    alignItems: 'center',
-    paddingVertical: 32,
-    gap: 10,
+  lineItemsHint: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    padding: 12,
+    borderRadius: 8,
+    gap: 8,
+    marginBottom: 12,
   },
-  emptyLinesText: {
-    fontSize: 14,
-    textAlign: 'center',
+  lineItemsHintText: {
+    fontSize: 12,
+    flex: 1,
+    lineHeight: 18,
   },
   lineItemCard: {
     borderRadius: 10,
     borderWidth: 1,
     padding: 14,
-    marginBottom: 12,
-  },
-  lineItemDeleted: {
-    opacity: 0.6,
+    marginBottom: 10,
   },
   lineItemHeader: {
     flexDirection: 'row',
@@ -1357,84 +1210,11 @@ const styles = StyleSheet.create({
   },
   lineNumber: {
     fontSize: 13,
-    fontWeight: '600' as const,
+    fontWeight: '500',
   },
   deleteButton: {
-    padding: 8,
+    padding: 6,
     borderRadius: 6,
-  },
-  deletedBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  deletedBadgeText: {
-    fontSize: 11,
-    fontWeight: '600' as const,
-  },
-  deletedDescription: {
-    fontSize: 14,
-    textDecorationLine: 'line-through',
-  },
-  descriptionInput: {
-    borderRadius: 8,
-    borderWidth: 1,
-    padding: 12,
-    fontSize: 14,
-    minHeight: 60,
-    textAlignVertical: 'top',
-  },
-  inputLabel: {
-    fontSize: 11,
-    fontWeight: '500' as const,
-    marginBottom: 4,
-  },
-  categorySelector: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    height: 44,
-    borderRadius: 8,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-  },
-  categoryDisplay: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  categoryDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
-  categoryText: {
-    fontSize: 14,
-    fontWeight: '500' as const,
-  },
-  plannedToggleContainer: {
-    marginBottom: 12,
-  },
-  plannedToggle: {
-    flexDirection: 'row',
-    borderRadius: 8,
-    padding: 3,
-  },
-  plannedToggleOption: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 10,
-    borderRadius: 6,
-  },
-  plannedToggleText: {
-    fontSize: 13,
-    fontWeight: '500' as const,
   },
   lineItemRow: {
     flexDirection: 'row',
@@ -1443,186 +1223,73 @@ const styles = StyleSheet.create({
   inputGroup: {
     flex: 1,
   },
+  inputLabel: {
+    fontSize: 11,
+    fontWeight: '500',
+    marginBottom: 4,
+  },
   numberInput: {
-    height: 40,
+    padding: 10,
     borderRadius: 6,
     borderWidth: 1,
-    paddingHorizontal: 10,
     fontSize: 14,
     textAlign: 'center',
   },
   readOnlyInput: {
-    height: 40,
+    padding: 10,
     borderRadius: 6,
-    paddingHorizontal: 10,
-    justifyContent: 'center',
     alignItems: 'center',
   },
   readOnlyText: {
     fontSize: 14,
-    fontWeight: '500' as const,
+    fontWeight: '600',
   },
-  unplannedSection: {
-    gap: 10,
-  },
-  tbdRateBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    padding: 10,
-    borderRadius: 8,
-  },
-  tbdRateText: {
-    fontSize: 12,
-    fontWeight: '500' as const,
-  },
-  maxAmountRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  currencyInputSmall: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  maxAmountInput: {
-    width: 120,
-    height: 40,
-    borderRadius: 6,
-    borderWidth: 1,
-    paddingHorizontal: 10,
-    fontSize: 14,
-    textAlign: 'right',
-  },
-  totalsRow: {
+  totalRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 8,
-  },
-  tbdTotalRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 10,
-    borderRadius: 8,
-    marginVertical: 6,
-  },
-  tbdTotalInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  tbdTotalLabel: {
-    fontSize: 13,
-    fontWeight: '500' as const,
-  },
-  tbdTotalValue: {
-    fontSize: 14,
-    fontWeight: '600' as const,
-  },
-  totalsInputRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 8,
-  },
-  totalLabel: {
-    fontSize: 14,
-  },
-  totalValue: {
-    fontSize: 14,
-    fontWeight: '500' as const,
-  },
-  currencyInput: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  currencySymbol: {
-    fontSize: 14,
-    marginRight: 4,
-  },
-  totalsInput: {
-    width: 100,
-    height: 36,
-    borderRadius: 6,
-    borderWidth: 1,
-    paddingHorizontal: 10,
-    fontSize: 14,
-    textAlign: 'right',
-  },
-  grandTotal: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingTop: 14,
-    marginTop: 8,
+    paddingTop: 12,
     borderTopWidth: 1,
   },
-  grandTotalLabel: {
-    fontSize: 16,
-    fontWeight: '600' as const,
+  totalLabel: {
+    fontSize: 15,
+    fontWeight: '600',
   },
-  grandTotalValue: {
+  totalValue: {
     fontSize: 20,
-    fontWeight: '700' as const,
-  },
-  pendingTotal: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  pendingTotalText: {
-    fontSize: 18,
-    fontWeight: '600' as const,
-  },
-  notesInput: {
-    borderRadius: 8,
-    borderWidth: 1,
-    padding: 12,
-    fontSize: 14,
-    minHeight: 80,
-  },
-  approvalNotice: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    padding: 14,
-    borderRadius: 10,
-    borderWidth: 1,
-    marginBottom: 16,
-  },
-  approvalNoticeText: {
-    fontSize: 13,
-    fontWeight: '500' as const,
-    flex: 1,
+    fontWeight: '700',
   },
   actionButtons: {
     flexDirection: 'row',
     gap: 12,
-    marginTop: 8,
   },
-  actionButton: {
+  secondaryButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    height: 50,
-    borderRadius: 12,
-  },
-  draftButton: {
+    padding: 14,
+    borderRadius: 10,
     borderWidth: 1,
+    gap: 8,
   },
-  draftButtonText: {
+  secondaryButtonText: {
     fontSize: 15,
-    fontWeight: '600' as const,
+    fontWeight: '600',
   },
-  submitActionButton: {},
-  submitActionButtonText: {
+  primaryButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 14,
+    borderRadius: 10,
+    gap: 8,
+  },
+  primaryButtonText: {
     color: '#fff',
     fontSize: 15,
-    fontWeight: '600' as const,
+    fontWeight: '600',
   },
   bottomPadding: {
     height: 40,
@@ -1634,87 +1301,133 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    padding: 16,
     borderBottomWidth: 1,
   },
   modalTitle: {
-    fontSize: 18,
-    fontWeight: '600' as const,
+    fontSize: 17,
+    fontWeight: '600',
   },
   modalContent: {
     flex: 1,
-    padding: 16,
   },
   modalBottomPadding: {
     height: 40,
   },
-  glInfoBanner: {
+  searchSection: {
+    padding: 12,
+  },
+  searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    marginHorizontal: 16,
-    marginTop: 12,
-    padding: 12,
+    padding: 10,
     borderRadius: 8,
     borderWidth: 1,
+    gap: 8,
   },
-  glInfoText: {
-    fontSize: 13,
+  searchInput: {
     flex: 1,
+    fontSize: 14,
+  },
+  searchHint: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
+    gap: 10,
+  },
+  searchHintText: {
+    fontSize: 14,
+  },
+  searchHintSubtext: {
+    fontSize: 12,
   },
   pickerOption: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: 14,
     borderBottomWidth: 1,
-    gap: 12,
   },
   pickerIcon: {
-    width: 40,
-    height: 40,
+    width: 36,
+    height: 36,
     borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
+    marginRight: 12,
   },
   pickerOptionContent: {
     flex: 1,
   },
   pickerOptionTitle: {
     fontSize: 15,
-    fontWeight: '500' as const,
-    marginBottom: 2,
+    fontWeight: '500',
   },
   pickerOptionSubtitle: {
     fontSize: 13,
+    marginTop: 2,
   },
-  loadingContainer: {
-    padding: 40,
+  vendorContactRow: {
+    flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    marginTop: 2,
   },
-  loadingText: {
-    fontSize: 14,
-  },
-  emptyContainer: {
-    padding: 40,
+  vendorContactItem: {
+    flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 4,
   },
-  emptyText: {
-    fontSize: 14,
-    textAlign: 'center',
+  vendorContactText: {
+    fontSize: 12,
+  },
+  glInfoBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    marginHorizontal: 16,
+    marginTop: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 10,
+  },
+  glInfoText: {
+    fontSize: 12,
+    flex: 1,
+    lineHeight: 18,
+  },
+  infoBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    padding: 14,
+    marginHorizontal: 16,
+    marginTop: 16,
+    borderRadius: 10,
+    borderWidth: 1,
+    gap: 10,
+  },
+  infoBannerContent: {
+    flex: 1,
+  },
+  infoBannerTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  infoBannerText: {
+    fontSize: 12,
+    lineHeight: 18,
   },
   reviewCard: {
-    borderRadius: 12,
+    borderRadius: 10,
     borderWidth: 1,
-    padding: 16,
-    marginBottom: 16,
+    padding: 14,
+    marginHorizontal: 16,
+    marginTop: 12,
   },
   reviewCardTitle: {
-    fontSize: 16,
-    fontWeight: '600' as const,
-    marginBottom: 14,
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 12,
   },
   reviewRow: {
     flexDirection: 'row',
@@ -1723,59 +1436,36 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   reviewLabel: {
-    fontSize: 14,
+    fontSize: 13,
   },
   reviewValue: {
+    fontSize: 13,
+    fontWeight: '500',
+    textAlign: 'right',
+    flex: 1,
+    marginLeft: 12,
+  },
+  reviewDescription: {
     fontSize: 14,
-    fontWeight: '500' as const,
+    lineHeight: 20,
   },
-  glHighlight: {
-    padding: 12,
-    borderRadius: 8,
+  scopeSection: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0,0,0,0.05)',
   },
-  glHighlightLabel: {
-    fontSize: 11,
-    fontWeight: '600' as const,
+  scopeLabel: {
+    fontSize: 12,
+    fontWeight: '500',
     marginBottom: 4,
   },
-  glHighlightValue: {
-    fontSize: 15,
-    fontWeight: '600' as const,
+  scopeText: {
+    fontSize: 13,
+    lineHeight: 20,
   },
   reviewLineItem: {
-    paddingVertical: 12,
-  },
-  reviewLineHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 6,
-  },
-  reviewLineNumber: {
-    fontSize: 12,
-    fontWeight: '600' as const,
-  },
-  reviewLineBadges: {
-    flexDirection: 'row',
-    gap: 6,
-  },
-  categoryBadgeSmall: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 4,
-  },
-  categoryBadgeSmallText: {
-    fontSize: 10,
-    fontWeight: '600' as const,
-  },
-  plannedBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 4,
-  },
-  plannedBadgeText: {
-    fontSize: 10,
-    fontWeight: '600' as const,
+    paddingVertical: 10,
   },
   reviewLineDescription: {
     fontSize: 14,
@@ -1791,27 +1481,34 @@ const styles = StyleSheet.create({
   },
   reviewLineTotal: {
     fontSize: 14,
-    fontWeight: '600' as const,
+    fontWeight: '600',
   },
-  grandTotalRow: {
-    paddingTop: 12,
-    marginTop: 6,
-    borderTopWidth: 1,
+  noteBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+    borderRadius: 8,
+    marginTop: 12,
+    gap: 8,
+  },
+  noteText: {
+    fontSize: 12,
+    flex: 1,
   },
   submitSection: {
-    marginTop: 8,
+    padding: 16,
   },
   submitButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    padding: 16,
+    borderRadius: 10,
     gap: 8,
-    height: 50,
-    borderRadius: 12,
   },
   submitButtonText: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: '600' as const,
+    fontWeight: '600',
   },
 });
