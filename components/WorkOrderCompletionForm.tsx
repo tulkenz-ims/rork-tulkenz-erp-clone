@@ -181,6 +181,20 @@ export default function WorkOrderCompletionForm({
     });
   };
 
+  const getIssueDescription = useCallback(() => {
+    if (task.post?.notes) return task.post.notes;
+    if (task.post?.form_data) {
+      const fd = task.post.form_data;
+      return fd.description || fd.issue || fd.problem || fd.details || 
+             fd.issue_description || fd.work_description || fd.request_details ||
+             fd.maintenance_issue || fd.equipment_issue || fd.reported_issue ||
+             fd.notes || fd.comments || fd.reason || null;
+    }
+    return null;
+  }, [task.post]);
+
+  const issueDescription = getIssueDescription();
+
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       {/* Task Summary Header */}
@@ -199,16 +213,28 @@ export default function WorkOrderCompletionForm({
           </View>
         </View>
 
-        {/* Issue Description Banner - Show prominently at the top */}
-        {(task.post?.notes || (task.post?.form_data && (task.post.form_data.description || task.post.form_data.issue || task.post.form_data.problem || task.post.form_data.details))) && (
+        {/* Issue Description Banner - ALWAYS show if we have any issue info */}
+        {issueDescription ? (
           <View style={[styles.issueBanner, { backgroundColor: '#EF4444' + '10', borderBottomColor: colors.border }]}>
             <View style={[styles.issueBannerIcon, { backgroundColor: '#EF4444' + '20' }]}>
               <AlertTriangle size={18} color="#EF4444" />
             </View>
             <View style={styles.issueBannerContent}>
-              <Text style={[styles.issueBannerTitle, { color: '#EF4444' }]}>Issue Reported</Text>
+              <Text style={[styles.issueBannerTitle, { color: '#EF4444' }]}>ISSUE REPORTED</Text>
               <Text style={[styles.issueBannerText, { color: colors.text }]}>
-                {task.post?.notes || task.post?.form_data?.description || task.post?.form_data?.issue || task.post?.form_data?.problem || task.post?.form_data?.details || ''}
+                {issueDescription}
+              </Text>
+            </View>
+          </View>
+        ) : (
+          <View style={[styles.noIssueBanner, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
+            <View style={[styles.issueBannerIcon, { backgroundColor: accentColor + '20' }]}>
+              <FileText size={18} color={accentColor} />
+            </View>
+            <View style={styles.issueBannerContent}>
+              <Text style={[styles.noIssueBannerTitle, { color: accentColor }]}>MAINTENANCE REQUEST</Text>
+              <Text style={[styles.issueBannerText, { color: colors.textSecondary }]}>
+                No issue description provided. Review form details below.
               </Text>
             </View>
           </View>
@@ -217,14 +243,43 @@ export default function WorkOrderCompletionForm({
         {/* Original Photo if exists - Show prominently */}
         {task.post?.photo_url && (
           <View style={styles.originalPhotoSection}>
-            <Text style={[styles.originalPhotoLabel, { color: colors.textSecondary }]}>
-              📸 Issue Photo:
-            </Text>
+            <View style={styles.photoLabelRow}>
+              <Camera size={16} color="#EF4444" />
+              <Text style={[styles.originalPhotoLabel, { color: '#EF4444' }]}>
+                Issue Photo Attached
+              </Text>
+            </View>
             <Image
               source={{ uri: task.post.photo_url }}
               style={styles.originalPhoto}
               resizeMode="cover"
             />
+          </View>
+        )}
+
+        {/* Form Data from original post - Show ALL details prominently */}
+        {task.post?.form_data && Object.keys(task.post.form_data).length > 0 && (
+          <View style={[styles.formDataSection, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={styles.formDataHeader}>
+              <FileText size={16} color={accentColor} />
+              <Text style={[styles.formDataTitle, { color: colors.text }]}>
+                Original Request Details
+              </Text>
+            </View>
+            {Object.entries(task.post.form_data).map(([key, value]) => {
+              if (value === null || value === undefined || value === '') return null;
+              const displayValue = typeof value === 'object' ? JSON.stringify(value) : String(value);
+              return (
+                <View key={key} style={[styles.formDataRow, { borderBottomColor: colors.border }]}>
+                  <Text style={[styles.formDataKey, { color: colors.textSecondary }]}>
+                    {key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                  </Text>
+                  <Text style={[styles.formDataValue, { color: colors.text }]}>
+                    {displayValue}
+                  </Text>
+                </View>
+              );
+            })}
           </View>
         )}
 
@@ -241,7 +296,7 @@ export default function WorkOrderCompletionForm({
             <View style={styles.taskDetailItem}>
               <User size={14} color={colors.textSecondary} />
               <Text style={[styles.taskDetailText, { color: colors.textSecondary }]}>
-                {task.post.created_by_name}
+                Reported by: {task.post.created_by_name}
               </Text>
             </View>
           )}
@@ -254,29 +309,6 @@ export default function WorkOrderCompletionForm({
             </View>
           )}
         </View>
-
-        {/* Form Data from original post - Show all details */}
-        {task.post?.form_data && Object.keys(task.post.form_data).length > 0 && (
-          <View style={[styles.formDataSection, { backgroundColor: colors.surface }]}>
-            <Text style={[styles.formDataTitle, { color: colors.textSecondary }]}>
-              📋 Request Details:
-            </Text>
-            {Object.entries(task.post.form_data).map(([key, value]) => {
-              // Skip fields already shown in issue banner
-              if (['description', 'issue', 'problem', 'details'].includes(key.toLowerCase())) return null;
-              return (
-                <View key={key} style={styles.formDataRow}>
-                  <Text style={[styles.formDataKey, { color: colors.textTertiary }]}>
-                    {key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}:
-                  </Text>
-                  <Text style={[styles.formDataValue, { color: colors.text }]}>
-                    {String(value)}
-                  </Text>
-                </View>
-              );
-            })}
-          </View>
-        )}
       </View>
 
       {/* Work Order Completion Form */}
@@ -571,43 +603,75 @@ const styles = StyleSheet.create({
   taskDetailText: {
     fontSize: 13,
   },
+  noIssueBanner: {
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+    padding: 14,
+    gap: 10,
+    borderBottomWidth: 1,
+  },
+  noIssueBannerTitle: {
+    fontSize: 12,
+    fontWeight: '700' as const,
+    textTransform: 'uppercase' as const,
+    marginBottom: 4,
+    letterSpacing: 0.5,
+  },
   originalPhotoSection: {
     padding: 14,
-    paddingTop: 0,
+    backgroundColor: '#FEF2F2',
+  },
+  photoLabelRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 6,
+    marginBottom: 10,
   },
   originalPhotoLabel: {
-    fontSize: 12,
-    fontWeight: '500' as const,
-    marginBottom: 8,
+    fontSize: 13,
+    fontWeight: '600' as const,
   },
   originalPhoto: {
     width: '100%',
-    height: 150,
+    height: 200,
     borderRadius: 10,
   },
   formDataSection: {
     margin: 14,
     marginTop: 0,
-    padding: 12,
+    padding: 14,
     borderRadius: 10,
+    borderWidth: 1,
+  },
+  formDataHeader: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 8,
+    marginBottom: 12,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.1)',
   },
   formDataTitle: {
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: '600' as const,
-    marginBottom: 8,
   },
   formDataRow: {
-    flexDirection: 'row',
-    marginBottom: 6,
+    flexDirection: 'column' as const,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
   },
   formDataKey: {
-    fontSize: 12,
-    fontWeight: '500' as const,
-    marginRight: 6,
+    fontSize: 11,
+    fontWeight: '600' as const,
+    textTransform: 'uppercase' as const,
+    marginBottom: 4,
+    letterSpacing: 0.3,
   },
   formDataValue: {
-    fontSize: 12,
-    flex: 1,
+    fontSize: 14,
+    fontWeight: '500' as const,
+    lineHeight: 20,
   },
   formCard: {
     borderRadius: 12,
