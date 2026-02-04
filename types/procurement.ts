@@ -459,3 +459,95 @@ export const VENDOR_DOCUMENT_STATUS_COLORS: Record<VendorDocumentStatus, string>
   pending: '#F59E0B',
   cancelled: '#6B7280',
 };
+
+export type ServiceRequisitionStatus = 
+  | 'draft' 
+  | 'pending_tier2_approval' 
+  | 'pending_tier3_approval' 
+  | 'approved' 
+  | 'rejected' 
+  | 'posted';
+
+export interface ServiceRequisition {
+  id: string;
+  requisition_number: string;
+  source_po_id: string;
+  source_po_number: string;
+  vendor_id: string;
+  vendor_name: string;
+  department_id: string;
+  department_name: string;
+  service_type: string;
+  service_category: string;
+  service_description: string;
+  scope_of_work?: string;
+  status: ServiceRequisitionStatus;
+  invoice_number?: string;
+  invoice_date?: string;
+  invoice_amount: number;
+  original_estimate: number;
+  variance: number;
+  variance_percent: number;
+  variance_reason?: string;
+  service_completion_date?: string;
+  service_start_date?: string;
+  service_end_date?: string;
+  gl_account?: string;
+  cost_center?: string;
+  current_approval_tier: number;
+  required_tiers: number[];
+  tier2_approved_by?: string;
+  tier2_approved_at?: string;
+  tier3_approved_by?: string;
+  tier3_approved_at?: string;
+  rejected_by?: string;
+  rejected_at?: string;
+  rejection_reason?: string;
+  created_by: string;
+  created_by_id?: string;
+  notes?: string;
+  line_items: ServiceRequisitionLineItem[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ServiceRequisitionLineItem {
+  line_id: string;
+  requisition_id: string;
+  line_number: number;
+  description: string;
+  estimated_hours: number;
+  actual_hours: number;
+  hourly_rate: number;
+  estimated_total: number;
+  actual_total: number;
+  variance: number;
+  notes?: string;
+}
+
+export const SERVICE_REQUISITION_STATUS_LABELS: Record<ServiceRequisitionStatus, string> = {
+  draft: 'Draft',
+  pending_tier2_approval: 'Pending Plant Manager',
+  pending_tier3_approval: 'Pending Owner/Exec',
+  approved: 'Approved',
+  rejected: 'Rejected',
+  posted: 'Posted to SES',
+};
+
+export const SERVICE_REQUISITION_STATUS_COLORS: Record<ServiceRequisitionStatus, string> = {
+  draft: '#6B7280',
+  pending_tier2_approval: '#F59E0B',
+  pending_tier3_approval: '#8B5CF6',
+  approved: '#10B981',
+  rejected: '#EF4444',
+  posted: '#059669',
+};
+
+export function getServiceReqApprovalTiers(amount: number): number[] {
+  if (amount >= APPROVAL_TIER_THRESHOLDS.TIER_3) {
+    return [2, 3];
+  } else if (amount >= APPROVAL_TIER_THRESHOLDS.TIER_2) {
+    return [2];
+  }
+  return [];
+}

@@ -1,9 +1,11 @@
 import React, { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, RefreshControl, Alert, Modal } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
-import { useServicePOsQuery, useCreateServicePO, useUpdateServicePO, ServicePurchaseOrder } from '@/hooks/useSupabaseProcurementExtended';
+import { useServicePOsQuery, useCreateServicePO, useUpdateServicePO, ServicePurchaseOrder, useServiceRequisitionsQuery } from '@/hooks/useSupabaseProcurementExtended';
 import { useProcurementVendorsQuery } from '@/hooks/useSupabaseProcurement';
-import { Wrench, Search, Plus, Calendar, DollarSign, Building, Clock, CheckCircle, XCircle, PlayCircle, X, Target, Users } from 'lucide-react-native';
+import { Wrench, Search, Plus, Calendar, Building, Clock, CheckCircle, XCircle, PlayCircle, X, Receipt, FileText, ArrowRight } from 'lucide-react-native';
+import * as Haptics from 'expo-haptics';
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.ComponentType<{ size: number; color: string }> }> = {
   draft: { label: 'Draft', color: '#6B7280', icon: Clock },
@@ -37,11 +39,13 @@ const PAYMENT_SCHEDULES = [
 
 export default function ServicePOScreen() {
   const { colors } = useTheme();
+  const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
 
   const { data: servicePOs = [], isLoading, refetch } = useServicePOsQuery();
+  const { data: requisitions = [] } = useServiceRequisitionsQuery({});
   const { data: vendors = [] } = useProcurementVendorsQuery({ activeOnly: true, vendorType: 'service' });
   const createServicePO = useCreateServicePO({
     onSuccess: () => {
@@ -50,7 +54,7 @@ export default function ServicePOScreen() {
     },
     onError: (error) => Alert.alert('Error', error.message),
   });
-  const updateServicePO = useUpdateServicePO({
+  useUpdateServicePO({
     onSuccess: () => Alert.alert('Success', 'Service PO updated'),
     onError: (error) => Alert.alert('Error', error.message),
   });
@@ -100,11 +104,21 @@ export default function ServicePOScreen() {
     });
   };
 
-  const handleUpdateStatus = (spo: ServicePurchaseOrder, newStatus: string) => {
-    updateServicePO.mutate({
-      id: spo.id,
-      updates: { status: newStatus as ServicePurchaseOrder['status'] },
+
+
+  const handleCreateRequisition = (spo: ServicePurchaseOrder) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    router.push({
+      pathname: '/(tabs)/procurement/servicereq-create',
+      params: {
+        poId: spo.id,
+        poNumber: spo.service_po_number,
+      },
     });
+  };
+
+  const hasRequisition = (poId: string) => {
+    return requisitions.some(r => r.source_po_id === poId);
   };
 
   const styles = StyleSheet.create({
@@ -383,6 +397,39 @@ export default function ServicePOScreen() {
       fontSize: 14,
       color: colors.textSecondary,
       textAlign: 'center',
+    },
+    createReqButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: '#F9731610',
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+      gap: 8,
+    },
+    createReqButtonText: {
+      fontSize: 13,
+      fontWeight: '600' as const,
+      color: '#F97316',
+      flex: 1,
+    },
+    reqLinkedBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: '#10B98110',
+      paddingVertical: 10,
+      paddingHorizontal: 16,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+      gap: 6,
+    },
+    reqLinkedText: {
+      fontSize: 12,
+      fontWeight: '500' as const,
+      color: '#10B981',
     },
     modalOverlay: {
       flex: 1,
@@ -882,6 +929,24 @@ export default function ServicePOScreen() {
                     </View>
                   )}
                 </View>
+
+                {spo.status === 'in_progress' && !hasRequisition(spo.id) && (
+                  <TouchableOpacity
+                    style={styles.createReqButton}
+                    onPress={() => handleCreateRequisition(spo)}
+                  >
+                    <Receipt size={16} color="#F97316" />
+                    <Text style={styles.createReqButtonText}>Invoice Received - Create Requisition</Text>
+                    <ArrowRight size={16} color="#F97316" />
+                  </TouchableOpacity>
+                )}
+
+                {hasRequisition(spo.id) && (
+                  <View style={styles.reqLinkedBadge}>
+                    <FileText size={14} color="#10B981" />
+                    <Text style={styles.reqLinkedText}>Requisition Created</Text>
+                  </View>
+                )}
               </View>
             );
           })

@@ -950,3 +950,295 @@ export function useCreateBlanketPORelease(options?: { onSuccess?: (data: Blanket
     },
   });
 }
+
+// Service Requisition types and hooks
+export interface ServiceRequisition {
+  id: string;
+  organization_id: string;
+  requisition_number: string;
+  source_po_id: string;
+  source_po_number: string;
+  vendor_id: string;
+  vendor_name: string;
+  department_id: string;
+  department_name: string;
+  service_type: string;
+  service_category: string | null;
+  service_description: string;
+  scope_of_work: string | null;
+  status: 'draft' | 'pending_tier2_approval' | 'pending_tier3_approval' | 'approved' | 'rejected' | 'posted';
+  invoice_number: string | null;
+  invoice_date: string | null;
+  invoice_amount: number;
+  original_estimate: number;
+  variance: number;
+  variance_percent: number;
+  variance_reason: string | null;
+  service_completion_date: string | null;
+  service_start_date: string | null;
+  service_end_date: string | null;
+  gl_account: string | null;
+  cost_center: string | null;
+  current_approval_tier: number;
+  required_tiers: number[];
+  tier2_approved_by: string | null;
+  tier2_approved_at: string | null;
+  tier3_approved_by: string | null;
+  tier3_approved_at: string | null;
+  rejected_by: string | null;
+  rejected_at: string | null;
+  rejection_reason: string | null;
+  created_by: string;
+  created_by_id: string | null;
+  notes: string | null;
+  line_items: ServiceRequisitionLineItem[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ServiceRequisitionLineItem {
+  line_id: string;
+  line_number: number;
+  description: string;
+  estimated_hours: number;
+  actual_hours: number;
+  hourly_rate: number;
+  estimated_total: number;
+  actual_total: number;
+  variance: number;
+  notes?: string;
+}
+
+export function useServiceRequisitionsQuery(options?: { status?: string; poId?: string; enabled?: boolean }) {
+  const { organizationId } = useOrganization();
+
+  return useQuery({
+    queryKey: ['service_requisitions', organizationId, options?.status, options?.poId],
+    queryFn: async () => {
+      if (!organizationId) return [];
+
+      let query = supabase
+        .from('service_requisitions')
+        .select('*')
+        .eq('organization_id', organizationId)
+        .order('created_at', { ascending: false });
+
+      if (options?.status) {
+        query = query.eq('status', options.status);
+      }
+
+      if (options?.poId) {
+        query = query.eq('source_po_id', options.poId);
+      }
+
+      const { data, error } = await query;
+      if (error) {
+        console.log('[useServiceRequisitionsQuery] Table may not exist yet, returning empty array');
+        return [];
+      }
+
+      console.log('[useServiceRequisitionsQuery] Fetched:', data?.length || 0, 'service requisitions');
+      return (data || []) as ServiceRequisition[];
+    },
+    enabled: !!organizationId && (options?.enabled !== false),
+    staleTime: 1000 * 60 * 2,
+  });
+}
+
+export function useServiceRequisitionQuery(id: string | undefined | null) {
+  const { organizationId } = useOrganization();
+
+  return useQuery({
+    queryKey: ['service_requisition', organizationId, id],
+    queryFn: async () => {
+      if (!organizationId || !id) return null;
+
+      const { data, error } = await supabase
+        .from('service_requisitions')
+        .select('*')
+        .eq('organization_id', organizationId)
+        .eq('id', id)
+        .single();
+
+      if (error) {
+        console.log('[useServiceRequisitionQuery] Error or not found:', error.message);
+        return null;
+      }
+
+      console.log('[useServiceRequisitionQuery] Fetched requisition:', data?.id);
+      return data as ServiceRequisition;
+    },
+    enabled: !!organizationId && !!id,
+    staleTime: 1000 * 60 * 2,
+  });
+}
+
+export function useCreateServiceRequisition(options?: { onSuccess?: (data: ServiceRequisition) => void; onError?: (error: Error) => void }) {
+  const { organizationId } = useOrganization();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (requisition: Omit<ServiceRequisition, 'id' | 'organization_id' | 'created_at' | 'updated_at' | 'requisition_number'>) => {
+      if (!organizationId) throw new Error('No organization selected');
+
+      const requisitionNumber = `SVC-REQ-${Date.now().toString(36).toUpperCase()}`;
+
+      const { data, error } = await supabase
+        .from('service_requisitions')
+        .insert({
+          ...requisition,
+          requisition_number: requisitionNumber,
+          organization_id: organizationId,
+        })
+        .select()
+        .single();
+
+      if (error) throw new Error(error.message);
+      console.log('[useCreateServiceRequisition] Created service requisition:', data?.id);
+      return data as ServiceRequisition;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['service_requisitions'] });
+      queryClient.invalidateQueries({ queryKey: ['service_purchase_orders'] });
+      options?.onSuccess?.(data);
+    },
+    onError: (error) => {
+      console.error('[useCreateServiceRequisition] Error:', error);
+      options?.onError?.(error as Error);
+    },
+  });
+}
+
+export function useUpdateServiceRequisition(options?: { onSuccess?: (data: ServiceRequisition) => void; onError?: (error: Error) => void }) {
+  const { organizationId } = useOrganization();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, updates }: { id: string; updates: Partial<ServiceRequisition> }) => {
+      if (!organizationId) throw new Error('No organization selected');
+
+      const { data, error } = await supabase
+        .from('service_requisitions')
+        .update(updates)
+        .eq('id', id)
+        .eq('organization_id', organizationId)
+        .select()
+        .single();
+
+      if (error) throw new Error(error.message);
+      console.log('[useUpdateServiceRequisition] Updated service requisition:', id);
+      return data as ServiceRequisition;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['service_requisitions'] });
+      queryClient.invalidateQueries({ queryKey: ['service_requisition', organizationId, data.id] });
+      options?.onSuccess?.(data);
+    },
+    onError: (error) => {
+      console.error('[useUpdateServiceRequisition] Error:', error);
+      options?.onError?.(error as Error);
+    },
+  });
+}
+
+export function useApproveServiceRequisition(options?: { onSuccess?: (data: ServiceRequisition) => void; onError?: (error: Error) => void }) {
+  const { organizationId } = useOrganization();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, tier, approvedBy }: { id: string; tier: number; approvedBy: string }) => {
+      if (!organizationId) throw new Error('No organization selected');
+
+      const { data: current, error: fetchError } = await supabase
+        .from('service_requisitions')
+        .select('*')
+        .eq('id', id)
+        .eq('organization_id', organizationId)
+        .single();
+
+      if (fetchError || !current) throw new Error('Requisition not found');
+
+      const requisition = current as ServiceRequisition;
+      const now = new Date().toISOString();
+      let updates: Partial<ServiceRequisition> = {};
+
+      if (tier === 2) {
+        updates.tier2_approved_by = approvedBy;
+        updates.tier2_approved_at = now;
+        
+        if (requisition.required_tiers.includes(3)) {
+          updates.status = 'pending_tier3_approval';
+          updates.current_approval_tier = 3;
+        } else {
+          updates.status = 'approved';
+          updates.current_approval_tier = 0;
+        }
+      } else if (tier === 3) {
+        updates.tier3_approved_by = approvedBy;
+        updates.tier3_approved_at = now;
+        updates.status = 'approved';
+        updates.current_approval_tier = 0;
+      }
+
+      const { data, error } = await supabase
+        .from('service_requisitions')
+        .update(updates)
+        .eq('id', id)
+        .eq('organization_id', organizationId)
+        .select()
+        .single();
+
+      if (error) throw new Error(error.message);
+      console.log('[useApproveServiceRequisition] Approved tier', tier, 'for requisition:', id);
+      return data as ServiceRequisition;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['service_requisitions'] });
+      queryClient.invalidateQueries({ queryKey: ['service_requisition'] });
+      options?.onSuccess?.(data);
+    },
+    onError: (error) => {
+      console.error('[useApproveServiceRequisition] Error:', error);
+      options?.onError?.(error as Error);
+    },
+  });
+}
+
+export function useRejectServiceRequisition(options?: { onSuccess?: (data: ServiceRequisition) => void; onError?: (error: Error) => void }) {
+  const { organizationId } = useOrganization();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, rejectedBy, reason }: { id: string; rejectedBy: string; reason: string }) => {
+      if (!organizationId) throw new Error('No organization selected');
+
+      const now = new Date().toISOString();
+
+      const { data, error } = await supabase
+        .from('service_requisitions')
+        .update({
+          status: 'rejected',
+          rejected_by: rejectedBy,
+          rejected_at: now,
+          rejection_reason: reason,
+        })
+        .eq('id', id)
+        .eq('organization_id', organizationId)
+        .select()
+        .single();
+
+      if (error) throw new Error(error.message);
+      console.log('[useRejectServiceRequisition] Rejected requisition:', id);
+      return data as ServiceRequisition;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['service_requisitions'] });
+      queryClient.invalidateQueries({ queryKey: ['service_requisition'] });
+      options?.onSuccess?.(data);
+    },
+    onError: (error) => {
+      console.error('[useRejectServiceRequisition] Error:', error);
+      options?.onError?.(error as Error);
+    },
+  });
+}
