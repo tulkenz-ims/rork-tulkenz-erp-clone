@@ -404,12 +404,27 @@ export default function PurchaseRequisitionsScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setShowDetailModal(false);
     
+    const lineItemsJson = encodeURIComponent(JSON.stringify(requisition.line_items));
+    const params = new URLSearchParams({
+      fromRequisition: 'true',
+      requisitionId: requisition.requisition_id,
+      requisitionNumber: requisition.requisition_number,
+      vendorId: requisition.vendor_id || '',
+      vendorName: requisition.vendor_name || '',
+      departmentId: requisition.department_id || '',
+      departmentName: requisition.department_name || '',
+      subtotal: requisition.subtotal.toString(),
+      neededByDate: requisition.needed_by_date || '',
+      notes: requisition.notes || requisition.justification || '',
+      lineItems: lineItemsJson,
+    });
+    
     if (requisition.requisition_type === 'material') {
-      router.push('/procurement/pocreate-material' as any);
+      router.push(`/procurement/pocreate-material?${params.toString()}` as any);
     } else if (requisition.requisition_type === 'service') {
-      router.push('/procurement/pocreate-service' as any);
+      router.push(`/procurement/pocreate-service?${params.toString()}` as any);
     } else {
-      router.push('/procurement/pocreate-capex' as any);
+      router.push(`/procurement/pocreate-capex?${params.toString()}` as any);
     }
   };
 

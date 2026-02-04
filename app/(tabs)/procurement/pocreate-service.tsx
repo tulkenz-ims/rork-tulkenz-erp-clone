@@ -12,7 +12,7 @@ import {
   Platform,
   ActivityIndicator,
 } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import {
   X,
   Plus,
@@ -38,6 +38,7 @@ import {
   useProcurementVendorsQuery,
   useCreateProcurementPurchaseOrder,
   useSubmitPurchaseOrder,
+  useMarkRequisitionConverted,
   POLineItem,
 } from '@/hooks/useSupabaseProcurement';
 
@@ -117,6 +118,23 @@ export default function POCreateServiceScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   const { user } = useUser();
+  const params = useLocalSearchParams<{
+    fromRequisition?: string;
+    requisitionId?: string;
+    requisitionNumber?: string;
+    vendorId?: string;
+    vendorName?: string;
+    departmentId?: string;
+    departmentName?: string;
+    subtotal?: string;
+    neededByDate?: string;
+    notes?: string;
+    lineItems?: string;
+  }>();
+
+  const isFromRequisition = params.fromRequisition === 'true';
+  const sourceRequisitionId = params.requisitionId;
+  const sourceRequisitionNumber = params.requisitionNumber;
 
   const [poNumber] = useState(generateServicePONumber());
   const [poDate] = useState(new Date().toISOString().split('T')[0]);
@@ -128,6 +146,7 @@ export default function POCreateServiceScreen() {
   const [notes, setNotes] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [requisitionLoaded, setRequisitionLoaded] = useState(false);
 
   const [showVendorPicker, setShowVendorPicker] = useState(false);
   const [showDepartmentPicker, setShowDepartmentPicker] = useState(false);
@@ -159,7 +178,75 @@ export default function POCreateServiceScreen() {
     },
   });
 
+  const markRequisitionConvertedMutation = useMarkRequisitionConverted({
+    onSuccess: () => {
+      console.log('[POCreateService] Requisition marked as converted');
+    },
+    onError: (error) => {
+      console.error('[POCreateService] Failed to mark requisition as converted:', error);
+    },
+  });
+
   const activeVendors = useMemo(() => vendorsData, [vendorsData]);
+
+  React.useEffect(() => {
+    if (isFromRequisition && !requisitionLoaded) {
+      console.log('[POCreateService] Loading from requisition:', sourceRequisitionNumber);
+      
+      if (params.vendorId && params.vendorName) {
+        const matchingVendor = vendorsData.find(v => v.id === params.vendorId);
+        if (matchingVendor) {
+          setSelectedVendor({
+            id: matchingVendor.id,
+            name: matchingVendor.name,
+            contact_name: matchingVendor.contact_name,
+            phone: matchingVendor.phone,
+          });
+        } else {
+          setSelectedVendor({
+            id: params.vendorId,
+            name: params.vendorName,
+          });
+        }
+      }
+      
+      if (params.departmentId && params.departmentName) {
+        const matchingDept = DEPARTMENT_GL_ACCOUNTS.find(d => d.id === params.departmentId || d.name === params.departmentName);
+        if (matchingDept) {
+          setSelectedDepartment(matchingDept);
+        }
+      }
+      
+      if (params.notes) {
+        setNotes(params.notes);
+      }
+      
+      if (params.lineItems) {
+        try {
+          const parsedLineItems = JSON.parse(decodeURIComponent(params.lineItems));
+          const convertedLineItems: ServiceLineItemDraft[] = parsedLineItems.map((item: any, index: number) => ({
+            id: item.line_id || `svc-line-${Date.now()}-${index}`,
+            lineNumber: item.line_number || index + 1,
+            description: item.description || '',
+            category: 'other',
+            isPlanned: true,
+            quantity: item.quantity || 1,
+            rate: item.unit_price || 0,
+            rateTBD: false,
+            maxAmount: 0,
+            lineTotal: item.line_total || (item.quantity * item.unit_price) || 0,
+            isDeleted: false,
+          }));
+          setLineItems(convertedLineItems);
+          console.log('[POCreateService] Loaded', convertedLineItems.length, 'line items from requisition');
+        } catch (e) {
+          console.error('[POCreateService] Failed to parse line items:', e);
+        }
+      }
+      
+      setRequisitionLoaded(true);
+    }
+  }, [isFromRequisition, requisitionLoaded, params, vendorsData, sourceRequisitionNumber]);
 
   const activeLines = useMemo(() => 
     lineItems.filter(item => !item.isDeleted),
@@ -295,12 +382,22 @@ export default function POCreateServiceScreen() {
         department_name: selectedDepartment.name,
         created_by: user?.first_name && user?.last_name ? `${user.first_name} ${user.last_name}` : user?.email || 'Unknown User',
         created_by_id: user?.id,
+        source_requisition_id: sourceRequisitionId || undefined,
+        source_requisition_number: sourceRequisitionNumber || undefined,
         subtotal: subtotal,
         tax: parseFloat(taxAmount) || 0,
         shipping: parseFloat(shippingAmount) || 0,
         notes: notes || `G/L Account: ${selectedDepartment.glAccount} - ${selectedDepartment.glDescription}${hasTBDRates ? '\nContains services with TBD rates' : ''}`,
         line_items: poLineItems,
       });
+
+      if (sourceRequisitionId && sourceRequisitionNumber) {
+        await markRequisitionConvertedMutation.mutateAsync({
+          requisitionId: sourceRequisitionId,
+          poId: 'draft',
+          poNumber: poNumber,
+        });
+      }
 
       setIsSaving(false);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -382,12 +479,22 @@ export default function POCreateServiceScreen() {
         department_name: selectedDepartment!.name,
         created_by: user?.first_name && user?.last_name ? `${user.first_name} ${user.last_name}` : user?.email || 'Unknown User',
         created_by_id: user?.id,
+        source_requisition_id: sourceRequisitionId || undefined,
+        source_requisition_number: sourceRequisitionNumber || undefined,
         subtotal: subtotal,
         tax: parseFloat(taxAmount) || 0,
         shipping: parseFloat(shippingAmount) || 0,
         notes: notes || `G/L Account: ${selectedDepartment!.glAccount} - ${selectedDepartment!.glDescription}${hasTBDRates ? '\nContains services with TBD rates' : ''}`,
         line_items: poLineItems,
       });
+
+      if (sourceRequisitionId) {
+        await markRequisitionConvertedMutation.mutateAsync({
+          requisitionId: sourceRequisitionId,
+          poId: createdPO.id,
+          poNumber: createdPO.po_number,
+        });
+      }
 
       await submitPOMutation.mutateAsync(createdPO.id);
 

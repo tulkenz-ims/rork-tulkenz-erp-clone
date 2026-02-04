@@ -654,6 +654,27 @@ export function useSubmitRequisitionForApproval(options?: {
   });
 }
 
+export function useMarkRequisitionConverted(options?: {
+  onSuccess?: (data: PurchaseRequisition) => void;
+  onError?: (error: Error) => void;
+}) {
+  const updateRequisition = useUpdatePurchaseRequisition(options);
+  
+  return useMutation({
+    mutationFn: async ({ requisitionId, poId, poNumber }: { requisitionId: string; poId: string; poNumber: string }) => {
+      console.log('[useMarkRequisitionConverted] Marking requisition as converted:', requisitionId, '-> PO:', poNumber);
+      return updateRequisition.mutateAsync({
+        id: requisitionId,
+        updates: {
+          status: 'converted_to_po' as RequisitionStatus,
+          po_id: poId,
+          po_number: poNumber,
+        },
+      });
+    },
+  });
+}
+
 export function useProcurementPurchaseOrdersQuery(options?: {
   status?: ProcurementPurchaseOrder['status'] | ProcurementPurchaseOrder['status'][];
   vendorId?: string;

@@ -12,7 +12,7 @@ import {
   Platform,
   ActivityIndicator,
 } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import {
   X,
   Plus,
@@ -33,7 +33,7 @@ import {
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useUser } from '@/contexts/UserContext';
-import { useProcurementVendorsQuery, useCreateProcurementPurchaseOrder, useSubmitPurchaseOrder, POLineItem } from '@/hooks/useSupabaseProcurement';
+import { useProcurementVendorsQuery, useCreateProcurementPurchaseOrder, useSubmitPurchaseOrder, useMarkRequisitionConverted, POLineItem } from '@/hooks/useSupabaseProcurement';
 import { useMaterialsQuery } from '@/hooks/useSupabaseMaterials';
 import { Tables } from '@/lib/supabase';
 
@@ -108,9 +108,26 @@ export default function POCreateMaterialScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   const { user } = useUser();
+  const params = useLocalSearchParams<{
+    fromRequisition?: string;
+    requisitionId?: string;
+    requisitionNumber?: string;
+    vendorId?: string;
+    vendorName?: string;
+    departmentId?: string;
+    departmentName?: string;
+    subtotal?: string;
+    neededByDate?: string;
+    notes?: string;
+    lineItems?: string;
+  }>();
 
   const { data: vendors = [], isLoading: vendorsLoading } = useProcurementVendorsQuery({ activeOnly: true });
   const { data: allMaterials = [], isLoading: materialsLoading } = useMaterialsQuery();
+  
+  const isFromRequisition = params.fromRequisition === 'true';
+  const sourceRequisitionId = params.requisitionId;
+  const sourceRequisitionNumber = params.requisitionNumber;
   
   const createPOMutation = useCreateProcurementPurchaseOrder({
     onSuccess: (data) => {
@@ -135,6 +152,15 @@ export default function POCreateMaterialScreen() {
     },
   });
 
+  const markRequisitionConvertedMutation = useMarkRequisitionConverted({
+    onSuccess: () => {
+      console.log('[POCreateMaterial] Requisition marked as converted');
+    },
+    onError: (error) => {
+      console.error('[POCreateMaterial] Failed to mark requisition as converted:', error);
+    },
+  });
+
   const [poNumber] = useState(generatePONumber());
   const [poDate] = useState(new Date().toISOString().split('T')[0]);
   const [selectedVendor, setSelectedVendor] = useState<ProcurementVendor | null>(null);
@@ -145,6 +171,82 @@ export default function POCreateMaterialScreen() {
   const [notes, setNotes] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [requisitionLoaded, setRequisitionLoaded] = useState(false);
+
+  React.useEffect(() => {
+    if (isFromRequisition && !requisitionLoaded) {
+      console.log('[POCreateMaterial] Loading from requisition:', sourceRequisitionNumber);
+      
+      if (params.vendorId && params.vendorName) {
+        const matchingVendor = vendors.find(v => v.id === params.vendorId);
+        if (matchingVendor) {
+          setSelectedVendor(matchingVendor);
+        } else if (params.vendorName) {
+          setSelectedVendor({
+            id: params.vendorId,
+            name: params.vendorName,
+            organization_id: '',
+            vendor_code: '',
+            vendor_type: 'supplier',
+            active: true,
+            contact_name: '',
+            email: '',
+            phone: '',
+            address: '',
+            city: '',
+            state: '',
+            zip: '',
+            country: 'USA',
+            payment_terms: 'Net 30',
+            lead_time_days: 7,
+            minimum_order: 0,
+            categories: [],
+            certifications: [],
+            notes: '',
+            rating: 0,
+            created_at: '',
+            updated_at: '',
+          } as ProcurementVendor);
+        }
+      }
+      
+      if (params.departmentId && params.departmentName) {
+        const matchingDept = DEPARTMENT_GL_ACCOUNTS.find(d => d.id === params.departmentId || d.name === params.departmentName);
+        if (matchingDept) {
+          setSelectedDepartment(matchingDept);
+        }
+      }
+      
+      if (params.notes) {
+        setNotes(params.notes);
+      }
+      
+      if (params.lineItems) {
+        try {
+          const parsedLineItems = JSON.parse(decodeURIComponent(params.lineItems));
+          const convertedLineItems: POLineItemDraft[] = parsedLineItems.map((item: any, index: number) => ({
+            id: item.line_id || `line-${Date.now()}-${index}`,
+            lineNumber: item.line_number || index + 1,
+            materialNumber: item.material_sku || '',
+            materialId: item.material_id || undefined,
+            description: item.description || '',
+            isStock: item.is_stock ?? true,
+            quantity: item.quantity || 1,
+            unitPrice: item.unit_price || 0,
+            lineTotal: item.line_total || (item.quantity * item.unit_price) || 0,
+            isDeleted: false,
+            uom: item.uom || 'EA',
+          }));
+          setLineItems(convertedLineItems);
+          console.log('[POCreateMaterial] Loaded', convertedLineItems.length, 'line items from requisition');
+        } catch (e) {
+          console.error('[POCreateMaterial] Failed to parse line items:', e);
+        }
+      }
+      
+      setRequisitionLoaded(true);
+    }
+  }, [isFromRequisition, requisitionLoaded, params, vendors, sourceRequisitionNumber]);
 
   const [showVendorPicker, setShowVendorPicker] = useState(false);
   const [showDepartmentPicker, setShowDepartmentPicker] = useState(false);
@@ -295,12 +397,22 @@ export default function POCreateMaterialScreen() {
         department_name: selectedDepartment.name,
         created_by: user?.first_name && user?.last_name ? `${user.first_name} ${user.last_name}` : user?.email || 'Unknown',
         created_by_id: user?.id,
+        source_requisition_id: sourceRequisitionId || undefined,
+        source_requisition_number: sourceRequisitionNumber || undefined,
         subtotal,
         tax: parseFloat(taxAmount) || 0,
         shipping: parseFloat(shippingAmount) || 0,
         notes: notes || undefined,
         line_items: poLineItems,
       });
+
+      if (sourceRequisitionId && sourceRequisitionNumber) {
+        await markRequisitionConvertedMutation.mutateAsync({
+          requisitionId: sourceRequisitionId,
+          poId: 'draft',
+          poNumber: poNumber,
+        });
+      }
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert('Success', 'Purchase order saved as draft', [
@@ -371,12 +483,22 @@ export default function POCreateMaterialScreen() {
         department_name: selectedDepartment!.name,
         created_by: user?.first_name && user?.last_name ? `${user.first_name} ${user.last_name}` : user?.email || 'Unknown',
         created_by_id: user?.id,
+        source_requisition_id: sourceRequisitionId || undefined,
+        source_requisition_number: sourceRequisitionNumber || undefined,
         subtotal,
         tax: parseFloat(taxAmount) || 0,
         shipping: parseFloat(shippingAmount) || 0,
         notes: notes || undefined,
         line_items: poLineItems,
       });
+
+      if (sourceRequisitionId) {
+        await markRequisitionConvertedMutation.mutateAsync({
+          requisitionId: sourceRequisitionId,
+          poId: createdPO.id,
+          poNumber: createdPO.po_number,
+        });
+      }
 
       await submitPOMutation.mutateAsync(createdPO.id);
       setShowReviewModal(false);

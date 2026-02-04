@@ -12,7 +12,7 @@ import {
   Platform,
   ActivityIndicator,
 } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import {
   X,
   Building2,
@@ -43,6 +43,7 @@ import {
   useProcurementVendorsQuery,
   useCreateProcurementPurchaseOrder,
   useSubmitPOWithApprovalChain,
+  useMarkRequisitionConverted,
   POLineItem,
 } from '@/hooks/useSupabaseProcurement';
 
@@ -144,6 +145,23 @@ export default function POCreateCapexScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   const { user } = useUser();
+  const params = useLocalSearchParams<{
+    fromRequisition?: string;
+    requisitionId?: string;
+    requisitionNumber?: string;
+    vendorId?: string;
+    vendorName?: string;
+    departmentId?: string;
+    departmentName?: string;
+    subtotal?: string;
+    neededByDate?: string;
+    notes?: string;
+    lineItems?: string;
+  }>();
+
+  const isFromRequisition = params.fromRequisition === 'true';
+  const sourceRequisitionId = params.requisitionId;
+  const sourceRequisitionNumber = params.requisitionNumber;
 
   const [poNumber] = useState(generateCapexPONumber());
   const [poDate] = useState(new Date().toISOString().split('T')[0]);
@@ -163,6 +181,7 @@ export default function POCreateCapexScreen() {
   const [showDepartmentPicker, setShowDepartmentPicker] = useState(false);
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
   const [showReviewModal, setShowReviewModal] = useState(false);
+  const [requisitionLoaded, setRequisitionLoaded] = useState(false);
 
   const { data: vendorsData = [], isLoading: isLoadingVendors } = useProcurementVendorsQuery({
     activeOnly: true,
@@ -192,6 +211,15 @@ export default function POCreateCapexScreen() {
     },
   });
 
+  const markRequisitionConvertedMutation = useMarkRequisitionConverted({
+    onSuccess: () => {
+      console.log('[POCreateCapex] Requisition marked as converted');
+    },
+    onError: (error) => {
+      console.error('[POCreateCapex] Failed to mark requisition as converted:', error);
+    },
+  });
+
   const activeVendors = useMemo(() => {
     return vendorsData.map(v => ({
       id: v.id,
@@ -201,6 +229,57 @@ export default function POCreateCapexScreen() {
       phone: v.phone,
     }));
   }, [vendorsData]);
+
+  React.useEffect(() => {
+    if (isFromRequisition && !requisitionLoaded) {
+      console.log('[POCreateCapex] Loading from requisition:', sourceRequisitionNumber);
+      
+      if (params.vendorId && params.vendorName) {
+        const matchingVendor = vendorsData.find(v => v.id === params.vendorId);
+        if (matchingVendor) {
+          setSelectedVendor({
+            id: matchingVendor.id,
+            name: matchingVendor.name,
+            contact_name: matchingVendor.contact_name,
+            phone: matchingVendor.phone,
+          });
+        } else {
+          setSelectedVendor({
+            id: params.vendorId,
+            name: params.vendorName,
+          });
+        }
+      }
+      
+      if (params.departmentId && params.departmentName) {
+        const matchingDept = DEPARTMENT_GL_ACCOUNTS.find(d => d.id === params.departmentId || d.name === params.departmentName);
+        if (matchingDept) {
+          setSelectedDepartment(matchingDept);
+        }
+      }
+      
+      if (params.notes) {
+        setJustification(params.notes);
+      }
+      
+      if (params.lineItems) {
+        try {
+          const parsedLineItems = JSON.parse(decodeURIComponent(params.lineItems));
+          if (parsedLineItems.length > 0) {
+            const firstItem = parsedLineItems[0];
+            setAssetDescription(firstItem.description || '');
+            const totalAmount = parsedLineItems.reduce((sum: number, item: any) => sum + (item.line_total || 0), 0);
+            setAmount(totalAmount.toString());
+          }
+          console.log('[POCreateCapex] Loaded line items from requisition');
+        } catch (e) {
+          console.error('[POCreateCapex] Failed to parse line items:', e);
+        }
+      }
+      
+      setRequisitionLoaded(true);
+    }
+  }, [isFromRequisition, requisitionLoaded, params, vendorsData, sourceRequisitionNumber]);
 
   const subtotal = useMemo(() => {
     return parseFloat(amount) || 0;
@@ -271,12 +350,22 @@ export default function POCreateCapexScreen() {
         department_name: selectedDepartment.name,
         created_by: user?.first_name && user?.last_name ? `${user.first_name} ${user.last_name}` : user?.email || 'Unknown',
         created_by_id: user?.id,
+        source_requisition_id: sourceRequisitionId || undefined,
+        source_requisition_number: sourceRequisitionNumber || undefined,
         subtotal,
         tax: parseFloat(taxAmount) || 0,
         shipping: parseFloat(shippingAmount) || 0,
         notes: notes || `CapEx G/L: ${capexGLAccount}`,
         line_items: [lineItem],
       });
+
+      if (sourceRequisitionId && sourceRequisitionNumber) {
+        await markRequisitionConvertedMutation.mutateAsync({
+          requisitionId: sourceRequisitionId,
+          poId: 'draft',
+          poNumber: poNumber,
+        });
+      }
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert('Success', 'CapEx PO saved as draft', [
@@ -353,12 +442,22 @@ export default function POCreateCapexScreen() {
         department_name: selectedDepartment!.name,
         created_by: user?.first_name && user?.last_name ? `${user.first_name} ${user.last_name}` : user?.email || 'Unknown',
         created_by_id: user?.id,
+        source_requisition_id: sourceRequisitionId || undefined,
+        source_requisition_number: sourceRequisitionNumber || undefined,
         subtotal,
         tax: parseFloat(taxAmount) || 0,
         shipping: parseFloat(shippingAmount) || 0,
         notes: notes || `CapEx G/L: ${capexGLAccount}`,
         line_items: [lineItem],
       });
+
+      if (sourceRequisitionId) {
+        await markRequisitionConvertedMutation.mutateAsync({
+          requisitionId: sourceRequisitionId,
+          poId: createdPO.id,
+          poNumber: createdPO.po_number,
+        });
+      }
 
       await submitPOMutation.mutateAsync({
         poId: createdPO.id,
