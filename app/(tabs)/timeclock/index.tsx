@@ -128,7 +128,7 @@ export default function TimeClockScreen() {
   }, [employees, searchQuery]);
 
   const handleSelectEmployee = useCallback((employee: EmployeeClockStatus) => {
-    console.log('[TimeClockKiosk] Selected employee:', employee.first_name, employee.last_name);
+    console.log('[CheckInKiosk] Selected employee:', employee.first_name, employee.last_name);
     setSelectedEmployee(employee);
     setPinInput('');
     setShowPinModal(true);
@@ -144,7 +144,7 @@ export default function TimeClockScreen() {
     const expectedPin = selectedEmployee?.employee_code?.slice(-4) || '1234';
     
     if (pinInput === expectedPin || pinInput === '1234') {
-      console.log('[TimeClockKiosk] PIN verified for:', selectedEmployee?.first_name);
+      console.log('[CheckInKiosk] PIN verified for:', selectedEmployee?.first_name);
       setShowPinModal(false);
       setShowActionsModal(true);
     } else {
@@ -159,8 +159,8 @@ export default function TimeClockScreen() {
 
       try {
         const actionLabels = {
-          clock_in: 'Clock In',
-          clock_out: 'Clock Out',
+          clock_in: 'Check In',
+          clock_out: 'Check Out',
           break_start: 'Break Start',
           break_end: 'Break End',
         };
@@ -284,14 +284,14 @@ export default function TimeClockScreen() {
       <View style={styles.modalOverlay}>
         <View style={[styles.qrModalContent, { backgroundColor: colors.surface }]}>
           <View style={styles.qrModalHeader}>
-            <Text style={[styles.qrModalTitle, { color: colors.text }]}>QR Code Clock-In</Text>
+            <Text style={[styles.qrModalTitle, { color: colors.text }]}>QR Code Check-In</Text>
             <TouchableOpacity onPress={() => setShowQRModal(false)}>
               <X size={24} color={colors.textSecondary} />
             </TouchableOpacity>
           </View>
 
           <Text style={[styles.qrSubtitle, { color: colors.textSecondary }]}>
-            Employees scan this code with their phone to clock in
+            Employees scan this code with their phone to check in
           </Text>
 
           <View style={[styles.qrCodeBox, { backgroundColor: '#FFFFFF' }]}>
@@ -341,7 +341,7 @@ export default function TimeClockScreen() {
     <View style={[styles.header, { borderBottomColor: colors.border }]}>
       <View style={styles.headerLeft}>
         <View>
-          <Text style={[styles.headerTitle, { color: colors.text }]}>Time Clock Kiosk</Text>
+          <Text style={[styles.headerTitle, { color: colors.text }]}>Check In Kiosk</Text>
           <View style={styles.headerSubRow}>
             <View style={[styles.liveIndicator, { backgroundColor: isSubscribed ? '#10B98120' : '#F59E0B20' }]}>
               <View style={[styles.liveDot, { backgroundColor: isSubscribed ? '#10B981' : '#F59E0B' }]} />
@@ -385,7 +385,7 @@ export default function TimeClockScreen() {
         )}
       </View>
 
-      <Text style={[styles.stepTitle, { color: colors.text }]}>Tap Your Name to Clock In/Out</Text>
+      <Text style={[styles.stepTitle, { color: colors.text }]}>Tap Your Name to Check In/Out</Text>
 
       {isLoading ? (
         <View style={styles.loadingContainer}>
@@ -603,7 +603,7 @@ export default function TimeClockScreen() {
                   ) : (
                     <>
                       <LogIn size={28} color="#FFFFFF" />
-                      <Text style={styles.actionBtnText}>Clock In</Text>
+                      <Text style={styles.actionBtnText}>Check In</Text>
                     </>
                   )}
                 </TouchableOpacity>
@@ -635,7 +635,7 @@ export default function TimeClockScreen() {
                     ) : (
                       <>
                         <LogOut size={28} color="#FFFFFF" />
-                        <Text style={styles.actionBtnText}>Clock Out</Text>
+                        <Text style={styles.actionBtnText}>Check Out</Text>
                       </>
                     )}
                   </TouchableOpacity>
@@ -668,7 +668,7 @@ export default function TimeClockScreen() {
                     ) : (
                       <>
                         <LogOut size={28} color="#FFFFFF" />
-                        <Text style={styles.actionBtnText}>Clock Out</Text>
+                        <Text style={styles.actionBtnText}>Check Out</Text>
                       </>
                     )}
                   </TouchableOpacity>

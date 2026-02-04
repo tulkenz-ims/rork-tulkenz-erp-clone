@@ -32,7 +32,7 @@ export default function TimeClockLayout() {
         },
       }}
     >
-      <Stack.Screen name="index" options={{ title: 'Time Clock', headerLeft: () => <BackToHR /> }} />
+      <Stack.Screen name="index" options={{ title: 'Check In', headerLeft: () => <BackToHR /> }} />
       <Stack.Screen name="kiosk" options={{ title: 'Location Hub' }} />
       <Stack.Screen name="roomhub" options={{ title: 'Room Hub' }} />
       <Stack.Screen name="scan" options={{ title: 'Scan QR Code', presentation: 'modal' }} />

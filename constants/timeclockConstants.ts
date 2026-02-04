@@ -11,8 +11,8 @@ export const getStatusColor = (status: EmployeeClockStatus): string => {
 
 export const getStatusLabel = (status: EmployeeClockStatus): string => {
   const labels: Record<EmployeeClockStatus, string> = {
-    clocked_in: 'Clocked In',
-    clocked_out: 'Clocked Out',
+    clocked_in: 'Checked In',
+    clocked_out: 'Not Checked In',
     on_break: 'On Break',
   };
   return labels[status] || status;
