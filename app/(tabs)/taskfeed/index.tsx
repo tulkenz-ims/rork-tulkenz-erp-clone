@@ -436,6 +436,10 @@ export default function TaskFeedScreen() {
   const [filterDateTo, setFilterDateTo] = useState<string | null>(null);
   const [filterSourceType, setFilterSourceType] = useState<string | null>(null);
   const [expandedFilterSection, setExpandedFilterSection] = useState<string | null>('department');
+  const [showSearchDateFromPicker, setShowSearchDateFromPicker] = useState(false);
+  const [showSearchDateToPicker, setShowSearchDateToPicker] = useState(false);
+  const [searchDateFrom, setSearchDateFrom] = useState<string | null>(null);
+  const [searchDateTo, setSearchDateTo] = useState<string | null>(null);
 
   const [selectedLocation, setSelectedLocation] = useState<LocalTaskLocation | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<TaskCategory | null>(null);
@@ -532,8 +536,18 @@ export default function TaskFeedScreen() {
           tv.action.toLowerCase().includes(query) ||
           tv.employeeName.toLowerCase().includes(query) ||
           tv.notes?.toLowerCase().includes(query) ||
-          tv.sourceNumber?.toLowerCase().includes(query)
+          tv.sourceNumber?.toLowerCase().includes(query) ||
+          tv.departmentName.toLowerCase().includes(query)
       );
+    }
+
+    // Apply search date range (from main search area)
+    if (searchDateFrom) {
+      result = result.filter(tv => tv.createdAt.split('T')[0] >= searchDateFrom);
+    }
+
+    if (searchDateTo) {
+      result = result.filter(tv => tv.createdAt.split('T')[0] <= searchDateTo);
     }
 
     // Apply quick department filter first
@@ -562,7 +576,7 @@ export default function TaskFeedScreen() {
     }
 
     return result.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  }, [taskVerifications, searchQuery, selectedDepartmentFilter, filterDepartment, filterCategory, filterSourceType, filterDateFrom, filterDateTo]);
+  }, [taskVerifications, searchQuery, searchDateFrom, searchDateTo, selectedDepartmentFilter, filterDepartment, filterCategory, filterSourceType, filterDateFrom, filterDateTo]);
 
   const availableCategories = useMemo(() => {
     if (!selectedLocation) return [];
@@ -914,7 +928,11 @@ export default function TaskFeedScreen() {
     setFilterSourceType(null);
     setSearchQuery('');
     setSelectedDepartmentFilter(null);
+    setSearchDateFrom(null);
+    setSearchDateTo(null);
   };
+
+  const hasSearchDateRange = searchDateFrom || searchDateTo;
 
   const handleSubmitPurchaseRequest = useCallback(async () => {
     if (!purchaseItemDescription.trim()) {
@@ -1334,7 +1352,7 @@ export default function TaskFeedScreen() {
     }
   }, [selectedTemplate, templateFormValues, templatePhotoUris, templateNotes, selectedLocation, taskLocations, validateTemplateForm, createTaskFeedPostMutation]);
 
-  const hasActiveFilters = filterDepartment || filterCategory || filterDateFrom || filterDateTo || filterSourceType;
+  const hasActiveFilters = filterDepartment || filterCategory || filterDateFrom || filterDateTo || filterSourceType || searchDateFrom || searchDateTo;
 
   const activeFilterCount = [filterDepartment, filterCategory, filterDateFrom, filterDateTo, filterSourceType].filter(Boolean).length;
 
@@ -1351,33 +1369,110 @@ export default function TaskFeedScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <View style={styles.searchContainer}>
-          <Search size={18} color={colors.textSecondary} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search verifications..."
-            placeholderTextColor={colors.textTertiary}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
-              <X size={18} color={colors.textSecondary} />
-            </TouchableOpacity>
-          )}
+      {/* Search Section */}
+      <View style={styles.searchSection}>
+        <View style={styles.searchRow}>
+          <View style={styles.searchContainer}>
+            <Search size={18} color={colors.textSecondary} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search keywords (preop, cleaning, etc.)..."
+              placeholderTextColor={colors.textTertiary}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity onPress={() => setSearchQuery('')}>
+                <X size={18} color={colors.textSecondary} />
+              </TouchableOpacity>
+            )}
+          </View>
+          <TouchableOpacity
+            style={[styles.filterButton, hasActiveFilters && styles.filterButtonActive]}
+            onPress={() => setShowFilterModal(true)}
+          >
+            <Filter size={20} color={hasActiveFilters ? '#fff' : colors.text} />
+            {activeFilterCount > 0 && (
+              <View style={styles.filterBadge}>
+                <Text style={styles.filterBadgeText}>{activeFilterCount}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
         </View>
-        <TouchableOpacity
-          style={[styles.filterButton, hasActiveFilters && styles.filterButtonActive]}
-          onPress={() => setShowFilterModal(true)}
-        >
-          <Filter size={20} color={hasActiveFilters ? '#fff' : colors.text} />
-          {activeFilterCount > 0 && (
-            <View style={styles.filterBadge}>
-              <Text style={styles.filterBadgeText}>{activeFilterCount}</Text>
-            </View>
-          )}
-        </TouchableOpacity>
+
+        {/* Date Range Search Row */}
+        <View style={styles.dateSearchRow}>
+          <TouchableOpacity
+            style={[styles.dateSearchButton, { backgroundColor: colors.surface }, searchDateFrom && styles.dateSearchButtonActive]}
+            onPress={() => setShowSearchDateFromPicker(true)}
+          >
+            <Calendar size={14} color={searchDateFrom ? colors.primary : colors.textTertiary} />
+            <Text style={[styles.dateSearchText, { color: searchDateFrom ? colors.text : colors.textTertiary }]}>
+              {searchDateFrom ? formatDate(searchDateFrom) : 'From Date'}
+            </Text>
+            {searchDateFrom && (
+              <TouchableOpacity 
+                onPress={(e) => { e.stopPropagation(); setSearchDateFrom(null); }}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <X size={14} color={colors.textSecondary} />
+              </TouchableOpacity>
+            )}
+          </TouchableOpacity>
+          
+          <Text style={[styles.dateSearchSeparator, { color: colors.textTertiary }]}>to</Text>
+          
+          <TouchableOpacity
+            style={[styles.dateSearchButton, { backgroundColor: colors.surface }, searchDateTo && styles.dateSearchButtonActive]}
+            onPress={() => setShowSearchDateToPicker(true)}
+          >
+            <Calendar size={14} color={searchDateTo ? colors.primary : colors.textTertiary} />
+            <Text style={[styles.dateSearchText, { color: searchDateTo ? colors.text : colors.textTertiary }]}>
+              {searchDateTo ? formatDate(searchDateTo) : 'To Date'}
+            </Text>
+            {searchDateTo && (
+              <TouchableOpacity 
+                onPress={(e) => { e.stopPropagation(); setSearchDateTo(null); }}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <X size={14} color={colors.textSecondary} />
+              </TouchableOpacity>
+            )}
+          </TouchableOpacity>
+        </View>
+
+        {/* Active Search Indicators */}
+        {(searchQuery || hasSearchDateRange) && (
+          <View style={styles.activeSearchRow}>
+            {searchQuery && (
+              <View style={[styles.searchChip, { backgroundColor: colors.primary + '15' }]}>
+                <Search size={12} color={colors.primary} />
+                <Text style={[styles.searchChipText, { color: colors.primary }]} numberOfLines={1}>
+                  {`"${searchQuery}"`}
+                </Text>
+                <TouchableOpacity onPress={() => setSearchQuery('')}>
+                  <X size={12} color={colors.primary} />
+                </TouchableOpacity>
+              </View>
+            )}
+            {hasSearchDateRange && (
+              <View style={[styles.searchChip, { backgroundColor: '#10B981' + '15' }]}>
+                <Calendar size={12} color="#10B981" />
+                <Text style={[styles.searchChipText, { color: '#10B981' }]}>
+                  {searchDateFrom && searchDateTo 
+                    ? `${formatDate(searchDateFrom)} - ${formatDate(searchDateTo)}`
+                    : searchDateFrom 
+                      ? `From ${formatDate(searchDateFrom)}`
+                      : `To ${formatDate(searchDateTo!)}`
+                  }
+                </Text>
+                <TouchableOpacity onPress={() => { setSearchDateFrom(null); setSearchDateTo(null); }}>
+                  <X size={12} color="#10B981" />
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        )}
       </View>
 
       <View style={styles.statsRow}>
@@ -3328,6 +3423,24 @@ export default function TaskFeedScreen() {
         minDate={new Date().toISOString().split('T')[0]}
         title="Select Needed By Date"
       />
+
+      {/* Search Date From Picker Modal */}
+      <DatePickerModal
+        visible={showSearchDateFromPicker}
+        onClose={() => setShowSearchDateFromPicker(false)}
+        onSelect={(date) => setSearchDateFrom(date)}
+        selectedDate={searchDateFrom || undefined}
+        title="Search From Date"
+      />
+
+      {/* Search Date To Picker Modal */}
+      <DatePickerModal
+        visible={showSearchDateToPicker}
+        onClose={() => setShowSearchDateToPicker(false)}
+        onSelect={(date) => setSearchDateTo(date)}
+        selectedDate={searchDateTo || undefined}
+        title="Search To Date"
+      />
     </View>
   );
 }
@@ -3338,12 +3451,61 @@ const createStyles = (colors: any) =>
       flex: 1,
       backgroundColor: colors.background,
     },
-    header: {
+    searchSection: {
+      paddingHorizontal: 16,
+      paddingTop: 12,
+      paddingBottom: 8,
+      gap: 10,
+    },
+    searchRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      paddingHorizontal: 16,
-      paddingVertical: 12,
       gap: 12,
+    },
+    dateSearchRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    dateSearchButton: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 10,
+      paddingHorizontal: 12,
+      borderRadius: 10,
+      gap: 6,
+    },
+    dateSearchButtonActive: {
+      borderWidth: 1,
+      borderColor: colors.primary,
+    },
+    dateSearchText: {
+      flex: 1,
+      fontSize: 13,
+    },
+    dateSearchSeparator: {
+      fontSize: 12,
+      fontWeight: '500' as const,
+    },
+    activeSearchRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+    },
+    searchChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 16,
+      gap: 6,
+      maxWidth: '100%',
+    },
+    searchChipText: {
+      fontSize: 12,
+      fontWeight: '500' as const,
+      flexShrink: 1,
     },
     searchContainer: {
       flex: 1,
