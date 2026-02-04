@@ -16,7 +16,6 @@ import {
   ChevronDown,
   ChevronUp,
   CheckCircle2,
-  Eye,
   X,
   User,
   MapPin,
@@ -137,12 +136,6 @@ export default function TaskFeedInbox({
 
   const visibleTasks = showAllTasks ? pendingTasks : pendingTasks.slice(0, maxVisible);
   const hasMoreTasks = pendingTasks.length > maxVisible;
-
-  const handleViewPost = useCallback((task: TaskFeedDepartmentTask & { post?: PostDetails }) => {
-    setSelectedTask(task);
-    setShowPostDetailModal(true);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  }, []);
 
   const handleStartComplete = useCallback((task: TaskFeedDepartmentTask & { post?: PostDetails }) => {
     setSelectedTask(task);
@@ -340,14 +333,6 @@ export default function TaskFeedInbox({
                 </View>
 
                 <View style={styles.taskActions}>
-                  <TouchableOpacity
-                    style={[styles.actionButton, { backgroundColor: colors.background }]}
-                    onPress={() => handleViewPost(task)}
-                    activeOpacity={0.7}
-                  >
-                    <Eye size={16} color={colors.primary} />
-                    <Text style={[styles.actionButtonText, { color: colors.primary }]}>View</Text>
-                  </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.actionButton, styles.completeButton, { backgroundColor: accentColor }]}
                     onPress={() => handleStartComplete(task)}

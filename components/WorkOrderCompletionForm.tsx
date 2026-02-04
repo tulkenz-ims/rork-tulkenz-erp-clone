@@ -199,6 +199,35 @@ export default function WorkOrderCompletionForm({
           </View>
         </View>
 
+        {/* Issue Description Banner - Show prominently at the top */}
+        {(task.post?.notes || (task.post?.form_data && (task.post.form_data.description || task.post.form_data.issue || task.post.form_data.problem || task.post.form_data.details))) && (
+          <View style={[styles.issueBanner, { backgroundColor: '#EF4444' + '10', borderBottomColor: colors.border }]}>
+            <View style={[styles.issueBannerIcon, { backgroundColor: '#EF4444' + '20' }]}>
+              <AlertTriangle size={18} color="#EF4444" />
+            </View>
+            <View style={styles.issueBannerContent}>
+              <Text style={[styles.issueBannerTitle, { color: '#EF4444' }]}>Issue Reported</Text>
+              <Text style={[styles.issueBannerText, { color: colors.text }]}>
+                {task.post?.notes || task.post?.form_data?.description || task.post?.form_data?.issue || task.post?.form_data?.problem || task.post?.form_data?.details || ''}
+              </Text>
+            </View>
+          </View>
+        )}
+
+        {/* Original Photo if exists - Show prominently */}
+        {task.post?.photo_url && (
+          <View style={styles.originalPhotoSection}>
+            <Text style={[styles.originalPhotoLabel, { color: colors.textSecondary }]}>
+              📸 Issue Photo:
+            </Text>
+            <Image
+              source={{ uri: task.post.photo_url }}
+              style={styles.originalPhoto}
+              resizeMode="cover"
+            />
+          </View>
+        )}
+
         <View style={styles.taskDetailsGrid}>
           {task.post?.location_name && (
             <View style={styles.taskDetailItem}>
@@ -226,36 +255,26 @@ export default function WorkOrderCompletionForm({
           )}
         </View>
 
-        {/* Original Photo if exists */}
-        {task.post?.photo_url && (
-          <View style={styles.originalPhotoSection}>
-            <Text style={[styles.originalPhotoLabel, { color: colors.textSecondary }]}>
-              Original Issue Photo:
-            </Text>
-            <Image
-              source={{ uri: task.post.photo_url }}
-              style={styles.originalPhoto}
-              resizeMode="cover"
-            />
-          </View>
-        )}
-
-        {/* Form Data from original post */}
+        {/* Form Data from original post - Show all details */}
         {task.post?.form_data && Object.keys(task.post.form_data).length > 0 && (
           <View style={[styles.formDataSection, { backgroundColor: colors.surface }]}>
             <Text style={[styles.formDataTitle, { color: colors.textSecondary }]}>
-              Request Details:
+              📋 Request Details:
             </Text>
-            {Object.entries(task.post.form_data).map(([key, value]) => (
-              <View key={key} style={styles.formDataRow}>
-                <Text style={[styles.formDataKey, { color: colors.textTertiary }]}>
-                  {key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}:
-                </Text>
-                <Text style={[styles.formDataValue, { color: colors.text }]}>
-                  {String(value)}
-                </Text>
-              </View>
-            ))}
+            {Object.entries(task.post.form_data).map(([key, value]) => {
+              // Skip fields already shown in issue banner
+              if (['description', 'issue', 'problem', 'details'].includes(key.toLowerCase())) return null;
+              return (
+                <View key={key} style={styles.formDataRow}>
+                  <Text style={[styles.formDataKey, { color: colors.textTertiary }]}>
+                    {key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}:
+                  </Text>
+                  <Text style={[styles.formDataValue, { color: colors.text }]}>
+                    {String(value)}
+                  </Text>
+                </View>
+              );
+            })}
           </View>
         )}
       </View>
@@ -515,6 +534,34 @@ const styles = StyleSheet.create({
   taskDetailsGrid: {
     padding: 14,
     gap: 8,
+  },
+  issueBanner: {
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+    padding: 14,
+    gap: 10,
+    borderBottomWidth: 1,
+  },
+  issueBannerIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  issueBannerContent: {
+    flex: 1,
+  },
+  issueBannerTitle: {
+    fontSize: 12,
+    fontWeight: '600' as const,
+    textTransform: 'uppercase' as const,
+    marginBottom: 4,
+  },
+  issueBannerText: {
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '500' as const,
   },
   taskDetailItem: {
     flexDirection: 'row',
