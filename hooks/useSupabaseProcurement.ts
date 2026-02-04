@@ -579,7 +579,7 @@ export function useCreatePurchaseRequisition(options?: {
           tier_name: APPROVAL_TIER_LABELS[tier],
           approver_name: APPROVAL_TIER_LABELS[tier],
           approver_role: APPROVAL_TIER_LABELS[tier],
-          status: tier === 2 ? 'pending' as const : 'pending' as const,
+          status: tier === 2 ? 'pending' as const : 'waiting' as const,
           amount_threshold: tier === 2 ? APPROVAL_TIER_THRESHOLDS.TIER_2 : APPROVAL_TIER_THRESHOLDS.TIER_3,
         }));
         
@@ -1767,6 +1767,22 @@ export function useApproveRequisitionTier(options?: {
         if (requiredTiers.includes(3)) {
           newStatus = 'pending_tier3_approval';
           console.log('[useApproveRequisitionTier] Tier 2 approved, moving to Tier 3 approval');
+          
+          const { error: tier3UpdateError } = await supabase
+            .from('po_approvals')
+            .update({
+              status: 'pending',
+            })
+            .eq('organization_id', organizationId)
+            .eq('requisition_id', requisitionId)
+            .eq('tier', 3)
+            .eq('status', 'waiting');
+          
+          if (tier3UpdateError) {
+            console.error('[useApproveRequisitionTier] Error activating Tier 3:', tier3UpdateError);
+          } else {
+            console.log('[useApproveRequisitionTier] Tier 3 approval activated');
+          }
         } else {
           newStatus = 'ready_for_po';
           console.log('[useApproveRequisitionTier] Tier 2 approved, no Tier 3 needed, ready for PO');
