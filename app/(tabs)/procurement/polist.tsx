@@ -10,7 +10,7 @@ import {
   Modal,
   ActivityIndicator,
 } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import {
   Search,
   X,
@@ -104,10 +104,11 @@ const TYPE_OPTIONS: { value: FilterType; label: string; color: string }[] = [
 export default function POListScreen() {
   const { colors } = useTheme();
   const router = useRouter();
+  const params = useLocalSearchParams<{ status?: string }>();
   const { userProfile } = useUser();
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<FilterType>('all');
-  const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
+  const [filterStatus, setFilterStatus] = useState<FilterStatus>((params.status as FilterStatus) || 'all');
   const [filterDepartment, setFilterDepartment] = useState('all');
   const [showFilters, setShowFilters] = useState(false);
   const [selectedPO, setSelectedPO] = useState<MappedPurchaseOrder | null>(null);
@@ -205,12 +206,20 @@ export default function POListScreen() {
     });
   };
 
+  const readyToOrderPOs = useMemo(() => {
+    return purchaseOrders.filter(po => po.status === 'approved')
+      .sort((a, b) => new Date(b.created_date).getTime() - new Date(a.created_date).getTime());
+  }, [purchaseOrders]);
+
   const filteredPOs = useMemo(() => {
     return purchaseOrders.filter(po => {
       const matchesDepartment = filterDepartment === 'all' || po.department_id === filterDepartment;
+      if (filterStatus === 'all') {
+        return matchesDepartment && po.status !== 'approved';
+      }
       return matchesDepartment;
     }).sort((a, b) => new Date(b.created_date).getTime() - new Date(a.created_date).getTime());
-  }, [purchaseOrders, filterDepartment]);
+  }, [purchaseOrders, filterDepartment, filterStatus]);
 
   const activeFiltersCount = useMemo(() => {
     let count = 0;
@@ -802,7 +811,50 @@ export default function POListScreen() {
             <RefreshControl refreshing={isRefetching} onRefresh={onRefresh} tintColor={colors.primary} />
           }
         >
-          {filteredPOs.length === 0 ? (
+          {/* Ready to Order Section - Always show at top when there are approved POs */}
+          {readyToOrderPOs.length > 0 && filterStatus === 'all' && (
+            <View style={styles.actionSection}>
+              <View style={[styles.actionSectionHeader, { backgroundColor: '#8B5CF615', borderColor: '#8B5CF6' }]}>
+                <Truck size={20} color="#8B5CF6" />
+                <View style={styles.actionSectionText}>
+                  <Text style={[styles.actionSectionTitle, { color: '#8B5CF6' }]}>Ready to Order</Text>
+                  <Text style={[styles.actionSectionSubtitle, { color: colors.textSecondary }]}>
+                    {readyToOrderPOs.length} PO{readyToOrderPOs.length !== 1 ? 's' : ''} approved and ready to be marked as ordered
+                  </Text>
+                </View>
+              </View>
+              {readyToOrderPOs.map(renderPOCard)}
+            </View>
+          )}
+
+          {/* When filtering by approved, show all approved POs */}
+          {filterStatus === 'approved' && readyToOrderPOs.length > 0 && (
+            <View style={styles.actionSection}>
+              <View style={[styles.actionSectionHeader, { backgroundColor: '#8B5CF615', borderColor: '#8B5CF6' }]}>
+                <Truck size={20} color="#8B5CF6" />
+                <View style={styles.actionSectionText}>
+                  <Text style={[styles.actionSectionTitle, { color: '#8B5CF6' }]}>Ready to Order</Text>
+                  <Text style={[styles.actionSectionSubtitle, { color: colors.textSecondary }]}>
+                    Tap a PO to mark as ordered
+                  </Text>
+                </View>
+              </View>
+              {readyToOrderPOs.map(renderPOCard)}
+            </View>
+          )}
+
+          {/* Other POs Section */}
+          {filterStatus !== 'approved' && filteredPOs.length > 0 && (
+            <View style={styles.otherPOsSection}>
+              {filterStatus === 'all' && readyToOrderPOs.length > 0 && (
+                <Text style={[styles.otherPOsTitle, { color: colors.text }]}>Other Purchase Orders</Text>
+              )}
+              {filteredPOs.map(renderPOCard)}
+            </View>
+          )}
+
+          {/* Empty State */}
+          {filteredPOs.length === 0 && readyToOrderPOs.length === 0 && (
             <View style={[styles.emptyState, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <ShoppingCart size={48} color={colors.textTertiary} />
               <Text style={[styles.emptyTitle, { color: colors.text }]}>No Purchase Orders Found</Text>
@@ -812,8 +864,16 @@ export default function POListScreen() {
                   : 'Create a purchase order to get started'}
               </Text>
             </View>
-          ) : (
-            filteredPOs.map(renderPOCard)
+          )}
+
+          {filterStatus === 'approved' && readyToOrderPOs.length === 0 && (
+            <View style={[styles.emptyState, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <CheckCircle size={48} color="#10B981" />
+              <Text style={[styles.emptyTitle, { color: colors.text }]}>All Caught Up!</Text>
+              <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
+                No POs waiting to be marked as ordered
+              </Text>
+            </View>
           )}
           <View style={styles.bottomPadding} />
         </ScrollView>
@@ -1042,6 +1102,37 @@ const styles = StyleSheet.create({
   },
   bottomPadding: {
     height: 20,
+  },
+  actionSection: {
+    marginBottom: 20,
+  },
+  actionSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 12,
+    gap: 12,
+  },
+  actionSectionText: {
+    flex: 1,
+  },
+  actionSectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  actionSectionSubtitle: {
+    fontSize: 13,
+  },
+  otherPOsSection: {
+    gap: 12,
+  },
+  otherPOsTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 4,
   },
   loadingContainer: {
     flex: 1,

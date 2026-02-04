@@ -433,11 +433,11 @@ export default function ProcurementDashboardScreen() {
               '/procurement/requisitions'
             )}
             {renderPendingItem(
-              'Ready for PO Creation',
-              metrics.approvedRequisitions,
+              'Ready to Order',
+              metrics.pendingPOCreation,
               '#8B5CF6',
               <Send size={18} color="#8B5CF6" />,
-              '/procurement/requisitions'
+              '/procurement/polist?status=approved'
             )}
             {renderPendingItem(
               'Pending Receiving',
