@@ -1,0 +1,250 @@
+import React, { useRef } from 'react';
+import {
+  View,
+  Text,
+  ScrollView,
+  Pressable,
+  StyleSheet,
+  Platform,
+  Animated,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTheme } from '@/contexts/ThemeContext';
+import { NAVIGATION_MODULES, type NavigationModule } from '@/constants/navigationModules';
+import { useTabBadgeCounts, getBadgeSeverityColor, type TabBadgeCounts } from '@/hooks/useTabBadgeCounts';
+
+interface ScrollableNavBarProps {
+  activeRoute: string;
+  onNavigate: (route: string) => void;
+  visibleModules: string[];
+}
+
+export default function ScrollableNavBar({
+  activeRoute,
+  onNavigate,
+  visibleModules,
+}: ScrollableNavBarProps) {
+  const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
+  const scrollViewRef = useRef<ScrollView>(null);
+  const badgeCounts = useTabBadgeCounts();
+
+  const filteredModules = NAVIGATION_MODULES.filter(
+    (m) => visibleModules.includes(m.key)
+  );
+
+  const getIsActive = (module: NavigationModule) => {
+    if (module.route === activeRoute) return true;
+    if (module.route === '(dashboard)' && activeRoute === '(dashboard)') return true;
+    return false;
+  };
+
+  return (
+    <View
+      style={[
+        styles.container,
+        {
+          backgroundColor: colors.surface,
+          borderTopColor: colors.border,
+          paddingBottom: Platform.OS === 'web' ? 8 : insets.bottom,
+        },
+      ]}
+    >
+      <ScrollView
+        ref={scrollViewRef}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+        style={styles.scrollView}
+      >
+        {filteredModules.map((module) => {
+          const isActive = getIsActive(module);
+
+          return (
+            <NavItem
+              key={module.key}
+              module={module}
+              isActive={isActive}
+              onPress={() => onNavigate(module.route)}
+              colors={colors}
+              badgeCounts={badgeCounts}
+            />
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
+}
+
+interface NavItemProps {
+  module: NavigationModule;
+  isActive: boolean;
+  onPress: () => void;
+  colors: any;
+  badgeCounts: TabBadgeCounts;
+}
+
+function NavItem({ module, isActive, onPress, colors, badgeCounts }: NavItemProps) {
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const ModuleIcon = module.icon;
+
+  const getBadgeForModule = (moduleKey: string) => {
+    switch (moduleKey) {
+      case 'inventory':
+        return badgeCounts.inventory;
+      case 'cmms':
+        return badgeCounts.cmms;
+      case 'procurement':
+        return badgeCounts.procurement;
+      case 'approvals':
+        return badgeCounts.approvals;
+      case 'dashboard':
+        return badgeCounts.dashboard;
+      default:
+        return null;
+    }
+  };
+
+  const badge = getBadgeForModule(module.key);
+
+  const handlePressIn = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 0.9,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const handlePressOut = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 1,
+      friction: 3,
+      tension: 100,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  return (
+    <Pressable
+      onPress={onPress}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      style={styles.navItemContainer}
+    >
+      <Animated.View
+        style={[
+          styles.navItem,
+          { transform: [{ scale: scaleAnim }] },
+        ]}
+      >
+        <View
+          style={[
+            styles.iconContainer,
+            {
+              backgroundColor: isActive ? colors.primary + '20' : 'transparent',
+            },
+          ]}
+        >
+          <ModuleIcon
+            size={22}
+            color={isActive ? colors.primary : colors.textSecondary}
+          />
+          {badge && badge.count > 0 && (
+            <View
+              style={[
+                styles.badge,
+                {
+                  backgroundColor: getBadgeSeverityColor(badge.severity),
+                },
+              ]}
+            >
+              <Text style={styles.badgeText}>
+                {badge.count > 99 ? '99+' : badge.count}
+              </Text>
+            </View>
+          )}
+        </View>
+        <Text
+          style={[
+            styles.label,
+            {
+              color: isActive ? colors.primary : colors.textSecondary,
+              fontWeight: isActive ? '600' : '400',
+            },
+          ]}
+          numberOfLines={1}
+        >
+          {module.label}
+        </Text>
+        {isActive && (
+          <View style={[styles.activeIndicator, { backgroundColor: colors.primary }]} />
+        )}
+      </Animated.View>
+    </Pressable>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    borderTopWidth: 1,
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+  },
+  scrollView: {
+    flexGrow: 0,
+  },
+  scrollContent: {
+    paddingHorizontal: 8,
+    paddingTop: 8,
+    paddingBottom: 4,
+    gap: 4,
+  },
+  navItemContainer: {
+    alignItems: 'center',
+  },
+  navItem: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    minWidth: 64,
+    position: 'relative',
+  },
+  iconContainer: {
+    width: 40,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 2,
+  },
+  label: {
+    fontSize: 10,
+    textAlign: 'center' as const,
+    maxWidth: 70,
+  },
+  activeIndicator: {
+    position: 'absolute',
+    top: -4,
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+  },
+  badge: {
+    position: 'absolute',
+    top: -2,
+    right: -4,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  badgeText: {
+    color: '#FFFFFF',
+    fontSize: 9,
+    fontWeight: '700' as const,
+  },
+});
