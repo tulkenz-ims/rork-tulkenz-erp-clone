@@ -10,7 +10,7 @@ import {
   Modal,
   ActivityIndicator,
 } from 'react-native';
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import {
   Search,
   X,
@@ -27,7 +27,7 @@ import {
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/contexts/ThemeContext';
-import { useProcurementPurchaseOrdersQuery, POLineItem } from '@/hooks/useSupabaseProcurement';
+import { useProcurementPurchaseOrdersQuery, useOrderPurchaseOrder, POLineItem } from '@/hooks/useSupabaseProcurement';
 import {
   POType,
   POStatus,
@@ -102,6 +102,7 @@ const TYPE_OPTIONS: { value: FilterType; label: string; color: string }[] = [
 
 export default function POListScreen() {
   const { colors } = useTheme();
+  const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<FilterType>('all');
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
@@ -109,6 +110,20 @@ export default function POListScreen() {
   const [showFilters, setShowFilters] = useState(false);
   const [selectedPO, setSelectedPO] = useState<MappedPurchaseOrder | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+
+  const orderPOMutation = useOrderPurchaseOrder({
+    onSuccess: () => {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setShowDetailModal(false);
+      setIsProcessing(false);
+      refetch();
+    },
+    onError: (error) => {
+      console.error('[POListScreen] Error marking as ordered:', error);
+      setIsProcessing(false);
+    },
+  });
 
   const {
     data: purchaseOrdersData,
@@ -553,6 +568,56 @@ export default function POListScreen() {
                 </Text>
               </View>
             </View>
+
+            {/* Action Buttons */}
+            {selectedPO.status === 'approved' && (
+              <View style={[styles.actionCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Text style={[styles.actionCardTitle, { color: colors.text }]}>Actions</Text>
+                <Text style={[styles.actionCardHint, { color: colors.textSecondary }]}>
+                  This PO is approved and ready to be ordered from the vendor.
+                </Text>
+                <TouchableOpacity
+                  style={[styles.actionButton, { backgroundColor: '#8B5CF6' }]}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    setIsProcessing(true);
+                    orderPOMutation.mutate(selectedPO.po_id);
+                  }}
+                  disabled={isProcessing}
+                  activeOpacity={0.8}
+                >
+                  {isProcessing ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <>
+                      <Truck size={18} color="#fff" />
+                      <Text style={styles.actionButtonText}>Mark as Ordered</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {selectedPO.status === 'ordered' && (
+              <View style={[styles.actionCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Text style={[styles.actionCardTitle, { color: colors.text }]}>Next Steps</Text>
+                <Text style={[styles.actionCardHint, { color: colors.textSecondary }]}>
+                  This PO has been ordered. Proceed to receiving when materials arrive.
+                </Text>
+                <TouchableOpacity
+                  style={[styles.actionButton, { backgroundColor: '#10B981' }]}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setShowDetailModal(false);
+                    router.push('/procurement/poreceiving');
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <CheckCircle size={18} color="#fff" />
+                  <Text style={styles.actionButtonText}>Go to Receiving</Text>
+                </TouchableOpacity>
+              </View>
+            )}
 
             <View style={styles.modalBottomPadding} />
           </ScrollView>
@@ -1110,5 +1175,34 @@ const styles = StyleSheet.create({
   },
   modalBottomPadding: {
     height: 40,
+  },
+  actionCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 16,
+    marginBottom: 16,
+  },
+  actionCardTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  actionCardHint: {
+    fontSize: 13,
+    marginBottom: 16,
+    lineHeight: 18,
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 10,
+    gap: 8,
+  },
+  actionButtonText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '600',
   },
 });
