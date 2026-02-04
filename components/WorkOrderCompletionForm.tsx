@@ -213,49 +213,36 @@ export default function WorkOrderCompletionForm({
           </View>
         </View>
 
-        {/* Issue Description Banner - ALWAYS show if we have any issue info */}
-        {issueDescription ? (
-          <View style={[styles.issueBanner, { backgroundColor: '#EF4444' + '10', borderBottomColor: colors.border }]}>
-            <View style={[styles.issueBannerIcon, { backgroundColor: '#EF4444' + '20' }]}>
-              <AlertTriangle size={18} color="#EF4444" />
-            </View>
-            <View style={styles.issueBannerContent}>
-              <Text style={[styles.issueBannerTitle, { color: '#EF4444' }]}>ISSUE REPORTED</Text>
-              <Text style={[styles.issueBannerText, { color: colors.text }]}>
-                {issueDescription}
+        {/* Issue Description + Photo Row - Compact side-by-side layout */}
+        <View style={[styles.issueRowContainer, { borderBottomColor: colors.border }]}>
+          {/* Left side - Issue Description */}
+          <View style={[styles.issueDescriptionBox, { backgroundColor: '#EF4444' + '10', borderColor: colors.border }]}>
+            <View style={styles.issueBoxHeader}>
+              <AlertTriangle size={14} color="#EF4444" />
+              <Text style={[styles.issueBoxTitle, { color: '#EF4444' }]}>
+                {issueDescription ? 'ISSUE REPORTED' : 'MAINTENANCE REQUEST'}
               </Text>
             </View>
+            <Text style={[styles.issueBoxText, { color: colors.text }]} numberOfLines={4}>
+              {issueDescription || 'No issue description provided. Review form details below.'}
+            </Text>
           </View>
-        ) : (
-          <View style={[styles.noIssueBanner, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
-            <View style={[styles.issueBannerIcon, { backgroundColor: accentColor + '20' }]}>
-              <FileText size={18} color={accentColor} />
-            </View>
-            <View style={styles.issueBannerContent}>
-              <Text style={[styles.noIssueBannerTitle, { color: accentColor }]}>MAINTENANCE REQUEST</Text>
-              <Text style={[styles.issueBannerText, { color: colors.textSecondary }]}>
-                No issue description provided. Review form details below.
-              </Text>
-            </View>
-          </View>
-        )}
 
-        {/* Original Photo if exists - Show prominently */}
-        {task.post?.photo_url && (
-          <View style={styles.originalPhotoSection}>
-            <View style={styles.photoLabelRow}>
-              <Camera size={16} color="#EF4444" />
-              <Text style={[styles.originalPhotoLabel, { color: '#EF4444' }]}>
-                Issue Photo Attached
-              </Text>
+          {/* Right side - Photo Thumbnail */}
+          {task.post?.photo_url && (
+            <View style={[styles.issuePhotoBox, { backgroundColor: '#FEF2F2', borderColor: colors.border }]}>
+              <View style={styles.issuePhotoHeader}>
+                <Camera size={12} color="#EF4444" />
+                <Text style={styles.issuePhotoLabel}>Photo</Text>
+              </View>
+              <Image
+                source={{ uri: task.post.photo_url }}
+                style={styles.issuePhotoThumbnail}
+                resizeMode="cover"
+              />
             </View>
-            <Image
-              source={{ uri: task.post.photo_url }}
-              style={styles.originalPhoto}
-              resizeMode="cover"
-            />
-          </View>
-        )}
+          )}
+        </View>
 
         {/* Form Data from original post - Show ALL details prominently */}
         {task.post?.form_data && Object.keys(task.post.form_data).length > 0 && (
@@ -567,33 +554,56 @@ const styles = StyleSheet.create({
     padding: 14,
     gap: 8,
   },
-  issueBanner: {
+  issueRowContainer: {
     flexDirection: 'row' as const,
-    alignItems: 'flex-start' as const,
-    padding: 14,
+    padding: 12,
     gap: 10,
     borderBottomWidth: 1,
   },
-  issueBannerIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-  },
-  issueBannerContent: {
+  issueDescriptionBox: {
     flex: 1,
+    padding: 10,
+    borderRadius: 8,
+    borderWidth: 1,
   },
-  issueBannerTitle: {
-    fontSize: 12,
-    fontWeight: '600' as const,
+  issueBoxHeader: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 6,
+    marginBottom: 6,
+  },
+  issueBoxTitle: {
+    fontSize: 10,
+    fontWeight: '700' as const,
     textTransform: 'uppercase' as const,
+    letterSpacing: 0.5,
+  },
+  issueBoxText: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '500' as const,
+  },
+  issuePhotoBox: {
+    width: 100,
+    padding: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  issuePhotoHeader: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 4,
     marginBottom: 4,
   },
-  issueBannerText: {
-    fontSize: 14,
-    lineHeight: 20,
-    fontWeight: '500' as const,
+  issuePhotoLabel: {
+    fontSize: 10,
+    fontWeight: '600' as const,
+    color: '#EF4444',
+  },
+  issuePhotoThumbnail: {
+    width: '100%',
+    height: 72,
+    borderRadius: 6,
   },
   taskDetailItem: {
     flexDirection: 'row',
@@ -602,39 +612,6 @@ const styles = StyleSheet.create({
   },
   taskDetailText: {
     fontSize: 13,
-  },
-  noIssueBanner: {
-    flexDirection: 'row' as const,
-    alignItems: 'flex-start' as const,
-    padding: 14,
-    gap: 10,
-    borderBottomWidth: 1,
-  },
-  noIssueBannerTitle: {
-    fontSize: 12,
-    fontWeight: '700' as const,
-    textTransform: 'uppercase' as const,
-    marginBottom: 4,
-    letterSpacing: 0.5,
-  },
-  originalPhotoSection: {
-    padding: 14,
-    backgroundColor: '#FEF2F2',
-  },
-  photoLabelRow: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: 6,
-    marginBottom: 10,
-  },
-  originalPhotoLabel: {
-    fontSize: 13,
-    fontWeight: '600' as const,
-  },
-  originalPhoto: {
-    width: '100%',
-    height: 200,
-    borderRadius: 10,
   },
   formDataSection: {
     margin: 14,
