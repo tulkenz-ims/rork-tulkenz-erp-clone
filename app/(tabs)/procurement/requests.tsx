@@ -27,7 +27,6 @@ import {
   X,
   Send,
   Eye,
-  AlertCircle,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/contexts/ThemeContext';
