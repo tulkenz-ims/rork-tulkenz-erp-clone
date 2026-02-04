@@ -129,12 +129,15 @@ export default function POListScreen() {
 
   const approvePOMutation = useApprovePurchaseOrder({
     onSuccess: () => {
+      console.log('[POListScreen] PO approved successfully');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setIsProcessing(false);
+      setShowDetailModal(false);
       refetch();
     },
     onError: (error) => {
       console.error('[POListScreen] Error approving PO:', error);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       setIsProcessing(false);
     },
   });
@@ -584,15 +587,19 @@ export default function POListScreen() {
             </View>
 
             {/* Action Buttons */}
-            {selectedPO.status === 'draft' && selectedPO.source_requisition_id && (
+            {(selectedPO.status === 'draft' || selectedPO.status === 'pending_approval') && (
               <View style={[styles.actionCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                 <Text style={[styles.actionCardTitle, { color: colors.text }]}>Actions</Text>
                 <Text style={[styles.actionCardHint, { color: colors.textSecondary }]}>
-                  This PO was created from an approved requisition. You can approve it and then mark as ordered.
+                  {selectedPO.source_requisition_id 
+                    ? 'This PO was created from an approved requisition. Approve it to proceed with ordering.'
+                    : 'Review the PO details and approve to proceed with ordering.'}
                 </Text>
                 <TouchableOpacity
-                  style={[styles.actionButton, { backgroundColor: '#10B981', marginBottom: 10 }]}
+                  style={[styles.actionButton, { backgroundColor: '#10B981', marginBottom: 10, opacity: isProcessing ? 0.7 : 1 }]}
                   onPress={() => {
+                    if (isProcessing) return;
+                    console.log('[POListScreen] Approving PO:', selectedPO.po_id);
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                     setIsProcessing(true);
                     const approverName = userProfile?.first_name && userProfile?.last_name
