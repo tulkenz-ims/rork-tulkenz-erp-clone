@@ -27,7 +27,8 @@ import {
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/contexts/ThemeContext';
-import { useProcurementPurchaseOrdersQuery, useOrderPurchaseOrder, POLineItem } from '@/hooks/useSupabaseProcurement';
+import { useProcurementPurchaseOrdersQuery, useOrderPurchaseOrder, useApprovePurchaseOrder, POLineItem } from '@/hooks/useSupabaseProcurement';
+import { useUser } from '@/contexts/UserContext';
 import {
   POType,
   POStatus,
@@ -103,6 +104,7 @@ const TYPE_OPTIONS: { value: FilterType; label: string; color: string }[] = [
 export default function POListScreen() {
   const { colors } = useTheme();
   const router = useRouter();
+  const { userProfile } = useUser();
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<FilterType>('all');
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
@@ -121,6 +123,18 @@ export default function POListScreen() {
     },
     onError: (error) => {
       console.error('[POListScreen] Error marking as ordered:', error);
+      setIsProcessing(false);
+    },
+  });
+
+  const approvePOMutation = useApprovePurchaseOrder({
+    onSuccess: () => {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setIsProcessing(false);
+      refetch();
+    },
+    onError: (error) => {
+      console.error('[POListScreen] Error approving PO:', error);
       setIsProcessing(false);
     },
   });
@@ -570,6 +584,37 @@ export default function POListScreen() {
             </View>
 
             {/* Action Buttons */}
+            {selectedPO.status === 'draft' && selectedPO.source_requisition_id && (
+              <View style={[styles.actionCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Text style={[styles.actionCardTitle, { color: colors.text }]}>Actions</Text>
+                <Text style={[styles.actionCardHint, { color: colors.textSecondary }]}>
+                  This PO was created from an approved requisition. You can approve it and then mark as ordered.
+                </Text>
+                <TouchableOpacity
+                  style={[styles.actionButton, { backgroundColor: '#10B981', marginBottom: 10 }]}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    setIsProcessing(true);
+                    const approverName = userProfile?.first_name && userProfile?.last_name
+                      ? `${userProfile.first_name} ${userProfile.last_name}`
+                      : userProfile?.email || 'Unknown';
+                    approvePOMutation.mutate({ poId: selectedPO.po_id, approvedBy: approverName });
+                  }}
+                  disabled={isProcessing}
+                  activeOpacity={0.8}
+                >
+                  {isProcessing ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <>
+                      <CheckCircle size={18} color="#fff" />
+                      <Text style={styles.actionButtonText}>Approve PO</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            )}
+
             {selectedPO.status === 'approved' && (
               <View style={[styles.actionCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                 <Text style={[styles.actionCardTitle, { color: colors.text }]}>Actions</Text>
