@@ -414,6 +414,8 @@ export default function PurchaseRequisitionsScreen() {
       departmentId: requisition.department_id || '',
       departmentName: requisition.department_name || '',
       subtotal: requisition.subtotal.toString(),
+      tax: requisition.tax.toString(),
+      shipping: requisition.shipping.toString(),
       neededByDate: requisition.needed_by_date || '',
       notes: requisition.notes || requisition.justification || '',
       lineItems: lineItemsJson,

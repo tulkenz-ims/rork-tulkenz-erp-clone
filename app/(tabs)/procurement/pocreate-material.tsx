@@ -117,6 +117,8 @@ export default function POCreateMaterialScreen() {
     departmentId?: string;
     departmentName?: string;
     subtotal?: string;
+    tax?: string;
+    shipping?: string;
     neededByDate?: string;
     notes?: string;
     lineItems?: string;
@@ -219,6 +221,14 @@ export default function POCreateMaterialScreen() {
       
       if (params.notes) {
         setNotes(params.notes);
+      }
+
+      if (params.tax) {
+        setTaxAmount(params.tax);
+      }
+
+      if (params.shipping) {
+        setShippingAmount(params.shipping);
       }
       
       if (params.lineItems) {
