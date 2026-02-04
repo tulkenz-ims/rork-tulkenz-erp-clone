@@ -565,7 +565,7 @@ async function logInventoryHistory({
     });
     
     if (error) {
-      console.error('[logInventoryHistory] Error:', error);
+      console.error('[logInventoryHistory] Error:', error.message || error.code || JSON.stringify(error));
     } else {
       console.log('[logInventoryHistory] Logged:', action, 'for material:', materialId);
     }
