@@ -37,6 +37,7 @@ import {
   ShoppingCart,
   Trash2,
   MoreVertical,
+  HardHat,
 } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
@@ -378,10 +379,11 @@ export default function TaskFeedScreen() {
   const [showNewPostModal, setShowNewPostModal] = useState(false);
   const [showReportIssueModal, setShowReportIssueModal] = useState(false);
   const [showActionTypeModal, setShowActionTypeModal] = useState(false);
-  const [selectedActionType, setSelectedActionType] = useState<'task' | 'issue' | 'purchase' | null>(null);
+  const [selectedActionType, setSelectedActionType] = useState<'task' | 'issue' | 'purchase' | 'service' | null>(null);
   const [selectedDepartment, setSelectedDepartment] = useState<string | null>(null);
   const [issueDepartment, setIssueDepartment] = useState<string | null>(null);
   const [purchaseDepartment, setPurchaseDepartment] = useState<string | null>(null);
+  const [serviceDepartment, setServiceDepartment] = useState<string | null>(null);
 
   const templateButtonType: ButtonType | undefined = selectedActionType === 'task' 
     ? 'add_task' 
@@ -389,13 +391,17 @@ export default function TaskFeedScreen() {
       ? 'report_issue' 
       : selectedActionType === 'purchase'
         ? 'request_purchase'
-        : undefined;
+        : selectedActionType === 'service'
+          ? 'request_service'
+          : undefined;
 
   const currentTriggeringDepartment = selectedActionType === 'task' 
     ? selectedDepartment 
     : selectedActionType === 'issue' 
       ? issueDepartment 
-      : purchaseDepartment;
+      : selectedActionType === 'purchase'
+        ? purchaseDepartment
+        : serviceDepartment;
 
   const { data: templatesData, isLoading: isLoadingTemplates } = useTaskFeedTemplatesQuery({
     buttonType: templateButtonType,
@@ -908,7 +914,7 @@ export default function TaskFeedScreen() {
     setShowPurchaseRequestModal(false);
   }, []);
 
-  const handleActionTypeSelect = useCallback((type: 'task' | 'issue' | 'purchase') => {
+  const handleActionTypeSelect = useCallback((type: 'task' | 'issue' | 'purchase' | 'service') => {
     setSelectedActionType(type);
     setShowActionTypeModal(false);
     setShowDepartmentPicker(true);
@@ -926,6 +932,9 @@ export default function TaskFeedScreen() {
     } else if (selectedActionType === 'purchase') {
       setPurchaseDepartment(deptCode);
       setShowPurchaseRequestModal(true);
+    } else if (selectedActionType === 'service') {
+      setServiceDepartment(deptCode);
+      setShowTemplatePicker(true);
     }
   }, [selectedActionType]);
 
@@ -994,6 +1003,7 @@ export default function TaskFeedScreen() {
     setSelectedDepartment(null);
     setIssueDepartment(null);
     setPurchaseDepartment(null);
+    setServiceDepartment(null);
   }, []);
 
   const resetTemplateFlow = useCallback(() => {
@@ -1426,13 +1436,62 @@ export default function TaskFeedScreen() {
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.actionButton, { backgroundColor: '#8B5CF6' }]}
-          onPress={() => handleActionTypeSelect('purchase')}
+          onPress={() => setShowActionTypeModal(true)}
           activeOpacity={0.8}
         >
           <ShoppingCart size={18} color="#fff" />
-          <Text style={styles.actionButtonText}>Request Purchase</Text>
+          <Text style={styles.actionButtonText}>Purchase/Service</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Purchase/Service Type Selection Modal */}
+      <Modal visible={showActionTypeModal} animationType="slide" transparent>
+        <View style={styles.pickerOverlay}>
+          <View style={[styles.departmentPickerContainer, { backgroundColor: colors.surface }]}>
+            <View style={styles.pickerHeader}>
+              <Text style={[styles.pickerTitle, { color: colors.text }]}>Request Type</Text>
+              <TouchableOpacity onPress={() => setShowActionTypeModal(false)}>
+                <X size={24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+            <Text style={[styles.departmentPickerSubtitle, { color: colors.textSecondary }]}>
+              What type of request do you need?
+            </Text>
+            <ScrollView style={styles.pickerList} showsVerticalScrollIndicator={false}>
+              <TouchableOpacity
+                style={[styles.departmentPickerItem, { backgroundColor: colors.background }]}
+                onPress={() => {
+                  setShowActionTypeModal(false);
+                  handleActionTypeSelect('purchase');
+                }}
+                activeOpacity={0.7}
+              >
+                <View style={[styles.departmentPickerDot, { backgroundColor: '#8B5CF6' }]} />
+                <View style={styles.departmentPickerInfo}>
+                  <Text style={[styles.departmentPickerName, { color: colors.text }]}>Purchase Materials</Text>
+                  <Text style={[styles.departmentPickerCode, { color: colors.textSecondary }]}>Stock, Non-Stock, or Capex items</Text>
+                </View>
+                <ChevronRight size={20} color={colors.textTertiary} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.departmentPickerItem, { backgroundColor: colors.background }]}
+                onPress={() => {
+                  setShowActionTypeModal(false);
+                  handleActionTypeSelect('service');
+                }}
+                activeOpacity={0.7}
+              >
+                <View style={[styles.departmentPickerDot, { backgroundColor: '#F97316' }]} />
+                <View style={styles.departmentPickerInfo}>
+                  <Text style={[styles.departmentPickerName, { color: colors.text }]}>Request Service</Text>
+                  <Text style={[styles.departmentPickerCode, { color: colors.textSecondary }]}>Plumbers, electricians, contractors, etc.</Text>
+                </View>
+                <ChevronRight size={20} color={colors.textTertiary} />
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
 
       {/* Department Quick Filter Tabs */}
       <View style={styles.departmentFilterContainer}>
@@ -1775,7 +1834,9 @@ export default function TaskFeedScreen() {
                 ? 'Which department is this task for?' 
                 : selectedActionType === 'issue'
                   ? 'Which department should handle this issue?'
-                  : 'Which department is this purchase for?'}
+                  : selectedActionType === 'purchase'
+                    ? 'Which department is this purchase for?'
+                    : 'Which department is this service request for?'}
             </Text>
             <ScrollView style={styles.pickerList} showsVerticalScrollIndicator={false}>
               {Object.values(DEPARTMENT_CODES).map(dept => (
@@ -2639,10 +2700,10 @@ export default function TaskFeedScreen() {
                   {getDepartmentName(currentTriggeringDepartment)}
                 </Text>
                 <View style={[styles.templatePickerTypeBadge, { 
-                  backgroundColor: selectedActionType === 'task' ? '#3B82F6' : selectedActionType === 'issue' ? '#EF4444' : '#8B5CF6' 
+                  backgroundColor: selectedActionType === 'task' ? '#3B82F6' : selectedActionType === 'issue' ? '#EF4444' : selectedActionType === 'purchase' ? '#8B5CF6' : '#F97316' 
                 }]}>
                   <Text style={styles.templatePickerTypeText}>
-                    {selectedActionType === 'task' ? 'Add Task' : selectedActionType === 'issue' ? 'Report Issue' : 'Purchase'}
+                    {selectedActionType === 'task' ? 'Add Task' : selectedActionType === 'issue' ? 'Report Issue' : selectedActionType === 'purchase' ? 'Purchase' : 'Service'}
                   </Text>
                 </View>
               </View>
@@ -2682,7 +2743,7 @@ export default function TaskFeedScreen() {
               ) : (
                 <>
                   {availableTemplates.map(template => {
-                    const iconColor = selectedActionType === 'task' ? '#3B82F6' : selectedActionType === 'issue' ? '#EF4444' : '#8B5CF6';
+                    const iconColor = selectedActionType === 'task' ? '#3B82F6' : selectedActionType === 'issue' ? '#EF4444' : selectedActionType === 'purchase' ? '#8B5CF6' : '#F97316';
                     return (
                       <TouchableOpacity
                         key={template.id}
@@ -2694,6 +2755,7 @@ export default function TaskFeedScreen() {
                           {selectedActionType === 'task' && <ClipboardList size={20} color={iconColor} />}
                           {selectedActionType === 'issue' && <AlertTriangle size={20} color={iconColor} />}
                           {selectedActionType === 'purchase' && <ShoppingCart size={20} color={iconColor} />}
+                          {selectedActionType === 'service' && <HardHat size={20} color={iconColor} />}
                         </View>
                         <View style={styles.templatePickerInfo}>
                           <Text style={[styles.templatePickerName, { color: colors.text }]}>{template.name}</Text>

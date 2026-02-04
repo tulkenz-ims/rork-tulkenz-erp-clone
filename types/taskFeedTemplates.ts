@@ -1,4 +1,4 @@
-export type ButtonType = 'add_task' | 'report_issue' | 'request_purchase';
+export type ButtonType = 'add_task' | 'report_issue' | 'request_purchase' | 'request_service';
 
 export type FieldType = 
   | 'dropdown'
@@ -143,12 +143,14 @@ export const BUTTON_TYPE_LABELS: Record<ButtonType, string> = {
   add_task: 'Add Task',
   report_issue: 'Report Issue',
   request_purchase: 'Request Purchase',
+  request_service: 'Request Service',
 };
 
 export const BUTTON_TYPE_COLORS: Record<ButtonType, string> = {
   add_task: '#3B82F6',
   report_issue: '#EF4444',
   request_purchase: '#8B5CF6',
+  request_service: '#F97316',
 };
 
 export const FIELD_TYPE_LABELS: Record<FieldType, string> = {
