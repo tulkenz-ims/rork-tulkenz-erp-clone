@@ -23,6 +23,7 @@ import {
   CheckCircle,
   Truck,
   AlertCircle,
+  Link2,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -57,6 +58,8 @@ interface MappedPurchaseOrder {
   received_date?: string | null;
   notes?: string | null;
   line_items: POLineItem[];
+  source_requisition_id?: string | null;
+  source_requisition_number?: string | null;
 }
 
 type FilterType = 'all' | POType;
@@ -144,6 +147,8 @@ export default function POListScreen() {
       received_date: po.received_date,
       notes: po.notes,
       line_items: (po.line_items || []) as unknown as POLineItem[],
+      source_requisition_id: (po as any).source_requisition_id,
+      source_requisition_number: (po as any).source_requisition_number,
     }));
   }, [purchaseOrdersData]);
 
@@ -349,6 +354,14 @@ export default function POListScreen() {
               </Text>
             </View>
           )}
+          {po.source_requisition_number && (
+            <View style={styles.poInfoRow}>
+              <Link2 size={14} color="#8B5CF6" />
+              <Text style={[styles.poInfoText, { color: '#8B5CF6' }]}>
+                From: {po.source_requisition_number}
+              </Text>
+            </View>
+          )}
         </View>
 
         <View style={[styles.poFooter, { borderTopColor: colors.border }]}>
@@ -443,6 +456,18 @@ export default function POListScreen() {
                   {selectedPO.created_by} on {formatDate(selectedPO.created_date)}
                 </Text>
               </View>
+
+              {selectedPO.source_requisition_number && (
+                <View style={styles.detailSection}>
+                  <Text style={[styles.detailSectionTitle, { color: colors.text }]}>Source Requisition</Text>
+                  <View style={[styles.sourceRequisitionBadge, { backgroundColor: '#8B5CF615', borderColor: '#8B5CF6' }]}>
+                    <Link2 size={14} color="#8B5CF6" />
+                    <Text style={[styles.sourceRequisitionText, { color: '#8B5CF6' }]}>
+                      {selectedPO.source_requisition_number}
+                    </Text>
+                  </View>
+                </View>
+              )}
 
               {selectedPO.approved_by && (
                 <View style={styles.detailSection}>
@@ -1005,6 +1030,20 @@ const styles = StyleSheet.create({
   },
   detailValue: {
     fontSize: 15,
+  },
+  sourceRequisitionBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignSelf: 'flex-start',
+  },
+  sourceRequisitionText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   detailCardTitle: {
     fontSize: 16,
