@@ -28,11 +28,9 @@ import {
   FileText,
   ArrowRight,
   X,
-  Send,
   ShoppingCart,
   Package,
   Truck,
-  Edit3,
   Plus,
   AlertTriangle,
   Link,
@@ -47,8 +45,7 @@ import { useUser } from '@/contexts/UserContext';
 import {
   usePurchaseRequisitionsQuery,
   useCreatePurchaseRequisition,
-  useSubmitRequisitionForApproval,
-  useApproveRequisition,
+  useApproveRequisitionTier,
   useRejectRequisition,
   RequisitionLineItem,
 } from '@/hooks/useSupabaseProcurement';
@@ -58,6 +55,9 @@ import {
   REQUISITION_STATUS_COLORS,
   RequisitionStatus,
   PO_TYPE_LABELS,
+  APPROVAL_TIER_THRESHOLDS,
+  APPROVAL_TIER_LABELS,
+  getRequiredApprovalTiers,
 } from '@/types/procurement';
 
 type StatusFilter = 'all' | RequisitionStatus;
@@ -163,28 +163,21 @@ export default function PurchaseRequisitionsScreen() {
     },
   });
 
-  const submitForApprovalMutation = useSubmitRequisitionForApproval({
-    onSuccess: () => {
-      console.log('[Requisitions] Requisition submitted for approval');
+  const approveRequisitionTierMutation = useApproveRequisitionTier({
+    onSuccess: (data) => {
+      console.log('[Requisitions] Requisition tier approved, new status:', data.status);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setShowDetailModal(false);
-      Alert.alert('Success', 'Requisition submitted for approval');
+      if (data.status === 'ready_for_po') {
+        Alert.alert('Success', 'All approvals complete. Requisition is ready for PO creation.');
+      } else if (data.status === 'pending_tier3_approval') {
+        Alert.alert('Success', 'Tier 2 approved. Requisition sent to Tier 3 (Owner/Executive) for final approval.');
+      } else {
+        Alert.alert('Success', 'Requisition approved');
+      }
     },
     onError: (error) => {
-      console.error('[Requisitions] Error submitting requisition:', error);
-      Alert.alert('Error', error.message || 'Failed to submit requisition');
-    },
-  });
-
-  const approveRequisitionMutation = useApproveRequisition({
-    onSuccess: () => {
-      console.log('[Requisitions] Requisition approved');
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setShowDetailModal(false);
-      Alert.alert('Success', 'Requisition approved');
-    },
-    onError: (error) => {
-      console.error('[Requisitions] Error approving requisition:', error);
+      console.error('[Requisitions] Error approving requisition tier:', error);
       Alert.alert('Error', error.message || 'Failed to approve requisition');
     },
   });
@@ -320,12 +313,12 @@ export default function PurchaseRequisitionsScreen() {
 
   const metrics = useMemo(() => {
     const allRequisitions = requisitionsData || [];
-    const draft = allRequisitions.filter(r => r.status === 'draft').length;
-    const pendingApproval = allRequisitions.filter(r => r.status === 'pending_approval').length;
-    const approved = allRequisitions.filter(r => r.status === 'approved').length;
+    const pendingTier2 = allRequisitions.filter(r => r.status === 'pending_tier2_approval').length;
+    const pendingTier3 = allRequisitions.filter(r => r.status === 'pending_tier3_approval').length;
+    const readyForPO = allRequisitions.filter(r => r.status === 'ready_for_po').length;
     const convertedToPO = allRequisitions.filter(r => r.status === 'converted_to_po').length;
     
-    return { draft, pendingApproval, approved, convertedToPO };
+    return { pendingTier2, pendingTier3, readyForPO, convertedToPO };
   }, [requisitionsData]);
 
   const filteredRequisitions = useMemo(() => {
@@ -353,39 +346,30 @@ export default function PurchaseRequisitionsScreen() {
     setShowDetailModal(true);
   };
 
-  const handleSubmitForApproval = (requisition: PurchaseRequisition) => {
+  const handleApproveTier = (requisition: PurchaseRequisition, tier: number) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const tierName = APPROVAL_TIER_LABELS[tier];
+    const nextTierInfo = tier === 2 && requisition.total >= APPROVAL_TIER_THRESHOLDS.TIER_3
+      ? '\n\nNote: This will advance to Tier 3 (Owner/Executive) approval.'
+      : tier === 2 
+        ? '\n\nNote: This will complete all approvals and make the requisition ready for PO creation.'
+        : '\n\nNote: This will complete all approvals and make the requisition ready for PO creation.';
+    
     Alert.alert(
-      'Submit for Approval',
-      `Submit ${requisition.requisition_number} for approval?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Submit', 
-          onPress: () => {
-            console.log('[Requisitions] Submitting requisition:', requisition.requisition_id);
-            submitForApprovalMutation.mutate(requisition.requisition_id);
-          }
-        },
-      ]
-    );
-  };
-
-  const handleApprove = (requisition: PurchaseRequisition) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    Alert.alert(
-      'Approve Requisition',
-      `Approve ${requisition.requisition_number}?`,
+      `Approve as ${tierName}`,
+      `Approve ${requisition.requisition_number} as ${tierName}?${nextTierInfo}`,
       [
         { text: 'Cancel', style: 'cancel' },
         { 
           text: 'Approve', 
           onPress: () => {
-            console.log('[Requisitions] Approving requisition:', requisition.requisition_id);
+            console.log('[Requisitions] Approving requisition tier:', tier, 'for:', requisition.requisition_id);
             const approverName = user ? `${user.first_name} ${user.last_name}` : 'Unknown';
-            approveRequisitionMutation.mutate({
+            approveRequisitionTierMutation.mutate({
               requisitionId: requisition.requisition_id,
+              tier,
               approvedBy: approverName,
+              approvedById: user?.id,
             });
           }
         },
@@ -728,9 +712,23 @@ export default function PurchaseRequisitionsScreen() {
   const renderDetailModal = () => {
     if (!selectedRequisition) return null;
 
-    const canSubmit = selectedRequisition.status === 'draft';
-    const canApprove = selectedRequisition.status === 'pending_approval';
-    const canConvert = selectedRequisition.status === 'approved';
+    const requiredTiers = getRequiredApprovalTiers(selectedRequisition.total);
+    const isPendingTier2 = selectedRequisition.status === 'pending_tier2_approval';
+    const isPendingTier3 = selectedRequisition.status === 'pending_tier3_approval';
+    const canConvert = selectedRequisition.status === 'ready_for_po';
+    const isRejected = selectedRequisition.status === 'rejected';
+    const isConverted = selectedRequisition.status === 'converted_to_po';
+    
+    const getApprovalInfo = () => {
+      if (selectedRequisition.total < APPROVAL_TIER_THRESHOLDS.TIER_2) {
+        return { message: 'No additional approval required', color: '#10B981' };
+      } else if (selectedRequisition.total >= APPROVAL_TIER_THRESHOLDS.TIER_3) {
+        return { message: 'Requires Tier 2 (Plant Manager) + Tier 3 (Owner) approval', color: '#8B5CF6' };
+      } else {
+        return { message: 'Requires Tier 2 (Plant Manager) approval', color: '#F59E0B' };
+      }
+    };
+    const approvalInfo = getApprovalInfo();
 
     return (
       <Modal
@@ -934,34 +932,56 @@ export default function PurchaseRequisitionsScreen() {
               </View>
             </View>
 
-            <View style={styles.modalActions}>
-              {canSubmit && (
-                <>
-                  <TouchableOpacity
-                    style={[styles.actionButton, styles.editButton, { borderColor: colors.border }]}
-                    onPress={() => {
-                      setShowDetailModal(false);
-                      console.log('Edit requisition:', selectedRequisition.requisition_id);
-                    }}
-                  >
-                    <Edit3 size={18} color={colors.text} />
-                    <Text style={[styles.actionButtonText, { color: colors.text }]}>Edit</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.actionButton, styles.submitButton]}
-                    onPress={() => handleSubmitForApproval(selectedRequisition)}
-                    disabled={submitForApprovalMutation.isPending}
-                  >
-                    {submitForApprovalMutation.isPending ? (
-                      <ActivityIndicator size="small" color="#fff" />
-                    ) : (
-                      <Send size={18} color="#fff" />
-                    )}
-                    <Text style={[styles.actionButtonText, { color: '#fff' }]}>Submit for Approval</Text>
-                  </TouchableOpacity>
-                </>
+            {/* Approval Status Info */}
+            <View style={[styles.approvalInfoCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <Text style={[styles.approvalInfoTitle, { color: colors.text }]}>Approval Requirements</Text>
+              <View style={[styles.approvalInfoBanner, { backgroundColor: `${approvalInfo.color}15` }]}>
+                <AlertTriangle size={16} color={approvalInfo.color} />
+                <Text style={[styles.approvalInfoText, { color: approvalInfo.color }]}>
+                  {approvalInfo.message}
+                </Text>
+              </View>
+              
+              {requiredTiers.length > 0 && (
+                <View style={styles.tierProgressContainer}>
+                  <Text style={[styles.tierProgressLabel, { color: colors.textSecondary }]}>Approval Progress</Text>
+                  {requiredTiers.map((tier) => {
+                    const isApproved = 
+                      (tier === 2 && (selectedRequisition.status === 'pending_tier3_approval' || selectedRequisition.status === 'ready_for_po' || selectedRequisition.status === 'converted_to_po')) ||
+                      (tier === 3 && (selectedRequisition.status === 'ready_for_po' || selectedRequisition.status === 'converted_to_po'));
+                    const isPending = 
+                      (tier === 2 && selectedRequisition.status === 'pending_tier2_approval') ||
+                      (tier === 3 && selectedRequisition.status === 'pending_tier3_approval');
+                    const tierColor = isApproved ? '#10B981' : isPending ? '#F59E0B' : colors.textTertiary;
+                    
+                    return (
+                      <View key={tier} style={styles.tierProgressItem}>
+                        <View style={[styles.tierProgressIcon, { backgroundColor: `${tierColor}20` }]}>
+                          {isApproved ? (
+                            <CheckCircle size={14} color={tierColor} />
+                          ) : isPending ? (
+                            <Clock size={14} color={tierColor} />
+                          ) : (
+                            <Clock size={14} color={tierColor} />
+                          )}
+                        </View>
+                        <View style={styles.tierProgressText}>
+                          <Text style={[styles.tierName, { color: colors.text }]}>
+                            Tier {tier}: {APPROVAL_TIER_LABELS[tier]}
+                          </Text>
+                          <Text style={[styles.tierStatus, { color: tierColor }]}>
+                            {isApproved ? 'Approved' : isPending ? 'Pending Approval' : 'Waiting'}
+                          </Text>
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
               )}
-              {canApprove && (
+            </View>
+
+            <View style={styles.modalActions}>
+              {isPendingTier2 && (
                 <>
                   <TouchableOpacity
                     style={[styles.actionButton, styles.rejectButton]}
@@ -977,15 +997,43 @@ export default function PurchaseRequisitionsScreen() {
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.actionButton, styles.approveButton]}
-                    onPress={() => handleApprove(selectedRequisition)}
-                    disabled={approveRequisitionMutation.isPending}
+                    onPress={() => handleApproveTier(selectedRequisition, 2)}
+                    disabled={approveRequisitionTierMutation.isPending}
                   >
-                    {approveRequisitionMutation.isPending ? (
+                    {approveRequisitionTierMutation.isPending ? (
                       <ActivityIndicator size="small" color="#fff" />
                     ) : (
                       <CheckCircle size={18} color="#fff" />
                     )}
-                    <Text style={[styles.actionButtonText, { color: '#fff' }]}>Approve</Text>
+                    <Text style={[styles.actionButtonText, { color: '#fff' }]}>Approve (Tier 2)</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+              {isPendingTier3 && (
+                <>
+                  <TouchableOpacity
+                    style={[styles.actionButton, styles.rejectButton]}
+                    onPress={() => handleReject(selectedRequisition)}
+                    disabled={rejectRequisitionMutation.isPending}
+                  >
+                    {rejectRequisitionMutation.isPending ? (
+                      <ActivityIndicator size="small" color="#EF4444" />
+                    ) : (
+                      <XCircle size={18} color="#EF4444" />
+                    )}
+                    <Text style={[styles.actionButtonText, { color: '#EF4444' }]}>Reject</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.actionButton, { backgroundColor: '#8B5CF6' }]}
+                    onPress={() => handleApproveTier(selectedRequisition, 3)}
+                    disabled={approveRequisitionTierMutation.isPending}
+                  >
+                    {approveRequisitionTierMutation.isPending ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <CheckCircle size={18} color="#fff" />
+                    )}
+                    <Text style={[styles.actionButtonText, { color: '#fff' }]}>Approve (Tier 3)</Text>
                   </TouchableOpacity>
                 </>
               )}
@@ -997,6 +1045,13 @@ export default function PurchaseRequisitionsScreen() {
                   <ShoppingCart size={18} color="#fff" />
                   <Text style={[styles.actionButtonText, { color: '#fff' }]}>Create Purchase Order</Text>
                 </TouchableOpacity>
+              )}
+              {(isRejected || isConverted) && (
+                <View style={[styles.statusInfoBanner, { backgroundColor: isRejected ? '#FEE2E2' : '#DBEAFE' }]}>
+                  <Text style={[styles.statusInfoText, { color: isRejected ? '#EF4444' : '#3B82F6' }]}>
+                    {isRejected ? 'This requisition has been rejected' : `Converted to PO: ${selectedRequisition.po_number}`}
+                  </Text>
+                </View>
               )}
             </View>
 
@@ -1033,10 +1088,10 @@ export default function PurchaseRequisitionsScreen() {
         }
       >
         <View style={styles.metricsRow}>
-          {renderMetricCard('Draft', metrics.draft, '#6B7280', <Edit3 size={16} color="#6B7280" />)}
-          {renderMetricCard('Pending', metrics.pendingApproval, '#F59E0B', <Clock size={16} color="#F59E0B" />)}
-          {renderMetricCard('Approved', metrics.approved, '#10B981', <CheckCircle size={16} color="#10B981" />)}
-          {renderMetricCard('Converted', metrics.convertedToPO, '#8B5CF6', <Package size={16} color="#8B5CF6" />)}
+          {renderMetricCard('Tier 2', metrics.pendingTier2, '#F59E0B', <Clock size={16} color="#F59E0B" />)}
+          {renderMetricCard('Tier 3', metrics.pendingTier3, '#8B5CF6', <Clock size={16} color="#8B5CF6" />)}
+          {renderMetricCard('Ready', metrics.readyForPO, '#10B981', <CheckCircle size={16} color="#10B981" />)}
+          {renderMetricCard('Converted', metrics.convertedToPO, '#3B82F6', <Package size={16} color="#3B82F6" />)}
         </View>
 
         <View style={[styles.searchContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -1061,10 +1116,11 @@ export default function PurchaseRequisitionsScreen() {
           contentContainerStyle={styles.filtersScroll}
         >
           {renderStatusFilter('all', 'All')}
-          {renderStatusFilter('draft', 'Draft')}
-          {renderStatusFilter('pending_approval', 'Pending Approval')}
-          {renderStatusFilter('approved', 'Approved')}
-          {renderStatusFilter('converted_to_po', 'Converted to PO')}
+          {renderStatusFilter('pending_tier2_approval', 'Pending Tier 2')}
+          {renderStatusFilter('pending_tier3_approval', 'Pending Tier 3')}
+          {renderStatusFilter('ready_for_po', 'Ready for PO')}
+          {renderStatusFilter('converted_to_po', 'Converted')}
+          {renderStatusFilter('rejected', 'Rejected')}
         </ScrollView>
 
         <View style={styles.resultsHeader}>
@@ -1955,5 +2011,74 @@ const styles = StyleSheet.create({
     borderRadius: 11,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  approvalInfoCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 16,
+    marginBottom: 16,
+  },
+  approvalInfoTitle: {
+    fontSize: 16,
+    fontWeight: '600' as const,
+    marginBottom: 12,
+  },
+  approvalInfoBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  approvalInfoText: {
+    fontSize: 13,
+    fontWeight: '500' as const,
+    flex: 1,
+  },
+  tierProgressContainer: {
+    gap: 8,
+  },
+  tierProgressLabel: {
+    fontSize: 12,
+    fontWeight: '600' as const,
+    textTransform: 'uppercase' as const,
+    marginBottom: 4,
+  },
+  tierProgressItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 8,
+  },
+  tierProgressIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tierProgressText: {
+    flex: 1,
+  },
+  tierName: {
+    fontSize: 14,
+    fontWeight: '500' as const,
+  },
+  tierStatus: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  statusInfoBanner: {
+    flex: 1,
+    padding: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  statusInfoText: {
+    fontSize: 14,
+    fontWeight: '500' as const,
+    textAlign: 'center' as const,
   },
 });

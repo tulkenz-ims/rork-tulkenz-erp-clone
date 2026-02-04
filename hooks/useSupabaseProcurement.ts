@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import type { VendorDocument, VendorDocumentType, VendorRating } from '@/types/procurement';
+import { APPROVAL_TIER_THRESHOLDS, getRequiredApprovalTiers, APPROVAL_TIER_LABELS, RequisitionStatus } from '@/types/procurement';
 import { supabase, Tables, QueryOptions, fetchById, insertRecord, updateRecord, deleteRecord } from '@/lib/supabase';
 
 type ProcurementVendor = Tables['procurement_vendors'];
@@ -497,6 +498,16 @@ export function usePurchaseRequisitionById(id: string | undefined | null) {
   });
 }
 
+function getInitialRequisitionStatus(total: number): RequisitionStatus {
+  const requiredTiers = getRequiredApprovalTiers(total);
+  if (requiredTiers.length === 0) {
+    return 'ready_for_po';
+  } else if (requiredTiers.includes(2)) {
+    return 'pending_tier2_approval';
+  }
+  return 'ready_for_po';
+}
+
 export function useCreatePurchaseRequisition(options?: {
   onSuccess?: (data: PurchaseRequisition) => void;
   onError?: (error: Error) => void;
@@ -529,6 +540,9 @@ export function useCreatePurchaseRequisition(options?: {
       const requisitionNumber = `RQN-${Date.now().toString(36).toUpperCase()}`;
       const total = requisition.subtotal + requisition.tax + requisition.shipping;
       
+      const initialStatus = getInitialRequisitionStatus(total);
+      console.log('[useCreatePurchaseRequisition] Total:', total, 'Initial status:', initialStatus);
+      
       const { data, error } = await supabase.from('purchase_requisitions').insert({
         organization_id: organizationId,
         requisition_number: requisitionNumber,
@@ -540,7 +554,7 @@ export function useCreatePurchaseRequisition(options?: {
         department_name: requisition.department_name || null,
         vendor_id: requisition.vendor_id || null,
         vendor_name: requisition.vendor_name || null,
-        status: 'draft' as const,
+        status: initialStatus,
         priority: requisition.priority || 'normal',
         requisition_type: requisition.requisition_type,
         needed_by_date: requisition.needed_by_date || null,
@@ -554,11 +568,35 @@ export function useCreatePurchaseRequisition(options?: {
       }).select().single();
       
       if (error) throw new Error(error.message);
+      
+      if (initialStatus !== 'ready_for_po') {
+        const requiredTiers = getRequiredApprovalTiers(total);
+        const approvalTiers = requiredTiers.map((tier) => ({
+          organization_id: organizationId,
+          requisition_id: data.id,
+          approval_type: 'requisition' as const,
+          tier,
+          tier_name: APPROVAL_TIER_LABELS[tier],
+          approver_name: APPROVAL_TIER_LABELS[tier],
+          approver_role: APPROVAL_TIER_LABELS[tier],
+          status: tier === 2 ? 'pending' as const : 'pending' as const,
+          amount_threshold: tier === 2 ? APPROVAL_TIER_THRESHOLDS.TIER_2 : APPROVAL_TIER_THRESHOLDS.TIER_3,
+        }));
+        
+        const { error: approvalError } = await supabase.from('po_approvals').insert(approvalTiers);
+        if (approvalError) {
+          console.error('[useCreatePurchaseRequisition] Error creating approval chain:', approvalError);
+        } else {
+          console.log('[useCreatePurchaseRequisition] Created approval chain with', approvalTiers.length, 'tiers');
+        }
+      }
+      
       console.log('[useCreatePurchaseRequisition] Created:', data?.id);
       return data as PurchaseRequisition;
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['purchase_requisitions'] });
+      queryClient.invalidateQueries({ queryKey: ['po_approvals'] });
       options?.onSuccess?.(data);
     },
     onError: (error) => {
@@ -1650,6 +1688,101 @@ export function useCancelRequisition(options?: {
   });
 }
 
+export function useApproveRequisitionTier(options?: {
+  onSuccess?: (data: PurchaseRequisition) => void;
+  onError?: (error: Error) => void;
+}) {
+  const { organizationId } = useOrganization();
+  const queryClient = useQueryClient();
+  const updateRequisition = useUpdatePurchaseRequisition();
+  
+  return useMutation({
+    mutationFn: async ({ 
+      requisitionId, 
+      tier, 
+      approvedBy,
+      approvedById,
+    }: { 
+      requisitionId: string; 
+      tier: number;
+      approvedBy: string;
+      approvedById?: string;
+    }) => {
+      if (!organizationId) throw new Error('No organization selected');
+      
+      const requisitionResult = await fetchById('purchase_requisitions', requisitionId, organizationId);
+      if (requisitionResult.error || !requisitionResult.data) {
+        throw new Error('Requisition not found');
+      }
+      
+      const requisition = requisitionResult.data;
+      const total = requisition.total || 0;
+      const requiredTiers = getRequiredApprovalTiers(total);
+      
+      console.log('[useApproveRequisitionTier] Approving tier', tier, 'for requisition:', requisitionId, 'Total:', total);
+      
+      const { error: approvalUpdateError } = await supabase
+        .from('po_approvals')
+        .update({
+          status: 'approved',
+          decision_date: new Date().toISOString(),
+          approver_name: approvedBy,
+          approver_id: approvedById || null,
+          comments: `Tier ${tier} approved by ${approvedBy}`,
+        })
+        .eq('organization_id', organizationId)
+        .eq('requisition_id', requisitionId)
+        .eq('tier', tier)
+        .eq('status', 'pending');
+      
+      if (approvalUpdateError) {
+        console.error('[useApproveRequisitionTier] Error updating approval:', approvalUpdateError);
+        throw new Error(approvalUpdateError.message);
+      }
+      
+      let newStatus: RequisitionStatus;
+      
+      if (tier === 2) {
+        if (requiredTiers.includes(3)) {
+          newStatus = 'pending_tier3_approval';
+          console.log('[useApproveRequisitionTier] Tier 2 approved, moving to Tier 3 approval');
+        } else {
+          newStatus = 'ready_for_po';
+          console.log('[useApproveRequisitionTier] Tier 2 approved, no Tier 3 needed, ready for PO');
+        }
+      } else if (tier === 3) {
+        newStatus = 'ready_for_po';
+        console.log('[useApproveRequisitionTier] Tier 3 approved, ready for PO');
+      } else {
+        newStatus = 'ready_for_po';
+      }
+      
+      const updatedRequisition = await updateRequisition.mutateAsync({
+        id: requisitionId,
+        updates: {
+          status: newStatus,
+          ...(newStatus === 'ready_for_po' ? {
+            approved_date: new Date().toISOString(),
+            approved_by: approvedBy,
+          } : {}),
+        },
+      });
+      
+      return updatedRequisition;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['purchase_requisitions'] });
+      queryClient.invalidateQueries({ queryKey: ['po_approvals'] });
+      queryClient.invalidateQueries({ queryKey: ['requisition_approval_workflow'] });
+      options?.onSuccess?.(data);
+    },
+    onError: (error) => {
+      console.error('[useApproveRequisitionTier] Error:', error);
+      options?.onError?.(error as Error);
+    },
+  });
+}
+
 export function useApproveRequisition(options?: {
   onSuccess?: (data: PurchaseRequisition) => void;
   onError?: (error: Error) => void;
@@ -1661,7 +1794,7 @@ export function useApproveRequisition(options?: {
       return updateRequisition.mutateAsync({
         id: requisitionId,
         updates: {
-          status: 'approved',
+          status: 'ready_for_po',
           approved_date: new Date().toISOString(),
           approved_by: approvedBy,
         },

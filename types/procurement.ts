@@ -158,7 +158,7 @@ export const PO_STATUS_COLORS: Record<POStatus, string> = {
 
 export type RequestStatus = 'draft' | 'submitted' | 'under_review' | 'pending_manager_approval' | 'approved' | 'rejected' | 'converted' | 'cancelled';
 
-export type RequisitionStatus = 'draft' | 'pending_approval' | 'approved' | 'rejected' | 'converted_to_po' | 'cancelled';
+export type RequisitionStatus = 'draft' | 'pending_tier2_approval' | 'pending_tier3_approval' | 'ready_for_po' | 'rejected' | 'converted_to_po' | 'cancelled';
 
 export interface PurchaseRequisition {
   requisition_id: string;
@@ -237,8 +237,9 @@ export const REQUEST_STATUS_COLORS: Record<RequestStatus, string> = {
 
 export const REQUISITION_STATUS_LABELS: Record<RequisitionStatus, string> = {
   draft: 'Draft',
-  pending_approval: 'Pending Approval',
-  approved: 'Approved',
+  pending_tier2_approval: 'Pending Tier 2 Approval',
+  pending_tier3_approval: 'Pending Tier 3 Approval',
+  ready_for_po: 'Ready for PO',
   rejected: 'Rejected',
   converted_to_po: 'Converted to PO',
   cancelled: 'Cancelled',
@@ -246,12 +247,33 @@ export const REQUISITION_STATUS_LABELS: Record<RequisitionStatus, string> = {
 
 export const REQUISITION_STATUS_COLORS: Record<RequisitionStatus, string> = {
   draft: '#6B7280',
-  pending_approval: '#F59E0B',
-  approved: '#10B981',
+  pending_tier2_approval: '#F59E0B',
+  pending_tier3_approval: '#8B5CF6',
+  ready_for_po: '#10B981',
   rejected: '#EF4444',
-  converted_to_po: '#8B5CF6',
+  converted_to_po: '#3B82F6',
   cancelled: '#DC2626',
 };
+
+export const APPROVAL_TIER_THRESHOLDS = {
+  TIER_2: 1000,
+  TIER_3: 5000,
+};
+
+export const APPROVAL_TIER_LABELS: Record<number, string> = {
+  1: 'Department Manager',
+  2: 'Plant Manager',
+  3: 'Owner/Executive',
+};
+
+export function getRequiredApprovalTiers(amount: number): number[] {
+  if (amount >= APPROVAL_TIER_THRESHOLDS.TIER_3) {
+    return [2, 3];
+  } else if (amount >= APPROVAL_TIER_THRESHOLDS.TIER_2) {
+    return [2];
+  }
+  return [];
+}
 
 export type SESStatus = 'draft' | 'pending_approval' | 'approved' | 'rejected' | 'posted';
 
