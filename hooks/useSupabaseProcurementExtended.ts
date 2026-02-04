@@ -1242,3 +1242,191 @@ export function useRejectServiceRequisition(options?: { onSuccess?: (data: Servi
     },
   });
 }
+
+// Service Entry Sheet (SES) types and hooks
+export interface ServiceEntrySheetDB {
+  id: string;
+  organization_id: string;
+  ses_number: string;
+  requisition_id: string;
+  requisition_number: string;
+  source_po_id: string;
+  source_po_number: string;
+  vendor_id: string;
+  vendor_name: string;
+  department_id: string;
+  department_name: string;
+  service_type: string;
+  service_description: string;
+  invoice_number: string;
+  invoice_date: string;
+  invoice_amount: number;
+  status: 'draft' | 'posted';
+  completion_date: string | null;
+  gl_account: string | null;
+  cost_center: string | null;
+  posted_by: string | null;
+  posted_at: string | null;
+  notes: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export function useServiceEntrySheetsQuery(options?: { status?: string; requisitionId?: string; enabled?: boolean }) {
+  const { organizationId } = useOrganization();
+
+  return useQuery({
+    queryKey: ['service_entry_sheets', organizationId, options?.status, options?.requisitionId],
+    queryFn: async () => {
+      if (!organizationId) return [];
+
+      let query = supabase
+        .from('service_entry_sheets')
+        .select('*')
+        .eq('organization_id', organizationId)
+        .order('created_at', { ascending: false });
+
+      if (options?.status) {
+        query = query.eq('status', options.status);
+      }
+
+      if (options?.requisitionId) {
+        query = query.eq('requisition_id', options.requisitionId);
+      }
+
+      const { data, error } = await query;
+      if (error) {
+        console.log('[useServiceEntrySheetsQuery] Table may not exist yet, returning empty array');
+        return [];
+      }
+
+      console.log('[useServiceEntrySheetsQuery] Fetched:', data?.length || 0, 'SES records');
+      return (data || []) as ServiceEntrySheetDB[];
+    },
+    enabled: !!organizationId && (options?.enabled !== false),
+    staleTime: 1000 * 60 * 2,
+  });
+}
+
+export function useCreateServiceEntrySheet(options?: { onSuccess?: (data: ServiceEntrySheetDB) => void; onError?: (error: Error) => void }) {
+  const { organizationId } = useOrganization();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (ses: Omit<ServiceEntrySheetDB, 'id' | 'organization_id' | 'created_at' | 'updated_at' | 'ses_number'>) => {
+      if (!organizationId) throw new Error('No organization selected');
+
+      const sesNumber = `SES-${Date.now().toString(36).toUpperCase()}`;
+
+      const { data, error } = await supabase
+        .from('service_entry_sheets')
+        .insert({
+          ...ses,
+          ses_number: sesNumber,
+          organization_id: organizationId,
+        })
+        .select()
+        .single();
+
+      if (error) throw new Error(error.message);
+      console.log('[useCreateServiceEntrySheet] Created SES:', data?.id);
+      return data as ServiceEntrySheetDB;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['service_entry_sheets'] });
+      queryClient.invalidateQueries({ queryKey: ['service_requisitions'] });
+      options?.onSuccess?.(data);
+    },
+    onError: (error) => {
+      console.error('[useCreateServiceEntrySheet] Error:', error);
+      options?.onError?.(error as Error);
+    },
+  });
+}
+
+export function usePostServiceRequisitionToSES(options?: { onSuccess?: (data: { requisition: ServiceRequisition; ses: ServiceEntrySheetDB }) => void; onError?: (error: Error) => void }) {
+  const { organizationId } = useOrganization();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ requisitionId, postedBy, completionDate, notes }: { requisitionId: string; postedBy: string; completionDate: string; notes?: string }) => {
+      if (!organizationId) throw new Error('No organization selected');
+
+      const { data: reqData, error: reqFetchError } = await supabase
+        .from('service_requisitions')
+        .select('*')
+        .eq('id', requisitionId)
+        .eq('organization_id', organizationId)
+        .single();
+
+      if (reqFetchError || !reqData) throw new Error('Requisition not found');
+
+      const requisition = reqData as ServiceRequisition;
+      
+      if (requisition.status !== 'approved') {
+        throw new Error('Only approved requisitions can be posted to SES');
+      }
+
+      const now = new Date().toISOString();
+      const sesNumber = `SES-${Date.now().toString(36).toUpperCase()}`;
+
+      const sesData = {
+        ses_number: sesNumber,
+        organization_id: organizationId,
+        requisition_id: requisition.id,
+        requisition_number: requisition.requisition_number,
+        source_po_id: requisition.source_po_id,
+        source_po_number: requisition.source_po_number,
+        vendor_id: requisition.vendor_id,
+        vendor_name: requisition.vendor_name,
+        department_id: requisition.department_id,
+        department_name: requisition.department_name,
+        service_type: requisition.service_type,
+        service_description: requisition.service_description,
+        invoice_number: requisition.invoice_number || '',
+        invoice_date: requisition.invoice_date || now,
+        invoice_amount: requisition.invoice_amount,
+        status: 'posted',
+        completion_date: completionDate,
+        gl_account: requisition.gl_account,
+        cost_center: requisition.cost_center,
+        posted_by: postedBy,
+        posted_at: now,
+        notes: notes || null,
+        created_by: postedBy,
+      };
+
+      const { data: ses, error: sesError } = await supabase
+        .from('service_entry_sheets')
+        .insert(sesData)
+        .select()
+        .single();
+
+      if (sesError) throw new Error(sesError.message);
+
+      const { data: updatedReq, error: reqUpdateError } = await supabase
+        .from('service_requisitions')
+        .update({ status: 'posted' })
+        .eq('id', requisitionId)
+        .eq('organization_id', organizationId)
+        .select()
+        .single();
+
+      if (reqUpdateError) throw new Error(reqUpdateError.message);
+
+      console.log('[usePostServiceRequisitionToSES] Posted requisition to SES:', ses?.id);
+      return { requisition: updatedReq as ServiceRequisition, ses: ses as ServiceEntrySheetDB };
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['service_entry_sheets'] });
+      queryClient.invalidateQueries({ queryKey: ['service_requisitions'] });
+      queryClient.invalidateQueries({ queryKey: ['service_requisition'] });
+      options?.onSuccess?.(data);
+    },
+    onError: (error) => {
+      console.error('[usePostServiceRequisitionToSES] Error:', error);
+      options?.onError?.(error as Error);
+    },
+  });
+}

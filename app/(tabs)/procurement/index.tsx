@@ -25,6 +25,7 @@ import {
   Wrench,
   Building2,
   HardHat,
+  Receipt,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -36,6 +37,7 @@ import {
   usePurchaseRequisitionsQuery,
   useProcurementVendorsQuery,
 } from '@/hooks/useSupabaseProcurement';
+import { useServiceRequisitionsQuery } from '@/hooks/useSupabaseProcurementExtended';
 import { 
   POType,
   PO_TYPE_LABELS,
@@ -75,6 +77,8 @@ export default function ProcurementDashboardScreen() {
     activeOnly: true,
   });
 
+  const { data: serviceRequisitions = [], refetch: refetchServiceReqs } = useServiceRequisitionsQuery({});
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     console.log('[ProcurementDashboard] Refreshing data...');
@@ -85,13 +89,14 @@ export default function ProcurementDashboardScreen() {
         refetchRequests(),
         refetchRequisitions(),
         refetchVendors(),
+        refetchServiceReqs(),
       ]);
     } catch (error) {
       console.error('[ProcurementDashboard] Refresh error:', error);
     } finally {
       setRefreshing(false);
     }
-  }, [refetchStats, refetchPOs, refetchRequests, refetchRequisitions, refetchVendors]);
+  }, [refetchStats, refetchPOs, refetchRequests, refetchRequisitions, refetchVendors, refetchServiceReqs]);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -157,15 +162,21 @@ export default function ProcurementDashboardScreen() {
       pendingApprovals: pendingApprovals.length,
       pendingPOCreation: approvedPOs.length,
       pendingReceiving: pendingReceiving.length,
-      pendingService: purchaseOrders.filter(
+      pendingServicePOs: purchaseOrders.filter(
         po => po.po_type === 'service' && po.status === 'ordered'
+      ).length,
+      pendingServiceReqs: serviceRequisitions.filter(
+        r => r.status === 'pending_tier2_approval' || r.status === 'pending_tier3_approval'
+      ).length,
+      approvedServiceReqs: serviceRequisitions.filter(
+        r => r.status === 'approved'
       ).length,
       activePOs: activePOs.length,
       thisMonthSpend,
       totalPendingValue,
       activeVendors: vendors.length,
     };
-  }, [purchaseOrders, purchaseRequests, requisitions, vendors]);
+  }, [purchaseOrders, purchaseRequests, requisitions, vendors, serviceRequisitions]);
 
   const filteredPOs = useMemo(() => {
     let pos = [...purchaseOrders];
@@ -436,11 +447,25 @@ export default function ProcurementDashboardScreen() {
               '/procurement/receive'
             )}
             {renderPendingItem(
-              'Pending Service',
-              metrics.pendingService,
+              'Service Reqs - Pending Approval',
+              metrics.pendingServiceReqs,
+              '#F97316',
+              <Receipt size={18} color="#F97316" />,
+              '/procurement/service-requisitions'
+            )}
+            {renderPendingItem(
+              'Service Reqs - Ready for SES',
+              metrics.approvedServiceReqs,
+              '#059669',
+              <Send size={18} color="#059669" />,
+              '/procurement/service-requisitions'
+            )}
+            {renderPendingItem(
+              'Service POs In Progress',
+              metrics.pendingServicePOs,
               '#06B6D4',
               <Wrench size={18} color="#06B6D4" />,
-              '/procurement/polist'
+              '/procurement/servicepo'
             )}
           </View>
         </View>
@@ -489,6 +514,13 @@ export default function ProcurementDashboardScreen() {
             >
               <CheckCircle size={18} color="#fff" />
               <Text style={styles.quickActionText}>Approvals</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.quickAction, { backgroundColor: '#F97316' }]}
+              onPress={() => handleNavigate('/procurement/service-requisitions')}
+            >
+              <Receipt size={18} color="#fff" />
+              <Text style={styles.quickActionText}>Service Reqs</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.quickAction, { backgroundColor: '#F59E0B' }]}
