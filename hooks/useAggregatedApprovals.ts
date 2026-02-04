@@ -72,7 +72,7 @@ export function useAggregatedPurchaseApprovals() {
         .from('purchase_requests')
         .select('*')
         .eq('organization_id', organizationId)
-        .eq('status', 'submitted')
+        .in('status', ['pending_manager_approval'])
         .order('created_at', { ascending: false });
 
       if (!prError && purchaseRequests) {
@@ -93,9 +93,13 @@ export function useAggregatedPurchaseApprovals() {
           metadata: {
             requestNumber: pr.request_number,
             department: pr.department_name,
+            departmentId: pr.department_id,
             neededBy: pr.needed_by_date,
             lineItems: pr.line_items,
+            priority: pr.priority,
           },
+          currentStep: 1,
+          totalSteps: 1,
         }));
         results.push(...prApprovals);
       }

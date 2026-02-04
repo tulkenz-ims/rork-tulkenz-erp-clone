@@ -67,7 +67,7 @@ import {
   type AggregatedApproval,
 } from '@/hooks/useAggregatedApprovals';
 import { useApproveTimeOff, useRejectTimeOff } from '@/hooks/useSupabaseTimeOff';
-import { useProcessApprovalAndUpdateStatus } from '@/hooks/useSupabaseProcurement';
+import { useProcessApprovalAndUpdateStatus, useManagerApprovePurchaseRequest, useManagerRejectPurchaseRequest } from '@/hooks/useSupabaseProcurement';
 import { useManagerApproveSwap, useRejectShiftSwap } from '@/hooks/useSupabaseShiftSwaps';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -133,11 +133,13 @@ export default function ApprovalsScreen() {
   const approveTimeOffMutation = useApproveTimeOff();
   const rejectTimeOffMutation = useRejectTimeOff();
   const processApprovalMutation = useProcessApprovalAndUpdateStatus();
+  const managerApprovePRMutation = useManagerApprovePurchaseRequest();
+  const managerRejectPRMutation = useManagerRejectPurchaseRequest();
   const managerApproveSwapMutation = useManagerApproveSwap();
   const rejectShiftSwapMutation = useRejectShiftSwap();
   
   const isTimeOffMutating = approveTimeOffMutation.isPending || rejectTimeOffMutation.isPending;
-  const isProcurementMutating = processApprovalMutation.isPending;
+  const isProcurementMutating = processApprovalMutation.isPending || managerApprovePRMutation.isPending || managerRejectPRMutation.isPending;
   const isShiftSwapMutating = managerApproveSwapMutation.isPending || rejectShiftSwapMutation.isPending;
 
   const [activeTab, setActiveTab] = useState<TabType>('purchase');
@@ -367,9 +369,15 @@ export default function ApprovalsScreen() {
                 });
                 console.log('[ApprovalsScreen] Approved shift swap:', swapId);
               } else if (approval.source === 'purchase_request') {
-                console.log('[ApprovalsScreen] Purchase request approval - needs workflow instance');
-                Alert.alert('Info', 'Purchase requests require workflow approval configuration.');
-                return;
+                const requestId = approval.referenceId.startsWith('pr-') 
+                  ? approval.referenceId.slice(3) 
+                  : approval.referenceId;
+                await managerApprovePRMutation.mutateAsync({
+                  requestId,
+                  approvedBy: userName,
+                  approvedById: currentUserId,
+                });
+                console.log('[ApprovalsScreen] Approved purchase request:', requestId);
               } else {
                 await approveStepMutation.mutateAsync({
                   instanceId: approval.instanceId,
@@ -395,7 +403,7 @@ export default function ApprovalsScreen() {
         },
       ]
     );
-  }, [approveStepMutation, approveTimeOffMutation, processApprovalMutation, managerApproveSwapMutation, currentUserId, user, queryClient]);
+  }, [approveStepMutation, approveTimeOffMutation, processApprovalMutation, managerApprovePRMutation, managerApproveSwapMutation, currentUserId, user, queryClient]);
 
   const handleRejectSupabaseStep = useCallback((approval: MappedApproval) => {
     setRejectingId(approval.instanceId);
@@ -527,6 +535,17 @@ export default function ApprovalsScreen() {
             managerName: userName,
           });
           console.log('[ApprovalsScreen] Rejected time off request:', aggregatedApproval.sourceId);
+        } else if (aggregatedApproval.source === 'purchase_request') {
+          const requestId = aggregatedApproval.sourceId.startsWith('pr-') 
+            ? aggregatedApproval.sourceId.slice(3) 
+            : aggregatedApproval.sourceId;
+          await managerRejectPRMutation.mutateAsync({
+            requestId,
+            rejectedBy: userName,
+            rejectedById: currentUserId,
+            reason: rejectReason || undefined,
+          });
+          console.log('[ApprovalsScreen] Rejected purchase request:', requestId);
         } else if (aggregatedApproval.source === 'po_approval') {
           const approvalId = aggregatedApproval.sourceId.startsWith('poa-') 
             ? aggregatedApproval.sourceId.slice(4) 
@@ -613,7 +632,7 @@ export default function ApprovalsScreen() {
 
     setRejectingId(null);
     setRejectReason('');
-  }, [rejectingId, rejectReason, rejectIsHR, approvals, rejectPurchaseTier, rejectTimeApproval, rejectPermit, mappedSupabaseApprovals, useSupabaseData, rejectStepMutation, rejectTimeOffMutation, processApprovalMutation, rejectShiftSwapMutation, currentUserId, user, aggregatedPurchase, aggregatedTime, aggregatedPermits, queryClient]);
+  }, [rejectingId, rejectReason, rejectIsHR, approvals, rejectPurchaseTier, rejectTimeApproval, rejectPermit, mappedSupabaseApprovals, useSupabaseData, rejectStepMutation, rejectTimeOffMutation, processApprovalMutation, managerRejectPRMutation, rejectShiftSwapMutation, currentUserId, user, aggregatedPurchase, aggregatedTime, aggregatedPermits, queryClient]);
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);

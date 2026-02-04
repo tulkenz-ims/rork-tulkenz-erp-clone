@@ -26,17 +26,17 @@ import {
   ArrowRight,
   X,
   Send,
-  Eye,
+  UserCheck,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useUser } from '@/contexts/UserContext';
 import {
   usePurchaseRequestsQuery,
-  useApprovePurchaseRequest,
   useRejectPurchaseRequest,
   useConvertRequestToRequisition,
   useMarkRequestUnderReview,
+  useSendRequestForManagerApproval,
   PurchaseRequestLineItem,
 } from '@/hooks/useSupabaseProcurement';
 import { 
@@ -94,18 +94,6 @@ export default function PurchaseRequestsScreen() {
 
   const { data: rawRequests = [], isLoading, refetch, isRefetching } = usePurchaseRequestsQuery();
 
-  const approveRequest = useApprovePurchaseRequest({
-    onSuccess: () => {
-      console.log('[PurchaseRequests] Request approved successfully');
-      setShowDetailModal(false);
-      refetch();
-    },
-    onError: (error) => {
-      console.error('[PurchaseRequests] Error approving request:', error);
-      Alert.alert('Error', 'Failed to approve request. Please try again.');
-    },
-  });
-
   const rejectRequest = useRejectPurchaseRequest({
     onSuccess: () => {
       console.log('[PurchaseRequests] Request rejected successfully');
@@ -138,6 +126,19 @@ export default function PurchaseRequestsScreen() {
     },
     onError: (error) => {
       console.error('[PurchaseRequests] Error marking request:', error);
+    },
+  });
+
+  const sendForManagerApproval = useSendRequestForManagerApproval({
+    onSuccess: () => {
+      console.log('[PurchaseRequests] Request sent for manager approval');
+      setShowDetailModal(false);
+      refetch();
+      Alert.alert('Success', 'Request sent to department manager for approval');
+    },
+    onError: (error) => {
+      console.error('[PurchaseRequests] Error sending for approval:', error);
+      Alert.alert('Error', 'Failed to send for approval. Please try again.');
     },
   });
 
@@ -184,10 +185,11 @@ export default function PurchaseRequestsScreen() {
   const metrics = useMemo(() => {
     const submitted = requests.filter(r => r.status === 'submitted').length;
     const underReview = requests.filter(r => r.status === 'under_review').length;
+    const pendingManager = requests.filter(r => r.status === 'pending_manager_approval').length;
     const approved = requests.filter(r => r.status === 'approved').length;
     const total = requests.length;
     
-    return { submitted, underReview, approved, total };
+    return { submitted, underReview, pendingManager, approved, total };
   }, [requests]);
 
   const filteredRequests = useMemo(() => {
@@ -226,22 +228,23 @@ export default function PurchaseRequestsScreen() {
     }
   };
 
-  const handleApproveRequest = (request: DisplayPurchaseRequest) => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  const handleSendForManagerApproval = (request: DisplayPurchaseRequest) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     Alert.alert(
-      'Approve Request',
-      `Approve ${request.request_number}?`,
+      'Send for Department Approval',
+      `Send ${request.request_number} to ${request.department_name || 'Department'} Manager for approval?`,
       [
         { text: 'Cancel', style: 'cancel' },
         { 
-          text: 'Approve', 
+          text: 'Send', 
           onPress: () => {
-            console.log('[PurchaseRequests] Approving request:', request.request_id);
-            approveRequest.mutate({
+            console.log('[PurchaseRequests] Sending request for manager approval:', request.request_id);
+            sendForManagerApproval.mutate({
               requestId: request.request_id,
-              approvedBy: userProfile?.first_name && userProfile?.last_name 
+              sentBy: userProfile?.first_name && userProfile?.last_name 
                 ? `${userProfile.first_name} ${userProfile.last_name}`
                 : 'Current User',
+              sentById: userProfile?.id,
             });
           }
         },
@@ -435,8 +438,9 @@ export default function PurchaseRequestsScreen() {
   const renderDetailModal = () => {
     if (!selectedRequest) return null;
 
-    const canApprove = selectedRequest.status === 'submitted' || selectedRequest.status === 'under_review';
+    const canSendForApproval = selectedRequest.status === 'submitted' || selectedRequest.status === 'under_review';
     const canCreateRequisition = selectedRequest.status === 'approved';
+    const isPendingManager = selectedRequest.status === 'pending_manager_approval';
 
     return (
       <Modal
@@ -576,7 +580,7 @@ export default function PurchaseRequestsScreen() {
             </View>
 
             <View style={styles.modalActions}>
-              {canApprove && (
+              {canSendForApproval && (
                 <>
                   <TouchableOpacity
                     style={[styles.actionButton, styles.rejectButton]}
@@ -593,20 +597,28 @@ export default function PurchaseRequestsScreen() {
                     )}
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={[styles.actionButton, styles.approveButton]}
-                    onPress={() => handleApproveRequest(selectedRequest)}
-                    disabled={approveRequest.isPending}
+                    style={[styles.actionButton, styles.sendApprovalButton]}
+                    onPress={() => handleSendForManagerApproval(selectedRequest)}
+                    disabled={sendForManagerApproval.isPending}
                   >
-                    {approveRequest.isPending ? (
+                    {sendForManagerApproval.isPending ? (
                       <ActivityIndicator size="small" color="#fff" />
                     ) : (
                       <>
-                        <CheckCircle size={18} color="#fff" />
-                        <Text style={[styles.actionButtonText, { color: '#fff' }]}>Approve</Text>
+                        <UserCheck size={18} color="#fff" />
+                        <Text style={[styles.actionButtonText, { color: '#fff' }]}>Send for Dept Approval</Text>
                       </>
                     )}
                   </TouchableOpacity>
                 </>
+              )}
+              {isPendingManager && (
+                <View style={[styles.pendingBanner, { backgroundColor: '#8B5CF615', borderColor: '#8B5CF6' }]}>
+                  <UserCheck size={16} color="#8B5CF6" />
+                  <Text style={[styles.pendingBannerText, { color: '#8B5CF6' }]}>
+                    Awaiting Department Manager Approval
+                  </Text>
+                </View>
               )}
               {canCreateRequisition && (
                 <TouchableOpacity
@@ -651,7 +663,7 @@ export default function PurchaseRequestsScreen() {
       >
         <View style={styles.metricsRow}>
           {renderMetricCard('Submitted', metrics.submitted, '#3B82F6', <Send size={16} color="#3B82F6" />)}
-          {renderMetricCard('In Review', metrics.underReview, '#F59E0B', <Eye size={16} color="#F59E0B" />)}
+          {renderMetricCard('Pending Mgr', metrics.pendingManager, '#8B5CF6', <UserCheck size={16} color="#8B5CF6" />)}
           {renderMetricCard('Approved', metrics.approved, '#10B981', <CheckCircle size={16} color="#10B981" />)}
         </View>
 
@@ -678,7 +690,8 @@ export default function PurchaseRequestsScreen() {
         >
           {renderStatusFilter('all', 'All')}
           {renderStatusFilter('submitted', 'Submitted')}
-          {renderStatusFilter('under_review', 'Under Review')}
+          {renderStatusFilter('under_review', 'In Review')}
+          {renderStatusFilter('pending_manager_approval', 'Pending Mgr')}
           {renderStatusFilter('approved', 'Approved')}
           {renderStatusFilter('converted', 'Converted')}
           {renderStatusFilter('rejected', 'Rejected')}
@@ -1059,8 +1072,25 @@ const styles = StyleSheet.create({
   approveButton: {
     backgroundColor: '#10B981',
   },
+  sendApprovalButton: {
+    backgroundColor: '#8B5CF6',
+  },
   createButton: {
     backgroundColor: '#8B5CF6',
+  },
+  pendingBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    gap: 8,
+    flex: 1,
+  },
+  pendingBannerText: {
+    fontSize: 14,
+    fontWeight: '500',
   },
   actionButtonText: {
     fontSize: 15,

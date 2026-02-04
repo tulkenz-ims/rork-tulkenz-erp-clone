@@ -1432,6 +1432,206 @@ export function useMarkRequestUnderReview(options?: {
   });
 }
 
+export function useSendRequestForManagerApproval(options?: {
+  onSuccess?: (data: PurchaseRequest) => void;
+  onError?: (error: Error) => void;
+}) {
+  const { organizationId } = useOrganization();
+  const queryClient = useQueryClient();
+  const updateRequest = useUpdatePurchaseRequest();
+  
+  return useMutation({
+    mutationFn: async ({
+      requestId,
+      sentBy,
+      sentById,
+      departmentManagerId,
+      departmentManagerName,
+    }: {
+      requestId: string;
+      sentBy: string;
+      sentById?: string;
+      departmentManagerId?: string;
+      departmentManagerName?: string;
+    }) => {
+      if (!organizationId) throw new Error('No organization selected');
+      
+      const requestResult = await fetchById('purchase_requests', requestId, organizationId);
+      if (requestResult.error || !requestResult.data) {
+        throw new Error('Request not found');
+      }
+      
+      const request = requestResult.data;
+      
+      const { error: approvalError } = await supabase.from('po_approvals').insert({
+        organization_id: organizationId,
+        po_id: null,
+        requisition_id: null,
+        approval_type: 'purchase_request',
+        tier: 1,
+        tier_name: 'Department Manager',
+        approver_id: departmentManagerId || null,
+        approver_name: departmentManagerName || 'Department Manager',
+        approver_role: 'Department Manager',
+        status: 'pending',
+        amount_threshold: request.total_estimated,
+        comments: `Purchase Request ${request.request_number} sent for department approval by ${sentBy}`,
+      });
+      
+      if (approvalError) {
+        console.error('[useSendRequestForManagerApproval] Error creating approval:', approvalError);
+        throw new Error(approvalError.message);
+      }
+      
+      const updatedRequest = await updateRequest.mutateAsync({
+        id: requestId,
+        updates: {
+          status: 'pending_manager_approval',
+        },
+      });
+      
+      console.log('[useSendRequestForManagerApproval] Sent request for manager approval:', requestId);
+      return updatedRequest;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['purchase_requests'] });
+      queryClient.invalidateQueries({ queryKey: ['po_approvals'] });
+      queryClient.invalidateQueries({ queryKey: ['aggregated_purchase_approvals'] });
+      options?.onSuccess?.(data);
+    },
+    onError: (error) => {
+      console.error('[useSendRequestForManagerApproval] Error:', error);
+      options?.onError?.(error as Error);
+    },
+  });
+}
+
+export function useManagerApprovePurchaseRequest(options?: {
+  onSuccess?: (data: PurchaseRequest) => void;
+  onError?: (error: Error) => void;
+}) {
+  const { organizationId } = useOrganization();
+  const queryClient = useQueryClient();
+  const updateRequest = useUpdatePurchaseRequest();
+  
+  return useMutation({
+    mutationFn: async ({
+      requestId,
+      approvedBy,
+      approvedById,
+    }: {
+      requestId: string;
+      approvedBy: string;
+      approvedById?: string;
+    }) => {
+      if (!organizationId) throw new Error('No organization selected');
+      
+      const { error: updateApprovalError } = await supabase
+        .from('po_approvals')
+        .update({
+          status: 'approved',
+          decision_date: new Date().toISOString(),
+          approver_name: approvedBy,
+          approver_id: approvedById || null,
+          comments: `Approved by ${approvedBy}`,
+        })
+        .eq('organization_id', organizationId)
+        .eq('approval_type', 'purchase_request')
+        .eq('status', 'pending');
+      
+      if (updateApprovalError) {
+        console.error('[useManagerApprovePurchaseRequest] Error updating approval:', updateApprovalError);
+      }
+      
+      const updatedRequest = await updateRequest.mutateAsync({
+        id: requestId,
+        updates: {
+          status: 'approved',
+          approved_date: new Date().toISOString(),
+          approved_by: approvedBy,
+        },
+      });
+      
+      console.log('[useManagerApprovePurchaseRequest] Manager approved request:', requestId);
+      return updatedRequest;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['purchase_requests'] });
+      queryClient.invalidateQueries({ queryKey: ['po_approvals'] });
+      queryClient.invalidateQueries({ queryKey: ['aggregated_purchase_approvals'] });
+      options?.onSuccess?.(data);
+    },
+    onError: (error) => {
+      console.error('[useManagerApprovePurchaseRequest] Error:', error);
+      options?.onError?.(error as Error);
+    },
+  });
+}
+
+export function useManagerRejectPurchaseRequest(options?: {
+  onSuccess?: (data: PurchaseRequest) => void;
+  onError?: (error: Error) => void;
+}) {
+  const { organizationId } = useOrganization();
+  const queryClient = useQueryClient();
+  const updateRequest = useUpdatePurchaseRequest();
+  
+  return useMutation({
+    mutationFn: async ({
+      requestId,
+      rejectedBy,
+      rejectedById,
+      reason,
+    }: {
+      requestId: string;
+      rejectedBy: string;
+      rejectedById?: string;
+      reason?: string;
+    }) => {
+      if (!organizationId) throw new Error('No organization selected');
+      
+      const { error: updateApprovalError } = await supabase
+        .from('po_approvals')
+        .update({
+          status: 'rejected',
+          decision_date: new Date().toISOString(),
+          approver_name: rejectedBy,
+          approver_id: rejectedById || null,
+          comments: reason || `Rejected by ${rejectedBy}`,
+        })
+        .eq('organization_id', organizationId)
+        .eq('approval_type', 'purchase_request')
+        .eq('status', 'pending');
+      
+      if (updateApprovalError) {
+        console.error('[useManagerRejectPurchaseRequest] Error updating approval:', updateApprovalError);
+      }
+      
+      const updatedRequest = await updateRequest.mutateAsync({
+        id: requestId,
+        updates: {
+          status: 'rejected',
+          approved_date: new Date().toISOString(),
+          approved_by: rejectedBy,
+        },
+      });
+      
+      console.log('[useManagerRejectPurchaseRequest] Manager rejected request:', requestId);
+      return updatedRequest;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['purchase_requests'] });
+      queryClient.invalidateQueries({ queryKey: ['po_approvals'] });
+      queryClient.invalidateQueries({ queryKey: ['aggregated_purchase_approvals'] });
+      options?.onSuccess?.(data);
+    },
+    onError: (error) => {
+      console.error('[useManagerRejectPurchaseRequest] Error:', error);
+      options?.onError?.(error as Error);
+    },
+  });
+}
+
 export function useCancelRequisition(options?: {
   onSuccess?: (data: PurchaseRequisition) => void;
   onError?: (error: Error) => void;

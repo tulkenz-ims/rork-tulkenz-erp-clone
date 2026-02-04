@@ -156,7 +156,7 @@ export const PO_STATUS_COLORS: Record<POStatus, string> = {
   cancelled: '#DC2626',
 };
 
-export type RequestStatus = 'draft' | 'submitted' | 'under_review' | 'approved' | 'rejected' | 'converted' | 'cancelled';
+export type RequestStatus = 'draft' | 'submitted' | 'under_review' | 'pending_manager_approval' | 'approved' | 'rejected' | 'converted' | 'cancelled';
 
 export type RequisitionStatus = 'draft' | 'pending_approval' | 'approved' | 'rejected' | 'converted_to_po' | 'cancelled';
 
@@ -217,6 +217,7 @@ export const REQUEST_STATUS_LABELS: Record<RequestStatus, string> = {
   draft: 'Draft',
   submitted: 'Submitted',
   under_review: 'Under Review',
+  pending_manager_approval: 'Pending Manager Approval',
   approved: 'Approved',
   rejected: 'Rejected',
   converted: 'Converted to Requisition',
@@ -227,6 +228,7 @@ export const REQUEST_STATUS_COLORS: Record<RequestStatus, string> = {
   draft: '#6B7280',
   submitted: '#3B82F6',
   under_review: '#F59E0B',
+  pending_manager_approval: '#8B5CF6',
   approved: '#10B981',
   rejected: '#EF4444',
   converted: '#8B5CF6',
