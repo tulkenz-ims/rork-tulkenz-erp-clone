@@ -67,7 +67,7 @@ import { useCreateWorkOrder, useWorkOrdersQuery } from '@/hooks/useSupabaseWorkO
 import { useEquipmentQuery } from '@/hooks/useSupabaseEquipment';
 import { useFacilities } from '@/hooks/useFacilities';
 import { useLocations } from '@/hooks/useLocations';
-import { useCreatePurchaseRequest, useSubmitPurchaseRequest, PurchaseRequestLineItem } from '@/hooks/useSupabaseProcurement';
+import { PurchaseRequestLineItem } from '@/hooks/useSupabaseProcurement';
 import { useTaskFeedTemplatesQuery, useCreateTaskFeedPost, useTaskFeedPostsWithTasksQuery, useDeleteTaskFeedPost, useCanDeleteTaskFeedPost, useCreateManualTaskFeedPost } from '@/hooks/useTaskFeedTemplates';
 import { TaskFeedTemplate, FormField, ButtonType } from '@/types/taskFeedTemplates';
 import DynamicFormRenderer from '@/components/DynamicFormRenderer';
@@ -76,6 +76,7 @@ import DepartmentStatusBadges, { DepartmentTaskBadge, DepartmentStatusBadgesComp
 import { CompactDepartmentBadges } from '@/components/DepartmentCompletionBadges';
 import { TaskFeedDepartmentTask } from '@/types/taskFeedTemplates';
 import { Tables } from '@/lib/supabase';
+import PurchaseRequestForm from '@/components/PurchaseRequestForm';
 import { usePushNotifications } from '@/contexts/PushNotificationsContext';
 
 type SupabaseTaskVerification = Tables['task_verifications'];
@@ -308,31 +309,7 @@ export default function TaskFeedScreen() {
     );
   }, [deletePostMutation]);
 
-  const createPurchaseRequestMutation = useCreatePurchaseRequest({
-    onSuccess: (data) => {
-      console.log('[TaskFeed] Purchase request created:', data.request_number);
-    },
-    onError: (error) => {
-      console.error('[TaskFeed] Error creating purchase request:', error);
-      Alert.alert('Error', 'Failed to create purchase request. Please try again.');
-    },
-  });
   
-  const submitPurchaseRequestMutation = useSubmitPurchaseRequest({
-    onSuccess: (data) => {
-      console.log('[TaskFeed] Purchase request submitted:', data.request_number);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert(
-        'Request Submitted',
-        `Your purchase request ${data.request_number} has been submitted for review.`,
-        [{ text: 'OK' }]
-      );
-    },
-    onError: (error) => {
-      console.error('[TaskFeed] Error submitting purchase request:', error);
-      Alert.alert('Error', 'Failed to submit purchase request. Please try again.');
-    },
-  });
 
   const createManualPostMutation = useCreateManualTaskFeedPost({
     onSuccess: async (data) => {
@@ -462,15 +439,6 @@ export default function TaskFeedScreen() {
   const [workOrderPriority, setWorkOrderPriority] = useState<'low' | 'medium' | 'high' | 'critical'>('medium');
 
   const [showPurchaseRequestModal, setShowPurchaseRequestModal] = useState(false);
-  const [purchaseItemDescription, setPurchaseItemDescription] = useState('');
-  const [purchaseQuantity, setPurchaseQuantity] = useState('');
-  const [purchaseEstimatedPrice, setPurchaseEstimatedPrice] = useState('');
-  const [purchaseNeededBy, setPurchaseNeededBy] = useState('');
-  const [purchasePriority, setPurchasePriority] = useState<'low' | 'normal' | 'high' | 'urgent'>('normal');
-  const [purchaseNotes, setPurchaseNotes] = useState('');
-  const [purchasePhotoUri, setPurchasePhotoUri] = useState<string | null>(null);
-  const [purchaseLink, setPurchaseLink] = useState('');
-  const [showPurchaseDatePicker, setShowPurchaseDatePicker] = useState(false);
 
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<TaskFeedTemplate | null>(null);
@@ -934,61 +902,11 @@ export default function TaskFeedScreen() {
 
   const hasSearchDateRange = searchDateFrom || searchDateTo;
 
-  const handleSubmitPurchaseRequest = useCallback(async () => {
-    if (!purchaseItemDescription.trim()) {
-      Alert.alert('Missing Information', 'Please enter an item description.');
-      return;
-    }
-
-    const qty = parseInt(purchaseQuantity, 10);
-    if (!qty || qty <= 0) {
-      Alert.alert('Missing Information', 'Please enter a valid quantity.');
-      return;
-    }
-
-    const price = parseFloat(purchaseEstimatedPrice);
-    if (!price || price <= 0) {
-      Alert.alert('Missing Information', 'Please enter an estimated unit price.');
-      return;
-    }
-
-    const lineItem: PurchaseRequestLineItem = {
-      line_id: `line-${Date.now()}`,
-      line_number: 1,
-      description: purchaseItemDescription.trim(),
-      quantity: qty,
-      estimated_unit_price: price,
-      estimated_total: qty * price,
-      is_stock: false,
-      notes: purchaseNotes.trim() || undefined,
-    };
-
-    try {
-      const newRequest = await createPurchaseRequestMutation.mutateAsync({
-        requester_id: user?.id || 'emp-001',
-        requester_name: user ? `${user.first_name} ${user.last_name}` : 'Current User',
-        department_id: purchaseDepartment || undefined,
-        department_name: purchaseDepartment ? getDepartmentName(purchaseDepartment) : undefined,
-        priority: purchasePriority,
-        needed_by_date: purchaseNeededBy || undefined,
-        notes: purchaseNotes.trim() || undefined,
-        line_items: [lineItem],
-      });
-
-      await submitPurchaseRequestMutation.mutateAsync(newRequest.id);
-
-      setPurchaseItemDescription('');
-      setPurchaseQuantity('');
-      setPurchaseEstimatedPrice('');
-      setPurchaseNeededBy('');
-      setPurchasePriority('normal');
-      setPurchaseNotes('');
-      setPurchaseDepartment(null);
-      setShowPurchaseRequestModal(false);
-    } catch (error) {
-      console.error('[TaskFeed] Error in purchase request flow:', error);
-    }
-  }, [purchaseItemDescription, purchaseQuantity, purchaseEstimatedPrice, purchaseNeededBy, purchasePriority, purchaseNotes, purchaseDepartment, user, createPurchaseRequestMutation, submitPurchaseRequestMutation]);
+  const handlePurchaseRequestSuccess = useCallback((requestNumber: string) => {
+    console.log('[TaskFeed] Purchase request submitted:', requestNumber);
+    setPurchaseDepartment(null);
+    setShowPurchaseRequestModal(false);
+  }, []);
 
   const handleActionTypeSelect = useCallback((type: 'task' | 'issue' | 'purchase') => {
     setSelectedActionType(type);
@@ -1076,12 +994,6 @@ export default function TaskFeedScreen() {
     setSelectedDepartment(null);
     setIssueDepartment(null);
     setPurchaseDepartment(null);
-    setPurchaseItemDescription('');
-    setPurchaseQuantity('');
-    setPurchaseEstimatedPrice('');
-    setPurchaseNeededBy('');
-    setPurchasePriority('normal');
-    setPurchaseNotes('');
   }, []);
 
   const resetTemplateFlow = useCallback(() => {
@@ -2700,271 +2612,13 @@ export default function TaskFeedScreen() {
         </View>
       </Modal>
 
-      {/* Purchase Request Modal */}
-      <Modal visible={showPurchaseRequestModal} animationType="slide" presentationStyle="pageSheet">
-        <View style={[styles.modalContainer, { backgroundColor: colors.background }]}>
-          <View style={[styles.modalHeader, { backgroundColor: colors.surface }]}>
-            <TouchableOpacity onPress={() => { setShowPurchaseRequestModal(false); resetActionFlow(); }}>
-              <X size={24} color={colors.text} />
-            </TouchableOpacity>
-            <View style={styles.purchaseModalTitleContainer}>
-              <ShoppingCart size={20} color="#8B5CF6" />
-              <Text style={[styles.modalTitle, { color: colors.text }]}>Purchase Request</Text>
-            </View>
-            <TouchableOpacity
-              onPress={handleSubmitPurchaseRequest}
-              disabled={!purchaseItemDescription.trim() || !purchaseQuantity || !purchaseEstimatedPrice || createPurchaseRequestMutation.isPending || submitPurchaseRequestMutation.isPending}
-            >
-              <Send
-                size={24}
-                color={
-                  purchaseItemDescription.trim() && purchaseQuantity && purchaseEstimatedPrice && !createPurchaseRequestMutation.isPending
-                    ? '#8B5CF6'
-                    : colors.textTertiary
-                }
-              />
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
-            {purchaseDepartment && (
-              <View style={[styles.selectedDepartmentBanner, { backgroundColor: getDepartmentColor(purchaseDepartment) + '15', marginBottom: 12 }]}>
-                <View style={[styles.selectedDeptDot, { backgroundColor: getDepartmentColor(purchaseDepartment) }]} />
-                <Text style={[styles.selectedDepartmentText, { color: getDepartmentColor(purchaseDepartment) }]}>
-                  {getDepartmentName(purchaseDepartment)}
-                </Text>
-                <TouchableOpacity 
-                  onPress={() => { setShowPurchaseRequestModal(false); setShowDepartmentPicker(true); }}
-                  style={styles.changeDeptButton}
-                >
-                  <Text style={[styles.changeDeptText, { color: colors.primary }]}>Change</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-
-            <View style={[styles.purchaseInfoBanner, { backgroundColor: '#8B5CF6' + '10' }]}>
-              <ShoppingCart size={18} color="#8B5CF6" />
-              <Text style={[styles.purchaseInfoText, { color: '#8B5CF6' }]}>
-                Submit a purchase request for items you need. Procurement will review and process your request.
-              </Text>
-            </View>
-
-            <Text style={[styles.inputLabel, { color: colors.text }]}>Item Description *</Text>
-            <View style={[styles.notesContainer, { backgroundColor: colors.surface, marginBottom: 12 }]}>
-              <TextInput
-                style={[styles.notesInput, { color: colors.text, minHeight: 80 }]}
-                placeholder="What do you need to purchase? Be specific..."
-                placeholderTextColor={colors.textTertiary}
-                value={purchaseItemDescription}
-                onChangeText={setPurchaseItemDescription}
-                multiline
-                numberOfLines={3}
-                textAlignVertical="top"
-              />
-            </View>
-
-            <View style={styles.purchaseRowInputs}>
-              <View style={styles.purchaseHalfInput}>
-                <Text style={[styles.inputLabel, { color: colors.text }]}>Quantity *</Text>
-                <TextInput
-                  style={[styles.textInput, { backgroundColor: colors.surface, color: colors.text }]}
-                  placeholder="0"
-                  placeholderTextColor={colors.textTertiary}
-                  value={purchaseQuantity}
-                  onChangeText={setPurchaseQuantity}
-                  keyboardType="number-pad"
-                />
-              </View>
-              <View style={styles.purchaseHalfInput}>
-                <Text style={[styles.inputLabel, { color: colors.text }]}>Est. Unit Price *</Text>
-                <TextInput
-                  style={[styles.textInput, { backgroundColor: colors.surface, color: colors.text }]}
-                  placeholder="0.00"
-                  placeholderTextColor={colors.textTertiary}
-                  value={purchaseEstimatedPrice}
-                  onChangeText={setPurchaseEstimatedPrice}
-                  keyboardType="decimal-pad"
-                />
-              </View>
-            </View>
-
-            {purchaseQuantity && purchaseEstimatedPrice && (
-              <View style={[styles.estimatedTotalBanner, { backgroundColor: colors.surface }]}>
-                <Text style={[styles.estimatedTotalLabel, { color: colors.textSecondary }]}>Estimated Total:</Text>
-                <Text style={[styles.estimatedTotalValue, { color: '#8B5CF6' }]}>
-                  ${((parseFloat(purchaseQuantity) || 0) * (parseFloat(purchaseEstimatedPrice) || 0)).toFixed(2)}
-                </Text>
-              </View>
-            )}
-
-            <Text style={[styles.inputLabel, { color: colors.text }]}>Needed By Date (Optional)</Text>
-            <TouchableOpacity
-              style={[styles.datePickerButton, { backgroundColor: colors.surface, marginBottom: 16 }]}
-              onPress={() => setShowPurchaseDatePicker(true)}
-            >
-              <Calendar size={18} color={purchaseNeededBy ? colors.text : colors.textTertiary} />
-              <Text style={[styles.datePickerText, { color: purchaseNeededBy ? colors.text : colors.textTertiary }]}>
-                {purchaseNeededBy ? new Date(purchaseNeededBy).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) : 'Select date...'}
-              </Text>
-              {purchaseNeededBy && (
-                <TouchableOpacity onPress={() => setPurchaseNeededBy('')} style={styles.clearDateButton}>
-                  <X size={16} color={colors.textSecondary} />
-                </TouchableOpacity>
-              )}
-            </TouchableOpacity>
-
-            <Text style={[styles.inputLabel, { color: colors.text }]}>Priority</Text>
-            <View style={styles.priorityButtonsRow}>
-              {(['low', 'normal', 'high', 'urgent'] as const).map(priority => (
-                <TouchableOpacity
-                  key={priority}
-                  style={[
-                    styles.priorityButton,
-                    { 
-                      backgroundColor: purchasePriority === priority 
-                        ? priority === 'low' ? '#6B7280' 
-                          : priority === 'normal' ? '#3B82F6'
-                          : priority === 'high' ? '#F59E0B'
-                          : '#EF4444'
-                        : colors.surface,
-                      borderColor: priority === 'low' ? '#6B7280' 
-                        : priority === 'normal' ? '#3B82F6'
-                        : priority === 'high' ? '#F59E0B'
-                        : '#EF4444',
-                    },
-                  ]}
-                  onPress={() => setPurchasePriority(priority)}
-                >
-                  <Text
-                    style={[
-                      styles.priorityButtonText,
-                      { 
-                        color: purchasePriority === priority 
-                          ? '#fff' 
-                          : priority === 'low' ? '#6B7280' 
-                            : priority === 'normal' ? '#3B82F6'
-                            : priority === 'high' ? '#F59E0B'
-                            : '#EF4444',
-                      },
-                    ]}
-                  >
-                    {priority.charAt(0).toUpperCase() + priority.slice(1)}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <Text style={[styles.inputLabel, { color: colors.text, marginTop: 16 }]}>Product Link (Optional)</Text>
-            <View style={[styles.linkInputContainer, { backgroundColor: colors.surface }]}>
-              <Link2 size={18} color={colors.textTertiary} />
-              <TextInput
-                style={[styles.linkInput, { color: colors.text }]}
-                placeholder="https://example.com/product"
-                placeholderTextColor={colors.textTertiary}
-                value={purchaseLink}
-                onChangeText={setPurchaseLink}
-                autoCapitalize="none"
-                autoCorrect={false}
-                keyboardType="url"
-              />
-              {purchaseLink && (
-                <TouchableOpacity onPress={() => setPurchaseLink('')}>
-                  <X size={16} color={colors.textSecondary} />
-                </TouchableOpacity>
-              )}
-            </View>
-
-            <Text style={[styles.inputLabel, { color: colors.text, marginTop: 16 }]}>Photo (Optional)</Text>
-            <View style={styles.purchasePhotoSection}>
-              {purchasePhotoUri ? (
-                <View style={styles.purchasePhotoPreviewContainer}>
-                  <Image source={{ uri: purchasePhotoUri }} style={styles.purchasePhotoPreview} />
-                  <TouchableOpacity
-                    style={[styles.removePhotoButton, { backgroundColor: colors.error }]}
-                    onPress={() => setPurchasePhotoUri(null)}
-                  >
-                    <X size={16} color="#fff" />
-                  </TouchableOpacity>
-                </View>
-              ) : (
-                <View style={styles.purchasePhotoButtons}>
-                  <TouchableOpacity
-                    style={[styles.purchasePhotoButton, { backgroundColor: colors.surface }]}
-                    onPress={async () => {
-                      const result = await ImagePicker.launchCameraAsync({
-                        mediaTypes: 'images',
-                        allowsEditing: true,
-                        quality: 0.5,
-                        exif: false,
-                      });
-                      if (!result.canceled && result.assets[0]) {
-                        setPurchasePhotoUri(result.assets[0].uri);
-                      }
-                    }}
-                  >
-                    <Camera size={22} color={colors.primary} />
-                    <Text style={[styles.purchasePhotoButtonText, { color: colors.text }]}>Take Photo</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.purchasePhotoButton, { backgroundColor: colors.surface }]}
-                    onPress={async () => {
-                      const result = await ImagePicker.launchImageLibraryAsync({
-                        mediaTypes: 'images',
-                        allowsEditing: true,
-                        quality: 0.5,
-                        exif: false,
-                      });
-                      if (!result.canceled && result.assets[0]) {
-                        setPurchasePhotoUri(result.assets[0].uri);
-                      }
-                    }}
-                  >
-                    <ImageIcon size={22} color={colors.primary} />
-                    <Text style={[styles.purchasePhotoButtonText, { color: colors.text }]}>Gallery</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-            </View>
-
-            <Text style={[styles.inputLabel, { color: colors.text, marginTop: 16 }]}>Additional Notes (Optional)</Text>
-            <View style={[styles.notesContainer, { backgroundColor: colors.surface }]}>
-              <TextInput
-                style={[styles.notesInput, { color: colors.text }]}
-                placeholder="Any additional details or justification..."
-                placeholderTextColor={colors.textTertiary}
-                value={purchaseNotes}
-                onChangeText={setPurchaseNotes}
-                multiline
-                numberOfLines={3}
-                textAlignVertical="top"
-              />
-            </View>
-
-            <TouchableOpacity
-              style={[
-                styles.submitPurchaseButton,
-                {
-                  backgroundColor:
-                    purchaseItemDescription.trim() && purchaseQuantity && purchaseEstimatedPrice && !createPurchaseRequestMutation.isPending
-                      ? '#8B5CF6'
-                      : colors.border,
-                },
-              ]}
-              onPress={handleSubmitPurchaseRequest}
-              disabled={!purchaseItemDescription.trim() || !purchaseQuantity || !purchaseEstimatedPrice || createPurchaseRequestMutation.isPending || submitPurchaseRequestMutation.isPending}
-            >
-              {createPurchaseRequestMutation.isPending || submitPurchaseRequestMutation.isPending ? (
-                <Text style={styles.submitPurchaseButtonText}>Submitting...</Text>
-              ) : (
-                <>
-                  <ShoppingCart size={20} color="#fff" />
-                  <Text style={styles.submitPurchaseButtonText}>Submit Purchase Request</Text>
-                </>
-              )}
-            </TouchableOpacity>
-          </ScrollView>
-        </View>
-      </Modal>
+      {/* Purchase Request Form Component */}
+      <PurchaseRequestForm
+        visible={showPurchaseRequestModal}
+        onClose={() => { setShowPurchaseRequestModal(false); resetActionFlow(); }}
+        departmentCode={purchaseDepartment}
+        onSuccess={handlePurchaseRequestSuccess}
+      />
 
       {/* Template Picker Modal - Action Selection after Department */}
       <Modal visible={showTemplatePicker} animationType="slide" transparent>
