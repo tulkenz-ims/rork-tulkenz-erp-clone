@@ -597,6 +597,8 @@ export function useCreatePurchaseRequisition(options?: {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['purchase_requisitions'] });
       queryClient.invalidateQueries({ queryKey: ['po_approvals'] });
+      queryClient.invalidateQueries({ queryKey: ['pending_requisition_approvals_by_tier'] });
+      queryClient.invalidateQueries({ queryKey: ['requisition_approval_workflow'] });
       options?.onSuccess?.(data);
     },
     onError: (error) => {
@@ -1810,6 +1812,7 @@ export function useApproveRequisitionTier(options?: {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['purchase_requisitions'] });
       queryClient.invalidateQueries({ queryKey: ['po_approvals'] });
+      queryClient.invalidateQueries({ queryKey: ['pending_requisition_approvals_by_tier'] });
       queryClient.invalidateQueries({ queryKey: ['requisition_approval_workflow'] });
       options?.onSuccess?.(data);
     },
