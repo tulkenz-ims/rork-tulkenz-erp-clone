@@ -2561,3 +2561,210 @@ export function useVendorAverageRating(vendorId: string | undefined | null) {
     averageRating,
   };
 }
+
+export interface PendingRequisitionApproval {
+  approval_id: string;
+  requisition_id: string;
+  requisition_number: string;
+  tier: number;
+  tier_name: string;
+  department_id: string | null;
+  department_name: string | null;
+  vendor_name: string | null;
+  total: number;
+  priority: string;
+  needed_by_date: string | null;
+  created_at: string;
+  notes: string | null;
+  justification: string | null;
+  source_request_number: string | null;
+}
+
+export function usePendingRequisitionApprovalsByTier(tier: number) {
+  const { organizationId } = useOrganization();
+  
+  return useQuery({
+    queryKey: ['pending_requisition_approvals_by_tier', tier, organizationId],
+    queryFn: async () => {
+      if (!organizationId) return [];
+      
+      const { data: approvals, error: approvalError } = await supabase
+        .from('po_approvals')
+        .select('id, requisition_id, tier, tier_name, created_at')
+        .eq('organization_id', organizationId)
+        .eq('approval_type', 'requisition')
+        .eq('tier', tier)
+        .eq('status', 'pending');
+      
+      if (approvalError) throw new Error(approvalError.message);
+      if (!approvals || approvals.length === 0) return [];
+      
+      const requisitionIds = approvals.map(a => a.requisition_id).filter(Boolean) as string[];
+      
+      if (requisitionIds.length === 0) return [];
+      
+      const { data: requisitions, error: reqError } = await supabase
+        .from('purchase_requisitions')
+        .select('id, requisition_number, department_id, department_name, vendor_name, total, priority, needed_by_date, created_at, notes, justification, source_request_number')
+        .eq('organization_id', organizationId)
+        .in('id', requisitionIds);
+      
+      if (reqError) throw new Error(reqError.message);
+      
+      const result: PendingRequisitionApproval[] = approvals.map(approval => {
+        const req = requisitions?.find(r => r.id === approval.requisition_id);
+        return {
+          approval_id: approval.id,
+          requisition_id: approval.requisition_id || '',
+          requisition_number: req?.requisition_number || '',
+          tier: approval.tier,
+          tier_name: approval.tier_name || '',
+          department_id: req?.department_id || null,
+          department_name: req?.department_name || null,
+          vendor_name: req?.vendor_name || null,
+          total: req?.total || 0,
+          priority: req?.priority || 'normal',
+          needed_by_date: req?.needed_by_date || null,
+          created_at: req?.created_at || approval.created_at,
+          notes: req?.notes || null,
+          justification: req?.justification || null,
+          source_request_number: req?.source_request_number || null,
+        };
+      }).filter(item => item.requisition_id);
+      
+      console.log('[usePendingRequisitionApprovalsByTier] Tier', tier, 'found:', result.length, 'approvals');
+      return result;
+    },
+    enabled: !!organizationId,
+    staleTime: 1000 * 60 * 1,
+  });
+}
+
+export function usePendingPurchaseRequestApprovals() {
+  const { organizationId } = useOrganization();
+  
+  return useQuery({
+    queryKey: ['pending_purchase_request_approvals', organizationId],
+    queryFn: async () => {
+      if (!organizationId) return [];
+      
+      const { data, error } = await supabase
+        .from('purchase_requests')
+        .select('*')
+        .eq('organization_id', organizationId)
+        .eq('status', 'pending_manager_approval')
+        .order('created_at', { ascending: false });
+      
+      if (error) throw new Error(error.message);
+      
+      console.log('[usePendingPurchaseRequestApprovals] Found:', data?.length || 0, 'pending requests');
+      return (data || []) as PurchaseRequest[];
+    },
+    enabled: !!organizationId,
+    staleTime: 1000 * 60 * 1,
+  });
+}
+
+export function useApproveRequisitionTierWithPin(options?: {
+  onSuccess?: (data: PurchaseRequisition) => void;
+  onError?: (error: Error) => void;
+}) {
+  const approveRequisitionTier = useApproveRequisitionTier(options);
+  
+  return useMutation({
+    mutationFn: async ({
+      requisitionId,
+      tier,
+      approvedBy,
+      approvedById,
+      pin,
+    }: {
+      requisitionId: string;
+      tier: number;
+      approvedBy: string;
+      approvedById?: string;
+      pin: string;
+    }) => {
+      if (pin !== '1234') {
+        throw new Error('Invalid PIN');
+      }
+      
+      return approveRequisitionTier.mutateAsync({
+        requisitionId,
+        tier,
+        approvedBy,
+        approvedById,
+      });
+    },
+  });
+}
+
+export function useRejectRequisitionTier(options?: {
+  onSuccess?: (data: PurchaseRequisition) => void;
+  onError?: (error: Error) => void;
+}) {
+  const { organizationId } = useOrganization();
+  const queryClient = useQueryClient();
+  const updateRequisition = useUpdatePurchaseRequisition();
+  
+  return useMutation({
+    mutationFn: async ({
+      requisitionId,
+      tier,
+      rejectedBy,
+      rejectedById,
+      reason,
+    }: {
+      requisitionId: string;
+      tier: number;
+      rejectedBy: string;
+      rejectedById?: string;
+      reason?: string;
+    }) => {
+      if (!organizationId) throw new Error('No organization selected');
+      
+      const { error: approvalUpdateError } = await supabase
+        .from('po_approvals')
+        .update({
+          status: 'rejected',
+          decision_date: new Date().toISOString(),
+          approver_name: rejectedBy,
+          approver_id: rejectedById || null,
+          comments: reason || `Tier ${tier} rejected by ${rejectedBy}`,
+        })
+        .eq('organization_id', organizationId)
+        .eq('requisition_id', requisitionId)
+        .eq('tier', tier)
+        .eq('status', 'pending');
+      
+      if (approvalUpdateError) {
+        console.error('[useRejectRequisitionTier] Error updating approval:', approvalUpdateError);
+        throw new Error(approvalUpdateError.message);
+      }
+      
+      const updatedRequisition = await updateRequisition.mutateAsync({
+        id: requisitionId,
+        updates: {
+          status: 'rejected',
+          rejected_date: new Date().toISOString(),
+          rejected_by: rejectedBy,
+          rejection_reason: reason || null,
+        },
+      });
+      
+      console.log('[useRejectRequisitionTier] Rejected tier', tier, 'for requisition:', requisitionId);
+      return updatedRequisition;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['purchase_requisitions'] });
+      queryClient.invalidateQueries({ queryKey: ['po_approvals'] });
+      queryClient.invalidateQueries({ queryKey: ['pending_requisition_approvals_by_tier'] });
+      queryClient.invalidateQueries({ queryKey: ['requisition_approval_workflow'] });
+      options?.onSuccess?.(data);
+    },
+    onError: (error) => {
+      console.error('[useRejectRequisitionTier] Error:', error);
+      options?.onError?.(error as Error);
+    },
+  });
+}
