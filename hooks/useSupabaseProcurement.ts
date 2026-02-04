@@ -788,11 +788,17 @@ export function useCreateProcurementPurchaseOrder(options?: {
       shipping: number;
       notes?: string;
       line_items: POLineItem[];
+      initial_status?: ProcurementPurchaseOrder['status'];
     }) => {
       if (!organizationId) throw new Error('No organization selected');
       
       const poNumber = `PO-${new Date().getFullYear()}-${Date.now().toString(36).toUpperCase()}`;
       const total = po.subtotal + po.tax + po.shipping;
+      
+      // If coming from an approved requisition, set status to 'approved' directly
+      // Otherwise use provided status or default to 'draft'
+      const initialStatus = po.initial_status || (po.source_requisition_id ? 'approved' : 'draft');
+      console.log('[useCreateProcurementPurchaseOrder] Initial status:', initialStatus, 'from requisition:', !!po.source_requisition_id);
       
       const { data, error } = await supabase.from('procurement_purchase_orders').insert({
         organization_id: organizationId,
@@ -802,7 +808,7 @@ export function useCreateProcurementPurchaseOrder(options?: {
         vendor_name: po.vendor_name,
         department_id: po.department_id || null,
         department_name: po.department_name || null,
-        status: 'draft' as const,
+        status: initialStatus,
         subtotal: po.subtotal,
         tax: po.tax,
         shipping: po.shipping,
@@ -815,10 +821,11 @@ export function useCreateProcurementPurchaseOrder(options?: {
         notes: po.notes || null,
         line_items: po.line_items,
         attachments: [],
+        approved_date: po.source_requisition_id ? new Date().toISOString() : null,
       }).select().single();
       
       if (error) throw new Error(error.message);
-      console.log('[useCreateProcurementPurchaseOrder] Created:', data?.id);
+      console.log('[useCreateProcurementPurchaseOrder] Created:', data?.id, 'with status:', initialStatus);
       return data as ProcurementPurchaseOrder;
     },
     onSuccess: (data) => {

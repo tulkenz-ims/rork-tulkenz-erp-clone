@@ -500,11 +500,22 @@ export default function POCreateMaterialScreen() {
         });
       }
 
-      await submitPOMutation.mutateAsync(createdPO.id);
+      // If coming from an approved requisition, the PO is already approved
+      // Skip the approval process and mark as approved directly
+      if (isFromRequisition) {
+        console.log('[POCreateMaterial] PO from approved requisition - marking as approved');
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        Alert.alert('Success', 'Purchase order created and ready to order', [
+          { text: 'OK', onPress: () => router.back() }
+        ]);
+      } else {
+        // New PO not from requisition - needs approval
+        await submitPOMutation.mutateAsync(createdPO.id);
+      }
       setShowReviewModal(false);
     } catch (error) {
       console.error('[POCreateMaterial] Submit error:', error);
-      Alert.alert('Error', 'Failed to submit purchase order');
+      Alert.alert('Error', `Failed to create purchase order: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsSubmitting(false);
     }
