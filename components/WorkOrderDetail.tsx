@@ -4247,13 +4247,13 @@ const createStyles = (colors: any) =>
       borderWidth: 1,
     },
     attachmentImage: {
-      width: 60,
-      height: 60,
-      borderRadius: 8,
+      width: 48,
+      height: 48,
+      borderRadius: 6,
     },
     attachmentDoc: {
-      width: 60,
-      height: 60,
+      width: 48,
+      height: 48,
       borderRadius: 8,
       alignItems: 'center',
       justifyContent: 'center',
