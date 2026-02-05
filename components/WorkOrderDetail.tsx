@@ -181,8 +181,11 @@ export default function WorkOrderDetail({
 
   // Flatten all part request lines from Supabase into linkedParts format
   const supabaseLinkedParts = useMemo(() => {
-    if (!supabasePartsData || supabasePartsData.length === 0) return [];
-    return supabasePartsData.flatMap(request => request.lines || []);
+    if (!supabasePartsData || !Array.isArray(supabasePartsData) || supabasePartsData.length === 0) return [];
+    return supabasePartsData.flatMap(request => {
+      if (!request || !Array.isArray(request.lines)) return [];
+      return request.lines;
+    });
   }, [supabasePartsData]);
   
   // Mutation for updating work order (notes, etc.)
@@ -2454,13 +2457,18 @@ export default function WorkOrderDetail({
 
   function renderPartsSection() {
     const existingRequests = getPartRequestsByWorkOrder(workOrder.id) || [];
+    const safeLinkedParts = Array.isArray(linkedParts) ? linkedParts : [];
+    const safeExistingRequests = Array.isArray(existingRequests) ? existingRequests : [];
     const allParts = [
-      ...(linkedParts || []),
-      ...existingRequests.flatMap(r => r.lines || []),
+      ...safeLinkedParts,
+      ...safeExistingRequests.flatMap(r => {
+        if (!r || !Array.isArray(r.lines)) return [];
+        return r.lines;
+      }),
     ];
-    const uniqueParts = allParts.filter((part, index, self) =>
-      index === self.findIndex(p => p.id === part.id)
-    );
+    const uniqueParts = Array.isArray(allParts) ? allParts.filter((part, index, self) =>
+      part && index === self.findIndex(p => p && p.id === part.id)
+    ) : [];
 
     const getPartWarning = (materialId: string) => {
       return stockWarnings.warnings.find(w => w.materialId === materialId);
