@@ -189,12 +189,24 @@ export function generateIssueNumber(): string {
 }
 
 export function getWorkOrderPartSummary(
-  partRequests: WorkOrderPartRequest[],
-  partIssues: PartIssueRecord[],
-  partReturns: PartReturnRecord[],
-  workOrderId: string
-): WorkOrderPartSummary {
-  const requests = partRequests.filter(pr => pr.workOrderId === workOrderId);
+  partRequestsOrWorkOrderId: WorkOrderPartRequest[] | string,
+  partIssues?: PartIssueRecord[],
+  partReturns?: PartReturnRecord[],
+  workOrderId?: string
+): WorkOrderPartSummary | null {
+  // Handle legacy call with just workOrderId
+  if (typeof partRequestsOrWorkOrderId === 'string') {
+    return null; // Return null when called with just workOrderId - caller should handle this
+  }
+  
+  const partRequests = partRequestsOrWorkOrderId;
+  const actualWorkOrderId = workOrderId || '';
+  
+  if (!Array.isArray(partRequests)) {
+    return null;
+  }
+  
+  const requests = partRequests.filter(pr => pr.workOrderId === actualWorkOrderId);
   const issues = partIssues.filter(pi => pi.workOrderId === workOrderId);
   const returns = partReturns.filter(pr => pr.workOrderId === workOrderId);
 
@@ -218,6 +230,9 @@ export function getWorkOrderPartSummary(
   };
 }
 
-export function getPartRequestsByWorkOrder(partRequests: WorkOrderPartRequest[], workOrderId: string): WorkOrderPartRequest[] {
+export function getPartRequestsByWorkOrder(partRequests: WorkOrderPartRequest[] | undefined | null, workOrderId: string): WorkOrderPartRequest[] {
+  if (!Array.isArray(partRequests)) {
+    return [];
+  }
   return partRequests.filter(pr => pr.workOrderId === workOrderId);
 }
