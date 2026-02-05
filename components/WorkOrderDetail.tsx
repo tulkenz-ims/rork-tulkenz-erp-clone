@@ -182,7 +182,7 @@ export default function WorkOrderDetail({
   // Flatten all part request lines from Supabase into linkedParts format
   const supabaseLinkedParts = useMemo(() => {
     if (!supabasePartsData || supabasePartsData.length === 0) return [];
-    return supabasePartsData.flatMap(request => request.lines);
+    return supabasePartsData.flatMap(request => request.lines || []);
   }, [supabasePartsData]);
   
   // Mutation for updating work order (notes, etc.)
@@ -2453,10 +2453,10 @@ export default function WorkOrderDetail({
   );
 
   function renderPartsSection() {
-    const existingRequests = getPartRequestsByWorkOrder(workOrder.id);
+    const existingRequests = getPartRequestsByWorkOrder(workOrder.id) || [];
     const allParts = [
-      ...linkedParts,
-      ...(existingRequests.flatMap(r => r.lines) || []),
+      ...(linkedParts || []),
+      ...existingRequests.flatMap(r => r.lines || []),
     ];
     const uniqueParts = allParts.filter((part, index, self) =>
       index === self.findIndex(p => p.id === part.id)
