@@ -413,7 +413,7 @@ export default function WorkOrderDetail({
     if (!canEdit) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     
-    const updatedTasks = workOrder.tasks.map(task => {
+    const updatedTasks = (workOrder.tasks || []).map(task => {
       if (task.id === taskId) {
         return {
           ...task,
@@ -451,9 +451,9 @@ export default function WorkOrderDetail({
     const updatedSafety = {
       ...workOrder.safety,
       lotoRequired: enabled,
-      lotoSteps: enabled && workOrder.safety.lotoSteps.length === 0 
+      lotoSteps: enabled && (workOrder.safety?.lotoSteps || []).length === 0 
         ? DEFAULT_LOTO_STEPS 
-        : workOrder.safety.lotoSteps,
+        : (workOrder.safety?.lotoSteps || []),
     };
     
     // Update local state immediately for responsive UI
@@ -487,7 +487,7 @@ export default function WorkOrderDetail({
     const previousSafety = workOrder.safety;
     const newStep = {
       id: `loto-${Date.now()}`,
-      order: workOrder.safety.lotoSteps.length + 1,
+      order: (workOrder.safety?.lotoSteps || []).length + 1,
       description: newLotoStep.description.trim(),
       lockColor: newLotoStep.lockColor || undefined,
       energySource: newLotoStep.energySource || undefined,
@@ -496,7 +496,7 @@ export default function WorkOrderDetail({
     
     const updatedSafety = {
       ...workOrder.safety,
-      lotoSteps: [...workOrder.safety.lotoSteps, newStep],
+      lotoSteps: [...(workOrder.safety?.lotoSteps || []), newStep],
     };
     
     onUpdate(workOrder.id, { safety: updatedSafety });
@@ -528,7 +528,7 @@ export default function WorkOrderDetail({
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     
     const previousSafety = workOrder.safety;
-    const updatedSteps = workOrder.safety.lotoSteps.map(step => {
+    const updatedSteps = (workOrder.safety?.lotoSteps || []).map(step => {
       if (step.id === editingLotoStep.id) {
         return {
           ...step,
@@ -581,7 +581,7 @@ export default function WorkOrderDetail({
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
             
             const previousSafety = workOrder.safety;
-            const updatedSteps = workOrder.safety.lotoSteps
+            const updatedSteps = (workOrder.safety?.lotoSteps || [])
               .filter(step => step.id !== stepId)
               .map((step, index) => ({ ...step, order: index + 1 }));
             
@@ -617,7 +617,7 @@ export default function WorkOrderDetail({
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     
     const previousSafety = workOrder.safety;
-    const steps = [...workOrder.safety.lotoSteps];
+    const steps = [...(workOrder.safety?.lotoSteps || [])];
     const currentIndex = steps.findIndex(s => s.id === stepId);
     
     if (currentIndex === -1) return;
@@ -655,7 +655,7 @@ export default function WorkOrderDetail({
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     
     const previousSafety = workOrder.safety;
-    const currentPermits = workOrder.safety.permits;
+    const currentPermits = workOrder.safety?.permits || [];
     const updatedPermits = currentPermits.includes(permitId)
       ? currentPermits.filter(p => p !== permitId)
       : [...currentPermits, permitId];
@@ -860,7 +860,7 @@ export default function WorkOrderDetail({
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     
     const previousSafety = workOrder.safety;
-    const currentPPE = workOrder.safety.ppeRequired;
+    const currentPPE = workOrder.safety?.ppeRequired || [];
     const updatedPPE = currentPPE.includes(ppeId)
       ? currentPPE.filter(p => p !== ppeId)
       : [...currentPPE, ppeId];
@@ -1135,18 +1135,18 @@ export default function WorkOrderDetail({
   }, [workOrder, onUpdate, userDepartment, updateWorkOrderMutation]);
 
   const completedTasksCount = useMemo(() => 
-    workOrder.tasks.filter(t => t.completed).length,
+    (workOrder.tasks || []).filter(t => t.completed).length,
     [workOrder.tasks]
   );
 
   const selectedPermits = useMemo(() =>
-    PERMIT_TYPES.filter(p => workOrder.safety.permits.includes(p.id)),
-    [workOrder.safety.permits]
+    PERMIT_TYPES.filter(p => (workOrder.safety?.permits || []).includes(p.id)),
+    [workOrder.safety?.permits]
   );
 
   const selectedPPE = useMemo(() =>
-    PPE_ITEMS.filter(p => workOrder.safety.ppeRequired.includes(p.id)),
-    [workOrder.safety.ppeRequired]
+    PPE_ITEMS.filter(p => (workOrder.safety?.ppeRequired || []).includes(p.id)),
+    [workOrder.safety?.ppeRequired]
   );
 
   const partsSummary = useMemo(() => {
@@ -1586,8 +1586,8 @@ export default function WorkOrderDetail({
         'LOTO Procedure',
         'loto',
         <Lock size={18} color="#EF4444" />,
-        workOrder.safety.lotoRequired ? 'REQUIRED' : 'OFF',
-        workOrder.safety.lotoRequired ? '#EF4444' : colors.textTertiary
+        workOrder.safety?.lotoRequired ? 'REQUIRED' : 'OFF',
+        workOrder.safety?.lotoRequired ? '#EF4444' : colors.textTertiary
       )}
       {expandedSections.has('loto') && (
         <View style={styles.sectionContent}>
@@ -1597,10 +1597,10 @@ export default function WorkOrderDetail({
               style={[
                 styles.toggle,
                 {
-                  backgroundColor: workOrder.safety.lotoRequired ? '#EF4444' : colors.border,
+                  backgroundColor: workOrder.safety?.lotoRequired ? '#EF4444' : colors.border,
                 },
               ]}
-              onPress={() => handleToggleLOTO(!workOrder.safety.lotoRequired)}
+              onPress={() => handleToggleLOTO(!workOrder.safety?.lotoRequired)}
               disabled={!canEdit}
             >
               <View
@@ -1608,14 +1608,14 @@ export default function WorkOrderDetail({
                   styles.toggleThumb,
                   {
                     backgroundColor: '#FFFFFF',
-                    transform: [{ translateX: workOrder.safety.lotoRequired ? 20 : 0 }],
+                    transform: [{ translateX: workOrder.safety?.lotoRequired ? 20 : 0 }],
                   },
                 ]}
               />
             </Pressable>
           </View>
 
-          {workOrder.safety.lotoRequired && (
+          {workOrder.safety?.lotoRequired && (
             <>
               <View style={[styles.lotoWarning, { backgroundColor: '#FEF2F2', borderColor: '#FCA5A5' }]}>
                 <AlertTriangle size={18} color="#EF4444" />
@@ -1640,7 +1640,7 @@ export default function WorkOrderDetail({
               </View>
 
               <Text style={[styles.subSectionTitle, { color: colors.text }]}>Lockout Steps</Text>
-              {workOrder.safety.lotoSteps.map((step, index) => (
+              {(workOrder.safety?.lotoSteps || []).map((step, index) => (
                 <View key={step.id} style={[styles.lotoStep, { borderColor: colors.border }]}>
                   <View style={[styles.lotoStepNumber, { backgroundColor: colors.primary }]}>
                     <Text style={styles.lotoStepNumberText}>{index + 1}</Text>
@@ -1882,14 +1882,14 @@ export default function WorkOrderDetail({
         'Tasks',
         'tasks',
         <CheckSquare size={18} color="#10B981" />,
-        `${completedTasksCount}/${workOrder.tasks.length}`,
-        completedTasksCount === workOrder.tasks.length ? '#10B981' : colors.textSecondary
+        `${completedTasksCount}/${(workOrder.tasks || []).length}`,
+        completedTasksCount === (workOrder.tasks || []).length ? '#10B981' : colors.textSecondary
       )}
       {expandedSections.has('tasks') && (
         <View style={styles.sectionContent}>
-          {workOrder.tasks.length > 0 ? (
+          {(workOrder.tasks || []).length > 0 ? (
             <View style={styles.tasksList}>
-              {workOrder.tasks.map((task, index) => (
+              {(workOrder.tasks || []).map((task, index) => (
                 <Pressable
                   key={task.id}
                   style={[styles.taskItem, { borderColor: colors.border }]}
@@ -1940,13 +1940,13 @@ export default function WorkOrderDetail({
                 styles.progressBar,
                 {
                   backgroundColor: '#10B981',
-                  width: `${workOrder.tasks.length > 0 ? (completedTasksCount / workOrder.tasks.length) * 100 : 0}%`,
+                  width: `${(workOrder.tasks || []).length > 0 ? (completedTasksCount / (workOrder.tasks || []).length) * 100 : 0}%`,
                 },
               ]}
             />
           </View>
           <Text style={[styles.progressText, { color: colors.textSecondary }]}>
-            {completedTasksCount} of {workOrder.tasks.length} tasks completed
+            {completedTasksCount} of {(workOrder.tasks || []).length} tasks completed
           </Text>
         </View>
       )}
@@ -2057,7 +2057,7 @@ export default function WorkOrderDetail({
         </View>
         <ScrollView style={styles.modalContent}>
           {PERMIT_TYPES.map(permit => {
-            const isSelected = workOrder.safety.permits.includes(permit.id);
+            const isSelected = (workOrder.safety?.permits || []).includes(permit.id);
             return (
               <Pressable
                 key={permit.id}
@@ -2108,7 +2108,7 @@ export default function WorkOrderDetail({
               <View key={category.id} style={styles.ppeCategorySection}>
                 <Text style={[styles.ppeCategoryTitle, { color: colors.text }]}>{category.name}</Text>
                 {categoryItems.map(ppe => {
-                  const isSelected = workOrder.safety.ppeRequired.includes(ppe.id);
+                  const isSelected = (workOrder.safety?.ppeRequired || []).includes(ppe.id);
                   return (
                     <Pressable
                       key={ppe.id}
@@ -2733,7 +2733,7 @@ export default function WorkOrderDetail({
                 </View>
                 <View>
                   <Text style={styles.lotoModalTitle}>LOTO Procedure</Text>
-                  <Text style={styles.lotoModalSubtitle}>{workOrder.safety.lotoSteps.length} steps</Text>
+                  <Text style={styles.lotoModalSubtitle}>{(workOrder.safety?.lotoSteps || []).length} steps</Text>
                 </View>
               </View>
               <Pressable
@@ -2751,7 +2751,7 @@ export default function WorkOrderDetail({
 
           <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
             {/* Existing Steps */}
-            {workOrder.safety.lotoSteps.map((step, index) => (
+            {(workOrder.safety?.lotoSteps || []).map((step, index) => (
               <View
                 key={step.id}
                 style={[
@@ -2844,9 +2844,9 @@ export default function WorkOrderDetail({
                         <ChevronDown size={16} color={colors.textSecondary} style={{ transform: [{ rotate: '180deg' }] }} />
                       </Pressable>
                       <Pressable
-                        style={[styles.lotoReorderBtn, { opacity: index === workOrder.safety.lotoSteps.length - 1 ? 0.3 : 1 }]}
+                        style={[styles.lotoReorderBtn, { opacity: index === (workOrder.safety?.lotoSteps || []).length - 1 ? 0.3 : 1 }]}
                         onPress={() => handleReorderLotoStep(step.id, 'down')}
-                        disabled={index === workOrder.safety.lotoSteps.length - 1}
+                        disabled={index === (workOrder.safety?.lotoSteps || []).length - 1}
                       >
                         <ChevronDown size={16} color={colors.textSecondary} />
                       </Pressable>
