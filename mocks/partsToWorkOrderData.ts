@@ -207,8 +207,8 @@ export function getWorkOrderPartSummary(
   }
   
   const requests = partRequests.filter(pr => pr.workOrderId === actualWorkOrderId);
-  const issues = partIssues.filter(pi => pi.workOrderId === workOrderId);
-  const returns = partReturns.filter(pr => pr.workOrderId === workOrderId);
+  const issues = (partIssues || []).filter(pi => pi.workOrderId === actualWorkOrderId);
+  const returns = (partReturns || []).filter(pr => pr.workOrderId === actualWorkOrderId);
 
   const allLines = requests.flatMap(r => r.lines);
 
@@ -230,9 +230,14 @@ export function getWorkOrderPartSummary(
   };
 }
 
-export function getPartRequestsByWorkOrder(partRequests: WorkOrderPartRequest[] | undefined | null, workOrderId: string): WorkOrderPartRequest[] {
-  if (!Array.isArray(partRequests)) {
+export function getPartRequestsByWorkOrder(partRequestsOrWorkOrderId: WorkOrderPartRequest[] | string | undefined | null, workOrderId?: string): WorkOrderPartRequest[] {
+  // Handle legacy call with just workOrderId string
+  if (typeof partRequestsOrWorkOrderId === 'string' || !partRequestsOrWorkOrderId) {
     return [];
   }
-  return partRequests.filter(pr => pr.workOrderId === workOrderId);
+  if (!Array.isArray(partRequestsOrWorkOrderId)) {
+    return [];
+  }
+  const targetWorkOrderId = workOrderId || '';
+  return partRequestsOrWorkOrderId.filter(pr => pr.workOrderId === targetWorkOrderId);
 }
