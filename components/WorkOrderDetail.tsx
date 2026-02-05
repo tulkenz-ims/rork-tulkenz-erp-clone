@@ -73,7 +73,6 @@ import {
   WorkOrderPartLine,
   WorkOrderPartSummary,
   getWorkOrderPartSummary,
-  getPartRequestsByWorkOrder,
 } from '@/mocks/partsToWorkOrderData';
 import {
   useWorkOrderStockWarnings,
@@ -990,7 +989,8 @@ export default function WorkOrderDetail({
   const handleRemoveAttachment = useCallback((attachmentId: string) => {
     if (!canEdit) return;
     
-    const attachmentToRemove = workOrder.attachments.find(a => a.id === attachmentId);
+    const attachments = workOrder.attachments || [];
+    const attachmentToRemove = attachments.find(a => a.id === attachmentId);
     if (!attachmentToRemove) return;
     
     Alert.alert('Remove Attachment', 'Are you sure you want to remove this attachment?', [
@@ -999,11 +999,12 @@ export default function WorkOrderDetail({
         text: 'Remove',
         style: 'destructive',
         onPress: async () => {
-          const previousAttachments = [...workOrder.attachments];
+          const currentAttachments = workOrder.attachments || [];
+          const previousAttachments = [...currentAttachments];
           
           // Optimistic update
           onUpdate(workOrder.id, {
-            attachments: workOrder.attachments.filter(a => a.id !== attachmentId),
+            attachments: currentAttachments.filter(a => a.id !== attachmentId),
           });
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
           
@@ -2456,15 +2457,11 @@ export default function WorkOrderDetail({
   );
 
   function renderPartsSection() {
-    const existingRequests = getPartRequestsByWorkOrder(workOrder.id) || [];
     const safeLinkedParts = Array.isArray(linkedParts) ? linkedParts : [];
-    const safeExistingRequests = Array.isArray(existingRequests) ? existingRequests : [];
+    const safeSupabaseParts = Array.isArray(supabaseLinkedParts) ? supabaseLinkedParts : [];
     const allParts = [
       ...safeLinkedParts,
-      ...safeExistingRequests.flatMap(r => {
-        if (!r || !Array.isArray(r.lines)) return [];
-        return r.lines;
-      }),
+      ...safeSupabaseParts,
     ];
     const uniqueParts = Array.isArray(allParts) ? allParts.filter((part, index, self) =>
       part && index === self.findIndex(p => p && p.id === part.id)
