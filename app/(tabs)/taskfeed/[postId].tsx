@@ -105,6 +105,16 @@ export default function TaskFeedPostDetailScreen() {
     });
   }, []);
 
+  const allPhotos = useMemo(() => {
+    if (!data?.post) return [];
+    const photos: string[] = [];
+    if (data.post.photoUrl) photos.push(data.post.photoUrl);
+    if (data.post.additionalPhotos) {
+      photos.push(...data.post.additionalPhotos);
+    }
+    return photos.filter(Boolean);
+  }, [data]);
+
   const handlePrint = useCallback(async () => {
     if (!data) return;
 
@@ -381,16 +391,6 @@ export default function TaskFeedPostDetailScreen() {
   const handleWorkOrderPress = useCallback((workOrderId: string) => {
     router.push(`/cmms/work-orders/${workOrderId}`);
   }, [router]);
-
-  const allPhotos = useMemo(() => {
-    if (!data?.post) return [];
-    const photos: string[] = [];
-    if (data.post.photoUrl) photos.push(data.post.photoUrl);
-    if (data.post.additionalPhotos) {
-      photos.push(...data.post.additionalPhotos);
-    }
-    return photos.filter(Boolean);
-  }, [data]);
 
   const styles = createStyles(colors);
 
