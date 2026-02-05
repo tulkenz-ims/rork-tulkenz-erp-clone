@@ -30,6 +30,20 @@ export default function TaskFeedLayout() {
           ),
         }}
       />
+      <Stack.Screen
+        name="[postId]"
+        options={{
+          title: 'Post Details',
+          headerLeft: () => (
+            <TouchableOpacity
+              onPress={() => router.back()}
+              style={{ marginRight: 16, padding: 4 }}
+            >
+              <ArrowLeft size={24} color={colors.text} />
+            </TouchableOpacity>
+          ),
+        }}
+      />
     </Stack>
   );
 }

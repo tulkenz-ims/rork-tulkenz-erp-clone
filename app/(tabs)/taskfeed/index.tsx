@@ -38,6 +38,7 @@ import {
   Trash2,
   MoreVertical,
   HardHat,
+  Eye,
 } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
@@ -1635,8 +1636,23 @@ export default function TaskFeedScreen() {
             const additionalPhotos = verification.sourceId ? additionalPhotosByPostId.get(verification.sourceId) : [];
             const allPhotos = [verification.photoUri, ...(additionalPhotos || [])].filter(Boolean) as string[];
             
+            const canNavigateToDetail = verification.sourceType === 'task_feed_post' && verification.sourceId;
+            
+            const handleCardPress = () => {
+              if (canNavigateToDetail) {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                router.push(`/taskfeed/${verification.sourceId}`);
+              }
+            };
+            
             return (
-              <View key={verification.id} style={[styles.postCard, { backgroundColor: colors.surface }]}>
+              <TouchableOpacity 
+                key={verification.id} 
+                style={[styles.postCard, { backgroundColor: colors.surface }]}
+                onPress={handleCardPress}
+                activeOpacity={canNavigateToDetail ? 0.7 : 1}
+                disabled={!canNavigateToDetail}
+              >
                 {/* Compact Header Row */}
                 <View style={styles.cardHeader}>
                   <View style={styles.cardHeaderLeft}>
@@ -1807,7 +1823,18 @@ export default function TaskFeedScreen() {
                     <CompactDepartmentBadges departmentTasks={departmentTasks} maxVisible={6} />
                   </View>
                 )}
-              </View>
+
+                {/* View Details Footer */}
+                {canNavigateToDetail && (
+                  <View style={[styles.cardViewDetailFooter, { borderTopColor: colors.border }]}>
+                    <View style={styles.cardViewDetailRow}>
+                      <Eye size={14} color={colors.primary} />
+                      <Text style={[styles.cardViewDetailText, { color: colors.primary }]}>View Post & Linked Work Orders</Text>
+                    </View>
+                    <ChevronRight size={16} color={colors.primary} />
+                  </View>
+                )}
+              </TouchableOpacity>
             );
           })
         )}
@@ -4594,6 +4621,23 @@ const createStyles = (colors: any) =>
       paddingTop: 8,
       borderTopWidth: 1,
       borderTopColor: colors.border,
+    },
+    cardViewDetailFooter: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginTop: 10,
+      paddingTop: 10,
+      borderTopWidth: 1,
+    },
+    cardViewDetailRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+    },
+    cardViewDetailText: {
+      fontSize: 12,
+      fontWeight: '500' as const,
     },
     cardDeptBadges: {
       marginTop: 8,
