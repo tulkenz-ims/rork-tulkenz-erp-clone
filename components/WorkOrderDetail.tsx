@@ -2397,7 +2397,7 @@ export default function WorkOrderDetail({
         </View>
       </ScrollView>
 
-      {canEdit && (
+      {workOrder.status !== 'completed' && workOrder.status !== 'cancelled' && canEdit && (
         <View style={[styles.footer, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
           {workOrder.status === 'open' && (
             <Pressable
@@ -2422,7 +2422,6 @@ export default function WorkOrderDetail({
               style={[styles.actionButton, { backgroundColor: '#10B981' }]}
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                // Use Supabase downtime data for checking ongoing downtime
                 const hasOngoingDowntime = activeDowntimeEvent && activeDowntimeEvent.production_stopped === true && activeDowntimeEvent.status === 'ongoing';
                 
                 if (hasOngoingDowntime) {
@@ -2436,6 +2435,23 @@ export default function WorkOrderDetail({
               <CheckCircle2 size={20} color="#FFFFFF" />
               <Text style={styles.actionButtonText}>Complete Work Order</Text>
             </Pressable>
+          )}
+        </View>
+      )}
+      {(workOrder.status === 'completed' || workOrder.status === 'cancelled') && (
+        <View style={[styles.footer, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
+          <View
+            style={[styles.actionButton, { backgroundColor: workOrder.status === 'completed' ? '#10B981' : '#6B7280', opacity: 0.8 }]}
+          >
+            <CheckCircle2 size={20} color="#FFFFFF" />
+            <Text style={styles.actionButtonText}>
+              {workOrder.status === 'completed' ? 'Work Order Completed' : 'Work Order Cancelled'}
+            </Text>
+          </View>
+          {workOrder.completed_at && (
+            <Text style={[styles.completedAtText, { color: colors.textSecondary }]}>
+              {workOrder.status === 'completed' ? 'Completed' : 'Cancelled'}: {new Date(workOrder.completed_at).toLocaleString()}
+            </Text>
           )}
         </View>
       )}
@@ -4326,6 +4342,11 @@ const createStyles = (colors: any) =>
       color: '#FFFFFF',
       fontSize: 16,
       fontWeight: '600' as const,
+    },
+    completedAtText: {
+      fontSize: 12,
+      textAlign: 'center' as const,
+      marginTop: 8,
     },
     modalContainer: {
       flex: 1,
