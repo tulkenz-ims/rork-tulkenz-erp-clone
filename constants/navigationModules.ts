@@ -32,9 +32,9 @@ export interface NavigationModule {
 
 export const NAVIGATION_MODULES: NavigationModule[] = [
   { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, route: '(dashboard)', alwaysVisible: true },
-  { key: 'cmms', label: 'CMMS', icon: Cog, route: 'cmms' },
   { key: 'taskfeed', label: 'Task Feed', icon: MessageSquare, route: 'taskfeed', alwaysVisible: true },
   { key: 'timeclock', label: 'Time Clock', icon: Clock, route: 'timeclock' },
+  { key: 'cmms', label: 'CMMS', icon: Cog, route: 'cmms' },
   { key: 'inventory', label: 'Inventory', icon: Package, route: 'inventory' },
   { key: 'documents', label: 'Documents', icon: FolderOpen, route: 'documents' },
   { key: 'employees', label: 'Labor Tracking', icon: Users, route: 'employees', managerOnly: true },
