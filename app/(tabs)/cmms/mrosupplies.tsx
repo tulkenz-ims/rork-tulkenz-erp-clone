@@ -16,7 +16,7 @@ export default function MROSuppliesScreen() {
         }} 
       />
       <FilteredInventoryView 
-        departmentCode={3}
+        departmentCode={1}
         title="MRO Parts & Supplies"
         showMasterLink={true}
       />
