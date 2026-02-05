@@ -549,9 +549,7 @@ ${completionData.additionalNotes}` : ''}
           started_at: new Date().toISOString(),
           completed_at: new Date().toISOString(),
           actual_hours: laborHoursNum,
-          parts_used: completionData.partsUsed || null,
-          completion_notes: `Work Performed: ${completionData.workPerformed}\n\nAction Taken: ${completionData.actionTaken}`,
-          root_cause: completionData.rootCause || null,
+          completion_notes: `Work Performed: ${completionData.workPerformed}\n\nAction Taken: ${completionData.actionTaken}${completionData.rootCause ? `\n\nRoot Cause: ${completionData.rootCause}` : ''}${completionData.partsUsed && completionData.partsUsed.length > 0 ? `\n\nParts Used: ${JSON.stringify(completionData.partsUsed)}` : ''}`,
           attachments: completionData.completionPhotos.length > 0 ? completionData.completionPhotos : [],
         })
         .select('id, work_order_number')
