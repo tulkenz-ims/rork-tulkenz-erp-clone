@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef } from 'react';
+import React, { useCallback, useMemo, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -58,6 +58,30 @@ export default function TaskFeedPostDetailScreen() {
   const scrollRef = useRef<ScrollView>(null);
 
   const { data, isLoading, error } = useTaskFeedPostDetail(postId);
+
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      const style = document.createElement('style');
+      style.id = 'print-styles';
+      style.innerHTML = `
+        @media print {
+          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          .print-photos-grid { display: flex !important; flex-wrap: wrap !important; gap: 12px !important; }
+          .print-photos-grid img { width: 200px !important; height: 150px !important; object-fit: cover !important; border-radius: 8px !important; page-break-inside: avoid !important; }
+          .no-print { display: none !important; }
+          .print-only { display: block !important; }
+        }
+        @media screen {
+          .print-only { display: none !important; }
+        }
+      `;
+      document.head.appendChild(style);
+      return () => {
+        const existingStyle = document.getElementById('print-styles');
+        if (existingStyle) existingStyle.remove();
+      };
+    }
+  }, []);
 
   const formatDateTime = useCallback((dateString: string | undefined) => {
     if (!dateString) return 'N/A';
@@ -332,11 +356,39 @@ export default function TaskFeedPostDetailScreen() {
                 Photos ({allPhotos.length})
               </Text>
             </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photosScroll}>
-              {allPhotos.map((photo, idx) => (
-                <Image key={`photo-${idx}`} source={{ uri: photo }} style={styles.photoLarge} />
-              ))}
-            </ScrollView>
+            {/* Screen version - horizontal scroll */}
+            {Platform.OS !== 'web' ? (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photosScroll}>
+                {allPhotos.map((photo, idx) => (
+                  <Image key={`photo-${idx}`} source={{ uri: photo }} style={styles.photoLarge} />
+                ))}
+              </ScrollView>
+            ) : (
+              <>
+                {/* Web screen version - horizontal scroll */}
+                <ScrollView 
+                  horizontal 
+                  showsHorizontalScrollIndicator={false} 
+                  style={styles.photosScroll}
+                  // @ts-ignore - web className
+                  className="no-print"
+                >
+                  {allPhotos.map((photo, idx) => (
+                    <Image key={`photo-${idx}`} source={{ uri: photo }} style={styles.photoLarge} />
+                  ))}
+                </ScrollView>
+                {/* Print version - grid layout */}
+                <View 
+                  style={styles.photosGrid}
+                  // @ts-ignore - web className
+                  className="print-only print-photos-grid"
+                >
+                  {allPhotos.map((photo, idx) => (
+                    <Image key={`photo-print-${idx}`} source={{ uri: photo }} style={styles.photoGridItem} />
+                  ))}
+                </View>
+              </>
+            )}
           </View>
         )}
 
@@ -704,6 +756,16 @@ const createStyles = (colors: any) =>
       height: 150,
       borderRadius: 8,
       marginHorizontal: 8,
+    },
+    photosGrid: {
+      flexDirection: 'row' as const,
+      flexWrap: 'wrap' as const,
+      gap: 12,
+    },
+    photoGridItem: {
+      width: 200,
+      height: 150,
+      borderRadius: 8,
     },
     formDataGrid: {
       gap: 12,
