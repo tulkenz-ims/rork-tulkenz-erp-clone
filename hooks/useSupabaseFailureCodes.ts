@@ -246,34 +246,43 @@ export function useFailureCodesQuery(options?: QueryOptions<FailureCodeDB> & {
     queryFn: async () => {
       if (!organizationId) return [];
 
-      let query = supabase
-        .from('failure_codes')
-        .select('*')
-        .eq('organization_id', organizationId);
+      try {
+        let query = supabase
+          .from('failure_codes')
+          .select('*')
+          .eq('organization_id', organizationId);
 
-      if (options?.category) {
-        query = query.eq('category', options.category);
+        if (options?.category) {
+          query = query.eq('category', options.category);
+        }
+
+        if (options?.severity) {
+          query = query.eq('severity', options.severity);
+        }
+
+        if (options?.isActive !== undefined) {
+          query = query.eq('is_active', options.isActive);
+        }
+
+        query = query.order('code', { ascending: true });
+
+        const { data, error } = await query;
+
+        if (error) {
+          if (error.message.includes('schema cache') || error.message.includes('does not exist') || error.code === '42P01') {
+            console.warn('[useFailureCodesQuery] Table does not exist, returning empty array');
+            return [];
+          }
+          console.error('[useFailureCodesQuery] Error:', error.message);
+          return [];
+        }
+
+        console.log('[useFailureCodesQuery] Fetched:', data?.length || 0, 'failure codes');
+        return (data || []) as FailureCodeDB[];
+      } catch (err) {
+        console.warn('[useFailureCodesQuery] Exception caught, returning empty array:', err);
+        return [];
       }
-
-      if (options?.severity) {
-        query = query.eq('severity', options.severity);
-      }
-
-      if (options?.isActive !== undefined) {
-        query = query.eq('is_active', options.isActive);
-      }
-
-      query = query.order('code', { ascending: true });
-
-      const { data, error } = await query;
-
-      if (error) {
-        console.error('[useFailureCodesQuery] Error:', error.message);
-        throw new Error(error.message);
-      }
-
-      console.log('[useFailureCodesQuery] Fetched:', data?.length || 0, 'failure codes');
-      return (data || []) as FailureCodeDB[];
     },
     enabled: !!organizationId && (options?.enabled !== false),
     staleTime: 1000 * 60 * 10,
@@ -288,21 +297,30 @@ export function useFailureCodeById(id: string | undefined | null) {
     queryFn: async () => {
       if (!organizationId || !id) return null;
 
-      const { data, error } = await supabase
-        .from('failure_codes')
-        .select('*')
-        .eq('organization_id', organizationId)
-        .eq('id', id)
-        .single();
+      try {
+        const { data, error } = await supabase
+          .from('failure_codes')
+          .select('*')
+          .eq('organization_id', organizationId)
+          .eq('id', id)
+          .single();
 
-      if (error) {
-        if (error.code === 'PGRST116') return null;
-        console.error('[useFailureCodeById] Error:', error.message);
-        throw new Error(error.message);
+        if (error) {
+          if (error.code === 'PGRST116') return null;
+          if (error.message.includes('schema cache') || error.message.includes('does not exist') || error.code === '42P01') {
+            console.warn('[useFailureCodeById] Table does not exist, returning null');
+            return null;
+          }
+          console.error('[useFailureCodeById] Error:', error.message);
+          return null;
+        }
+
+        console.log('[useFailureCodeById] Fetched failure code:', id);
+        return data as FailureCodeDB;
+      } catch (err) {
+        console.warn('[useFailureCodeById] Exception caught, returning null:', err);
+        return null;
       }
-
-      console.log('[useFailureCodeById] Fetched failure code:', id);
-      return data as FailureCodeDB;
     },
     enabled: !!organizationId && !!id,
     staleTime: 1000 * 60 * 10,
@@ -317,21 +335,30 @@ export function useFailureCodeByCode(code: string | undefined | null) {
     queryFn: async () => {
       if (!organizationId || !code) return null;
 
-      const { data, error } = await supabase
-        .from('failure_codes')
-        .select('*')
-        .eq('organization_id', organizationId)
-        .eq('code', code)
-        .single();
+      try {
+        const { data, error } = await supabase
+          .from('failure_codes')
+          .select('*')
+          .eq('organization_id', organizationId)
+          .eq('code', code)
+          .single();
 
-      if (error) {
-        if (error.code === 'PGRST116') return null;
-        console.error('[useFailureCodeByCode] Error:', error.message);
-        throw new Error(error.message);
+        if (error) {
+          if (error.code === 'PGRST116') return null;
+          if (error.message.includes('schema cache') || error.message.includes('does not exist') || error.code === '42P01') {
+            console.warn('[useFailureCodeByCode] Table does not exist, returning null');
+            return null;
+          }
+          console.error('[useFailureCodeByCode] Error:', error.message);
+          return null;
+        }
+
+        console.log('[useFailureCodeByCode] Fetched failure code:', code);
+        return data as FailureCodeDB;
+      } catch (err) {
+        console.warn('[useFailureCodeByCode] Exception caught, returning null:', err);
+        return null;
       }
-
-      console.log('[useFailureCodeByCode] Fetched failure code:', code);
-      return data as FailureCodeDB;
     },
     enabled: !!organizationId && !!code,
     staleTime: 1000 * 60 * 10,
@@ -356,32 +383,41 @@ export function useRootCauses(options?: { category?: string }) {
     queryFn: async () => {
       if (!organizationId) return [];
 
-      let query = supabase
-        .from('root_causes')
-        .select('*')
-        .eq('organization_id', organizationId);
+      try {
+        let query = supabase
+          .from('root_causes')
+          .select('*')
+          .eq('organization_id', organizationId);
 
-      if (options?.category) {
-        query = query.eq('category', options.category);
+        if (options?.category) {
+          query = query.eq('category', options.category);
+        }
+
+        query = query.order('code', { ascending: true });
+
+        const { data, error } = await query;
+
+        if (error) {
+          if (error.message.includes('schema cache') || error.message.includes('does not exist') || error.code === '42P01') {
+            console.warn('[useRootCauses] Table does not exist, returning empty array');
+            return [];
+          }
+          console.error('[useRootCauses] Error:', error.message);
+          return [];
+        }
+
+        console.log('[useRootCauses] Fetched:', data?.length || 0, 'root causes');
+        return (data || []).map(rc => ({
+          id: rc.id,
+          code: rc.code,
+          name: rc.name,
+          description: rc.description || '',
+          category: rc.category as RootCauseCategory,
+        })) as RootCause[];
+      } catch (err) {
+        console.warn('[useRootCauses] Exception caught, returning empty array:', err);
+        return [];
       }
-
-      query = query.order('code', { ascending: true });
-
-      const { data, error } = await query;
-
-      if (error) {
-        console.error('[useRootCauses] Error:', error.message);
-        throw new Error(error.message);
-      }
-
-      console.log('[useRootCauses] Fetched:', data?.length || 0, 'root causes');
-      return (data || []).map(rc => ({
-        id: rc.id,
-        code: rc.code,
-        name: rc.name,
-        description: rc.description || '',
-        category: rc.category as RootCauseCategory,
-      })) as RootCause[];
     },
     enabled: !!organizationId,
     staleTime: 1000 * 60 * 10,
@@ -406,25 +442,34 @@ export function useActionsTaken() {
     queryFn: async () => {
       if (!organizationId) return [];
 
-      const { data, error } = await supabase
-        .from('actions_taken')
-        .select('*')
-        .eq('organization_id', organizationId)
-        .order('code', { ascending: true });
+      try {
+        const { data, error } = await supabase
+          .from('actions_taken')
+          .select('*')
+          .eq('organization_id', organizationId)
+          .order('code', { ascending: true });
 
-      if (error) {
-        console.error('[useActionsTaken] Error:', error.message);
-        throw new Error(error.message);
+        if (error) {
+          if (error.message.includes('schema cache') || error.message.includes('does not exist') || error.code === '42P01') {
+            console.warn('[useActionsTaken] Table does not exist, returning empty array');
+            return [];
+          }
+          console.error('[useActionsTaken] Error:', error.message);
+          return [];
+        }
+
+        console.log('[useActionsTaken] Fetched:', data?.length || 0, 'actions');
+        return (data || []).map(at => ({
+          id: at.id,
+          code: at.code,
+          name: at.name,
+          description: at.description || '',
+          category: at.category || 'general',
+        })) as ActionTaken[];
+      } catch (err) {
+        console.warn('[useActionsTaken] Exception caught, returning empty array:', err);
+        return [];
       }
-
-      console.log('[useActionsTaken] Fetched:', data?.length || 0, 'actions');
-      return (data || []).map(at => ({
-        id: at.id,
-        code: at.code,
-        name: at.name,
-        description: at.description || '',
-        category: at.category || 'general',
-      })) as ActionTaken[];
     },
     enabled: !!organizationId,
     staleTime: 1000 * 60 * 10,
