@@ -117,12 +117,19 @@ export function useWorkOrderStockWarnings() {
       
       const partsToCheck = new Map<string, number>();
 
-      partRequests.forEach(request => {
-        request.lines.forEach(line => {
-          const currentQty = partsToCheck.get(line.materialId) || 0;
-          partsToCheck.set(line.materialId, currentQty + line.quantityRequested);
+      // Safely iterate part requests - ensure partRequests is an array
+      if (Array.isArray(partRequests)) {
+        partRequests.forEach(request => {
+          // Safely iterate lines - ensure lines is an array
+          const lines = Array.isArray(request?.lines) ? request.lines : [];
+          lines.forEach(line => {
+            if (line && line.materialId) {
+              const currentQty = partsToCheck.get(line.materialId) || 0;
+              partsToCheck.set(line.materialId, currentQty + line.quantityRequested);
+            }
+          });
         });
-      });
+      }
 
       if (additionalParts) {
         additionalParts.forEach(part => {
