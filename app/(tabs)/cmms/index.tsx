@@ -116,8 +116,7 @@ const CMMS_CATEGORIES: FormCategory[] = [
     icon: Package,
     color: '#EC4899',
     forms: [
-      { id: 'mrosupplies', title: 'MRO Parts & Supplies', route: '/cmms/mrosupplies' },
-      { id: 'partslist', title: 'Spare Parts List', route: '/cmms/partslist' },
+      { id: 'partslist', title: 'MRO Parts & Supplies', route: '/cmms/partslist' },
       { id: 'whereused', title: 'Where-Used Analysis', route: '/cmms/whereused' },
       { id: 'stocklevels', title: 'MRO Stock Levels', route: '/cmms/stocklevels' },
     ],
@@ -479,7 +478,7 @@ export default function CMMSScreen() {
     { label: 'New Work Order', icon: Plus, color: '#3B82F6', route: '/cmms/newworkorder' },
     { label: 'PM Schedule', icon: Calendar, color: '#10B981', route: '/cmms/pmschedule' },
     { label: 'Equipment', icon: Cog, color: '#8B5CF6', route: '/cmms/equipmentlist' },
-    { label: 'Parts Inventory', icon: Package, color: '#EC4899', route: '/cmms/partslist' },
+    { label: 'MRO Parts', icon: Package, color: '#EC4899', route: '/cmms/partslist' },
   ];
 
   const orgContext = useOrganization();
