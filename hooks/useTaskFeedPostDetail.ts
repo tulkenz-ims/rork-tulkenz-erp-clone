@@ -247,12 +247,12 @@ export function useTaskFeedPostDetail(postId: string | undefined, options?: { en
         }
       }
 
-      // Also search for work orders that reference this post number in their description or source
+      // Also search for work orders that directly reference this post (source_id only, not description search to avoid duplicates)
       const { data: relatedWorkOrders } = await supabase
         .from('work_orders')
         .select('id')
         .eq('organization_id', organizationId)
-        .or(`source_id.eq.${postId},description.ilike.%${post.postNumber}%`)
+        .eq('source_id', postId)
         .limit(20);
 
       if (relatedWorkOrders) {
