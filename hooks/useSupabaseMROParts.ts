@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import { supabase } from '@/lib/supabase';
 
-const MRO_INVENTORY_DEPARTMENT = 300;
+const MRO_INVENTORY_DEPARTMENT = 1;
 
 export type StockStatus = 'in_stock' | 'low_stock' | 'critical' | 'out_of_stock' | 'overstocked';
 export type PartCategory = 'Bearings' | 'Belts & Chains' | 'Belts & Pulleys' | 'Electrical' | 'Filters' | 'Fluids & Lubricants' | 'Fasteners' | 'Gaskets & Seals' | 'Hardware' | 'Hydraulic' | 'Lubricants' | 'Motors' | 'Pumps' | 'Safety Equipment' | 'Pneumatic' | 'Safety' | 'Tools' | 'Valves' | 'HVAC' | 'Sensors' | 'Conveyor Parts' | 'General MRO';
@@ -213,7 +213,7 @@ function transformToMROPart(material: SupabaseMROPart, index: number): MROPart {
   
   return {
     id: material.id,
-    partId: 3000000 + index,
+    partId: 1000000 + index,
     partNumber: material.sku,
     name: material.name,
     description: material.description || undefined,
