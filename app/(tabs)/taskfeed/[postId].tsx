@@ -109,7 +109,182 @@ export default function TaskFeedPostDetailScreen() {
     if (!data) return;
 
     if (Platform.OS === 'web') {
-      window.print();
+      const { post, linkedWorkOrders } = data;
+      const completedCount = post.departmentTasks?.filter(t => t.status === 'completed').length || 0;
+      const totalCount = post.departmentTasks?.length || 0;
+
+      const photosHtml = allPhotos.length > 0 ? `
+        <div class="section">
+          <h3>📷 Photos (${allPhotos.length})</h3>
+          <div class="photos-grid">
+            ${allPhotos.map(photo => `<img src="${photo}" alt="Photo" />`).join('')}
+          </div>
+        </div>
+      ` : '';
+
+      const formDataHtml = post.formData && Object.keys(post.formData).length > 0 ? `
+        <div class="section">
+          <h3>📋 Form Details</h3>
+          <div class="form-grid">
+            ${Object.entries(post.formData).filter(([_, v]) => v).map(([key, value]) => {
+              const label = key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' ');
+              return `<div class="form-item"><span class="label">${label}</span><span class="value">${String(value)}</span></div>`;
+            }).join('')}
+          </div>
+        </div>
+      ` : '';
+
+      const notesHtml = post.notes ? `
+        <div class="section">
+          <h3>📝 Notes</h3>
+          <p class="notes">${post.notes}</p>
+        </div>
+      ` : '';
+
+      const deptTasksHtml = post.departmentTasks && post.departmentTasks.length > 0 ? `
+        <div class="section">
+          <h3>🏢 Department Tasks (${post.departmentTasks.length})</h3>
+          <div class="dept-tasks">
+            ${post.departmentTasks.map(task => `
+              <div class="dept-task" style="border-left-color: ${getDepartmentColor(task.departmentCode)}">
+                <div class="dept-task-header">
+                  <span class="dept-name">${task.departmentName}</span>
+                  <span class="status-badge status-${task.status || 'pending'}">${(task.status || 'pending').replace(/_/g, ' ').toUpperCase()}</span>
+                </div>
+                ${task.completedByName ? `<div class="dept-meta">Completed by ${task.completedByName} on ${formatDateTime(task.completedAt)}</div>` : ''}
+                ${task.completionNotes ? `<div class="dept-notes">${task.completionNotes}</div>` : ''}
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      ` : '';
+
+      const workOrdersHtml = linkedWorkOrders.length > 0 ? `
+        <div class="section">
+          <h3>🔧 Linked Work Orders (${linkedWorkOrders.length})</h3>
+          <div class="work-orders">
+            ${linkedWorkOrders.map(wo => `
+              <div class="work-order">
+                <div class="wo-header">
+                  <span class="wo-number">${wo.work_order_number || 'WO-' + wo.id.slice(0, 8)}</span>
+                  <span class="priority-badge priority-${wo.priority || 'medium'}">${(wo.priority || 'medium').toUpperCase()}</span>
+                  <span class="status-badge status-${wo.status || 'open'}">${(wo.status || 'open').replace(/_/g, ' ').toUpperCase()}</span>
+                </div>
+                <div class="wo-title">${wo.title}</div>
+                ${wo.description ? `<div class="wo-desc">${wo.description}</div>` : ''}
+                <div class="wo-meta">
+                  ${wo.assigned_name ? `<span>👤 ${wo.assigned_name}</span>` : ''}
+                  ${wo.due_date ? `<span>📅 Due: ${formatDate(wo.due_date)}</span>` : ''}
+                  ${wo.department ? `<span class="dept-badge">${getDepartmentName(wo.department)}</span>` : ''}
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      ` : '';
+
+      const printHtml = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>${post.postNumber} - Task Feed Report</title>
+          <style>
+            * { box-sizing: border-box; margin: 0; padding: 0; }
+            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 24px; max-width: 800px; margin: 0 auto; color: #1a1a1a; font-size: 12px; }
+            .header { border-bottom: 2px solid #0ea5e9; padding-bottom: 16px; margin-bottom: 20px; }
+            .header-top { display: flex; justify-content: space-between; align-items: flex-start; }
+            .post-number { font-size: 22px; font-weight: 700; color: #0ea5e9; }
+            .template-name { font-size: 16px; font-weight: 500; margin-top: 4px; }
+            .status-badge { display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+            .status-completed { background: #D1FAE5; color: #065F46; }
+            .status-open { background: #DBEAFE; color: #1E40AF; }
+            .status-in_progress { background: #FEF3C7; color: #92400E; }
+            .status-pending { background: #FEF3C7; color: #92400E; }
+            .status-overdue { background: #FEE2E2; color: #991B1B; }
+            .meta-row { display: flex; gap: 20px; margin-top: 12px; color: #666; font-size: 13px; }
+            .progress-section { margin-top: 16px; padding-top: 12px; border-top: 1px solid #e5e5e5; }
+            .progress-header { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 12px; }
+            .progress-bar { height: 8px; background: #e5e5e5; border-radius: 4px; overflow: hidden; }
+            .progress-fill { height: 100%; background: ${completedCount === totalCount ? '#10B981' : '#0ea5e9'}; width: ${totalCount > 0 ? (completedCount / totalCount) * 100 : 0}%; }
+            .section { margin-bottom: 20px; page-break-inside: avoid; }
+            .section h3 { font-size: 14px; font-weight: 600; margin-bottom: 12px; padding-bottom: 6px; border-bottom: 1px solid #e5e5e5; }
+            .photos-grid { display: flex; flex-wrap: wrap; gap: 12px; }
+            .photos-grid img { width: 180px; height: 135px; object-fit: cover; border-radius: 6px; border: 1px solid #e5e5e5; }
+            .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; }
+            .form-item { padding: 8px 0; border-bottom: 1px solid #f0f0f0; }
+            .form-item .label { display: block; font-size: 11px; color: #666; margin-bottom: 2px; }
+            .form-item .value { font-weight: 500; }
+            .notes { line-height: 1.6; color: #333; white-space: pre-wrap; }
+            .dept-tasks { display: flex; flex-direction: column; gap: 10px; }
+            .dept-task { border-left: 3px solid #ccc; padding: 10px 12px; background: #f9f9f9; border-radius: 0 6px 6px 0; }
+            .dept-task-header { display: flex; justify-content: space-between; align-items: center; }
+            .dept-name { font-weight: 600; }
+            .dept-meta { font-size: 11px; color: #666; margin-top: 6px; }
+            .dept-notes { font-size: 12px; color: #666; margin-top: 6px; font-style: italic; }
+            .work-orders { display: flex; flex-direction: column; gap: 12px; }
+            .work-order { padding: 12px; background: #f9f9f9; border-radius: 8px; border: 1px solid #e5e5e5; }
+            .wo-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+            .wo-number { font-weight: 700; color: #0ea5e9; }
+            .priority-badge { padding: 2px 8px; border-radius: 8px; font-size: 10px; font-weight: 600; }
+            .priority-low { background: #D1FAE5; color: #065F46; }
+            .priority-medium { background: #FEF3C7; color: #92400E; }
+            .priority-high { background: #FEE2E2; color: #991B1B; }
+            .priority-critical { background: #7F1D1D; color: #FFF; }
+            .wo-title { font-weight: 500; margin-bottom: 4px; }
+            .wo-desc { font-size: 12px; color: #666; margin-bottom: 8px; }
+            .wo-meta { display: flex; gap: 16px; font-size: 11px; color: #666; flex-wrap: wrap; }
+            .dept-badge { background: #e0f2fe; color: #0369a1; padding: 2px 8px; border-radius: 8px; }
+            .footer { margin-top: 30px; padding-top: 16px; border-top: 1px solid #e5e5e5; text-align: center; color: #999; font-size: 11px; }
+            @media print {
+              body { padding: 0; }
+              .section { page-break-inside: avoid; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div class="header-top">
+              <div>
+                <div class="post-number">${post.postNumber}</div>
+                <div class="template-name">${post.templateName}</div>
+              </div>
+              <span class="status-badge status-${post.status || 'pending'}">${(post.status || 'pending').replace(/_/g, ' ').toUpperCase()}</span>
+            </div>
+            <div class="meta-row">
+              <span>👤 ${post.createdByName}</span>
+              <span>📅 ${formatDateTime(post.createdAt)}</span>
+              ${post.locationName ? `<span>📍 ${post.locationName}</span>` : ''}
+            </div>
+            ${totalCount > 0 ? `
+              <div class="progress-section">
+                <div class="progress-header">
+                  <span>Department Progress</span>
+                  <span>${completedCount} / ${totalCount}</span>
+                </div>
+                <div class="progress-bar"><div class="progress-fill"></div></div>
+              </div>
+            ` : ''}
+          </div>
+          ${photosHtml}
+          ${formDataHtml}
+          ${notesHtml}
+          ${deptTasksHtml}
+          ${workOrdersHtml}
+          <div class="footer">Generated on ${new Date().toLocaleString()}</div>
+        </body>
+        </html>
+      `;
+
+      const printWindow = window.open('', '_blank');
+      if (printWindow) {
+        printWindow.document.write(printHtml);
+        printWindow.document.close();
+        printWindow.onload = () => {
+          setTimeout(() => {
+            printWindow.print();
+          }, 500);
+        };
+      }
     } else {
       Alert.alert(
         'Print',
@@ -117,7 +292,7 @@ export default function TaskFeedPostDetailScreen() {
         [{ text: 'OK' }]
       );
     }
-  }, [data]);
+  }, [data, allPhotos, formatDateTime, formatDate]);
 
   const generateShareContent = useCallback(() => {
     if (!data) return '';
