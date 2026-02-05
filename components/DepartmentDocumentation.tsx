@@ -42,13 +42,15 @@ import {
   DepartmentType,
   DepartmentWorkflow,
   CompletedDocumentationSection,
+} from '@/mocks/workOrderData';
+import {
   DocumentationSectionTemplate,
   DocumentationField,
   DEPARTMENTS,
   DOCUMENTATION_TEMPLATES,
   getTemplatesByDepartment,
   getDepartmentById,
-} from '@/mocks/workOrderData';
+} from '@/constants/workOrderConstants';
 import {
   useAddDocumentation,
   useSendToDepartment,
