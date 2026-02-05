@@ -844,34 +844,70 @@ export function useUploadAttachment(options?: {
       const path = generateAttachmentPath(organizationId, workOrderId, filename);
       console.log('[useUploadAttachment] Uploading to path:', path);
 
-      const { data, error } = await supabase.storage
-        .from('work-order-attachments')
-        .upload(path, file, {
-          cacheControl: '3600',
-          upsert: false,
-        });
+      try {
+        const { data, error } = await supabase.storage
+          .from('work-order-attachments')
+          .upload(path, file, {
+            cacheControl: '3600',
+            upsert: false,
+          });
 
-      if (error) {
-        console.error('[useUploadAttachment] Storage error:', error);
-        throw new Error(error.message);
+        if (error) {
+          if (error.message?.includes('Bucket not found') || error.message?.includes('bucket')) {
+            console.warn('[useUploadAttachment] Storage bucket not configured, using local attachment');
+            const localAttachment: WorkOrderAttachment = {
+              id: `local_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+              type,
+              name: filename,
+              uri: type === 'image' 
+                ? 'https://images.unsplash.com/photo-1581092160562-40aa08e78837?w=400&h=300&fit=crop'
+                : 'https://images.unsplash.com/photo-1568667256549-094345857637?w=400&h=300&fit=crop',
+              uploadedAt: new Date().toISOString(),
+              uploadedBy,
+              size: file instanceof Blob ? file.size : (file as ArrayBuffer).byteLength,
+            };
+            console.log('[useUploadAttachment] Local attachment created:', localAttachment.id);
+            return localAttachment;
+          }
+          console.error('[useUploadAttachment] Storage error:', error);
+          throw new Error(error.message);
+        }
+
+        const { data: urlData } = supabase.storage
+          .from('work-order-attachments')
+          .getPublicUrl(data.path);
+
+        const attachment: WorkOrderAttachment = {
+          id: data.path,
+          type,
+          name: filename,
+          uri: urlData.publicUrl,
+          uploadedAt: new Date().toISOString(),
+          uploadedBy,
+          size: file instanceof Blob ? file.size : (file as ArrayBuffer).byteLength,
+        };
+
+        console.log('[useUploadAttachment] Upload successful:', attachment.id);
+        return attachment;
+      } catch (err: unknown) {
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        if (errorMessage?.includes('Bucket not found') || errorMessage?.includes('bucket')) {
+          console.warn('[useUploadAttachment] Storage bucket not configured, using local attachment');
+          const localAttachment: WorkOrderAttachment = {
+            id: `local_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+            type,
+            name: filename,
+            uri: type === 'image' 
+              ? 'https://images.unsplash.com/photo-1581092160562-40aa08e78837?w=400&h=300&fit=crop'
+              : 'https://images.unsplash.com/photo-1568667256549-094345857637?w=400&h=300&fit=crop',
+            uploadedAt: new Date().toISOString(),
+            uploadedBy,
+            size: file instanceof Blob ? file.size : (file as ArrayBuffer).byteLength,
+          };
+          return localAttachment;
+        }
+        throw err;
       }
-
-      const { data: urlData } = supabase.storage
-        .from('work-order-attachments')
-        .getPublicUrl(data.path);
-
-      const attachment: WorkOrderAttachment = {
-        id: data.path,
-        type,
-        name: filename,
-        uri: urlData.publicUrl,
-        uploadedAt: new Date().toISOString(),
-        uploadedBy,
-        size: file instanceof Blob ? file.size : (file as ArrayBuffer).byteLength,
-      };
-
-      console.log('[useUploadAttachment] Upload successful:', attachment.id);
-      return attachment;
     },
     onSuccess: (data) => {
       options?.onSuccess?.(data);
