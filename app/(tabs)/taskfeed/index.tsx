@@ -1637,7 +1637,7 @@ export default function TaskFeedScreen() {
             
             return (
               <View key={verification.id} style={[styles.postCard, { backgroundColor: colors.surface }]}>
-                {/* Header Row */}
+                {/* Compact Header Row */}
                 <View style={styles.cardHeader}>
                   <View style={styles.cardHeaderLeft}>
                     <View
@@ -1646,11 +1646,11 @@ export default function TaskFeedScreen() {
                         { backgroundColor: getDepartmentColor(verification.departmentCode) + '20' },
                       ]}
                     >
-                      <User size={14} color={getDepartmentColor(verification.departmentCode)} />
+                      <User size={12} color={getDepartmentColor(verification.departmentCode)} />
                     </View>
                     <View style={styles.cardHeaderInfo}>
                       <View style={styles.cardHeaderTopRow}>
-                        <Text style={[styles.cardUserName, { color: colors.text }]}>
+                        <Text style={[styles.cardUserName, { color: colors.text }]} numberOfLines={1}>
                           {verification.employeeName}
                         </Text>
                         <View
@@ -1673,18 +1673,10 @@ export default function TaskFeedScreen() {
                         </Text>
                       </View>
                       <View style={styles.cardLocationRow}>
-                        <MapPin size={11} color={colors.textTertiary} />
+                        <MapPin size={10} color={colors.textTertiary} />
                         <Text style={[styles.cardLocationText, { color: colors.textSecondary }]} numberOfLines={1}>
                           {verification.locationName}
                         </Text>
-                        {verification.sourceNumber && (
-                          <View style={[styles.cardRefBadge, { backgroundColor: colors.primary + '15' }]}>
-                            <FileText size={10} color={colors.primary} />
-                            <Text style={[styles.cardRefText, { color: colors.primary }]}>
-                              {verification.sourceNumber}
-                            </Text>
-                          </View>
-                        )}
                       </View>
                     </View>
                   </View>
@@ -1696,19 +1688,27 @@ export default function TaskFeedScreen() {
                         </Text>
                       </View>
                     )}
+                    {verification.sourceNumber && (
+                      <View style={[styles.cardRefBadge, { backgroundColor: colors.primary + '15' }]}>
+                        <FileText size={9} color={colors.primary} />
+                        <Text style={[styles.cardRefText, { color: colors.primary }]}>
+                          {verification.sourceNumber}
+                        </Text>
+                      </View>
+                    )}
                     {verification.sourceId && verification.sourceType === 'task_feed_post' && canDeletePost({ createdById: verification.employeeId }) && (
                       <TouchableOpacity
                         style={[styles.cardDeleteBtn, { backgroundColor: colors.error + '10' }]}
                         onPress={() => handleDeletePost(verification.sourceId!, verification.sourceNumber || verification.id)}
-                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                       >
-                        <Trash2 size={14} color={colors.error} />
+                        <Trash2 size={12} color={colors.error} />
                       </TouchableOpacity>
                     )}
                   </View>
                 </View>
 
-                {/* Action Title with Status */}
+                {/* Action Title with Status - Compact */}
                 <View style={styles.cardTitleRow}>
                   <View
                     style={[
@@ -1723,7 +1723,7 @@ export default function TaskFeedScreen() {
                       },
                     ]}
                   />
-                  <Text style={[styles.cardActionTitle, { color: verification.status === 'flagged' ? '#EF4444' : colors.text }]}>
+                  <Text style={[styles.cardActionTitle, { color: verification.status === 'flagged' ? '#EF4444' : colors.text }]} numberOfLines={1}>
                     {verification.action}
                   </Text>
                   <Text style={[styles.cardCategoryLabel, { color: colors.textTertiary }]}>
@@ -1731,86 +1731,80 @@ export default function TaskFeedScreen() {
                   </Text>
                 </View>
 
-                {/* Form Data Display (if present) */}
+                {/* Form Data Display - Inline compact style */}
                 {formData && Object.keys(formData).length > 0 && (
-                  <View style={[styles.cardFormData, { backgroundColor: colors.background }]}>
-                    {Object.entries(formData).map(([key, value]) => (
-                      <View key={key} style={styles.cardFormRow}>
-                        <Text style={[styles.cardFormLabel, { color: colors.textTertiary }]}>
-                          {key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' ')}
-                        </Text>
-                        <Text style={[styles.cardFormValue, { color: colors.text }]} numberOfLines={2}>
-                          {String(value)}
-                        </Text>
-                      </View>
+                  <View style={styles.cardFormDataInline}>
+                    {Object.entries(formData).slice(0, 4).map(([key, value], idx) => (
+                      <Text key={key} style={[styles.cardFormInlineText, { color: colors.textSecondary }]} numberOfLines={1}>
+                        <Text style={{ fontWeight: '500' as const }}>{key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' ')}: </Text>
+                        <Text style={{ color: colors.text }}>{String(value)}</Text>
+                        {idx < Math.min(Object.keys(formData).length - 1, 3) && '  •  '}
+                      </Text>
                     ))}
                   </View>
                 )}
 
-                {/* Clean Notes (without form data) */}
+                {/* Clean Notes - Compact */}
                 {cleanNotes && (
-                  <Text style={[styles.cardNotes, { color: colors.textSecondary }]} numberOfLines={3}>
+                  <Text style={[styles.cardNotes, { color: colors.textSecondary }]} numberOfLines={2}>
                     {cleanNotes}
                   </Text>
                 )}
 
-                {/* Photo Gallery */}
-                {allPhotos.length > 0 && (
-                  <ScrollView 
-                    horizontal 
-                    showsHorizontalScrollIndicator={false} 
-                    style={styles.cardPhotoGallery}
-                    contentContainerStyle={styles.cardPhotoGalleryContent}
-                  >
-                    {allPhotos.map((photoUrl, idx) => (
-                      <Image
-                        key={`photo-${idx}`}
-                        source={{ uri: photoUrl }}
-                        style={[
-                          styles.cardPhoto,
-                          allPhotos.length === 1 && styles.cardPhotoSingle,
-                        ]}
-                      />
-                    ))}
-                  </ScrollView>
-                )}
+                {/* Photo Gallery + Actions Row */}
+                <View style={styles.cardBottomRow}>
+                  {/* Photos - Compact thumbnails */}
+                  {allPhotos.length > 0 && (
+                    <View style={styles.cardPhotoRow}>
+                      {allPhotos.slice(0, 3).map((photoUrl, idx) => (
+                        <Image
+                          key={`photo-${idx}`}
+                          source={{ uri: photoUrl }}
+                          style={styles.cardPhotoThumb}
+                        />
+                      ))}
+                      {allPhotos.length > 3 && (
+                        <View style={[styles.cardPhotoMore, { backgroundColor: colors.background }]}>
+                          <Text style={[styles.cardPhotoMoreText, { color: colors.textSecondary }]}>+{allPhotos.length - 3}</Text>
+                        </View>
+                      )}
+                    </View>
+                  )}
 
-                {/* Linked Work Order Badge */}
-                {verification.linkedWorkOrderId && (
-                  <TouchableOpacity
-                    style={[styles.cardLinkedWO, { backgroundColor: '#EF4444' + '10' }]}
-                    onPress={() => {
-                      console.log('[TaskFeed] Navigating to work order:', verification.linkedWorkOrderId);
-                      router.push(`/cmms/work-orders/${verification.linkedWorkOrderId}`);
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <Link2 size={12} color="#EF4444" />
-                    <Text style={styles.cardLinkedWOText} numberOfLines={1}>
-                      Linked to Work Order: {workOrderNumberMap.get(verification.linkedWorkOrderId) || verification.linkedWorkOrderId}
-                    </Text>
-                    <ChevronRight size={14} color="#EF4444" />
-                  </TouchableOpacity>
-                )}
+                  {/* Linked Work Order Badge - Compact */}
+                  {verification.linkedWorkOrderId && (
+                    <TouchableOpacity
+                      style={[styles.cardLinkedWOCompact, { backgroundColor: '#EF4444' + '10' }]}
+                      onPress={() => {
+                        router.push(`/cmms/work-orders/${verification.linkedWorkOrderId}`);
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Link2 size={10} color="#EF4444" />
+                      <Text style={styles.cardLinkedWOTextCompact} numberOfLines={1}>
+                        WO: {workOrderNumberMap.get(verification.linkedWorkOrderId) || verification.linkedWorkOrderId.slice(0, 8)}
+                      </Text>
+                      <ChevronRight size={12} color="#EF4444" />
+                    </TouchableOpacity>
+                  )}
 
-                {/* Create Work Order Button */}
-                {(verification.status === 'flagged' || verification.sourceType === 'issue_report') && !verification.linkedWorkOrderId && (
-                  <TouchableOpacity
-                    style={[styles.cardCreateWOBtn, { backgroundColor: '#EF4444' }]}
-                    onPress={() => handleCreateWorkOrder(verification)}
-                    activeOpacity={0.8}
-                  >
-                    <Wrench size={14} color="#fff" />
-                    <Text style={styles.cardCreateWOText}>Create Work Order</Text>
-                    <ArrowRight size={14} color="#fff" />
-                  </TouchableOpacity>
-                )}
+                  {/* Create Work Order Button - Compact */}
+                  {(verification.status === 'flagged' || verification.sourceType === 'issue_report') && !verification.linkedWorkOrderId && (
+                    <TouchableOpacity
+                      style={[styles.cardCreateWOBtnCompact, { backgroundColor: '#EF4444' }]}
+                      onPress={() => handleCreateWorkOrder(verification)}
+                      activeOpacity={0.8}
+                    >
+                      <Wrench size={12} color="#fff" />
+                      <Text style={styles.cardCreateWOTextCompact}>Create WO</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
 
-                {/* Department Completion Badges */}
+                {/* Department Completion Badges - Compact footer */}
                 {hasDepartmentTasks && departmentTasks && departmentTasks.length > 0 && (
-                  <View style={styles.cardDeptBadges}>
-                    <Text style={[styles.cardDeptBadgesLabel, { color: colors.textTertiary }]}>ASSIGNED DEPARTMENTS:</Text>
-                    <CompactDepartmentBadges departmentTasks={departmentTasks} maxVisible={8} />
+                  <View style={styles.cardDeptBadgesCompact}>
+                    <CompactDepartmentBadges departmentTasks={departmentTasks} maxVisible={6} />
                   </View>
                 )}
               </View>
@@ -3387,9 +3381,9 @@ const createStyles = (colors: any) =>
       marginTop: 4,
     },
     postCard: {
-      borderRadius: 16,
-      padding: 16,
-      marginBottom: 12,
+      borderRadius: 12,
+      padding: 10,
+      marginBottom: 8,
     },
     postHeader: {
       flexDirection: 'row',
@@ -4355,13 +4349,14 @@ const createStyles = (colors: any) =>
     // Redesigned Card Styles
     cardHeader: {
       flexDirection: 'row',
-      alignItems: 'flex-start',
+      alignItems: 'center',
       justifyContent: 'space-between',
     },
     cardHeaderLeft: {
       flexDirection: 'row',
       flex: 1,
-      gap: 10,
+      alignItems: 'center',
+      gap: 8,
     },
     cardHeaderInfo: {
       flex: 1,
@@ -4369,100 +4364,109 @@ const createStyles = (colors: any) =>
     cardHeaderTopRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      flexWrap: 'wrap',
-      gap: 6,
+      flexWrap: 'nowrap',
+      gap: 4,
     },
     cardUserName: {
-      fontSize: 14,
+      fontSize: 12,
       fontWeight: '600' as const,
+      maxWidth: 100,
     },
     cardDeptBadge: {
-      paddingHorizontal: 6,
-      paddingVertical: 2,
-      borderRadius: 4,
+      paddingHorizontal: 5,
+      paddingVertical: 1,
+      borderRadius: 3,
     },
     cardDeptText: {
-      fontSize: 10,
+      fontSize: 9,
       fontWeight: '600' as const,
     },
     cardTime: {
-      fontSize: 11,
+      fontSize: 10,
     },
     cardLocationRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 4,
-      marginTop: 3,
+      gap: 3,
+      marginTop: 1,
     },
     cardLocationText: {
-      fontSize: 12,
+      fontSize: 10,
       flex: 1,
     },
     cardRefBadge: {
       flexDirection: 'row',
       alignItems: 'center',
-      paddingHorizontal: 6,
+      paddingHorizontal: 5,
       paddingVertical: 2,
-      borderRadius: 4,
-      gap: 3,
-      marginLeft: 6,
+      borderRadius: 3,
+      gap: 2,
     },
     cardRefText: {
-      fontSize: 10,
+      fontSize: 9,
       fontWeight: '600' as const,
     },
     cardHeaderRight: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 6,
+      gap: 4,
     },
     cardSourceBadge: {
-      paddingHorizontal: 8,
-      paddingVertical: 3,
-      borderRadius: 4,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 3,
     },
     cardSourceText: {
-      fontSize: 10,
+      fontSize: 9,
       fontWeight: '600' as const,
     },
     cardDeleteBtn: {
-      width: 28,
-      height: 28,
-      borderRadius: 6,
+      width: 22,
+      height: 22,
+      borderRadius: 4,
       alignItems: 'center',
       justifyContent: 'center',
     },
     avatarSmall: {
-      width: 32,
-      height: 32,
-      borderRadius: 8,
+      width: 26,
+      height: 26,
+      borderRadius: 6,
       alignItems: 'center',
       justifyContent: 'center',
     },
     cardTitleRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      marginTop: 12,
-      gap: 8,
+      marginTop: 8,
+      gap: 6,
     },
     cardStatusIndicator: {
-      width: 4,
-      height: 16,
+      width: 3,
+      height: 14,
       borderRadius: 2,
     },
     cardActionTitle: {
-      fontSize: 15,
+      fontSize: 13,
       fontWeight: '600' as const,
       flex: 1,
     },
     cardCategoryLabel: {
+      fontSize: 10,
+    },
+    cardFormDataInline: {
+      marginTop: 6,
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+    },
+    cardFormInlineText: {
       fontSize: 11,
+      lineHeight: 16,
     },
     cardFormData: {
-      marginTop: 10,
-      padding: 12,
-      borderRadius: 10,
-      gap: 8,
+      marginTop: 6,
+      padding: 8,
+      borderRadius: 6,
+      gap: 4,
     },
     cardFormRow: {
       flexDirection: 'row',
@@ -4470,79 +4474,138 @@ const createStyles = (colors: any) =>
       alignItems: 'flex-start',
     },
     cardFormLabel: {
-      fontSize: 12,
+      fontSize: 10,
       fontWeight: '500' as const,
       flex: 1,
       textTransform: 'capitalize',
     },
     cardFormValue: {
-      fontSize: 12,
+      fontSize: 10,
       fontWeight: '600' as const,
       flex: 2,
       textAlign: 'right',
     },
     cardNotes: {
-      marginTop: 10,
-      fontSize: 13,
-      lineHeight: 18,
+      marginTop: 6,
+      fontSize: 11,
+      lineHeight: 15,
+    },
+    cardBottomRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginTop: 8,
+      gap: 8,
+      flexWrap: 'wrap',
+    },
+    cardPhotoRow: {
+      flexDirection: 'row',
+      gap: 4,
+    },
+    cardPhotoThumb: {
+      width: 48,
+      height: 48,
+      borderRadius: 6,
+    },
+    cardPhotoMore: {
+      width: 48,
+      height: 48,
+      borderRadius: 6,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    cardPhotoMoreText: {
+      fontSize: 11,
+      fontWeight: '600' as const,
     },
     cardPhotoGallery: {
-      marginTop: 12,
-      marginHorizontal: -4,
+      marginTop: 8,
+      marginHorizontal: -2,
     },
     cardPhotoGalleryContent: {
-      paddingHorizontal: 4,
-      gap: 8,
+      paddingHorizontal: 2,
+      gap: 6,
     },
     cardPhoto: {
-      width: 100,
-      height: 100,
-      borderRadius: 10,
+      width: 70,
+      height: 70,
+      borderRadius: 8,
     },
     cardPhotoSingle: {
       width: '100%',
-      height: 180,
+      height: 120,
+    },
+    cardLinkedWOCompact: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 4,
+      gap: 4,
+    },
+    cardLinkedWOTextCompact: {
+      fontSize: 10,
+      fontWeight: '600' as const,
+      color: '#EF4444',
     },
     cardLinkedWO: {
       flexDirection: 'row',
       alignItems: 'center',
-      marginTop: 10,
-      paddingHorizontal: 10,
-      paddingVertical: 8,
-      borderRadius: 8,
-      gap: 6,
+      marginTop: 6,
+      paddingHorizontal: 8,
+      paddingVertical: 6,
+      borderRadius: 6,
+      gap: 4,
     },
     cardLinkedWOText: {
-      fontSize: 12,
+      fontSize: 11,
       fontWeight: '600' as const,
       color: '#EF4444',
       flex: 1,
+    },
+    cardCreateWOBtnCompact: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: 4,
+      gap: 4,
+    },
+    cardCreateWOTextCompact: {
+      fontSize: 10,
+      fontWeight: '700' as const,
+      color: '#fff',
     },
     cardCreateWOBtn: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
-      marginTop: 12,
-      paddingVertical: 10,
-      borderRadius: 8,
-      gap: 6,
+      marginTop: 8,
+      paddingVertical: 8,
+      borderRadius: 6,
+      gap: 4,
     },
     cardCreateWOText: {
-      fontSize: 13,
+      fontSize: 11,
       fontWeight: '700' as const,
       color: '#fff',
     },
+    cardDeptBadgesCompact: {
+      marginTop: 8,
+      paddingTop: 8,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+    },
     cardDeptBadges: {
-      marginTop: 12,
-      paddingTop: 12,
+      marginTop: 8,
+      paddingTop: 8,
       borderTopWidth: 1,
       borderTopColor: colors.border,
     },
     cardDeptBadgesLabel: {
-      fontSize: 10,
+      fontSize: 9,
       fontWeight: '600' as const,
       letterSpacing: 0.5,
-      marginBottom: 8,
+      marginBottom: 6,
     },
     datePickerButton: {
       flexDirection: 'row',
