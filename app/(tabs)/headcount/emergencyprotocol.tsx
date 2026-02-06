@@ -10,7 +10,7 @@ import {
   Vibration,
   Platform,
 } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import {
   Flame,
   AlertTriangle,
@@ -23,7 +23,8 @@ import {
   Info,
   X,
   Phone,
-  Check,
+  Tornado,
+  ShieldAlert,
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import * as Haptics from 'expo-haptics';
@@ -31,6 +32,7 @@ import {
   MOCK_EMERGENCY_EMPLOYEES,
   EmergencyEmployee,
 } from '@/mocks/emergencyEmployees';
+import { EMERGENCY_EVENT_TYPE_CONFIG, EmergencyEventType } from '@/types/emergencyEvents';
 
 type EmployeeStatus = 'pending' | 'safe';
 
@@ -47,9 +49,27 @@ interface EmergencyState {
   employees: EmployeeRollCall[];
 }
 
+const TYPE_ICONS: Record<string, React.ComponentType<{ size: number; color: string }>> = {
+  fire: Flame,
+  tornado: Tornado,
+  active_shooter: ShieldAlert,
+};
+
+const TYPE_HEADERS: Record<string, { title: string; instruction: string; headerBg: string }> = {
+  fire: { title: 'FIRE EVACUATION', instruction: 'EVACUATE IMMEDIATELY • ACCOUNT FOR ALL PERSONNEL', headerBg: '#B91C1C' },
+  tornado: { title: 'TORNADO SHELTER', instruction: 'MOVE TO SHELTER AREAS • ACCOUNT FOR ALL PERSONNEL', headerBg: '#5B21B6' },
+  active_shooter: { title: 'ACTIVE SHOOTER', instruction: 'RUN • HIDE • FIGHT • ACCOUNT FOR ALL PERSONNEL', headerBg: '#991B1B' },
+};
+
 export default function EmergencyProtocolScreen() {
   const { colors } = useTheme();
   const router = useRouter();
+  const params = useLocalSearchParams<{ type?: string; drill?: string }>();
+  const emergencyType = (params.type || 'fire') as EmergencyEventType;
+  const isDrill = params.drill === 'true';
+  const typeConfig = EMERGENCY_EVENT_TYPE_CONFIG[emergencyType] || EMERGENCY_EVENT_TYPE_CONFIG.fire;
+  const headerConfig = TYPE_HEADERS[emergencyType] || TYPE_HEADERS.fire;
+  const TypeIcon = TYPE_ICONS[emergencyType] || Flame;
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const flashAnim = useRef(new Animated.Value(0)).current;
   const successAnim = useRef(new Animated.Value(0)).current;
@@ -246,12 +266,18 @@ export default function EmergencyProtocolScreen() {
               <Shield size={48} color="#EF4444" />
             </View>
             <Text style={[styles.infoTitle, { color: colors.text }]}>
-              Emergency Protocol System
+              {isDrill ? `${typeConfig.label} Drill` : `${typeConfig.label} Emergency Protocol`}
             </Text>
             <Text style={[styles.infoDesc, { color: colors.textSecondary }]}>
-              Initiate an emergency protocol to begin evacuation procedures and 
-              track all personnel until everyone is accounted for.
+              {isDrill
+                ? `Start a ${typeConfig.label.toLowerCase()} drill to practice evacuation and track all personnel.`
+                : `Initiate ${typeConfig.label.toLowerCase()} emergency protocol to begin procedures and track all personnel until everyone is accounted for.`}
             </Text>
+            {isDrill && (
+              <View style={[styles.drillBadge, { backgroundColor: '#3B82F620' }]}>
+                <Text style={{ fontSize: 12, fontWeight: '700' as const, color: '#3B82F6', letterSpacing: 1 }}>DRILL MODE</Text>
+              </View>
+            )}
           </View>
 
           <View style={[styles.employeesPreview, { backgroundColor: colors.surface }]}>
@@ -290,15 +316,19 @@ export default function EmergencyProtocolScreen() {
           </View>
 
           <TouchableOpacity
-            style={styles.initiateButton}
+            style={[styles.initiateButton, isDrill && { backgroundColor: '#3B82F6' }]}
             onPress={initiateEmergency}
           >
-            <Flame size={24} color="#FFFFFF" />
-            <Text style={styles.initiateButtonText}>INITIATE EMERGENCY PROTOCOL</Text>
+            <TypeIcon size={24} color="#FFFFFF" />
+            <Text style={styles.initiateButtonText}>
+              {isDrill ? `START ${typeConfig.label.toUpperCase()} DRILL` : `INITIATE ${typeConfig.label.toUpperCase()} PROTOCOL`}
+            </Text>
           </TouchableOpacity>
 
           <Text style={[styles.disclaimer, { color: colors.textSecondary }]}>
-            This will activate fire evacuation mode and begin personnel roll call.
+            {isDrill
+              ? `This will start a ${typeConfig.label.toLowerCase()} drill and begin personnel roll call.`
+              : `This will activate ${typeConfig.label.toLowerCase()} emergency mode and begin personnel roll call.`}
           </Text>
         </ScrollView>
       </View>
@@ -313,7 +343,7 @@ export default function EmergencyProtocolScreen() {
         }}
       />
 
-      <View style={[styles.emergencyHeader, allSafe && styles.emergencyHeaderSuccess]}>
+      <View style={[styles.emergencyHeader, { backgroundColor: allSafe ? '#065F46' : headerConfig.headerBg }, isDrill && !allSafe && { backgroundColor: '#1E40AF' }]}>
         {allSafe ? (
           <>
             <View style={styles.successTitleRow}>
@@ -322,18 +352,20 @@ export default function EmergencyProtocolScreen() {
               <CheckCircle size={32} color="#10B981" />
             </View>
             <Text style={styles.successSubtitle}>
-              Emergency protocol complete • All {emergency.employees.length} employees accounted for
+              {isDrill ? 'Drill' : 'Emergency'} protocol complete • All {emergency.employees.length} employees accounted for
             </Text>
           </>
         ) : (
           <>
             <Animated.View style={[styles.emergencyTitleRow, { transform: [{ scale: pulseAnim }] }]}>
-              <Flame size={32} color="#FF4444" />
-              <Text style={styles.emergencyTitle}>FIRE EVACUATION</Text>
-              <Flame size={32} color="#FF4444" />
+              <TypeIcon size={32} color="#FFFFFF" />
+              <Text style={styles.emergencyTitle}>
+                {isDrill ? `${typeConfig.label.toUpperCase()} DRILL` : headerConfig.title}
+              </Text>
+              <TypeIcon size={32} color="#FFFFFF" />
             </Animated.View>
             <Text style={styles.emergencyInstructions}>
-              EVACUATE IMMEDIATELY • ACCOUNT FOR ALL PERSONNEL
+              {headerConfig.instruction}
             </Text>
           </>
         )}
@@ -704,6 +736,12 @@ const styles = StyleSheet.create({
   emergencyContainer: {
     flex: 1,
   },
+  drillBadge: {
+    marginTop: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
   emergencyHeader: {
     backgroundColor: '#B91C1C',
     paddingTop: 60,
@@ -711,9 +749,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     alignItems: 'center' as const,
   },
-  emergencyHeaderSuccess: {
-    backgroundColor: '#065F46',
-  },
+  emergencyHeaderSuccess: {},
   emergencyTitleRow: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,

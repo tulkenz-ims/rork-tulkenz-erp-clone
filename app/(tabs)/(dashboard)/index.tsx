@@ -9,6 +9,7 @@ import {
   Pressable,
   Dimensions,
   Alert,
+  Modal,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -30,6 +31,10 @@ import {
   Target,
   Zap,
   Flame,
+  Siren,
+  Tornado,
+  ShieldAlert,
+  X,
 } from 'lucide-react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import { useUser } from '@/contexts/UserContext';
@@ -133,6 +138,7 @@ export default function ExecutiveDashboard() {
   const [refreshing, setRefreshing] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [showLowStockAlerts, setShowLowStockAlerts] = useState(false);
+  const [showEmergencyModal, setShowEmergencyModal] = useState(false);
 
   const handleMaterialPress = useCallback((materialId: string) => {
     console.log('[Dashboard] handleMaterialPress called with materialId:', materialId);
@@ -466,15 +472,15 @@ export default function ExecutiveDashboard() {
           ]}
           onPress={() => {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-            router.push('/headcount/emergencyprotocol');
+            setShowEmergencyModal(true);
           }}
         >
           <View style={styles.emergencyIconBox}>
-            <Flame size={24} color="#FFFFFF" />
+            <Siren size={24} color="#FFFFFF" />
           </View>
           <View style={styles.emergencyTextContainer}>
-            <Text style={styles.emergencyButtonTitle}>EMERGENCY INITIATION</Text>
-            <Text style={styles.emergencyButtonSubtitle}>Fire evacuation with sector roll calls</Text>
+            <Text style={styles.emergencyButtonTitle}>EMERGENCY / DRILL</Text>
+            <Text style={styles.emergencyButtonSubtitle}>Initiate emergency or drill with roll call</Text>
           </View>
           <ChevronRight size={20} color="#FFFFFF" />
         </Pressable>
@@ -756,6 +762,104 @@ export default function ExecutiveDashboard() {
 
         <View style={styles.bottomPadding} />
       </ScrollView>
+
+      <Modal
+        visible={showEmergencyModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowEmergencyModal(false)}
+      >
+        <View style={styles.emergencyModalOverlay}>
+          <View style={styles.emergencyModalContent}>
+            <View style={styles.emergencyModalHeader}>
+              <Text style={styles.emergencyModalTitle}>Initiate Emergency or Drill</Text>
+              <Pressable onPress={() => setShowEmergencyModal(false)} hitSlop={12}>
+                <X size={22} color={Colors.text} />
+              </Pressable>
+            </View>
+            <Text style={styles.emergencyModalDesc}>
+              Select type — roll call starts immediately. Details can be added after.
+            </Text>
+
+            <Text style={styles.emergencyModalSectionLabel}>LIVE EMERGENCY</Text>
+            {[
+              { type: 'fire', label: 'Fire', Icon: Flame, color: '#EF4444' },
+              { type: 'tornado', label: 'Tornado', Icon: Tornado, color: '#7C3AED' },
+              { type: 'active_shooter', label: 'Active Shooter', Icon: ShieldAlert, color: '#DC2626' },
+            ].map(({ type, label, Icon, color }) => (
+              <Pressable
+                key={type}
+                style={({ pressed }) => [
+                  styles.emergencyModalRow,
+                  { borderLeftColor: color, opacity: pressed ? 0.8 : 1 },
+                ]}
+                onPress={() => {
+                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+                  setShowEmergencyModal(false);
+                  router.push({
+                    pathname: '/headcount/emergencyprotocol',
+                    params: { type, drill: 'false' },
+                  });
+                }}
+              >
+                <View style={[styles.emergencyModalIconBox, { backgroundColor: color + '18' }]}>
+                  <Icon size={22} color={color} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.emergencyModalRowTitle}>{label} Emergency</Text>
+                  <Text style={styles.emergencyModalRowSub}>Live — starts roll call now</Text>
+                </View>
+                <ChevronRight size={18} color={Colors.textTertiary} />
+              </Pressable>
+            ))}
+
+            <Text style={[styles.emergencyModalSectionLabel, { marginTop: 16 }]}>DRILL MODE</Text>
+            {[
+              { type: 'fire', label: 'Fire Drill', Icon: Flame, color: '#F97316' },
+              { type: 'tornado', label: 'Tornado Drill', Icon: Tornado, color: '#7C3AED' },
+              { type: 'active_shooter', label: 'Active Shooter Drill', Icon: ShieldAlert, color: '#6B7280' },
+            ].map(({ type, label, Icon, color }) => (
+              <Pressable
+                key={`drill-${type}`}
+                style={({ pressed }) => [
+                  styles.emergencyModalRow,
+                  { borderLeftColor: '#3B82F6', opacity: pressed ? 0.8 : 1 },
+                ]}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  setShowEmergencyModal(false);
+                  router.push({
+                    pathname: '/headcount/emergencyprotocol',
+                    params: { type, drill: 'true' },
+                  });
+                }}
+              >
+                <View style={[styles.emergencyModalIconBox, { backgroundColor: '#3B82F618' }]}>
+                  <Icon size={22} color="#3B82F6" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.emergencyModalRowTitle}>{label}</Text>
+                  <Text style={styles.emergencyModalRowSub}>Training exercise — starts roll call</Text>
+                </View>
+                <ChevronRight size={18} color={Colors.textTertiary} />
+              </Pressable>
+            ))}
+
+            <Pressable
+              style={({ pressed }) => [
+                styles.emergencyModalMoreBtn,
+                pressed && { opacity: 0.7 },
+              ]}
+              onPress={() => {
+                setShowEmergencyModal(false);
+                router.push('/safety/emergencyinitiation' as any);
+              }}
+            >
+              <Text style={styles.emergencyModalMoreText}>More Emergency Types & Options →</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
 
       <LowStockAlerts
         visible={showLowStockAlerts}
@@ -1177,5 +1281,79 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: 'rgba(255,255,255,0.8)',
     marginTop: 2,
+  },
+  emergencyModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'flex-end',
+  },
+  emergencyModalContent: {
+    backgroundColor: Colors.surface,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    paddingBottom: 36,
+    maxHeight: '85%',
+  },
+  emergencyModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  emergencyModalTitle: {
+    fontSize: 18,
+    fontWeight: '700' as const,
+    color: Colors.text,
+  },
+  emergencyModalDesc: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    marginBottom: 18,
+    lineHeight: 18,
+  },
+  emergencyModalSectionLabel: {
+    fontSize: 11,
+    fontWeight: '700' as const,
+    color: Colors.textTertiary,
+    letterSpacing: 1,
+    marginBottom: 8,
+  },
+  emergencyModalRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center',
+    backgroundColor: Colors.background,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 8,
+    borderLeftWidth: 4,
+    gap: 12,
+  },
+  emergencyModalIconBox: {
+    width: 42,
+    height: 42,
+    borderRadius: 10,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
+  emergencyModalRowTitle: {
+    fontSize: 15,
+    fontWeight: '600' as const,
+    color: Colors.text,
+  },
+  emergencyModalRowSub: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginTop: 1,
+  },
+  emergencyModalMoreBtn: {
+    marginTop: 14,
+    alignItems: 'center' as const,
+    paddingVertical: 10,
+  },
+  emergencyModalMoreText: {
+    fontSize: 14,
+    fontWeight: '600' as const,
+    color: Colors.primary,
   },
 });
