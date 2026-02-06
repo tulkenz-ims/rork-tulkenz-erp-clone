@@ -222,7 +222,7 @@ export function useLowStockMaterials() {
     queryFn: async () => {
       if (!organizationId) return [];
       
-      console.log('[useLowStockMaterials] Fetching low stock materials from Supabase');
+      console.log('[useLowStockMaterials] Fetching low stock materials');
       
       const { data, error } = await supabase
         .from('materials')
@@ -240,11 +240,14 @@ export function useLowStockMaterials() {
         m.min_level > 0 && m.on_hand <= m.min_level
       ) as Material[];
       
-      console.log('[useLowStockMaterials] Found', lowStockItems.length, 'low stock items out of', data?.length || 0, 'total active materials');
+
       return lowStockItems;
     },
     enabled: !!organizationId,
-    staleTime: 1000 * 60 * 2,
+    staleTime: 1000 * 60 * 5,
+    gcTime: 1000 * 60 * 10,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
   });
 }
 
