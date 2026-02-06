@@ -45,12 +45,12 @@ CREATE TABLE IF NOT EXISTS emergency_events (
 );
 
 -- Indexes
-CREATE INDEX idx_emergency_events_org ON emergency_events(organization_id);
-CREATE INDEX idx_emergency_events_status ON emergency_events(status);
-CREATE INDEX idx_emergency_events_type ON emergency_events(event_type);
-CREATE INDEX idx_emergency_events_initiated_at ON emergency_events(initiated_at DESC);
-CREATE INDEX idx_emergency_events_drill ON emergency_events(drill);
-CREATE INDEX idx_emergency_events_facility ON emergency_events(facility_id);
+CREATE INDEX IF NOT EXISTS idx_emergency_events_org ON emergency_events(organization_id);
+CREATE INDEX IF NOT EXISTS idx_emergency_events_status ON emergency_events(status);
+CREATE INDEX IF NOT EXISTS idx_emergency_events_type ON emergency_events(event_type);
+CREATE INDEX IF NOT EXISTS idx_emergency_events_initiated_at ON emergency_events(initiated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_emergency_events_drill ON emergency_events(drill);
+CREATE INDEX IF NOT EXISTS idx_emergency_events_facility ON emergency_events(facility_id);
 
 -- Updated_at trigger
 CREATE OR REPLACE FUNCTION update_emergency_events_updated_at()
@@ -61,6 +61,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS trigger_emergency_events_updated_at ON emergency_events;
 CREATE TRIGGER trigger_emergency_events_updated_at
   BEFORE UPDATE ON emergency_events
   FOR EACH ROW
@@ -69,22 +70,17 @@ CREATE TRIGGER trigger_emergency_events_updated_at
 -- RLS
 ALTER TABLE emergency_events ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Allow anon select for emergency_events"
-  ON emergency_events FOR SELECT
-  TO anon, authenticated
-  USING (true);
-
-CREATE POLICY "Allow anon insert for emergency_events"
-  ON emergency_events FOR INSERT
-  TO anon, authenticated
-  WITH CHECK (true);
-
-CREATE POLICY "Allow anon update for emergency_events"
-  ON emergency_events FOR UPDATE
-  TO anon, authenticated
-  USING (true);
-
-CREATE POLICY "Allow anon delete for emergency_events"
-  ON emergency_events FOR DELETE
-  TO anon, authenticated
-  USING (true);
+DO $ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'emergency_events' AND policyname = 'Allow anon select for emergency_events') THEN
+    CREATE POLICY "Allow anon select for emergency_events" ON emergency_events FOR SELECT TO anon, authenticated USING (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'emergency_events' AND policyname = 'Allow anon insert for emergency_events') THEN
+    CREATE POLICY "Allow anon insert for emergency_events" ON emergency_events FOR INSERT TO anon, authenticated WITH CHECK (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'emergency_events' AND policyname = 'Allow anon update for emergency_events') THEN
+    CREATE POLICY "Allow anon update for emergency_events" ON emergency_events FOR UPDATE TO anon, authenticated USING (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'emergency_events' AND policyname = 'Allow anon delete for emergency_events') THEN
+    CREATE POLICY "Allow anon delete for emergency_events" ON emergency_events FOR DELETE TO anon, authenticated USING (true);
+  END IF;
+END $;
