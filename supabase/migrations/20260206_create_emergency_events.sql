@@ -69,34 +69,22 @@ CREATE TRIGGER trigger_emergency_events_updated_at
 -- RLS
 ALTER TABLE emergency_events ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can view emergency events in their organization"
+CREATE POLICY "Allow anon select for emergency_events"
   ON emergency_events FOR SELECT
-  USING (
-    organization_id IN (
-      SELECT organization_id FROM employees WHERE id = auth.uid()
-    )
-  );
+  TO anon, authenticated
+  USING (true);
 
-CREATE POLICY "Users can insert emergency events in their organization"
+CREATE POLICY "Allow anon insert for emergency_events"
   ON emergency_events FOR INSERT
-  WITH CHECK (
-    organization_id IN (
-      SELECT organization_id FROM employees WHERE id = auth.uid()
-    )
-  );
+  TO anon, authenticated
+  WITH CHECK (true);
 
-CREATE POLICY "Users can update emergency events in their organization"
+CREATE POLICY "Allow anon update for emergency_events"
   ON emergency_events FOR UPDATE
-  USING (
-    organization_id IN (
-      SELECT organization_id FROM employees WHERE id = auth.uid()
-    )
-  );
+  TO anon, authenticated
+  USING (true);
 
-CREATE POLICY "Users can delete emergency events in their organization"
+CREATE POLICY "Allow anon delete for emergency_events"
   ON emergency_events FOR DELETE
-  USING (
-    organization_id IN (
-      SELECT organization_id FROM employees WHERE id = auth.uid()
-    )
-  );
+  TO anon, authenticated
+  USING (true);
