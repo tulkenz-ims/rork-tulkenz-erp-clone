@@ -5,9 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   Pressable,
-  TextInput,
-  Alert,
-  ActivityIndicator,
   Animated,
 } from 'react-native';
 import { useRouter, Stack } from 'expo-router';
@@ -29,15 +26,12 @@ import {
   ChevronUp,
   Siren,
   TriangleAlert,
+  ChevronRight,
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
-import { useEmergencyEvents } from '@/hooks/useEmergencyEvents';
 import {
   EmergencyEventType,
-  EmergencyEventSeverity,
   EMERGENCY_EVENT_TYPE_CONFIG,
-  EMERGENCY_SEVERITY_LABELS,
-  EMERGENCY_SEVERITY_COLORS,
 } from '@/types/emergencyEvents';
 import * as Haptics from 'expo-haptics';
 
@@ -69,23 +63,13 @@ const SECONDARY_TYPES: EmergencyEventType[] = [
   'other',
 ];
 
-const SEVERITY_OPTIONS: EmergencyEventSeverity[] = ['critical', 'high', 'medium', 'low'];
-
 export default function EmergencyInitiationScreen() {
   const { colors } = useTheme();
   const router = useRouter();
-  const { createEvent, isCreating } = useEmergencyEvents();
-
-  const [selectedType, setSelectedType] = useState<EmergencyEventType | null>(null);
-  const [severity, setSeverity] = useState<EmergencyEventSeverity>('high');
-  const [description, setDescription] = useState('');
-  const [locationDetails, setLocationDetails] = useState('');
-  const [isDrill, setIsDrill] = useState(false);
-  const [emergencyServicesCalled, setEmergencyServicesCalled] = useState(false);
   const [showOtherTypes, setShowOtherTypes] = useState(false);
   const [pulseAnim] = useState(() => new Animated.Value(1));
 
-  const startPulse = useCallback(() => {
+  React.useEffect(() => {
     Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, { toValue: 1.04, duration: 600, useNativeDriver: true }),
@@ -94,129 +78,93 @@ export default function EmergencyInitiationScreen() {
     ).start();
   }, [pulseAnim]);
 
-  React.useEffect(() => {
-    startPulse();
-  }, [startPulse]);
-
-  const handleSelectType = useCallback((type: EmergencyEventType) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    setSelectedType(type);
-  }, []);
-
-  const handleInitiate = useCallback(async () => {
-    if (!selectedType) {
-      Alert.alert('Select Emergency Type', 'Please select an emergency type before initiating.');
-      return;
+  const handleInitiate = useCallback((type: EmergencyEventType, drill: boolean) => {
+    if (drill) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    } else {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     }
+    console.log('[EmergencyInitiation] Navigating to roll call:', type, drill ? 'DRILL' : 'LIVE');
+    router.push({
+      pathname: '/headcount/emergencyprotocol',
+      params: { type, drill: drill ? 'true' : 'false' },
+    });
+  }, [router]);
 
-    const config = EMERGENCY_EVENT_TYPE_CONFIG[selectedType];
-
-    Alert.alert(
-      isDrill ? 'Initiate Emergency Drill?' : 'INITIATE EMERGENCY?',
-      isDrill
-        ? `Start a ${config.label} drill? This will be logged as a drill exercise.`
-        : `This will initiate a ${config.label} emergency event with ${severity.toUpperCase()} severity. Are you sure?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: isDrill ? 'Start Drill' : 'INITIATE',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-              const title = `${config.label} ${isDrill ? 'Drill' : 'Emergency'} - ${new Date().toLocaleDateString()}`;
-              await createEvent({
-                event_type: selectedType,
-                severity,
-                title,
-                description: description || undefined,
-                location_details: locationDetails || undefined,
-                drill: isDrill,
-                departments_affected: [],
-                emergency_services_called: emergencyServicesCalled,
-              });
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-              Alert.alert(
-                isDrill ? 'Drill Started' : 'Emergency Initiated',
-                isDrill
-                  ? 'The emergency drill has been started and logged.'
-                  : 'The emergency event has been initiated. Proceed with emergency protocols.',
-                [{ text: 'View Event Log', onPress: () => router.push('/safety/emergencyeventlog' as any) }]
-              );
-            } catch (err) {
-              console.error('[EmergencyInitiation] Error creating event:', err);
-              Alert.alert('Error', 'Failed to initiate emergency event. Please try again.');
-            }
-          },
-        },
-      ]
-    );
-  }, [selectedType, severity, description, locationDetails, isDrill, emergencyServicesCalled, createEvent, router]);
-
-  const renderPrimaryButton = (type: EmergencyEventType) => {
+  const renderPrimaryType = (type: EmergencyEventType) => {
     const config = EMERGENCY_EVENT_TYPE_CONFIG[type];
     const IconComp = ICON_MAP[config.icon];
-    const isSelected = selectedType === type;
 
     return (
-      <Animated.View
-        key={type}
-        style={[
-          { transform: [{ scale: isSelected ? pulseAnim : 1 }] },
-        ]}
-      >
-        <Pressable
-          style={({ pressed }) => [
-            styles.primaryButton,
-            {
-              backgroundColor: isSelected ? config.color : config.color + '18',
-              borderColor: isSelected ? config.color : config.color + '40',
-              opacity: pressed ? 0.85 : 1,
-            },
-          ]}
-          onPress={() => handleSelectType(type)}
-          testID={`emergency-btn-${type}`}
-        >
-          <View style={[styles.primaryIconWrap, { backgroundColor: isSelected ? 'rgba(255,255,255,0.25)' : config.color + '25' }]}>
-            {IconComp && <IconComp size={36} color={isSelected ? '#FFFFFF' : config.color} />}
+      <View key={type} style={styles.typeSection}>
+        <View style={[styles.typeHeader, { borderBottomColor: colors.border }]}>
+          <View style={[styles.typeIconWrap, { backgroundColor: config.color + '18' }]}>
+            {IconComp && <IconComp size={28} color={config.color} />}
           </View>
-          <Text style={[styles.primaryLabel, { color: isSelected ? '#FFFFFF' : config.color }]}>
-            {config.label}
-          </Text>
-          <Text style={[styles.primarySub, { color: isSelected ? 'rgba(255,255,255,0.8)' : colors.textSecondary }]} numberOfLines={2}>
-            {config.instructions.split('.')[0]}
-          </Text>
-        </Pressable>
-      </Animated.View>
+          <View style={styles.typeHeaderText}>
+            <Text style={[styles.typeLabel, { color: colors.text }]}>{config.label}</Text>
+            <Text style={[styles.typeInstruction, { color: colors.textSecondary }]} numberOfLines={1}>
+              {config.instructions.split('.')[0]}
+            </Text>
+          </View>
+        </View>
+        <View style={styles.typeActions}>
+          <Animated.View style={{ flex: 1, transform: [{ scale: pulseAnim }] }}>
+            <Pressable
+              style={({ pressed }) => [
+                styles.liveButton,
+                { backgroundColor: config.color, opacity: pressed ? 0.85 : 1 },
+              ]}
+              onPress={() => handleInitiate(type, false)}
+              testID={`emergency-live-${type}`}
+            >
+              <Siren size={18} color="#FFFFFF" />
+              <Text style={styles.liveButtonText}>LIVE EMERGENCY</Text>
+              <ChevronRight size={16} color="rgba(255,255,255,0.7)" />
+            </Pressable>
+          </Animated.View>
+          <Pressable
+            style={({ pressed }) => [
+              styles.drillButton,
+              { backgroundColor: '#3B82F615', borderColor: '#3B82F640', opacity: pressed ? 0.85 : 1 },
+            ]}
+            onPress={() => handleInitiate(type, true)}
+            testID={`emergency-drill-${type}`}
+          >
+            <Activity size={16} color="#3B82F6" />
+            <Text style={styles.drillButtonText}>Drill</Text>
+          </Pressable>
+        </View>
+      </View>
     );
   };
 
-  const renderSecondaryButton = (type: EmergencyEventType) => {
+  const renderSecondaryType = (type: EmergencyEventType) => {
     const config = EMERGENCY_EVENT_TYPE_CONFIG[type];
     const IconComp = ICON_MAP[config.icon];
-    const isSelected = selectedType === type;
 
     return (
-      <Pressable
-        key={type}
-        style={({ pressed }) => [
-          styles.secondaryButton,
-          {
-            backgroundColor: isSelected ? config.color + '20' : colors.surface,
-            borderColor: isSelected ? config.color : colors.border,
-            opacity: pressed ? 0.85 : 1,
-          },
-        ]}
-        onPress={() => handleSelectType(type)}
-        testID={`emergency-btn-${type}`}
-      >
+      <View key={type} style={[styles.secondaryRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <View style={[styles.secondaryIconWrap, { backgroundColor: config.color + '15' }]}>
           {IconComp && <IconComp size={20} color={config.color} />}
         </View>
-        <Text style={[styles.secondaryLabel, { color: isSelected ? config.color : colors.text }]} numberOfLines={1}>
+        <Text style={[styles.secondaryLabel, { color: colors.text }]} numberOfLines={1}>
           {config.label}
         </Text>
-      </Pressable>
+        <Pressable
+          style={({ pressed }) => [styles.secondaryLiveBtn, { backgroundColor: config.color, opacity: pressed ? 0.85 : 1 }]}
+          onPress={() => handleInitiate(type, false)}
+        >
+          <Siren size={12} color="#FFFFFF" />
+          <Text style={styles.secondaryLiveBtnText}>Live</Text>
+        </Pressable>
+        <Pressable
+          style={({ pressed }) => [styles.secondaryDrillBtn, { borderColor: '#3B82F640', opacity: pressed ? 0.85 : 1 }]}
+          onPress={() => handleInitiate(type, true)}
+        >
+          <Text style={styles.secondaryDrillBtnText}>Drill</Text>
+        </Pressable>
+      </View>
     );
   };
 
@@ -238,53 +186,20 @@ export default function EmergencyInitiationScreen() {
           ),
         }}
       />
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <View style={[styles.warningBanner, { backgroundColor: '#DC262615', borderColor: '#DC262640' }]}>
-          <TriangleAlert size={22} color="#DC2626" />
+      <ScrollView style={styles.scrollView} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <View style={[styles.warningBanner, { backgroundColor: '#DC262612', borderColor: '#DC262630' }]}>
+          <TriangleAlert size={20} color="#DC2626" />
           <View style={styles.warningContent}>
-            <Text style={styles.warningTitle}>Emergency Initiation</Text>
+            <Text style={styles.warningTitle}>Roll Call First, Details Second</Text>
             <Text style={[styles.warningText, { color: colors.textSecondary }]}>
-              Select an emergency type below. Toggle "Drill Mode" for training exercises.
+              Select a type below to start roll call immediately. Event details can be added once everyone is safe.
             </Text>
           </View>
         </View>
 
-        <View style={styles.drillToggleRow}>
-          <Pressable
-            style={[
-              styles.drillToggle,
-              {
-                backgroundColor: !isDrill ? '#DC262615' : colors.surface,
-                borderColor: !isDrill ? '#DC2626' : colors.border,
-              },
-            ]}
-            onPress={() => { setIsDrill(false); Haptics.selectionAsync(); }}
-          >
-            <Siren size={16} color={!isDrill ? '#DC2626' : colors.textSecondary} />
-            <Text style={[styles.drillToggleText, { color: !isDrill ? '#DC2626' : colors.textSecondary }]}>
-              Live Emergency
-            </Text>
-          </Pressable>
-          <Pressable
-            style={[
-              styles.drillToggle,
-              {
-                backgroundColor: isDrill ? '#3B82F615' : colors.surface,
-                borderColor: isDrill ? '#3B82F6' : colors.border,
-              },
-            ]}
-            onPress={() => { setIsDrill(true); Haptics.selectionAsync(); }}
-          >
-            <Activity size={16} color={isDrill ? '#3B82F6' : colors.textSecondary} />
-            <Text style={[styles.drillToggleText, { color: isDrill ? '#3B82F6' : colors.textSecondary }]}>
-              Drill Mode
-            </Text>
-          </Pressable>
-        </View>
-
         <Text style={[styles.sectionLabel, { color: colors.text }]}>Primary Emergencies</Text>
-        <View style={styles.primaryGrid}>
-          {PRIMARY_TYPES.map(renderPrimaryButton)}
+        <View style={styles.primaryList}>
+          {PRIMARY_TYPES.map(renderPrimaryType)}
         </View>
 
         <Pressable
@@ -302,123 +217,10 @@ export default function EmergencyInitiationScreen() {
         </Pressable>
 
         {showOtherTypes && (
-          <View style={styles.secondaryGrid}>
-            {SECONDARY_TYPES.map(renderSecondaryButton)}
+          <View style={styles.secondaryList}>
+            {SECONDARY_TYPES.map(renderSecondaryType)}
           </View>
         )}
-
-        {selectedType && (
-          <View style={[styles.detailsSection, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[styles.detailsTitle, { color: colors.text }]}>Event Details</Text>
-
-            <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Severity</Text>
-            <View style={styles.severityRow}>
-              {SEVERITY_OPTIONS.map((s) => (
-                <Pressable
-                  key={s}
-                  style={[
-                    styles.severityChip,
-                    {
-                      backgroundColor: severity === s ? EMERGENCY_SEVERITY_COLORS[s] + '20' : colors.background,
-                      borderColor: severity === s ? EMERGENCY_SEVERITY_COLORS[s] : colors.border,
-                    },
-                  ]}
-                  onPress={() => { setSeverity(s); Haptics.selectionAsync(); }}
-                >
-                  <Text
-                    style={[
-                      styles.severityChipText,
-                      { color: severity === s ? EMERGENCY_SEVERITY_COLORS[s] : colors.textSecondary },
-                    ]}
-                  >
-                    {EMERGENCY_SEVERITY_LABELS[s]}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-
-            <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Location Details</Text>
-            <TextInput
-              style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
-              placeholder="e.g. Building A, 2nd Floor, Warehouse"
-              placeholderTextColor={colors.textSecondary}
-              value={locationDetails}
-              onChangeText={setLocationDetails}
-            />
-
-            <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Description (optional)</Text>
-            <TextInput
-              style={[styles.textArea, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
-              placeholder="Additional details..."
-              placeholderTextColor={colors.textSecondary}
-              value={description}
-              onChangeText={setDescription}
-              multiline
-              numberOfLines={3}
-              textAlignVertical="top"
-            />
-
-            <Pressable
-              style={[
-                styles.servicesToggle,
-                {
-                  backgroundColor: emergencyServicesCalled ? '#EF444415' : colors.background,
-                  borderColor: emergencyServicesCalled ? '#EF4444' : colors.border,
-                },
-              ]}
-              onPress={() => { setEmergencyServicesCalled(!emergencyServicesCalled); Haptics.selectionAsync(); }}
-            >
-              <Siren size={18} color={emergencyServicesCalled ? '#EF4444' : colors.textSecondary} />
-              <Text
-                style={[
-                  styles.servicesToggleText,
-                  { color: emergencyServicesCalled ? '#EF4444' : colors.textSecondary },
-                ]}
-              >
-                Emergency Services Called (911)
-              </Text>
-            </Pressable>
-          </View>
-        )}
-
-        {selectedType && (
-          <View style={[styles.instructionsCard, { backgroundColor: EMERGENCY_EVENT_TYPE_CONFIG[selectedType].color + '10', borderColor: EMERGENCY_EVENT_TYPE_CONFIG[selectedType].color + '30' }]}>
-            <Text style={[styles.instructionsTitle, { color: EMERGENCY_EVENT_TYPE_CONFIG[selectedType].color }]}>
-              Quick Reference: {EMERGENCY_EVENT_TYPE_CONFIG[selectedType].label}
-            </Text>
-            <Text style={[styles.instructionsText, { color: colors.text }]}>
-              {EMERGENCY_EVENT_TYPE_CONFIG[selectedType].instructions}
-            </Text>
-          </View>
-        )}
-
-        <Pressable
-          style={({ pressed }) => [
-            styles.initiateButton,
-            {
-              backgroundColor: selectedType
-                ? isDrill
-                  ? '#3B82F6'
-                  : '#DC2626'
-                : colors.border,
-              opacity: pressed && selectedType ? 0.85 : isCreating ? 0.7 : 1,
-            },
-          ]}
-          onPress={handleInitiate}
-          disabled={isCreating || !selectedType}
-          testID="initiate-emergency-btn"
-        >
-          {isCreating ? (
-            <ActivityIndicator color="#FFFFFF" size="small" />
-          ) : (
-            <>
-              <Siren size={22} color="#FFFFFF" />
-              <Text style={styles.initiateButtonText}>
-                {isDrill ? 'START DRILL' : 'INITIATE EMERGENCY'}
-              </Text>
-            </>
-          )}
-        </Pressable>
 
         <View style={styles.bottomPadding} />
       </ScrollView>
@@ -446,7 +248,7 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: 12,
     borderWidth: 1,
-    marginBottom: 16,
+    marginBottom: 20,
     gap: 12,
   },
   warningContent: {
@@ -462,58 +264,80 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
   },
-  drillToggleRow: {
-    flexDirection: 'row' as const,
-    gap: 10,
+  sectionLabel: {
+    fontSize: 16,
+    fontWeight: '700' as const,
+    marginBottom: 12,
+  },
+  primaryList: {
+    gap: 14,
     marginBottom: 20,
   },
-  drillToggle: {
+  typeSection: {
+    borderRadius: 14,
+    backgroundColor: 'rgba(0,0,0,0.03)',
+    overflow: 'hidden' as const,
+  },
+  typeHeader: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 12,
+    padding: 14,
+    paddingBottom: 10,
+  },
+  typeIconWrap: {
+    width: 52,
+    height: 52,
+    borderRadius: 14,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  typeHeaderText: {
     flex: 1,
+  },
+  typeLabel: {
+    fontSize: 18,
+    fontWeight: '800' as const,
+    marginBottom: 2,
+  },
+  typeInstruction: {
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  typeActions: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingBottom: 14,
+  },
+  liveButton: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
     gap: 8,
     paddingVertical: 12,
     borderRadius: 10,
-    borderWidth: 1.5,
   },
-  drillToggleText: {
+  liveButtonText: {
+    color: '#FFFFFF',
     fontSize: 14,
-    fontWeight: '600' as const,
+    fontWeight: '800' as const,
+    letterSpacing: 0.5,
   },
-  sectionLabel: {
-    fontSize: 16,
-    fontWeight: '700' as const,
-    marginBottom: 12,
-  },
-  primaryGrid: {
-    gap: 12,
-    marginBottom: 16,
-  },
-  primaryButton: {
-    borderRadius: 14,
-    borderWidth: 2,
-    padding: 18,
+  drillButton: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
-    gap: 14,
+    gap: 6,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    borderWidth: 1.5,
   },
-  primaryIconWrap: {
-    width: 64,
-    height: 64,
-    borderRadius: 16,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-  },
-  primaryLabel: {
-    fontSize: 20,
-    fontWeight: '800' as const,
-    flex: 0,
-  },
-  primarySub: {
-    fontSize: 12,
-    flex: 1,
-    lineHeight: 16,
+  drillButtonText: {
+    color: '#3B82F6',
+    fontSize: 14,
+    fontWeight: '700' as const,
   },
   otherToggle: {
     flexDirection: 'row' as const,
@@ -527,122 +351,54 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600' as const,
   },
-  secondaryGrid: {
-    flexDirection: 'row' as const,
-    flexWrap: 'wrap' as const,
+  secondaryList: {
     gap: 8,
     marginBottom: 16,
   },
-  secondaryButton: {
+  secondaryRow: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
-    gap: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+    gap: 10,
+    padding: 12,
     borderRadius: 10,
     borderWidth: 1,
   },
   secondaryIconWrap: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
+    width: 36,
+    height: 36,
+    borderRadius: 9,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
   },
   secondaryLabel: {
-    fontSize: 13,
-    fontWeight: '600' as const,
-  },
-  detailsSection: {
-    borderRadius: 14,
-    borderWidth: 1,
-    padding: 16,
-    marginBottom: 16,
-  },
-  detailsTitle: {
-    fontSize: 16,
-    fontWeight: '700' as const,
-    marginBottom: 14,
-  },
-  fieldLabel: {
-    fontSize: 12,
-    fontWeight: '600' as const,
-    marginBottom: 6,
-    textTransform: 'uppercase' as const,
-    letterSpacing: 0.5,
-  },
-  severityRow: {
-    flexDirection: 'row' as const,
-    gap: 8,
-    marginBottom: 14,
-  },
-  severityChip: {
     flex: 1,
-    paddingVertical: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-    alignItems: 'center' as const,
-  },
-  severityChipText: {
-    fontSize: 12,
-    fontWeight: '600' as const,
-  },
-  input: {
-    borderRadius: 10,
-    borderWidth: 1,
-    padding: 12,
-    fontSize: 14,
-    marginBottom: 14,
-  },
-  textArea: {
-    borderRadius: 10,
-    borderWidth: 1,
-    padding: 12,
-    fontSize: 14,
-    minHeight: 80,
-    marginBottom: 14,
-  },
-  servicesToggle: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: 10,
-    padding: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-  },
-  servicesToggleText: {
     fontSize: 14,
     fontWeight: '600' as const,
   },
-  instructionsCard: {
-    borderRadius: 12,
-    borderWidth: 1,
-    padding: 14,
-    marginBottom: 16,
-  },
-  instructionsTitle: {
-    fontSize: 13,
-    fontWeight: '700' as const,
-    marginBottom: 6,
-  },
-  instructionsText: {
-    fontSize: 13,
-    lineHeight: 19,
-  },
-  initiateButton: {
+  secondaryLiveBtn: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    gap: 10,
-    paddingVertical: 16,
-    borderRadius: 14,
-    marginBottom: 8,
+    gap: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 7,
   },
-  initiateButtonText: {
+  secondaryLiveBtnText: {
     color: '#FFFFFF',
-    fontSize: 17,
-    fontWeight: '800' as const,
-    letterSpacing: 0.5,
+    fontSize: 12,
+    fontWeight: '700' as const,
+  },
+  secondaryDrillBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 7,
+    borderWidth: 1,
+    backgroundColor: '#3B82F610',
+  },
+  secondaryDrillBtnText: {
+    color: '#3B82F6',
+    fontSize: 12,
+    fontWeight: '700' as const,
   },
   bottomPadding: {
     height: 40,

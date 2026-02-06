@@ -9,6 +9,10 @@ import {
   Animated,
   Vibration,
   Platform,
+  TextInput,
+  Pressable,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import {
@@ -25,6 +29,9 @@ import {
   Phone,
   Tornado,
   ShieldAlert,
+  FileText,
+  Siren,
+  ClipboardList,
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import * as Haptics from 'expo-haptics';
@@ -32,7 +39,14 @@ import {
   MOCK_EMERGENCY_EMPLOYEES,
   EmergencyEmployee,
 } from '@/mocks/emergencyEmployees';
-import { EMERGENCY_EVENT_TYPE_CONFIG, EmergencyEventType } from '@/types/emergencyEvents';
+import {
+  EMERGENCY_EVENT_TYPE_CONFIG,
+  EmergencyEventType,
+  EmergencyEventSeverity,
+  EMERGENCY_SEVERITY_LABELS,
+  EMERGENCY_SEVERITY_COLORS,
+} from '@/types/emergencyEvents';
+import { useEmergencyEvents } from '@/hooks/useEmergencyEvents';
 
 type EmployeeStatus = 'pending' | 'safe';
 
@@ -61,6 +75,8 @@ const TYPE_HEADERS: Record<string, { title: string; instruction: string; headerB
   active_shooter: { title: 'ACTIVE SHOOTER', instruction: 'RUN • HIDE • FIGHT • ACCOUNT FOR ALL PERSONNEL', headerBg: '#991B1B' },
 };
 
+const SEVERITY_OPTIONS: EmergencyEventSeverity[] = ['critical', 'high', 'medium', 'low'];
+
 export default function EmergencyProtocolScreen() {
   const { colors } = useTheme();
   const router = useRouter();
@@ -74,6 +90,16 @@ export default function EmergencyProtocolScreen() {
   const flashAnim = useRef(new Animated.Value(0)).current;
   const successAnim = useRef(new Animated.Value(0)).current;
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const { createEvent, updateEvent, addTimelineEntry, isCreating } = useEmergencyEvents();
+  const [eventId, setEventId] = useState<string | null>(null);
+  const [isSavingDetails, setIsSavingDetails] = useState(false);
+
+  const [severity, setSeverity] = useState<EmergencyEventSeverity>('high');
+  const [locationDetails, setLocationDetails] = useState('');
+  const [description, setDescription] = useState('');
+  const [emergencyServicesCalled, setEmergencyServicesCalled] = useState(false);
+  const [detailsSaved, setDetailsSaved] = useState(false);
 
   const [emergency, setEmergency] = useState<EmergencyState>({
     isActive: false,
@@ -92,32 +118,16 @@ export default function EmergencyProtocolScreen() {
     if (emergency.isActive && !allSafe) {
       const pulse = Animated.loop(
         Animated.sequence([
-          Animated.timing(pulseAnim, {
-            toValue: 1.05,
-            duration: 400,
-            useNativeDriver: true,
-          }),
-          Animated.timing(pulseAnim, {
-            toValue: 1,
-            duration: 400,
-            useNativeDriver: true,
-          }),
+          Animated.timing(pulseAnim, { toValue: 1.05, duration: 400, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1, duration: 400, useNativeDriver: true }),
         ])
       );
       pulse.start();
 
       const flash = Animated.loop(
         Animated.sequence([
-          Animated.timing(flashAnim, {
-            toValue: 1,
-            duration: 500,
-            useNativeDriver: false,
-          }),
-          Animated.timing(flashAnim, {
-            toValue: 0,
-            duration: 500,
-            useNativeDriver: false,
-          }),
+          Animated.timing(flashAnim, { toValue: 1, duration: 500, useNativeDriver: false }),
+          Animated.timing(flashAnim, { toValue: 0, duration: 500, useNativeDriver: false }),
         ])
       );
       flash.start();
@@ -150,7 +160,7 @@ export default function EmergencyProtocolScreen() {
   useEffect(() => {
     if (emergency.isActive && pendingEmployees.length === 0 && emergency.employees.length > 0) {
       setAllSafe(true);
-      
+
       if (timerRef.current) {
         clearInterval(timerRef.current);
       }
@@ -166,9 +176,23 @@ export default function EmergencyProtocolScreen() {
         useNativeDriver: false,
       }).start();
 
+      if (eventId) {
+        addTimelineEntry({
+          eventId,
+          action: `All ${emergency.employees.length} personnel accounted for in ${formatTime(emergency.elapsedSeconds)}`,
+        }).catch(err => console.error('[EmergencyProtocol] Error adding timeline entry:', err));
+
+        updateEvent({
+          id: eventId,
+          status: 'all_clear',
+          all_clear_at: new Date().toISOString(),
+          total_evacuated: emergency.employees.length,
+        }).catch(err => console.error('[EmergencyProtocol] Error updating event:', err));
+      }
+
       console.log('[EmergencyProtocol] All employees safe! Emergency auto-ended.');
     }
-  }, [pendingEmployees.length, emergency.employees.length, emergency.isActive, successAnim]);
+  }, [pendingEmployees.length, emergency.employees.length, emergency.isActive, successAnim, eventId]);
 
   const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
@@ -176,7 +200,7 @@ export default function EmergencyProtocolScreen() {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const initiateEmergency = useCallback(() => {
+  const initiateEmergency = useCallback(async () => {
     if (Platform.OS !== 'web') {
       Vibration.vibrate([200, 100, 200, 100, 200, 100, 500]);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
@@ -199,7 +223,25 @@ export default function EmergencyProtocolScreen() {
     successAnim.setValue(0);
 
     console.log('[EmergencyProtocol] Emergency initiated with', employees.length, 'employees');
-  }, [successAnim]);
+
+    try {
+      const title = `${typeConfig.label} ${isDrill ? 'Drill' : 'Emergency'} - ${new Date().toLocaleDateString()}`;
+      const event = await createEvent({
+        event_type: emergencyType,
+        severity: 'high',
+        title,
+        description: undefined,
+        location_details: undefined,
+        drill: isDrill,
+        departments_affected: [],
+        emergency_services_called: false,
+      });
+      setEventId(event.id);
+      console.log('[EmergencyProtocol] Event logged to DB:', event.id);
+    } catch (err) {
+      console.error('[EmergencyProtocol] Failed to log event to DB:', err);
+    }
+  }, [successAnim, createEvent, emergencyType, isDrill, typeConfig.label]);
 
   const markEmployeeSafe = useCallback((employeeId: string) => {
     if (Platform.OS !== 'web') {
@@ -218,7 +260,53 @@ export default function EmergencyProtocolScreen() {
     console.log('[EmergencyProtocol] Employee marked safe:', employeeId);
   }, []);
 
-  const resetEmergency = useCallback(() => {
+  const handleSaveDetails = useCallback(async () => {
+    if (!eventId) {
+      console.warn('[EmergencyProtocol] No event ID to update');
+      return;
+    }
+
+    setIsSavingDetails(true);
+    try {
+      await updateEvent({
+        id: eventId,
+        status: 'resolved',
+        resolved_at: new Date().toISOString(),
+        emergency_services_called: emergencyServicesCalled ? undefined : undefined,
+      });
+
+      const detailParts: string[] = [];
+      if (severity) detailParts.push(`Severity: ${EMERGENCY_SEVERITY_LABELS[severity]}`);
+      if (locationDetails) detailParts.push(`Location: ${locationDetails}`);
+      if (description) detailParts.push(`Notes: ${description}`);
+      if (emergencyServicesCalled) detailParts.push('Emergency services were called');
+
+      if (detailParts.length > 0) {
+        await addTimelineEntry({
+          eventId,
+          action: 'Post-event details added',
+          notes: detailParts.join('. '),
+        });
+      }
+
+      await updateEvent({
+        id: eventId,
+        status: 'resolved',
+        resolved_at: new Date().toISOString(),
+      });
+
+      setDetailsSaved(true);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      console.log('[EmergencyProtocol] Details saved for event:', eventId);
+    } catch (err) {
+      console.error('[EmergencyProtocol] Error saving details:', err);
+      Alert.alert('Error', 'Failed to save details. You can update them from the Event Log later.');
+    } finally {
+      setIsSavingDetails(false);
+    }
+  }, [eventId, severity, locationDetails, description, emergencyServicesCalled, updateEvent, addTimelineEntry]);
+
+  const handleClose = useCallback(() => {
     if (timerRef.current) {
       clearInterval(timerRef.current);
     }
@@ -230,8 +318,19 @@ export default function EmergencyProtocolScreen() {
     });
     setAllSafe(false);
     successAnim.setValue(0);
-    console.log('[EmergencyProtocol] Emergency reset');
+    setEventId(null);
+    setDetailsSaved(false);
+    setLocationDetails('');
+    setDescription('');
+    setSeverity('high');
+    setEmergencyServicesCalled(false);
+    console.log('[EmergencyProtocol] Emergency closed');
   }, [successAnim]);
+
+  const handleViewLog = useCallback(() => {
+    handleClose();
+    router.push('/safety/emergencyeventlog' as any);
+  }, [handleClose, router]);
 
   const backgroundColor = allSafe
     ? successAnim.interpolate({
@@ -262,16 +361,16 @@ export default function EmergencyProtocolScreen() {
 
         <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
           <View style={[styles.infoCard, { backgroundColor: colors.surface }]}>
-            <View style={[styles.iconCircle, { backgroundColor: '#EF444420' }]}>
-              <Shield size={48} color="#EF4444" />
+            <View style={[styles.iconCircle, { backgroundColor: isDrill ? '#3B82F620' : '#EF444420' }]}>
+              <Shield size={48} color={isDrill ? '#3B82F6' : '#EF4444'} />
             </View>
             <Text style={[styles.infoTitle, { color: colors.text }]}>
               {isDrill ? `${typeConfig.label} Drill` : `${typeConfig.label} Emergency Protocol`}
             </Text>
             <Text style={[styles.infoDesc, { color: colors.textSecondary }]}>
               {isDrill
-                ? `Start a ${typeConfig.label.toLowerCase()} drill to practice evacuation and track all personnel.`
-                : `Initiate ${typeConfig.label.toLowerCase()} emergency protocol to begin procedures and track all personnel until everyone is accounted for.`}
+                ? `Start a ${typeConfig.label.toLowerCase()} drill. Roll call begins immediately — event details can be added after everyone is safe.`
+                : `Initiate ${typeConfig.label.toLowerCase()} emergency protocol. Roll call begins immediately — details can be filled in once everyone is accounted for.`}
             </Text>
             {isDrill && (
               <View style={[styles.drillBadge, { backgroundColor: '#3B82F620' }]}>
@@ -286,11 +385,11 @@ export default function EmergencyProtocolScreen() {
             </Text>
             <View style={styles.employeeChips}>
               {MOCK_EMERGENCY_EMPLOYEES.map(emp => (
-                <View 
-                  key={emp.id} 
+                <View
+                  key={emp.id}
                   style={[
-                    styles.employeeChip, 
-                    { 
+                    styles.employeeChip,
+                    {
                       backgroundColor: emp.isKioskUser ? '#3B82F620' : colors.border,
                       borderColor: emp.isKioskUser ? '#3B82F6' : 'transparent',
                       borderWidth: emp.isKioskUser ? 1 : 0,
@@ -318,17 +417,22 @@ export default function EmergencyProtocolScreen() {
           <TouchableOpacity
             style={[styles.initiateButton, isDrill && { backgroundColor: '#3B82F6' }]}
             onPress={initiateEmergency}
+            disabled={isCreating}
           >
-            <TypeIcon size={24} color="#FFFFFF" />
-            <Text style={styles.initiateButtonText}>
-              {isDrill ? `START ${typeConfig.label.toUpperCase()} DRILL` : `INITIATE ${typeConfig.label.toUpperCase()} PROTOCOL`}
-            </Text>
+            {isCreating ? (
+              <ActivityIndicator color="#FFFFFF" size="small" />
+            ) : (
+              <>
+                <TypeIcon size={24} color="#FFFFFF" />
+                <Text style={styles.initiateButtonText}>
+                  {isDrill ? `START ${typeConfig.label.toUpperCase()} DRILL` : `INITIATE ${typeConfig.label.toUpperCase()} PROTOCOL`}
+                </Text>
+              </>
+            )}
           </TouchableOpacity>
 
           <Text style={[styles.disclaimer, { color: colors.textSecondary }]}>
-            {isDrill
-              ? `This will start a ${typeConfig.label.toLowerCase()} drill and begin personnel roll call.`
-              : `This will activate ${typeConfig.label.toLowerCase()} emergency mode and begin personnel roll call.`}
+            Roll call starts immediately. Event is logged automatically.
           </Text>
         </ScrollView>
       </View>
@@ -337,11 +441,7 @@ export default function EmergencyProtocolScreen() {
 
   return (
     <Animated.View style={[styles.emergencyContainer, { backgroundColor }]}>
-      <Stack.Screen
-        options={{
-          headerShown: false,
-        }}
-      />
+      <Stack.Screen options={{ headerShown: false }} />
 
       <View style={[styles.emergencyHeader, { backgroundColor: allSafe ? '#065F46' : headerConfig.headerBg }, isDrill && !allSafe && { backgroundColor: '#1E40AF' }]}>
         {allSafe ? (
@@ -352,7 +452,7 @@ export default function EmergencyProtocolScreen() {
               <CheckCircle size={32} color="#10B981" />
             </View>
             <Text style={styles.successSubtitle}>
-              {isDrill ? 'Drill' : 'Emergency'} protocol complete • All {emergency.employees.length} employees accounted for
+              {isDrill ? 'Drill' : 'Emergency'} roll call complete • All {emergency.employees.length} employees accounted for
             </Text>
           </>
         ) : (
@@ -405,44 +505,161 @@ export default function EmergencyProtocolScreen() {
       </View>
 
       {allSafe ? (
-        <View style={styles.successContainer}>
+        <ScrollView style={styles.successScrollView} contentContainerStyle={styles.successScrollContent}>
           <View style={styles.successIconContainer}>
-            <CheckCircle size={80} color="#10B981" />
+            <CheckCircle size={64} color="#10B981" />
           </View>
           <Text style={styles.successMessage}>Everyone is accounted for!</Text>
           <Text style={styles.successTime}>
             Completed in {formatTime(emergency.elapsedSeconds)}
           </Text>
-          
+
+          {!detailsSaved ? (
+            <View style={styles.detailsFormCard}>
+              <View style={styles.detailsFormHeader}>
+                <ClipboardList size={20} color="#FFFFFF" />
+                <Text style={styles.detailsFormTitle}>Add Event Details</Text>
+              </View>
+              <Text style={styles.detailsFormDesc}>
+                Everyone is safe. Now add details for the {isDrill ? 'drill' : 'event'} record.
+              </Text>
+
+              <Text style={styles.detailsFieldLabel}>SEVERITY</Text>
+              <View style={styles.severityRow}>
+                {SEVERITY_OPTIONS.map((s) => (
+                  <Pressable
+                    key={s}
+                    style={[
+                      styles.severityChip,
+                      {
+                        backgroundColor: severity === s ? EMERGENCY_SEVERITY_COLORS[s] + '30' : 'rgba(255,255,255,0.08)',
+                        borderColor: severity === s ? EMERGENCY_SEVERITY_COLORS[s] : 'rgba(255,255,255,0.15)',
+                      },
+                    ]}
+                    onPress={() => { setSeverity(s); Haptics.selectionAsync(); }}
+                  >
+                    <Text
+                      style={[
+                        styles.severityChipText,
+                        { color: severity === s ? EMERGENCY_SEVERITY_COLORS[s] : 'rgba(255,255,255,0.6)' },
+                      ]}
+                    >
+                      {EMERGENCY_SEVERITY_LABELS[s]}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+
+              <Text style={styles.detailsFieldLabel}>LOCATION</Text>
+              <TextInput
+                style={styles.detailsInput}
+                placeholder="e.g. Building A, 2nd Floor, Warehouse"
+                placeholderTextColor="rgba(255,255,255,0.35)"
+                value={locationDetails}
+                onChangeText={setLocationDetails}
+              />
+
+              <Text style={styles.detailsFieldLabel}>NOTES (OPTIONAL)</Text>
+              <TextInput
+                style={styles.detailsTextArea}
+                placeholder="Additional details about the event..."
+                placeholderTextColor="rgba(255,255,255,0.35)"
+                value={description}
+                onChangeText={setDescription}
+                multiline
+                numberOfLines={3}
+                textAlignVertical="top"
+              />
+
+              <Pressable
+                style={[
+                  styles.servicesToggle,
+                  emergencyServicesCalled && styles.servicesToggleActive,
+                ]}
+                onPress={() => { setEmergencyServicesCalled(!emergencyServicesCalled); Haptics.selectionAsync(); }}
+              >
+                <Siren size={16} color={emergencyServicesCalled ? '#EF4444' : 'rgba(255,255,255,0.5)'} />
+                <Text
+                  style={[
+                    styles.servicesToggleText,
+                    { color: emergencyServicesCalled ? '#EF4444' : 'rgba(255,255,255,0.5)' },
+                  ]}
+                >
+                  Emergency Services Called (911)
+                </Text>
+              </Pressable>
+
+              <Pressable
+                style={({ pressed }) => [
+                  styles.saveDetailsButton,
+                  { opacity: pressed ? 0.85 : isSavingDetails ? 0.7 : 1 },
+                ]}
+                onPress={handleSaveDetails}
+                disabled={isSavingDetails}
+              >
+                {isSavingDetails ? (
+                  <ActivityIndicator color="#FFFFFF" size="small" />
+                ) : (
+                  <>
+                    <FileText size={18} color="#FFFFFF" />
+                    <Text style={styles.saveDetailsButtonText}>SAVE DETAILS & CLOSE EVENT</Text>
+                  </>
+                )}
+              </Pressable>
+
+              <Pressable
+                style={styles.skipDetailsButton}
+                onPress={() => {
+                  handleClose();
+                  router.back();
+                }}
+              >
+                <Text style={styles.skipDetailsButtonText}>Skip — close without details</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <View style={styles.detailsSavedCard}>
+              <CheckCircle size={32} color="#10B981" />
+              <Text style={styles.detailsSavedText}>Event details saved!</Text>
+              <View style={styles.detailsSavedActions}>
+                <Pressable
+                  style={({ pressed }) => [styles.viewLogButton, { opacity: pressed ? 0.85 : 1 }]}
+                  onPress={handleViewLog}
+                >
+                  <FileText size={16} color="#FFFFFF" />
+                  <Text style={styles.viewLogButtonText}>View Event Log</Text>
+                </Pressable>
+                <Pressable
+                  style={({ pressed }) => [styles.doneButton, { opacity: pressed ? 0.85 : 1 }]}
+                  onPress={() => { handleClose(); router.back(); }}
+                >
+                  <Text style={styles.doneButtonText}>Done</Text>
+                </Pressable>
+              </View>
+            </View>
+          )}
+
           <View style={styles.safeListContainer}>
             <Text style={styles.safeListTitle}>All Personnel ({safeEmployees.length})</Text>
-            <ScrollView style={styles.safeList}>
-              {safeEmployees.map(emp => (
-                <View key={emp.employee.id} style={styles.safeEmployeeRow}>
-                  <View style={styles.hereBadgeSmall}>
-                    <Text style={styles.hereBadgeTextSmall}>HERE</Text>
-                  </View>
-                  <Text style={styles.safeEmployeeName}>
-                    {emp.employee.firstName} {emp.employee.lastName}
-                  </Text>
-                  {emp.employee.isKioskUser && (
-                    <View style={styles.kioskTagSmall}>
-                      <Text style={styles.kioskTagText}>KIOSK</Text>
-                    </View>
-                  )}
+            {safeEmployees.map(emp => (
+              <View key={emp.employee.id} style={styles.safeEmployeeRow}>
+                <View style={styles.hereBadgeSmall}>
+                  <Text style={styles.hereBadgeTextSmall}>HERE</Text>
                 </View>
-              ))}
-            </ScrollView>
+                <Text style={styles.safeEmployeeName}>
+                  {emp.employee.firstName} {emp.employee.lastName}
+                </Text>
+                {emp.employee.isKioskUser && (
+                  <View style={styles.kioskTagSmall}>
+                    <Text style={styles.kioskTagText}>KIOSK</Text>
+                  </View>
+                )}
+              </View>
+            ))}
           </View>
 
-          <TouchableOpacity
-            style={styles.resetButton}
-            onPress={resetEmergency}
-          >
-            <X size={20} color="#FFFFFF" />
-            <Text style={styles.resetButtonText}>CLOSE & RESET</Text>
-          </TouchableOpacity>
-        </View>
+          <View style={{ height: 40 }} />
+        </ScrollView>
       ) : (
         <View style={styles.splitContainer}>
           <View style={styles.splitPane}>
@@ -534,7 +751,10 @@ export default function EmergencyProtocolScreen() {
       {!allSafe && (
         <TouchableOpacity
           style={styles.endEmergencyButton}
-          onPress={resetEmergency}
+          onPress={() => {
+            handleClose();
+            router.back();
+          }}
         >
           <X size={18} color="#FFFFFF" />
           <Text style={styles.endEmergencyText}>END PROTOCOL</Text>
@@ -550,57 +770,16 @@ export default function EmergencyProtocolScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.instructionsModal}>
             <View style={styles.instructionsHeader}>
-              <Text style={styles.instructionsTitle}>Fire Evacuation Instructions</Text>
+              <Text style={styles.instructionsTitle}>{typeConfig.label} Instructions</Text>
               <TouchableOpacity onPress={() => setShowInstructions(false)}>
                 <X size={24} color="#FFFFFF" />
               </TouchableOpacity>
             </View>
-            
+
             <ScrollView style={styles.instructionsContent}>
-              <View style={styles.instructionItem}>
-                <View style={styles.instructionNumber}>
-                  <Text style={styles.instructionNumberText}>1</Text>
-                </View>
-                <Text style={styles.instructionText}>
-                  STOP all work immediately and secure hazardous materials if safe
-                </Text>
-              </View>
-              
-              <View style={styles.instructionItem}>
-                <View style={styles.instructionNumber}>
-                  <Text style={styles.instructionNumberText}>2</Text>
-                </View>
-                <Text style={styles.instructionText}>
-                  ALERT others in your area and assist anyone who needs help
-                </Text>
-              </View>
-              
-              <View style={styles.instructionItem}>
-                <View style={styles.instructionNumber}>
-                  <Text style={styles.instructionNumberText}>3</Text>
-                </View>
-                <Text style={styles.instructionText}>
-                  EVACUATE via the nearest safe exit - DO NOT use elevators
-                </Text>
-              </View>
-              
-              <View style={styles.instructionItem}>
-                <View style={styles.instructionNumber}>
-                  <Text style={styles.instructionNumberText}>4</Text>
-                </View>
-                <Text style={styles.instructionText}>
-                  REPORT to the person taking roll call to be marked safe
-                </Text>
-              </View>
-              
-              <View style={styles.instructionItem}>
-                <View style={styles.instructionNumber}>
-                  <Text style={styles.instructionNumberText}>5</Text>
-                </View>
-                <Text style={styles.instructionText}>
-                  REMAIN at assembly point until ALL CLEAR is given
-                </Text>
-              </View>
+              <Text style={styles.instructionText}>
+                {typeConfig.instructions}
+              </Text>
 
               <View style={styles.emergencyContacts}>
                 <Text style={styles.emergencyContactsTitle}>Emergency Contacts</Text>
@@ -749,7 +928,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     alignItems: 'center' as const,
   },
-  emergencyHeaderSuccess: {},
   emergencyTitleRow: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
@@ -992,28 +1170,189 @@ const styles = StyleSheet.create({
     fontWeight: '600' as const,
     color: '#FFFFFF',
   },
-  successContainer: {
+  successScrollView: {
     flex: 1,
+  },
+  successScrollContent: {
     alignItems: 'center' as const,
     padding: 20,
   },
   successIconContainer: {
-    marginTop: 20,
-    marginBottom: 16,
+    marginTop: 12,
+    marginBottom: 12,
   },
   successMessage: {
     fontSize: 22,
     fontWeight: '700' as const,
     color: '#FFFFFF',
-    marginBottom: 8,
+    marginBottom: 4,
   },
   successTime: {
     fontSize: 16,
     color: '#D1FAE5',
-    marginBottom: 24,
+    marginBottom: 20,
+  },
+  detailsFormCard: {
+    width: '100%',
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    borderRadius: 14,
+    padding: 18,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  detailsFormHeader: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 8,
+    marginBottom: 6,
+  },
+  detailsFormTitle: {
+    fontSize: 17,
+    fontWeight: '700' as const,
+    color: '#FFFFFF',
+  },
+  detailsFormDesc: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.6)',
+    marginBottom: 16,
+    lineHeight: 18,
+  },
+  detailsFieldLabel: {
+    fontSize: 11,
+    fontWeight: '600' as const,
+    color: 'rgba(255,255,255,0.5)',
+    marginBottom: 6,
+    letterSpacing: 0.5,
+  },
+  severityRow: {
+    flexDirection: 'row' as const,
+    gap: 6,
+    marginBottom: 14,
+  },
+  severityChip: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center' as const,
+  },
+  severityChipText: {
+    fontSize: 12,
+    fontWeight: '600' as const,
+  },
+  detailsInput: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    padding: 12,
+    fontSize: 14,
+    color: '#FFFFFF',
+    marginBottom: 14,
+  },
+  detailsTextArea: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    padding: 12,
+    fontSize: 14,
+    color: '#FFFFFF',
+    minHeight: 70,
+    marginBottom: 14,
+  },
+  servicesToggle: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 10,
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    marginBottom: 16,
+  },
+  servicesToggleActive: {
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    borderColor: 'rgba(239, 68, 68, 0.4)',
+  },
+  servicesToggleText: {
+    fontSize: 14,
+    fontWeight: '600' as const,
+  },
+  saveDetailsButton: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    gap: 8,
+    backgroundColor: '#10B981',
+    paddingVertical: 14,
+    borderRadius: 10,
+    marginBottom: 10,
+  },
+  saveDetailsButtonText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700' as const,
+    letterSpacing: 0.3,
+  },
+  skipDetailsButton: {
+    alignItems: 'center' as const,
+    paddingVertical: 10,
+  },
+  skipDetailsButtonText: {
+    color: 'rgba(255,255,255,0.45)',
+    fontSize: 13,
+    fontWeight: '500' as const,
+  },
+  detailsSavedCard: {
+    width: '100%',
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    borderRadius: 14,
+    padding: 20,
+    alignItems: 'center' as const,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.3)',
+    gap: 10,
+  },
+  detailsSavedText: {
+    fontSize: 17,
+    fontWeight: '700' as const,
+    color: '#FFFFFF',
+  },
+  detailsSavedActions: {
+    flexDirection: 'row' as const,
+    gap: 10,
+    marginTop: 6,
+  },
+  viewLogButton: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 6,
+    backgroundColor: '#3B82F6',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+  },
+  viewLogButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600' as const,
+  },
+  doneButton: {
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+  },
+  doneButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600' as const,
   },
   safeListContainer: {
-    flex: 1,
     width: '100%',
     backgroundColor: 'rgba(0,0,0,0.2)',
     borderRadius: 12,
@@ -1025,9 +1364,6 @@ const styles = StyleSheet.create({
     fontWeight: '600' as const,
     color: '#FFFFFF',
     marginBottom: 12,
-  },
-  safeList: {
-    flex: 1,
   },
   safeEmployeeRow: {
     flexDirection: 'row' as const,
@@ -1066,21 +1402,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#FFFFFF',
   },
-  resetButton: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    borderRadius: 8,
-    gap: 8,
-  },
-  resetButtonText: {
-    fontSize: 14,
-    fontWeight: '600' as const,
-    color: '#FFFFFF',
-  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.8)',
@@ -1108,29 +1429,11 @@ const styles = StyleSheet.create({
   instructionsContent: {
     padding: 20,
   },
-  instructionItem: {
-    flexDirection: 'row' as const,
-    marginBottom: 20,
-    gap: 14,
-  },
-  instructionNumber: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#EF4444',
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-  },
-  instructionNumberText: {
-    fontSize: 14,
-    fontWeight: '700' as const,
-    color: '#FFFFFF',
-  },
   instructionText: {
-    flex: 1,
-    fontSize: 14,
+    fontSize: 15,
     color: '#FFFFFF',
-    lineHeight: 20,
+    lineHeight: 22,
+    marginBottom: 20,
   },
   emergencyContacts: {
     backgroundColor: 'rgba(0,0,0,0.3)',

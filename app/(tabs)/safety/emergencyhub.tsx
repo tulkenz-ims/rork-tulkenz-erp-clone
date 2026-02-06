@@ -194,7 +194,7 @@ export default function EmergencyHubScreen() {
           </View>
           <View style={styles.initiateContent}>
             <Text style={styles.initiateTitle}>Initiate Emergency</Text>
-            <Text style={styles.initiateSub}>Start a live emergency or drill event</Text>
+            <Text style={styles.initiateSub}>Roll call first — add details once everyone is safe</Text>
           </View>
           <ChevronRight size={22} color="rgba(255,255,255,0.7)" />
         </Pressable>
