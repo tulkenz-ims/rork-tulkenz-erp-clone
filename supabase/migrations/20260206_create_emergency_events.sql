@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS emergency_events (
   description TEXT,
   location_details TEXT,
   initiated_by TEXT NOT NULL,
-  initiated_by_id UUID REFERENCES profiles(id) ON DELETE SET NULL,
+  initiated_by_id UUID REFERENCES employees(id) ON DELETE SET NULL,
   initiated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   all_clear_at TIMESTAMPTZ,
   resolved_at TIMESTAMPTZ,
@@ -73,7 +73,7 @@ CREATE POLICY "Users can view emergency events in their organization"
   ON emergency_events FOR SELECT
   USING (
     organization_id IN (
-      SELECT organization_id FROM profiles WHERE id = auth.uid()
+      SELECT organization_id FROM employees WHERE id = auth.uid()
     )
   );
 
@@ -81,7 +81,7 @@ CREATE POLICY "Users can insert emergency events in their organization"
   ON emergency_events FOR INSERT
   WITH CHECK (
     organization_id IN (
-      SELECT organization_id FROM profiles WHERE id = auth.uid()
+      SELECT organization_id FROM employees WHERE id = auth.uid()
     )
   );
 
@@ -89,7 +89,7 @@ CREATE POLICY "Users can update emergency events in their organization"
   ON emergency_events FOR UPDATE
   USING (
     organization_id IN (
-      SELECT organization_id FROM profiles WHERE id = auth.uid()
+      SELECT organization_id FROM employees WHERE id = auth.uid()
     )
   );
 
@@ -97,6 +97,6 @@ CREATE POLICY "Users can delete emergency events in their organization"
   ON emergency_events FOR DELETE
   USING (
     organization_id IN (
-      SELECT organization_id FROM profiles WHERE id = auth.uid()
+      SELECT organization_id FROM employees WHERE id = auth.uid()
     )
   );
