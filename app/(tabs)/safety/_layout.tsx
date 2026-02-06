@@ -102,6 +102,7 @@ export default function SafetyLayout() {
       
       {/* Emergency Preparedness Hub */}
       <Stack.Screen name="emergencyhub" options={{ title: 'Emergency Preparedness' }} />
+      <Stack.Screen name="emergencyinitiation" options={{ title: 'Initiate Emergency' }} />
       
       {/* Emergency Preparedness Forms */}
       <Stack.Screen name="emergencyaction" options={{ title: 'Emergency Action Plan' }} />
