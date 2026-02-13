@@ -81,6 +81,7 @@ import { CompactDepartmentBadges } from '@/components/DepartmentCompletionBadges
 import { TaskFeedDepartmentTask } from '@/types/taskFeedTemplates';
 import { Tables } from '@/lib/supabase';
 import PurchaseRequestForm from '@/components/PurchaseRequestForm';
+import ProductionStoppedBanner from '@/components/ProductionStoppedBanner';
 import { usePushNotifications } from '@/contexts/PushNotificationsContext';
 
 type SupabaseTaskVerification = Tables['task_verifications'];
@@ -363,6 +364,7 @@ export default function TaskFeedScreen() {
       sourceId: tv.source_id || undefined,
       sourceNumber: tv.source_number || undefined,
       linkedWorkOrderId: tv.linked_work_order_id || undefined,
+      reviewedAt: tv.reviewed_at || undefined,
       createdAt: tv.created_at,
     }));
   }, [taskVerificationsData]);
@@ -1768,31 +1770,14 @@ export default function TaskFeedScreen() {
                   </View>
                 )}
 
-                {/* Production Stopped Banner */}
+                {/* Production Stopped Banner with Timer */}
                 {verification.notes && verification.notes.includes('PRODUCTION STOPPED') && (
-                  <View style={styles.productionStoppedBanner}>
-                    <View style={styles.productionStoppedPulse}>
-                      <Siren size={14} color="#FFFFFF" />
-                    </View>
-                    <View style={styles.productionStoppedContent}>
-                      <Text style={styles.productionStoppedTitle}>PRODUCTION STOPPED</Text>
-                      {verification.notes.match(/Room\/Line:\s*(.+)/)?.[1] && (
-                        <Text style={styles.productionStoppedLine}>
-                          {verification.notes.match(/Room\/Line:\s*(.+)/)?.[1]?.split('\n')[0]}
-                        </Text>
-                      )}
-                    </View>
-                    {verification.status === 'verified' ? (
-                      <View style={styles.productionResolvedBadge}>
-                        <CheckCircle size={12} color="#10B981" />
-                        <Text style={styles.productionResolvedText}>Resolved</Text>
-                      </View>
-                    ) : (
-                      <View style={styles.productionActiveBadge}>
-                        <Text style={styles.productionActiveText}>ACTIVE</Text>
-                      </View>
-                    )}
-                  </View>
+                  <ProductionStoppedBanner
+                    notes={verification.notes}
+                    status={verification.status}
+                    createdAt={verification.createdAt}
+                    resolvedAt={verification.reviewedAt}
+                  />
                 )}
 
                 {/* Clean Notes - Compact */}
