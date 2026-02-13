@@ -39,6 +39,8 @@ import {
   MoreVertical,
   HardHat,
   Eye,
+  Siren,
+  CheckCircle,
 } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
@@ -1757,6 +1759,33 @@ export default function TaskFeedScreen() {
                         {idx < Math.min(Object.keys(formData).length - 1, 3) && '  •  '}
                       </Text>
                     ))}
+                  </View>
+                )}
+
+                {/* Production Stopped Banner */}
+                {verification.notes && verification.notes.includes('PRODUCTION STOPPED') && (
+                  <View style={styles.productionStoppedBanner}>
+                    <View style={styles.productionStoppedPulse}>
+                      <Siren size={14} color="#FFFFFF" />
+                    </View>
+                    <View style={styles.productionStoppedContent}>
+                      <Text style={styles.productionStoppedTitle}>PRODUCTION STOPPED</Text>
+                      {verification.notes.match(/Room\/Line:\s*(.+)/)?.[1] && (
+                        <Text style={styles.productionStoppedLine}>
+                          {verification.notes.match(/Room\/Line:\s*(.+)/)?.[1]?.split('\n')[0]}
+                        </Text>
+                      )}
+                    </View>
+                    {verification.status === 'verified' ? (
+                      <View style={styles.productionResolvedBadge}>
+                        <CheckCircle size={12} color="#10B981" />
+                        <Text style={styles.productionResolvedText}>Resolved</Text>
+                      </View>
+                    ) : (
+                      <View style={styles.productionActiveBadge}>
+                        <Text style={styles.productionActiveText}>ACTIVE</Text>
+                      </View>
+                    )}
                   </View>
                 )}
 
@@ -4488,6 +4517,67 @@ const createStyles = (colors: any) =>
     cardFormInlineText: {
       fontSize: 11,
       lineHeight: 16,
+    },
+    productionStoppedBanner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: '#DC2626',
+      borderRadius: 8,
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+      marginTop: 8,
+      gap: 10,
+    },
+    productionStoppedPulse: {
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      backgroundColor: '#B91C1C',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    productionStoppedContent: {
+      flex: 1,
+    },
+    productionStoppedTitle: {
+      color: '#FFFFFF',
+      fontSize: 12,
+      fontWeight: '800' as const,
+      letterSpacing: 1,
+    },
+    productionStoppedLine: {
+      color: '#FECACA',
+      fontSize: 11,
+      fontWeight: '500' as const,
+      marginTop: 1,
+    },
+    productionActiveBadge: {
+      backgroundColor: '#FFFFFF20',
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 4,
+      borderWidth: 1,
+      borderColor: '#FFFFFF40',
+    },
+    productionActiveText: {
+      color: '#FFFFFF',
+      fontSize: 10,
+      fontWeight: '700' as const,
+      letterSpacing: 0.5,
+    },
+    productionResolvedBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: '#10B98120',
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 4,
+      gap: 4,
+    },
+    productionResolvedText: {
+      color: '#10B981',
+      fontSize: 10,
+      fontWeight: '600' as const,
     },
     cardFormData: {
       marginTop: 6,
