@@ -540,46 +540,22 @@ export function useCompleteWorkOrder(options?: {
         const completedName = completedByName || completedBy || 'System';
         const woNumber = existingWO.work_order_number || `WO-${workOrderId.slice(0, 8)}`;
         
-        // Strategy 1: Use source_id (direct link to post)
-        let postId = existingWO.source_id;
-        
-        // Strategy 2: Parse post number from WO description and look up the post
-        if (!postId && existingWO.description) {
+        // Extract the post number from the WO description (always present)
+        let postNumber: string | null = null;
+        if (existingWO.description) {
           const postNumMatch = existingWO.description.match(/Task Feed Post:\s*(TF-[\w-]+)/);
           if (postNumMatch) {
-            const postNumber = postNumMatch[1];
-            console.log('[useCompleteWorkOrder] Looking up post by number:', postNumber);
-            const { data: postLookup } = await supabase
-              .from('task_feed_posts')
-              .select('id')
-              .eq('organization_id', organizationId)
-              .eq('post_number', postNumber)
-              .single();
-            if (postLookup) {
-              postId = postLookup.id;
-              console.log('[useCompleteWorkOrder] Found post via description:', postId);
-            }
+            postNumber = postNumMatch[1];
           }
         }
         
-        // Strategy 3: Check if any department task references this WO
-        if (!postId) {
-          const { data: refTask } = await supabase
-            .from('task_feed_department_tasks')
-            .select('post_id')
-            .eq('organization_id', organizationId)
-            .eq('module_reference_id', workOrderId)
-            .limit(1)
-            .maybeSingle();
-          if (refTask) {
-            postId = refTask.post_id;
-            console.log('[useCompleteWorkOrder] Found post via module_reference_id:', postId);
-          }
-        }
+        console.log('[useCompleteWorkOrder] source_id:', existingWO.source_id, 'postNumber:', postNumber);
         
-        if (postId) {
-          console.log('[useCompleteWorkOrder] Completing department tasks for post:', postId);
+        if (postNumber) {
+          // Direct update by post_number (TEXT = TEXT, no type mismatch)
+          console.log('[useCompleteWorkOrder] Completing department tasks by post_number:', postNumber);
           
+          // Step 1: Update status (essential - must succeed)
           const { data: updatedTasks, error: deptTaskError } = await supabase
             .from('task_feed_department_tasks')
             .update({
@@ -587,28 +563,91 @@ export function useCompleteWorkOrder(options?: {
               completed_by_name: completedName,
               completed_at: new Date().toISOString(),
               completion_notes: `Completed via Work Order ${woNumber}${completionNotes ? `: ${completionNotes}` : ''}`,
-              module_reference_type: 'work_order',
-              module_reference_id: workOrderId,
             })
-            .eq('post_id', postId)
+            .eq('post_number', postNumber)
             .eq('organization_id', organizationId)
             .eq('status', 'pending')
             .select();
           
           if (deptTaskError) {
-            console.error('[useCompleteWorkOrder] Error completing department tasks:', deptTaskError);
+            console.error('[useCompleteWorkOrder] Error completing department tasks:', JSON.stringify(deptTaskError));
           } else {
-            console.log('[useCompleteWorkOrder] Completed', updatedTasks?.length || 0, 'department tasks → trigger will update post status');
+            console.log('[useCompleteWorkOrder] Completed', updatedTasks?.length || 0, 'department tasks');
+            
+            // Step 2: Try to add module reference (non-essential)
+            if (updatedTasks && updatedTasks.length > 0) {
+              for (const task of updatedTasks) {
+                try {
+                  await supabase
+                    .from('task_feed_department_tasks')
+                    .update({
+                      module_reference_type: 'work_order',
+                      module_reference_id: workOrderId,
+                    })
+                    .eq('id', task.id);
+                } catch (refErr) {
+                  console.warn('[useCompleteWorkOrder] Could not set module_reference:', refErr);
+                }
+              }
+            }
           }
           
-          // Also update the work order's source_id if it wasn't set (backfill)
-          if (!existingWO.source_id && postId) {
-            await supabase
-              .from('work_orders')
-              .update({ source_id: postId })
-              .eq('id', workOrderId)
-              .eq('organization_id', organizationId);
-            console.log('[useCompleteWorkOrder] Backfilled source_id on WO');
+          // Also update the parent post status directly as backup
+          // (in case the Postgres trigger doesn't fire)
+          if (updatedTasks && updatedTasks.length > 0) {
+            const postId = updatedTasks[0].post_id;
+            
+            // Check if all department tasks for this post are now completed
+            const { data: remainingPending } = await supabase
+              .from('task_feed_department_tasks')
+              .select('id')
+              .eq('post_id', postId)
+              .eq('organization_id', organizationId)
+              .eq('status', 'pending');
+            
+            if (!remainingPending || remainingPending.length === 0) {
+              // All tasks done — mark post as completed
+              await supabase
+                .from('task_feed_posts')
+                .update({
+                  status: 'completed',
+                  completed_at: new Date().toISOString(),
+                })
+                .eq('id', postId)
+                .eq('organization_id', organizationId);
+              console.log('[useCompleteWorkOrder] All tasks done, post marked completed');
+            } else {
+              // Some tasks done — mark as in_progress
+              await supabase
+                .from('task_feed_posts')
+                .update({ status: 'in_progress' })
+                .eq('id', postId)
+                .eq('organization_id', organizationId)
+                .eq('status', 'pending');
+              console.log('[useCompleteWorkOrder] Remaining pending tasks:', remainingPending.length);
+            }
+          }
+        } else if (existingWO.source_id) {
+          // Fallback: try by source_id (cast to UUID explicitly)
+          console.log('[useCompleteWorkOrder] Trying by source_id:', existingWO.source_id);
+          
+          const { data: updatedTasks, error: deptTaskError } = await supabase
+            .from('task_feed_department_tasks')
+            .update({
+              status: 'completed',
+              completed_by_name: completedName,
+              completed_at: new Date().toISOString(),
+              completion_notes: `Completed via Work Order ${woNumber}`,
+            })
+            .eq('post_id', existingWO.source_id)
+            .eq('organization_id', organizationId)
+            .eq('status', 'pending')
+            .select();
+          
+          if (deptTaskError) {
+            console.error('[useCompleteWorkOrder] Fallback error:', JSON.stringify(deptTaskError));
+          } else {
+            console.log('[useCompleteWorkOrder] Fallback completed', updatedTasks?.length || 0, 'tasks');
           }
         } else {
           console.log('[useCompleteWorkOrder] No linked Task Feed post found for this WO');
@@ -619,30 +658,19 @@ export function useCompleteWorkOrder(options?: {
       
       // ── Resolve the original task_verification (issue report) ──
       // Mark the verification as 'verified' so the Production Stopped banner resolves.
-      // Find via linked_work_order_id OR via source_id matching the post.
       try {
         let resolvedCount = 0;
         
-        // Strategy 1: linked_work_order_id (if it was set)
-        const { data: byWO } = await supabase
-          .from('task_verifications')
-          .update({
-            status: 'verified',
-            reviewed_at: new Date().toISOString(),
-            reviewed_by: completedBy || null,
-            review_notes: `Resolved via Work Order ${existingWO.work_order_number || workOrderId}`,
-          })
-          .eq('linked_work_order_id', workOrderId)
-          .eq('organization_id', organizationId)
-          .eq('status', 'flagged')
-          .select('id');
+        // Extract post number from description
+        let postNumber: string | null = null;
+        if (existingWO.description) {
+          const match = existingWO.description.match(/Task Feed Post:\s*(TF-[\w-]+)/);
+          if (match) postNumber = match[1];
+        }
         
-        resolvedCount += byWO?.length || 0;
-        
-        // Strategy 2: source_id matching the post (for issue reports where linked_work_order_id wasn't set)
-        const postId = existingWO.source_id;
-        if (postId && resolvedCount === 0) {
-          const { data: byPost } = await supabase
+        // Strategy 1: By post number in source_number field
+        if (postNumber) {
+          const { data: byPostNum } = await supabase
             .from('task_verifications')
             .update({
               status: 'verified',
@@ -651,12 +679,30 @@ export function useCompleteWorkOrder(options?: {
               review_notes: `Resolved via Work Order ${existingWO.work_order_number || workOrderId}`,
               linked_work_order_id: workOrderId,
             })
-            .eq('source_id', postId)
+            .eq('source_number', postNumber)
             .eq('organization_id', organizationId)
             .eq('status', 'flagged')
             .select('id');
           
-          resolvedCount += byPost?.length || 0;
+          resolvedCount += byPostNum?.length || 0;
+        }
+        
+        // Strategy 2: By linked_work_order_id (if set)
+        if (resolvedCount === 0) {
+          const { data: byWO } = await supabase
+            .from('task_verifications')
+            .update({
+              status: 'verified',
+              reviewed_at: new Date().toISOString(),
+              reviewed_by: completedBy || null,
+              review_notes: `Resolved via Work Order ${existingWO.work_order_number || workOrderId}`,
+            })
+            .eq('linked_work_order_id', workOrderId)
+            .eq('organization_id', organizationId)
+            .eq('status', 'flagged')
+            .select('id');
+          
+          resolvedCount += byWO?.length || 0;
         }
         
         if (resolvedCount > 0) {
