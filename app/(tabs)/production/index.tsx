@@ -27,7 +27,7 @@ import { TaskFeedDepartmentTask } from '@/types/taskFeedTemplates';
 export default function ProductionScreen() {
   const { colors } = useTheme();
   const router = useRouter();
-  const { materials } = useERP();
+  const { materials } = useMaterialsByDepartment(4);
   const [refreshing, setRefreshing] = useState(false);
 
   const handleTaskCompleted = useCallback((task: TaskFeedDepartmentTask, moduleHistoryId?: string) => {
