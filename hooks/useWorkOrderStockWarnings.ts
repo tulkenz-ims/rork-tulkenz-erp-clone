@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-{ useMaterialsQuery } from '@/hooks/useSupabaseMaterials';
+import { useMaterialsQuery } from '@/hooks/useSupabaseMaterials';
 import { getPartRequestsByWorkOrder } from '@/mocks/partsToWorkOrderData';
 import type { LowStockAlertSeverity } from '@/mocks/partsToWorkOrderData';
 
