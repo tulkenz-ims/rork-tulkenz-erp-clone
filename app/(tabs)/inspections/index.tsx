@@ -81,7 +81,7 @@ const ICON_MAP: Record<string, React.ComponentType<{ size: number; color: string
   Thermometer,
 };
 
-export default function InspectionsScreen() {
+function InspectionsScreen_FULL() {
   const { colors } = useTheme();
   const {
     inspectionTemplates,
@@ -1867,3 +1867,12 @@ const createStyles = (colors: any) => StyleSheet.create({
     marginTop: 2,
   },
 });
+
+export default function InspectionsScreen() {
+  return (
+    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24, backgroundColor: '#0a0a0a' }}>
+      <Text style={{ fontSize: 24, fontWeight: '700', color: '#fff', marginBottom: 8 }}>Inspections</Text>
+      <Text style={{ fontSize: 16, color: '#888' }}>Coming Soon</Text>
+    </View>
+  );
+}
