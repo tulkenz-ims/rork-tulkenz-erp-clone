@@ -240,7 +240,7 @@ export function useAddManualLaborEntry() {
           hours_regular: input.hours_worked,
           regular_rate: rate,
           total_labor_cost: Math.round(totalCost * 100) / 100,
-          work_type: input.work_type || 'corrective',
+          work_type: 'corrective',
           task_description: input.task_description || null,
         })
         .select()
