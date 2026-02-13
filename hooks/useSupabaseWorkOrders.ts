@@ -511,15 +511,21 @@ export function useCompleteWorkOrder(options?: {
         throw new Error(fetchError.message);
       }
       
+      const isValidUUID = completedBy && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(completedBy);
+      
+      const updatePayload: any = {
+        status: 'completed',
+        completed_at: new Date().toISOString(),
+        completion_notes: completionNotes || null,
+        actual_hours: actualHours || null,
+      };
+      if (isValidUUID) {
+        updatePayload.completed_by = completedBy;
+      }
+      
       const { data, error } = await supabase
         .from('work_orders')
-        .update({
-          status: 'completed',
-          completed_at: new Date().toISOString(),
-          completion_notes: completionNotes || null,
-          actual_hours: actualHours || null,
-          completed_by: completedBy || null,
-        })
+        .update(updatePayload)
         .eq('id', workOrderId)
         .eq('organization_id', organizationId)
         .select()
@@ -575,7 +581,7 @@ export function useCompleteWorkOrder(options?: {
               action: action,
               notes: notes,
               photo_uri: null,
-              employee_id: completedBy || 'system',
+              employee_id: (completedBy && /^[0-9a-f]{8}-/.test(completedBy)) ? completedBy : null,
               employee_name: completedName,
               status: 'verified',
               source_type: sourceType,
