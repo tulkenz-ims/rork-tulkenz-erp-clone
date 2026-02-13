@@ -26,14 +26,14 @@ import {
 import { Stack, useRouter } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useUser } from '@/contexts/UserContext';
-import { useERP } from '@/contexts/ERPContext';
+import { useEmployees } from '@/hooks/useSupabaseEmployees';
 import { MOCK_FACILITIES } from '@/constants/dashboardConstants';
 
 export default function ProfileScreen() {
   const router = useRouter();
   const { colors } = useTheme();
   const { userProfile, company, signOut } = useUser();
-  const { employees } = useERP();
+  const { data: employees = [] } = useEmployees();
   const [refreshing, setRefreshing] = useState(false);
 
   const currentEmployee = useMemo(() => {
