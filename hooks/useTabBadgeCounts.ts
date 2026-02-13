@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
-import { useERP } from '@/contexts/ERPContext';
+import { useMaterialsQuery } from '@/hooks/useSupabaseMaterials';
+import { useWorkOrdersQuery } from '@/hooks/useSupabaseWorkOrders';
 import type { LowStockAlertSeverity } from '@/mocks/partsToWorkOrderData';
 
 export interface TabBadgeCount {
@@ -18,7 +19,8 @@ export interface TabBadgeCounts {
 }
 
 export function useTabBadgeCounts(): TabBadgeCounts {
-  const { materials, workOrders } = useERP();
+  const { data: materials = [] } = useMaterialsQuery();
+  const { data: workOrders = [] } = useWorkOrdersQuery();
 
   return useMemo(() => {
     console.log('[useTabBadgeCounts] Calculating badge counts...');
