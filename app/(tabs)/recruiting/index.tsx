@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { Stack } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
-import { useERP } from '@/contexts/ERPContext';
+import { useSupabaseRecruiting } from '@/hooks/useSupabaseRecruiting';
 import {
   Briefcase,
   Users,
@@ -59,7 +59,7 @@ type RecruitingView = 'jobs' | 'pipeline' | 'interviews' | 'offers' | 'analytics
 
 const { width } = Dimensions.get('window');
 
-export default function RecruitingScreen() {
+function RecruitingScreen_FULL() {
   const { colors } = useTheme();
   const {
     jobRequisitions,
@@ -68,7 +68,7 @@ export default function RecruitingScreen() {
     interviews,
     offers,
 
-  } = useERP();
+  } = useSupabaseRecruiting();
 
   const [currentView, setCurrentView] = useState<RecruitingView>('jobs');
   const [searchQuery, setSearchQuery] = useState('');
@@ -2226,3 +2226,12 @@ const styles = StyleSheet.create({
     fontWeight: '600' as const,
   },
 });
+
+export default function RecruitingScreen() {
+  return (
+    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24, backgroundColor: '#0a0a0a' }}>
+      <Text style={{ fontSize: 24, fontWeight: '700', color: '#fff', marginBottom: 8 }}>Recruiting</Text>
+      <Text style={{ fontSize: 16, color: '#888' }}>Coming Soon</Text>
+    </View>
+  );
+}
