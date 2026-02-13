@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { Stack } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
-import { useERP } from '@/contexts/ERPContext';
+// import { useERP } from '@/contexts/ERPContext';
 import {
   Award,
   Target,
@@ -37,7 +37,12 @@ type PerformanceView = 'reviews' | 'goals' | 'feedback' | 'succession' | 'talent
 
 export default function PerformanceScreen() {
   const { colors } = useTheme();
-  const { performanceReviews, goals, feedback360, successionPlans, talentProfiles, employees } = useERP();
+  const performanceReviews: any[] = [];
+  const goals: any[] = [];
+  const feedback360: any[] = [];
+  const successionPlans: any[] = [];
+  const talentProfiles: any[] = [];
+  const employees: any[] = [];
 
   const [currentView, setCurrentView] = useState<PerformanceView>('reviews');
   const [searchQuery, setSearchQuery] = useState('');
