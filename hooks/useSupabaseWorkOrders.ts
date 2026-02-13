@@ -69,6 +69,7 @@ export interface ExtendedWorkOrder extends Omit<WorkOrder, 'safety' | 'tasks' | 
   attachments?: WorkOrderAttachment[];
   completed_by?: string | null;
   department?: string;
+  department_name?: string;
 }
 
 export function useWorkOrdersQuery(options?: QueryOptions<WorkOrder> & { 
@@ -384,6 +385,8 @@ export function useCreateWorkOrder(options?: {
           safety: workOrder.safety || {},
           tasks: workOrder.tasks || [],
           attachments: workOrder.attachments || [],
+          department: workOrder.department || null,
+          department_name: workOrder.department_name || null,
         })
         .select()
         .single();
@@ -529,6 +532,44 @@ export function useCompleteWorkOrder(options?: {
       
       console.log('[useCompleteWorkOrder] Completed work order:', workOrderId);
       
+      // ── Complete linked Task Feed department tasks ──
+      // If this WO was created from a Task Feed post (source_id = post ID),
+      // mark the department tasks as completed so the Postgres trigger
+      // rolls up the parent post status.
+      if (existingWO.source_id) {
+        try {
+          const deptCode = departmentCode || existingWO.department || '1001';
+          const completedName = completedByName || completedBy || 'System';
+          const woNumber = existingWO.work_order_number || `WO-${workOrderId.slice(0, 8)}`;
+          
+          console.log('[useCompleteWorkOrder] Completing department tasks for post:', existingWO.source_id);
+          
+          const { data: updatedTasks, error: deptTaskError } = await supabase
+            .from('task_feed_department_tasks')
+            .update({
+              status: 'completed',
+              completed_by_id: completedBy || null,
+              completed_by_name: completedName,
+              completed_at: new Date().toISOString(),
+              completion_notes: `Completed via Work Order ${woNumber}${completionNotes ? `: ${completionNotes}` : ''}`,
+              module_reference_type: 'work_order',
+              module_reference_id: workOrderId,
+            })
+            .eq('post_id', existingWO.source_id)
+            .eq('organization_id', organizationId)
+            .eq('status', 'pending')
+            .select();
+          
+          if (deptTaskError) {
+            console.error('[useCompleteWorkOrder] Error completing department tasks:', deptTaskError);
+          } else {
+            console.log('[useCompleteWorkOrder] Completed', updatedTasks?.length || 0, 'department tasks → trigger will update post status');
+          }
+        } catch (deptError) {
+          console.error('[useCompleteWorkOrder] Department task update error (non-blocking):', deptError);
+        }
+      }
+      
       // Post to Task Feed unless explicitly skipped
       if (!skipTaskFeedPost && !options?.skipTaskFeedPost) {
         try {
@@ -590,6 +631,9 @@ export function useCompleteWorkOrder(options?: {
       queryClient.invalidateQueries({ queryKey: ['work_orders', 'byId', data.id] });
       queryClient.invalidateQueries({ queryKey: ['task_verifications'] });
       queryClient.invalidateQueries({ queryKey: ['task_verification_stats'] });
+      queryClient.invalidateQueries({ queryKey: ['task_feed_posts'] });
+      queryClient.invalidateQueries({ queryKey: ['task_feed_posts_with_tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['task_feed_department_tasks'] });
       options?.onSuccess?.(data);
     },
     onError: (error) => {
