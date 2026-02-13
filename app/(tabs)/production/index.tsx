@@ -19,7 +19,7 @@ import {
   CheckCircle,
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
-import { useERP } from '@/contexts/ERPContext';
+import { useMaterialsQuery } from '@/hooks/useSupabaseMaterials';
 import * as Haptics from 'expo-haptics';
 import TaskFeedInbox from '@/components/TaskFeedInbox';
 import { TaskFeedDepartmentTask } from '@/types/taskFeedTemplates';
@@ -27,14 +27,14 @@ import { TaskFeedDepartmentTask } from '@/types/taskFeedTemplates';
 export default function ProductionScreen() {
   const { colors } = useTheme();
   const router = useRouter();
-  const { materials } = useMaterialsByDepartment(4);
+  const { data: allMaterials = [], isLoading } = useMaterialsQuery();
   const [refreshing, setRefreshing] = useState(false);
 
   const handleTaskCompleted = useCallback((task: TaskFeedDepartmentTask, moduleHistoryId?: string) => {
     console.log('[Production] Task completed:', task.postNumber, 'History ID:', moduleHistoryId);
   }, []);
 
-  const productionMaterials = materials.filter(m => m.inventoryDepartment === 4);
+  const productionMaterials = allMaterials.filter(m => m.inventory_department === 4);
   const lowStockCount = productionMaterials.filter(m => m.on_hand > 0 && m.on_hand <= m.min_level).length;
   const outOfStockCount = productionMaterials.filter(m => m.on_hand === 0).length;
   const totalValue = productionMaterials.reduce((sum, m) => sum + (m.on_hand * m.unit_price), 0);
