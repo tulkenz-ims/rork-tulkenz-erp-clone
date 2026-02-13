@@ -23,7 +23,6 @@ import {
   ArrowLeft,
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
-import { useERP } from '@/contexts/ERPContext';
 import { useDashboardAlertWidget } from '@/hooks/useDashboardAlertWidget';
 import { useMaterialsQuery, useLowStockMaterials } from '@/hooks/useSupabaseMaterials';
 import * as Haptics from 'expo-haptics';
@@ -105,8 +104,19 @@ export default function InventoryDashboard() {
     router.back();
   }, [router]);
   const queryClient = useQueryClient();
-  const { stats: erpStats, getInventoryModuleAlertCounts } = useERP();
-  const moduleAlertCounts = getInventoryModuleAlertCounts();
+  const defaultStats = {
+    totalMaterials: 0,
+    inventoryValue: 0,
+    lowStockCount: 0,
+    outOfStockCount: 0,
+    overstockCount: 0,
+  };
+  const moduleAlertCounts = {
+    'item-master': { total: 0, critical: 0, warning: 0, info: 0 },
+    tracking: { total: 0, critical: 0, warning: 0, info: 0 },
+    operations: { total: 0, critical: 0, warning: 0, info: 0 },
+    alerts: { total: 0, critical: 0, warning: 0, info: 0 },
+  };
   const alertWidget = useDashboardAlertWidget();
 
   const { data: materials = [], isLoading: materialsLoading, refetch: refetchMaterials } = useMaterialsQuery();
@@ -121,19 +131,19 @@ export default function InventoryDashboard() {
     const overstockCount = activeMaterials.filter(m => m.max_level && (m.on_hand || 0) > m.max_level).length;
 
     if (totalMaterials === 0) {
-      return erpStats;
+      return defaultStats;
     }
 
     console.log('[InventoryDashboard] Stats from Supabase:', { totalMaterials, inventoryValue, lowStockCount, outOfStockCount });
     return {
-      ...erpStats,
+      ...defaultStats,
       totalMaterials,
       inventoryValue,
       lowStockCount,
       outOfStockCount,
       overstockCount,
     };
-  }, [materials, lowStockMaterials, erpStats]);
+  }, [materials, lowStockMaterials]);
 
   const getSubModuleAlertInfo = useCallback((alertKey?: 'stockout' | 'lowstock' | 'overstock' | 'reorder') => {
     if (!alertKey) return null;
