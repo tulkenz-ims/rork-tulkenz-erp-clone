@@ -533,16 +533,52 @@ export function useCompleteWorkOrder(options?: {
       console.log('[useCompleteWorkOrder] Completed work order:', workOrderId);
       
       // ── Complete linked Task Feed department tasks ──
-      // If this WO was created from a Task Feed post (source_id = post ID),
-      // mark the department tasks as completed so the Postgres trigger
-      // rolls up the parent post status.
-      if (existingWO.source_id) {
-        try {
-          const deptCode = departmentCode || existingWO.department || '1001';
-          const completedName = completedByName || completedBy || 'System';
-          const woNumber = existingWO.work_order_number || `WO-${workOrderId.slice(0, 8)}`;
-          
-          console.log('[useCompleteWorkOrder] Completing department tasks for post:', existingWO.source_id);
+      // Find the linked Task Feed post and mark department tasks as completed.
+      // This triggers the Postgres function that rolls up the parent post status.
+      try {
+        const deptCode = departmentCode || existingWO.department || '1001';
+        const completedName = completedByName || completedBy || 'System';
+        const woNumber = existingWO.work_order_number || `WO-${workOrderId.slice(0, 8)}`;
+        
+        // Strategy 1: Use source_id (direct link to post)
+        let postId = existingWO.source_id;
+        
+        // Strategy 2: Parse post number from WO description and look up the post
+        if (!postId && existingWO.description) {
+          const postNumMatch = existingWO.description.match(/Task Feed Post:\s*(TF-[\w-]+)/);
+          if (postNumMatch) {
+            const postNumber = postNumMatch[1];
+            console.log('[useCompleteWorkOrder] Looking up post by number:', postNumber);
+            const { data: postLookup } = await supabase
+              .from('task_feed_posts')
+              .select('id')
+              .eq('organization_id', organizationId)
+              .eq('post_number', postNumber)
+              .single();
+            if (postLookup) {
+              postId = postLookup.id;
+              console.log('[useCompleteWorkOrder] Found post via description:', postId);
+            }
+          }
+        }
+        
+        // Strategy 3: Check if any department task references this WO
+        if (!postId) {
+          const { data: refTask } = await supabase
+            .from('task_feed_department_tasks')
+            .select('post_id')
+            .eq('organization_id', organizationId)
+            .eq('module_reference_id', workOrderId)
+            .limit(1)
+            .maybeSingle();
+          if (refTask) {
+            postId = refTask.post_id;
+            console.log('[useCompleteWorkOrder] Found post via module_reference_id:', postId);
+          }
+        }
+        
+        if (postId) {
+          console.log('[useCompleteWorkOrder] Completing department tasks for post:', postId);
           
           const { data: updatedTasks, error: deptTaskError } = await supabase
             .from('task_feed_department_tasks')
@@ -555,7 +591,7 @@ export function useCompleteWorkOrder(options?: {
               module_reference_type: 'work_order',
               module_reference_id: workOrderId,
             })
-            .eq('post_id', existingWO.source_id)
+            .eq('post_id', postId)
             .eq('organization_id', organizationId)
             .eq('status', 'pending')
             .select();
@@ -565,9 +601,47 @@ export function useCompleteWorkOrder(options?: {
           } else {
             console.log('[useCompleteWorkOrder] Completed', updatedTasks?.length || 0, 'department tasks → trigger will update post status');
           }
-        } catch (deptError) {
-          console.error('[useCompleteWorkOrder] Department task update error (non-blocking):', deptError);
+          
+          // Also update the work order's source_id if it wasn't set (backfill)
+          if (!existingWO.source_id && postId) {
+            await supabase
+              .from('work_orders')
+              .update({ source_id: postId })
+              .eq('id', workOrderId)
+              .eq('organization_id', organizationId);
+            console.log('[useCompleteWorkOrder] Backfilled source_id on WO');
+          }
+        } else {
+          console.log('[useCompleteWorkOrder] No linked Task Feed post found for this WO');
         }
+      } catch (deptError) {
+        console.error('[useCompleteWorkOrder] Department task update error (non-blocking):', deptError);
+      }
+      
+      // ── Resolve the original task_verification (issue report) ──
+      // When the WO was linked to a task_verification, mark it as 'verified'
+      // so the Production Stopped banner shows as resolved.
+      try {
+        const { data: resolvedVerifications, error: resolveError } = await supabase
+          .from('task_verifications')
+          .update({
+            status: 'verified',
+            reviewed_at: new Date().toISOString(),
+            reviewed_by: completedBy || null,
+            review_notes: `Resolved via Work Order ${existingWO.work_order_number || workOrderId}`,
+          })
+          .eq('linked_work_order_id', workOrderId)
+          .eq('organization_id', organizationId)
+          .eq('status', 'flagged')
+          .select('id');
+        
+        if (resolveError) {
+          console.error('[useCompleteWorkOrder] Error resolving task_verifications:', resolveError);
+        } else if (resolvedVerifications?.length) {
+          console.log('[useCompleteWorkOrder] Resolved', resolvedVerifications.length, 'task_verification(s)');
+        }
+      } catch (resolveErr) {
+        console.error('[useCompleteWorkOrder] Resolve verification error (non-blocking):', resolveErr);
       }
       
       // Post to Task Feed unless explicitly skipped
