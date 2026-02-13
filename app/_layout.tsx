@@ -5,7 +5,6 @@ import React, { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { UserProvider } from "@/contexts/UserContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
-import { ERPProvider } from "@/contexts/ERPContext";
 import { PermissionsProvider } from "@/contexts/PermissionsContext";
 import { LicenseProvider } from "@/contexts/LicenseContext";
 import { NotificationsProvider } from "@/contexts/NotificationsContext";
@@ -50,22 +49,20 @@ export default function RootLayout() {
           <UserProvider>
             <OrganizationProvider>
               <AuthProvider>
-                <ERPProvider>
                 <PermissionsProvider>
                   <LicenseProvider>
                     <NotificationsProvider>
-                        <PushNotificationsProvider>
-                          <RootLayoutNav />
-                        </PushNotificationsProvider>
-                      </NotificationsProvider>
-                  </LicenseProvider>
-                </PermissionsProvider>
-              </ERPProvider>
-              </AuthProvider>
-            </OrganizationProvider>
-          </UserProvider>
-        </ThemeProvider>
-      </GestureHandlerRootView>
-    </QueryClientProvider>
+                      <PushNotificationsProvider>
+                         <RootLayoutNav />
+                      </PushNotificationsProvider>
+                     </NotificationsProvider>
+                 </LicenseProvider>
+               </PermissionsProvider>
+             </AuthProvider>
+           </OrganizationProvider>
+         </UserProvider>
+       </ThemeProvider>
+     </GestureHandlerRootView>
+   </QueryClientProvider>
   );
 }
