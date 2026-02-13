@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useERP } from '@/contexts/ERPContext';
+{ useMaterialsQuery } from '@/hooks/useSupabaseMaterials';
 import { getPartRequestsByWorkOrder } from '@/mocks/partsToWorkOrderData';
 import type { LowStockAlertSeverity } from '@/mocks/partsToWorkOrderData';
 
@@ -51,7 +51,7 @@ export interface WorkOrderStockWarningsSummary {
 }
 
 export function useWorkOrderStockWarnings() {
-  const { materials } = useERP();
+  const { data: materials = [] } = useMaterialsQuery();
 
   const checkPartStockStatus = useMemo(() => {
     return (materialId: string): PartStockStatus | null => {
