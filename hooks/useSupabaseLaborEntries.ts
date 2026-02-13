@@ -121,7 +121,7 @@ export function useStartTimer() {
           hours_regular: 0,
           regular_rate: input.hourly_rate || 0,
           total_labor_cost: 0,
-          work_type: input.work_type || 'corrective',
+          work_type: 'corrective',
           task_description: input.task_description || null,
         })
         .select()
