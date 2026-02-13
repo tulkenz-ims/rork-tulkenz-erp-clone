@@ -224,6 +224,10 @@ export type Tables = {
     actual_hours: number | null;
     notes: string | null;
     completion_notes: string | null;
+    department: string | null;
+    department_name: string | null;
+    source: string | null;
+    source_id: string | null;
     created_at: string;
     updated_at: string;
   };
