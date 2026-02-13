@@ -69,6 +69,7 @@ import {
 import DepartmentDocumentation from '@/components/DepartmentDocumentation';
 import BarcodeScanner from '@/components/BarcodeScanner';
 import { Material } from '@/mocks/inventoryData';
+import LaborTimer from '@/components/LaborTimer';
 import {
   WorkOrderPartLine,
   WorkOrderPartSummary,
@@ -2379,6 +2380,7 @@ export default function WorkOrderDetail({
         {renderPPESection()}
         {renderTasksSection()}
         {renderAttachmentsSection()}
+        {renderLaborSection()}
         {renderPartsSection()}
         
         <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -2471,6 +2473,29 @@ export default function WorkOrderDetail({
       />
     </View>
   );
+
+  function renderLaborSection() {
+    return (
+      <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        {renderSectionHeader(
+          'Labor & Time',
+          'labor',
+          <Clock size={18} color="#F59E0B" />,
+          0,
+          '#F59E0B'
+        )}
+        {expandedSections.has('labor') && (
+          <View style={styles.sectionContent}>
+            <LaborTimer
+              workOrderId={workOrder.id}
+              workOrderNumber={workOrder.workOrderNumber || workOrder.work_order_number || ''}
+              workType={workOrder.type || 'corrective'}
+            />
+          </View>
+        )}
+      </View>
+    );
+  }
 
   function renderPartsSection() {
     const safeLinkedParts = Array.isArray(linkedParts) ? linkedParts : [];
