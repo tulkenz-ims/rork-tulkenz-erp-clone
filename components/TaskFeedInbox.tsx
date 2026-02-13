@@ -1,4 +1,6 @@
 import React, { useState, useCallback, useMemo } from 'react';
+import { useRouter } from 'expo-router';
+import { useWorkOrdersQuery } from '@/hooks/useSupabaseWorkOrders';
 import {
   View,
   Text,
@@ -84,6 +86,8 @@ export default function TaskFeedInbox({
 }: TaskFeedInboxProps) {
   const { colors } = useTheme();
   useUser();
+  const router = useRouter();
+  const { data: workOrders = [] } = useWorkOrdersQuery();
   const [isExpanded, setIsExpanded] = useState(true);
   const [showAllTasks, setShowAllTasks] = useState(false);
   const [selectedTask, setSelectedTask] = useState<(TaskFeedDepartmentTask & { post?: PostDetails }) | null>(null);
@@ -141,13 +145,26 @@ export default function TaskFeedInbox({
     setSelectedTask(task);
     setCompletionNotes('');
     
-    if (isMaintenanceDept && createFullWorkOrder) {
-      setShowWorkOrderModal(true);
+    if (isMaintenanceDept) {
+      const linkedWO = workOrders.find(wo =>
+        (wo.description || '').includes(task.postNumber) ||
+        (wo.title || '').includes(task.postNumber)
+      );
+      if (linkedWO) {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        router.push(`/(tabs)/cmms/work-orders/${linkedWO.id}`);
+        return;
+      }
+      if (createFullWorkOrder) {
+        setShowWorkOrderModal(true);
+      } else {
+        setShowCompleteModal(true);
+      }
     } else {
       setShowCompleteModal(true);
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  }, [isMaintenanceDept, createFullWorkOrder]);
+  }, [isMaintenanceDept, createFullWorkOrder, workOrders, router]);
 
   const handleConfirmComplete = useCallback(async () => {
     if (!selectedTask) return;
