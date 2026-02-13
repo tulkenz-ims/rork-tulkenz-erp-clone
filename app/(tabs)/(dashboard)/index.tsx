@@ -44,6 +44,7 @@ import AlertSummaryWidget from '@/components/AlertSummaryWidget';
 import LowStockAlerts from '@/components/LowStockAlerts';
 import UserProfileMenu from '@/components/UserProfileMenu';
 import ProcurementWidget from '@/components/ProcurementWidget';
+import LineStatusWidget from '@/components/LineStatusWidget';
 import { useMaterialsQuery } from '@/hooks/useSupabaseMaterials';
 import { useWorkOrdersQuery } from '@/hooks/useSupabaseWorkOrders';
 import { useEmployees } from '@/hooks/useSupabaseEmployees';
@@ -484,6 +485,8 @@ export default function ExecutiveDashboard() {
           </View>
           <ChevronRight size={20} color="#FFFFFF" />
         </Pressable>
+
+        <LineStatusWidget />
 
         <View style={styles.kpiGrid}>
           {kpis.map((kpi, index) => {
