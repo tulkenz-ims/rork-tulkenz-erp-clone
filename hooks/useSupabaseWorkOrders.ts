@@ -584,7 +584,7 @@ export function useCompleteWorkOrder(options?: {
             .from('task_feed_department_tasks')
             .update({
               status: 'completed',
-              completed_by_id: completedBy || null,
+              completed_by: completedBy || null,
               completed_by_name: completedName,
               completed_at: new Date().toISOString(),
               completion_notes: `Completed via Work Order ${woNumber}${completionNotes ? `: ${completionNotes}` : ''}`,
@@ -619,10 +619,13 @@ export function useCompleteWorkOrder(options?: {
       }
       
       // ── Resolve the original task_verification (issue report) ──
-      // When the WO was linked to a task_verification, mark it as 'verified'
-      // so the Production Stopped banner shows as resolved.
+      // Mark the verification as 'verified' so the Production Stopped banner resolves.
+      // Find via linked_work_order_id OR via source_id matching the post.
       try {
-        const { data: resolvedVerifications, error: resolveError } = await supabase
+        let resolvedCount = 0;
+        
+        // Strategy 1: linked_work_order_id (if it was set)
+        const { data: byWO } = await supabase
           .from('task_verifications')
           .update({
             status: 'verified',
@@ -635,10 +638,30 @@ export function useCompleteWorkOrder(options?: {
           .eq('status', 'flagged')
           .select('id');
         
-        if (resolveError) {
-          console.error('[useCompleteWorkOrder] Error resolving task_verifications:', resolveError);
-        } else if (resolvedVerifications?.length) {
-          console.log('[useCompleteWorkOrder] Resolved', resolvedVerifications.length, 'task_verification(s)');
+        resolvedCount += byWO?.length || 0;
+        
+        // Strategy 2: source_id matching the post (for issue reports where linked_work_order_id wasn't set)
+        const postId = existingWO.source_id;
+        if (postId && resolvedCount === 0) {
+          const { data: byPost } = await supabase
+            .from('task_verifications')
+            .update({
+              status: 'verified',
+              reviewed_at: new Date().toISOString(),
+              reviewed_by: completedBy || null,
+              review_notes: `Resolved via Work Order ${existingWO.work_order_number || workOrderId}`,
+              linked_work_order_id: workOrderId,
+            })
+            .eq('source_id', postId)
+            .eq('organization_id', organizationId)
+            .eq('status', 'flagged')
+            .select('id');
+          
+          resolvedCount += byPost?.length || 0;
+        }
+        
+        if (resolvedCount > 0) {
+          console.log('[useCompleteWorkOrder] Resolved', resolvedCount, 'task_verification(s)');
         }
       } catch (resolveErr) {
         console.error('[useCompleteWorkOrder] Resolve verification error (non-blocking):', resolveErr);
