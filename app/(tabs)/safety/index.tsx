@@ -32,6 +32,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import * as Haptics from 'expo-haptics';
+import TaskFeedInbox from '@/components/TaskFeedInbox';
+import { supabase } from '@/lib/supabase';
+import { TaskFeedDepartmentTask } from '@/types/taskFeedTemplates';
+import { useOrganization } from '@/contexts/OrganizationContext';
+import { useUser } from '@/contexts/UserContext';
 
 interface FormItem {
   id: string;
@@ -185,6 +190,10 @@ export default function SafetyScreen() {
   const { colors } = useTheme();
   const [refreshing, setRefreshing] = useState(false);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+  const orgContext = useOrganization();
+  const organizationId = orgContext?.organizationId || '';
+  const facilityId = orgContext?.facilityId || '';
+  const { user } = useUser();
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -192,6 +201,57 @@ export default function SafetyScreen() {
   }, []);
 
   const router = useRouter();
+
+  const handleCreateSafetyHistoryRecord = useCallback(async (
+    task: TaskFeedDepartmentTask,
+    notes: string
+  ): Promise<string | null> => {
+    try {
+      if (!organizationId) {
+        console.warn('[Safety] No organization ID available, skipping history record creation');
+        return null;
+      }
+
+      console.log('[Safety] Creating safety history record for task:', task.postNumber);
+
+      const employeeName = user ? `${user.first_name || ''} ${user.last_name || ''}`.trim() : 'System';
+
+      const { data, error } = await supabase
+        .from('task_verifications')
+        .insert({
+          organization_id: organizationId,
+          department_code: '1005',
+          department_name: 'Safety',
+          facility_code: facilityId || null,
+          category_id: 'safety-task-feed',
+          category_name: 'Task Feed Completion',
+          action: `Safety Task: ${task.postNumber}`,
+          notes: `Completed from Task Feed assignment.\n\nPost: ${task.postNumber}\nNotes: ${notes || 'No additional notes'}`,
+          employee_name: employeeName || 'System',
+          status: 'verified',
+          source_type: 'task_feed_completion',
+          source_id: task.id,
+          source_number: task.postNumber,
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error('[Safety] Error creating history record:', error);
+        return null;
+      }
+
+      console.log('[Safety] Created history record:', data?.id);
+      return data?.id || null;
+    } catch (err) {
+      console.error('[Safety] Error in createModuleHistoryRecord:', err);
+      return null;
+    }
+  }, [organizationId, facilityId, user]);
+
+  const handleTaskCompleted = useCallback((task: TaskFeedDepartmentTask, moduleHistoryId?: string) => {
+    console.log('[Safety] Task completed:', task.postNumber, 'History ID:', moduleHistoryId);
+  }, []);
 
   const handleFormPress = useCallback((route: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -236,6 +296,14 @@ export default function SafetyScreen() {
             Track incidents, near misses, safety training, and compliance
           </Text>
         </View>
+
+        <TaskFeedInbox
+          departmentCode="1005"
+          moduleColor="#EF4444"
+          onTaskCompleted={handleTaskCompleted}
+          createModuleHistoryRecord={handleCreateSafetyHistoryRecord}
+          maxVisible={3}
+        />
 
         <View style={styles.statsGrid}>
           {stats.map((stat, index) => {
