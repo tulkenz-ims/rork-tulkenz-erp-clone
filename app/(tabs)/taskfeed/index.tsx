@@ -734,6 +734,10 @@ export default function TaskFeedScreen() {
           facility_id: issueLocation.facilityCode || null,
           assigned_to: null,
           due_date: new Date(Date.now() + (isProductionStopped ? 0 : 3) * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+          department: targetDepartment,
+          department_name: getDepartmentName(targetDepartment),
+          source: 'request' as const,
+          source_id: postResult.id,
         });
 
         const priorityLabel = isProductionStopped ? 'CRITICAL' : (priority === 'high' ? 'HIGH priority' : '');
@@ -839,6 +843,8 @@ export default function TaskFeedScreen() {
         facility_id: selectedVerificationForWO?.facilityCode || null,
         assigned_to: null,
         due_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        department: selectedVerificationForWO?.departmentCode || '1001',
+        department_name: selectedVerificationForWO?.departmentName || 'Maintenance',
       });
 
       const woNumber = newWorkOrder.work_order_number || `WO-${newWorkOrder.id.slice(0, 8)}`;
@@ -1833,17 +1839,7 @@ export default function TaskFeedScreen() {
                     </TouchableOpacity>
                   )}
 
-                  {/* Create Work Order Button - Compact */}
-                  {(verification.status === 'flagged' || verification.sourceType === 'issue_report') && !verification.linkedWorkOrderId && (
-                    <TouchableOpacity
-                      style={[styles.cardCreateWOBtnCompact, { backgroundColor: '#EF4444' }]}
-                      onPress={() => handleCreateWorkOrder(verification)}
-                      activeOpacity={0.8}
-                    >
-                      <Wrench size={12} color="#fff" />
-                      <Text style={styles.cardCreateWOTextCompact}>Create WO</Text>
-                    </TouchableOpacity>
-                  )}
+                  {/* Work orders are auto-created by Report Issue - no manual button needed */}
                 </View>
 
                 {/* Department Completion Badges - Compact footer */}
