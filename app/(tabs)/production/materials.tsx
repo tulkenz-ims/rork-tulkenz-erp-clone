@@ -16,7 +16,7 @@ export default function ProductionMaterialsScreen() {
         }} 
       />
       <FilteredInventoryView 
-        departmentCode={4}
+        departmentCode={3}
         title="Production Materials"
         showMasterLink={true}
       />
