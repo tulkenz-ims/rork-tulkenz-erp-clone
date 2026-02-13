@@ -46,6 +46,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useUser } from '@/contexts/UserContext';
+import { useOrganization } from '@/contexts/OrganizationContext';
 import { DEPARTMENT_CODES, getDepartmentColor, getDepartmentName, DEPARTMENTS } from '@/constants/organizationCodes';
 import { useRouter } from 'expo-router';
 import {
@@ -79,7 +80,7 @@ import DatePickerModal from '@/components/DatePickerModal';
 import DepartmentStatusBadges, { DepartmentTaskBadge, DepartmentStatusBadgesCompact } from '@/components/DepartmentStatusBadges';
 import { CompactDepartmentBadges } from '@/components/DepartmentCompletionBadges';
 import { TaskFeedDepartmentTask } from '@/types/taskFeedTemplates';
-import { Tables } from '@/lib/supabase';
+import { Tables, supabase } from '@/lib/supabase';
 import PurchaseRequestForm from '@/components/PurchaseRequestForm';
 import ProductionStoppedBanner from '@/components/ProductionStoppedBanner';
 import { usePushNotifications } from '@/contexts/PushNotificationsContext';
@@ -113,6 +114,8 @@ export default function TaskFeedScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const { user } = useUser();
+  const orgContext = useOrganization();
+  const organizationId = orgContext?.organizationId || '';
   const { sendTaskFeedNotification } = usePushNotifications();
   const router = useRouter();
   
@@ -724,30 +727,53 @@ export default function TaskFeedScreen() {
         issueType === 'equipment_down';
 
       if (shouldCreateWorkOrder) {
-        const isProductionStopped = issueStoppedProduction;
-        const priority = isProductionStopped ? 'critical' : (issueType === 'equipment_down' ? 'high' : 'medium');
-        const urgencyPrefix = isProductionStopped ? 'URGENT: ' : '';
-        
-        const newWorkOrder = await createWorkOrderMutation.mutateAsync({
-          title: `${urgencyPrefix}${issueTypeLabel} at ${issueLocation.name}`,
-          description: `${issueDescription}${isProductionStopped ? `\n\n⚠️ PRODUCTION STOPPED\nRoom/Line: ${issueRoomLine}` : ''}\nReported by: ${user ? `${user.first_name} ${user.last_name}` : 'System'}\nReported at: ${new Date().toLocaleString()}\nIssue Type: ${issueTypeLabel}\nTask Feed Post: ${postResult.postNumber}`,
-          priority: priority,
-          status: 'open',
-          facility_id: issueLocation.facilityCode || null,
-          assigned_to: null,
-          due_date: new Date(Date.now() + (isProductionStopped ? 0 : 3) * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-          department: targetDepartment,
-          department_name: getDepartmentName(targetDepartment),
-          source: 'request' as const,
-          source_id: postResult.id,
-        });
+        try {
+          const isProductionStopped = issueStoppedProduction;
+          const priority = isProductionStopped ? 'critical' : (issueType === 'equipment_down' ? 'high' : 'medium');
+          const urgencyPrefix = isProductionStopped ? 'URGENT: ' : '';
+          
+          const newWorkOrder = await createWorkOrderMutation.mutateAsync({
+            title: `${urgencyPrefix}${issueTypeLabel} at ${issueLocation.name}`,
+            description: `${issueDescription}${isProductionStopped ? `\n\n⚠️ PRODUCTION STOPPED\nRoom/Line: ${issueRoomLine}` : ''}\nReported by: ${user ? `${user.first_name} ${user.last_name}` : 'System'}\nReported at: ${new Date().toLocaleString()}\nIssue Type: ${issueTypeLabel}\nTask Feed Post: ${postResult.postNumber}`,
+            priority: priority,
+            status: 'open',
+            facility_id: issueLocation.facilityCode || null,
+            assigned_to: null,
+            due_date: new Date(Date.now() + (isProductionStopped ? 0 : 3) * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+            department: targetDepartment,
+            department_name: getDepartmentName(targetDepartment),
+            source: 'request' as const,
+            source_id: postResult.id,
+          });
 
-        const priorityLabel = isProductionStopped ? 'CRITICAL' : (priority === 'high' ? 'HIGH priority' : '');
-        Alert.alert(
-          'Issue Reported & Work Order Created',
-          `Your issue ${postResult.postNumber} has been logged and a ${priorityLabel} work order ${newWorkOrder.work_order_number || newWorkOrder.id} has been created.${isProductionStopped ? ' Production stoppage flagged.' : ''} ${getDepartmentName(targetDepartment)} has been notified.`,
-          [{ text: 'OK' }]
-        );
+          // Link the task_verification back to the WO so completion can resolve it
+          if (newWorkOrder?.id) {
+            try {
+              await supabase
+                .from('task_verifications')
+                .update({ linked_work_order_id: newWorkOrder.id })
+                .eq('source_id', postResult.id)
+                .eq('organization_id', organizationId);
+              console.log('[TaskFeed] Linked task_verification to WO:', newWorkOrder.id);
+            } catch (linkErr) {
+              console.warn('[TaskFeed] Could not link verification to WO:', linkErr);
+            }
+          }
+
+          const priorityLabel = isProductionStopped ? 'CRITICAL' : (priority === 'high' ? 'HIGH priority' : '');
+          Alert.alert(
+            'Issue Reported & Work Order Created',
+            `Your issue ${postResult.postNumber} has been logged and a ${priorityLabel} work order ${newWorkOrder.work_order_number || newWorkOrder.id} has been created.${isProductionStopped ? ' Production stoppage flagged.' : ''} ${getDepartmentName(targetDepartment)} has been notified.`,
+            [{ text: 'OK' }]
+          );
+        } catch (woError) {
+          console.error('[TaskFeed] Error creating work order (issue still reported):', woError);
+          Alert.alert(
+            'Issue Reported',
+            `Your issue ${postResult.postNumber} has been logged and ${getDepartmentName(targetDepartment)} has been notified. Note: Auto work order creation failed — you can create one manually.`,
+            [{ text: 'OK' }]
+          );
+        }
       } else {
         Alert.alert(
           'Issue Reported',
@@ -764,11 +790,11 @@ export default function TaskFeedScreen() {
       setIssueRoomLine('');
       setIssueDepartment(null);
       setShowReportIssueModal(false);
-    } catch (error) {
-      console.error('[TaskFeed] Error submitting issue:', error);
-      Alert.alert('Error', 'Failed to submit issue. Please try again.');
+    } catch (error: any) {
+      console.error('[TaskFeed] Error submitting issue:', error?.message || error);
+      Alert.alert('Error', `Failed to submit issue: ${error?.message || 'Unknown error'}. Please try again.`);
     }
-  }, [issueLocation, issueType, issueDescription, issuePhotoUri, issueStoppedProduction, issueRoomLine, issueDepartment, user, createManualPostMutation, createWorkOrderMutation, sendTaskFeedNotification]);
+  }, [issueLocation, issueType, issueDescription, issuePhotoUri, issueStoppedProduction, issueRoomLine, issueDepartment, user, organizationId, createManualPostMutation, createWorkOrderMutation, sendTaskFeedNotification]);
 
   const handleSubmitPost = useCallback(async () => {
     if (!selectedLocation || !selectedCategory || !selectedAction) {
@@ -1644,7 +1670,9 @@ export default function TaskFeedScreen() {
             const formData = parseFormData(verification.notes);
             const cleanNotes = getCleanNotes(verification.notes);
             const additionalPhotos = verification.sourceId ? additionalPhotosByPostId.get(verification.sourceId) : [];
-            const allPhotos = [verification.photoUri, ...(additionalPhotos || [])].filter(Boolean) as string[];
+            const allPhotos = [verification.photoUri, ...(additionalPhotos || [])].filter(
+              (url): url is string => !!url && !url.startsWith('blob:')
+            );
             
             const canNavigateToDetail = verification.sourceType === 'task_feed_post' && verification.sourceId;
             
