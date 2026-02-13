@@ -1,8 +1,9 @@
-import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import React, { useMemo, useCallback } from 'react';
+import { View, Text, StyleSheet, ActivityIndicator, Alert } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
-import { useWorkOrdersQuery } from '@/hooks/useSupabaseWorkOrders';
+import { useUser } from '@/contexts/UserContext';
+import { useWorkOrdersQuery, useStartWorkOrder, useCompleteWorkOrder, useUpdateWorkOrderDetail } from '@/hooks/useSupabaseWorkOrders';
 import WorkOrderDetail from '@/components/WorkOrderDetail';
 import { AlertTriangle } from 'lucide-react-native';
 
@@ -48,9 +49,10 @@ interface DetailedWorkOrder {
 export default function WorkOrderDetailScreen() {
   const { colors } = useTheme();
   const router = useRouter();
+  const { user } = useUser();
   const { id } = useLocalSearchParams<{ id: string }>();
   
-  const { data: workOrdersData, isLoading, error } = useWorkOrdersQuery();
+  const { data: workOrdersData, isLoading, error, refetch } = useWorkOrdersQuery();
   
   const workOrder = useMemo(() => {
     if (!workOrdersData || !id) return null;
@@ -108,6 +110,48 @@ export default function WorkOrderDetailScreen() {
     return mapped;
   }, [workOrdersData, id]);
   
+  const startWorkMutation = useStartWorkOrder({
+    onSuccess: (data) => {
+      console.log('[WorkOrderDetail] Work order started:', data.id);
+      refetch();
+    },
+    onError: (error) => {
+      console.error('[WorkOrderDetail] Failed to start work order:', error);
+      Alert.alert('Error', 'Failed to start work order. Please try again.');
+    },
+  });
+
+  const completeWorkOrderMutation = useCompleteWorkOrder({
+    onSuccess: (data) => {
+      console.log('[WorkOrderDetail] Work order completed:', data.id);
+      refetch();
+      Alert.alert(
+        'Work Order Completed',
+        `${workOrder?.workOrderNumber || 'Work order'} has been marked as complete.`,
+        [{ text: 'OK', onPress: () => {
+          if (router.canGoBack()) {
+            router.back();
+          }
+        }}]
+      );
+    },
+    onError: (error) => {
+      console.error('[WorkOrderDetail] Failed to complete work order:', error);
+      Alert.alert('Error', 'Failed to complete work order. Please try again.');
+    },
+  });
+
+  const updateWorkOrderMutation = useUpdateWorkOrderDetail({
+    onSuccess: () => {
+      console.log('[WorkOrderDetail] Work order updated');
+      refetch();
+    },
+    onError: (error) => {
+      console.error('[WorkOrderDetail] Failed to update work order:', error);
+      Alert.alert('Error', 'Failed to update work order. Please try again.');
+    },
+  });
+
   const handleClose = () => {
     if (router.canGoBack()) {
       router.back();
@@ -116,17 +160,42 @@ export default function WorkOrderDetailScreen() {
     }
   };
   
-  const handleUpdate = (updates: Partial<DetailedWorkOrder>) => {
-    console.log('[WorkOrderDetail] Update requested:', updates);
-  };
+  const handleUpdate = useCallback((woId: string, updates: Partial<DetailedWorkOrder>) => {
+    console.log('[WorkOrderDetail] Update requested:', woId, updates);
+    updateWorkOrderMutation.mutate({
+      id: woId,
+      updates,
+    });
+  }, [updateWorkOrderMutation]);
   
-  const handleStartWork = () => {
-    console.log('[WorkOrderDetail] Start work requested');
-  };
+  const handleStartWork = useCallback((woId: string) => {
+    console.log('[WorkOrderDetail] Starting work on:', woId);
+    startWorkMutation.mutate(woId);
+  }, [startWorkMutation]);
   
-  const handleCompleteWork = () => {
-    console.log('[WorkOrderDetail] Complete work requested');
-  };
+  const handleCompleteWork = useCallback((workOrderId: string) => {
+    if (!workOrder) return;
+    console.log('[WorkOrderDetail] Completing work order:', workOrderId);
+
+    Alert.alert(
+      'Complete Work Order',
+      `Are you sure you want to complete ${workOrder.workOrderNumber}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Complete',
+          style: 'default',
+          onPress: () => {
+            completeWorkOrderMutation.mutate({
+              workOrderId,
+              completedBy: user?.id,
+              completedByName: user ? `${user.first_name} ${user.last_name}` : undefined,
+            });
+          },
+        },
+      ]
+    );
+  }, [workOrder, completeWorkOrderMutation, user]);
   
   if (isLoading) {
     return (
