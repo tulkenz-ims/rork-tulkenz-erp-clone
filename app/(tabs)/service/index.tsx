@@ -39,7 +39,7 @@ import {
   ArrowLeft,
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
-import { useERP } from '@/contexts/ERPContext';
+import { useEmployees } from '@/hooks/useSupabaseEmployees';
 import { type WorkOrder } from '@/constants/dashboardConstants';
 import { FREQUENCY_LABELS } from '@/constants/maintenanceConstants';
 import {
@@ -168,7 +168,7 @@ const typeColors: Record<WOType, string> = {
 
 export default function ServiceScreen() {
   const { colors } = useTheme();
-  const { employees } = useERP();
+  const { data: employees = [] } = useEmployees();
   const router = useRouter();
   
   const { data: workOrdersData = [], refetch: refetchWO } = useWorkOrdersQuery();
