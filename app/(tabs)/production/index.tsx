@@ -34,7 +34,7 @@ export default function ProductionScreen() {
     console.log('[Production] Task completed:', task.postNumber, 'History ID:', moduleHistoryId);
   }, []);
 
-  const productionMaterials = allMaterials.filter(m => m.inventory_department === 4);
+  const productionMaterials = allMaterials.filter(m => m.inventory_department === 3);
   const lowStockCount = productionMaterials.filter(m => m.on_hand > 0 && m.on_hand <= m.min_level).length;
   const outOfStockCount = productionMaterials.filter(m => m.on_hand === 0).length;
   const totalValue = productionMaterials.reduce((sum, m) => sum + (m.on_hand * m.unit_price), 0);
