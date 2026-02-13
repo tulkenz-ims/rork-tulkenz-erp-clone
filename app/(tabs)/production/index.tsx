@@ -59,7 +59,7 @@ export default function ProductionScreen() {
   const modules = [
     {
       id: 'materials',
-      title: 'Production Materials (4XXXXXX)',
+      title: 'Production Materials (3XXXXXX)',
       description: 'Raw materials, consumables, packaging, and production supplies',
       icon: Boxes,
       color: '#F59E0B',
