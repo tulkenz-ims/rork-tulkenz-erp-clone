@@ -584,7 +584,6 @@ export function useCompleteWorkOrder(options?: {
             .from('task_feed_department_tasks')
             .update({
               status: 'completed',
-              completed_by: completedBy || null,
               completed_by_name: completedName,
               completed_at: new Date().toISOString(),
               completion_notes: `Completed via Work Order ${woNumber}${completionNotes ? `: ${completionNotes}` : ''}`,
