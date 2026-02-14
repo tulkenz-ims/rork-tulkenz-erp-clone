@@ -7,7 +7,6 @@ import {
   Pressable,
   Alert,
   Modal,
-  TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -36,8 +35,6 @@ import {
   BookOpen,
   Briefcase,
   ClipboardList,
-  Check,
-  Paintbrush,
 } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useUser } from '@/contexts/UserContext';
@@ -45,6 +42,7 @@ import { useTheme, type ThemeType } from '@/contexts/ThemeContext';
 import { usePermissions } from '@/contexts/PermissionsContext';
 import { useLicense, type LicenseType } from '@/contexts/LicenseContext';
 import { isSuperAdminRole, getRoleDisplayName } from '@/constants/roles';
+import ColorPicker from '@/components/ColorPicker';
 
 interface SettingItemProps {
   icon: typeof User;
@@ -86,20 +84,6 @@ const themeOptions: { value: ThemeType; label: string; icon: typeof Sun; iconCol
   { value: 'custom', label: 'Custom', icon: Palette, iconColor: '#10B981' },
 ];
 
-const BG_PRESETS = [
-  '#1C1F26', '#2C2F36', '#1A1A2E', '#0F3460',
-  '#1B2838', '#2D1B38', '#1A2F1A', '#3B1F1F',
-  '#D6E6F5', '#D4D4D4', '#E8E0D0', '#EEEEE8',
-  '#F5E6D0', '#D8EFD3', '#E6D6F0', '#FDE8E8',
-];
-
-const PRIMARY_PRESETS = [
-  '#0066CC', '#0073CF', '#3B82F6', '#6366F1',
-  '#8B5CF6', '#A855F7', '#EC4899', '#EF4444',
-  '#F59E0B', '#D97706', '#10B981', '#06B6D4',
-  '#14B8A6', '#22C55E', '#84CC16', '#9CA3AF',
-];
-
 const getTierIcon = (tier: string) => {
   switch (tier) {
     case 'starter': return Star;
@@ -121,23 +105,17 @@ export default function SettingsScreen() {
 
   // Custom color picker state
   const [editBg, setEditBg] = useState(customBg);
-  const [editPrimary, setEditPrimary] = useState(customPrimary);
-  const [hexInputBg, setHexInputBg] = useState(customBg);
-  const [hexInputPrimary, setHexInputPrimary] = useState(customPrimary);
-
-  const isValidHex = (s: string) => /^#[0-9A-Fa-f]{6}$/.test(s);
+  const [editCard, setEditCard] = useState(customPrimary);
 
   const openThemeModal = useCallback(() => {
     setEditBg(customBg);
-    setEditPrimary(customPrimary);
-    setHexInputBg(customBg);
-    setHexInputPrimary(customPrimary);
+    setEditCard(customPrimary);
     setShowThemeModal(true);
   }, [customBg, customPrimary]);
 
   const applyCustomColors = useCallback(() => {
-    setCustomColors(editBg, editPrimary);
-  }, [editBg, editPrimary, setCustomColors]);
+    setCustomColors(editBg, editCard);
+  }, [editBg, editCard, setCustomColors]);
 
   const isSuperAdmin = isSuperAdminRole(userProfile?.role) || currentUserRole?.isSystem || currentUserRole?.name === 'Super Admin' || currentUserRole?.name === 'Administrator';
 
@@ -434,87 +412,27 @@ export default function SettingsScreen() {
             {/* Color Picker — shown when Custom is selected or tapped */}
             {theme === 'custom' && (
               <View style={styles.colorPickerSection}>
-                {/* Background Color */}
-                <Text style={[styles.pickerLabel, { color: colors.textSecondary }]}>Background Color</Text>
-                <View style={styles.colorGrid}>
-                  {BG_PRESETS.map((color) => (
-                    <Pressable
-                      key={`bg-${color}`}
-                      style={[
-                        styles.colorSwatch,
-                        { backgroundColor: color, borderColor: editBg === color ? '#FFFFFF' : 'transparent' },
-                        editBg === color && styles.colorSwatchSelected,
-                      ]}
-                      onPress={() => {
-                        setEditBg(color);
-                        setHexInputBg(color);
-                        setCustomColors(color, editPrimary);
-                      }}
-                    >
-                      {editBg === color && <Check size={14} color={parseInt(color.slice(1,3), 16) > 160 ? '#000' : '#FFF'} />}
-                    </Pressable>
-                  ))}
-                </View>
-                <View style={styles.hexInputRow}>
-                  <Paintbrush size={16} color={colors.textTertiary} />
-                  <TextInput
-                    style={[styles.hexInput, { color: colors.text, borderColor: colors.border }]}
-                    value={hexInputBg}
-                    onChangeText={(t) => {
-                      setHexInputBg(t);
-                      if (isValidHex(t)) {
-                        setEditBg(t);
-                        setCustomColors(t, editPrimary);
-                      }
-                    }}
-                    placeholder="#1C1F26"
-                    placeholderTextColor={colors.textTertiary}
-                    maxLength={7}
-                    autoCapitalize="none"
-                  />
-                  <View style={[styles.hexPreview, { backgroundColor: editBg }]} />
-                </View>
-
-                {/* Primary / Accent Color */}
-                <Text style={[styles.pickerLabel, { color: colors.textSecondary, marginTop: 16 }]}>Accent Color</Text>
-                <View style={styles.colorGrid}>
-                  {PRIMARY_PRESETS.map((color) => (
-                    <Pressable
-                      key={`pr-${color}`}
-                      style={[
-                        styles.colorSwatch,
-                        { backgroundColor: color, borderColor: editPrimary === color ? '#FFFFFF' : 'transparent' },
-                        editPrimary === color && styles.colorSwatchSelected,
-                      ]}
-                      onPress={() => {
-                        setEditPrimary(color);
-                        setHexInputPrimary(color);
-                        setCustomColors(editBg, color);
-                      }}
-                    >
-                      {editPrimary === color && <Check size={14} color="#FFFFFF" />}
-                    </Pressable>
-                  ))}
-                </View>
-                <View style={styles.hexInputRow}>
-                  <Palette size={16} color={colors.textTertiary} />
-                  <TextInput
-                    style={[styles.hexInput, { color: colors.text, borderColor: colors.border }]}
-                    value={hexInputPrimary}
-                    onChangeText={(t) => {
-                      setHexInputPrimary(t);
-                      if (isValidHex(t)) {
-                        setEditPrimary(t);
-                        setCustomColors(editBg, t);
-                      }
-                    }}
-                    placeholder="#0066CC"
-                    placeholderTextColor={colors.textTertiary}
-                    maxLength={7}
-                    autoCapitalize="none"
-                  />
-                  <View style={[styles.hexPreview, { backgroundColor: editPrimary }]} />
-                </View>
+                <ColorPicker
+                  label="Background Color"
+                  value={editBg}
+                  onChange={(hex) => {
+                    setEditBg(hex);
+                    setCustomColors(hex, editCard);
+                  }}
+                  textColor={colors.textSecondary}
+                  borderColor={colors.border}
+                />
+                <View style={{ height: 12 }} />
+                <ColorPicker
+                  label="Card Color"
+                  value={editCard}
+                  onChange={(hex) => {
+                    setEditCard(hex);
+                    setCustomColors(editBg, hex);
+                  }}
+                  textColor={colors.textSecondary}
+                  borderColor={colors.border}
+                />
               </View>
             )}
             </ScrollView>
@@ -792,53 +710,6 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     borderTopWidth: 1,
     borderTopColor: 'rgba(128,128,128,0.2)',
-  },
-  pickerLabel: {
-    fontSize: 12,
-    fontWeight: '600' as const,
-    textTransform: 'uppercase' as const,
-    letterSpacing: 0.5,
-    marginBottom: 10,
-  },
-  colorGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 10,
-  },
-  colorSwatch: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    borderWidth: 2,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  colorSwatchSelected: {
-    borderWidth: 2,
-    transform: [{ scale: 1.1 }],
-  },
-  hexInputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  hexInput: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: '600' as const,
-    fontVariant: ['tabular-nums'] as any,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderWidth: 1,
-    borderRadius: 8,
-  },
-  hexPreview: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(128,128,128,0.3)',
   },
   licenseDescription: {
     fontSize: 14,
