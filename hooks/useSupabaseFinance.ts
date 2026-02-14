@@ -100,7 +100,7 @@ export function useFinanceStatsQuery(options?: { enabled?: boolean }) {
           .select('balance')
           .eq('organization_id', organizationId)
           .eq('account_number', '1010')
-          .single();
+          .maybeSingle();
         if (cashRow) cashBalance = Number(cashRow.balance) || 0;
       } catch (err) {
         console.log('[useFinanceStatsQuery] Could not fetch cash balance:', err);
@@ -304,11 +304,7 @@ export function useGLAccountsQuery(options?: FinanceQueryOptions) {
     queryFn: async () => {
       if (!organizationId) return [];
 
-      console.log('[useGLAccountsQuery] Fetching GL accounts from Supabase, orgId=' + organizationId + ', accountType=' + (accountType || 'all'));
-
-      // Debug: check auth session
-      const { data: session } = await supabase.auth.getSession();
-      console.log('[useGLAccountsQuery] auth.uid=' + (session?.session?.user?.id || 'NO SESSION'));
+      console.log('[useGLAccountsQuery] Fetching GL accounts, orgId=' + organizationId);
 
       let query = supabase
         .from('gl_accounts')
@@ -328,8 +324,7 @@ export function useGLAccountsQuery(options?: FinanceQueryOptions) {
         query = query.limit(limit);
       }
 
-      const { data, error, status, statusText } = await query;
-      console.log('[useGLAccountsQuery] Response status=' + status + ' error=' + JSON.stringify(error) + ' rows=' + (data?.length ?? 'null'));
+      const { data, error } = await query;
       if (error) {
         console.error('[useGLAccountsQuery] ERROR:', error);
         throw new Error(error.message);
@@ -491,7 +486,7 @@ export function useBudgetsQuery(options?: FinanceQueryOptions) {
     queryFn: async () => {
       if (!organizationId) return [];
 
-      console.log('[useBudgetsQuery] Fetching budgets from Supabase:', { organizationId, status, departmentCode });
+      console.log('[useBudgetsQuery] Fetching budgets from Supabase');
 
       let query = supabase
         .from('department_budgets')
@@ -515,8 +510,7 @@ export function useBudgetsQuery(options?: FinanceQueryOptions) {
         query = query.limit(limit);
       }
 
-      const { data, error, status: respStatus } = await query;
-      console.log('[useBudgetsQuery] Response:', { respStatus, error, rowCount: data?.length });
+      const { data, error } = await query;
       if (error) {
         console.error('[useBudgetsQuery] ERROR:', error);
         throw new Error(error.message);
