@@ -18,7 +18,7 @@ import {
   Truck,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
-import Colors from '@/constants/colors';
+import { useTheme } from '@/contexts/ThemeContext';
 import { PO_TYPE_LABELS, PO_STATUS_COLORS } from '@/types/procurement';
 import { useProcurementPurchaseOrdersQuery } from '@/hooks/useSupabaseProcurement';
 
@@ -28,6 +28,8 @@ interface ProcurementWidgetProps {
 
 export default function ProcurementWidget({ onNavigate }: ProcurementWidgetProps) {
   const router = useRouter();
+  const { colors: Colors } = useTheme();
+  const styles = useMemo(() => createStyles(Colors), [Colors]);
 
   const { data: allPurchaseOrders = [], isLoading } = useProcurementPurchaseOrdersQuery();
 
@@ -134,7 +136,7 @@ export default function ProcurementWidget({ onNavigate }: ProcurementWidgetProps
           onPress={() => handleNavigate('/procurement/poapprovals')}
         >
           <View style={styles.statIconBox}>
-            <FileCheck size={20} color="#F59E0B" />
+            <FileCheck size={20} color={Colors.warning} />
           </View>
           <View style={styles.statContent}>
             <Text style={styles.statValue}>{procurementStats.pendingApprovalCount}</Text>
@@ -147,7 +149,7 @@ export default function ProcurementWidget({ onNavigate }: ProcurementWidgetProps
           </View>
           {procurementStats.pendingApprovalCount > 0 && (
             <View style={styles.alertBadge}>
-              <AlertCircle size={14} color="#FFFFFF" />
+              <AlertCircle size={14} color={Colors.text} />
             </View>
           )}
         </Pressable>
@@ -157,7 +159,7 @@ export default function ProcurementWidget({ onNavigate }: ProcurementWidgetProps
           onPress={() => handleNavigate('/procurement/receive')}
         >
           <View style={styles.statIconBox}>
-            <PackageCheck size={20} color="#3B82F6" />
+            <PackageCheck size={20} color={Colors.info} />
           </View>
           <View style={styles.statContent}>
             <Text style={styles.statValue}>{procurementStats.receivingQueueCount}</Text>
@@ -258,7 +260,7 @@ export default function ProcurementWidget({ onNavigate }: ProcurementWidgetProps
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (Colors: any) => StyleSheet.create({
   container: {
     backgroundColor: Colors.surface,
     borderRadius: 16,
@@ -328,14 +330,14 @@ const styles = StyleSheet.create({
     position: 'relative' as const,
   },
   statCardPending: {
-    backgroundColor: '#FEF3C720',
+    backgroundColor: Colors.warningBg,
     borderWidth: 1,
-    borderColor: '#F59E0B30',
+    borderColor: `${Colors.warning}30`,
   },
   statCardReceiving: {
-    backgroundColor: '#DBEAFE20',
+    backgroundColor: Colors.infoBg,
     borderWidth: 1,
-    borderColor: '#3B82F630',
+    borderColor: `${Colors.info}30`,
   },
   statIconBox: {
     width: 36,
@@ -371,7 +373,7 @@ const styles = StyleSheet.create({
     width: 20,
     height: 20,
     borderRadius: 10,
-    backgroundColor: '#F59E0B',
+    backgroundColor: Colors.warning,
     justifyContent: 'center',
     alignItems: 'center',
   },
