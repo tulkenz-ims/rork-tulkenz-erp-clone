@@ -308,12 +308,9 @@ export default function LineStatusWidget() {
       {/* ── Header Row ── */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <View style={[styles.headerIcon, { backgroundColor: anyDown ? colors.errorBg : colors.successBg }]}>
-            <Activity size={16} color={anyDown ? colors.error : colors.success} />
-          </View>
           <View>
             <Text style={styles.headerTitle}>Production Line Status</Text>
-            <Text style={styles.headerSub}>Rolling {ROLLING_DAYS}-day uptime</Text>
+            <Text style={styles.headerSub}>Real-time uptime · 30-day rolling</Text>
           </View>
         </View>
         <View style={[styles.statusBadge, { backgroundColor: anyDown ? colors.error : colors.success }]}>
@@ -425,14 +422,6 @@ const createStyles = (colors: any) => StyleSheet.create({
   },
   headerLeft: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  headerIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    justifyContent: 'center',
     alignItems: 'center',
   },
   headerTitle: {
