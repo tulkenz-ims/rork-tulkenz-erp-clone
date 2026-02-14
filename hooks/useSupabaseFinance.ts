@@ -554,6 +554,131 @@ export function useBudgetById(id: string | undefined | null) {
   });
 }
 
+// ── Budget Mutations ───────────────────────────────────────
+
+export interface BudgetInput {
+  name: string;
+  departmentCode: string;
+  departmentName?: string;
+  glAccountPrefix?: string;
+  fiscalYear: number;
+  period: 'monthly' | 'quarterly' | 'annual';
+  amount: number;
+  spent?: number;
+  status: 'active' | 'closed' | 'draft';
+}
+
+export function useCreateBudget(options?: { onSuccess?: () => void; onError?: (err: Error) => void }) {
+  const { organizationId } = useOrganization();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (input: BudgetInput) => {
+      if (!organizationId) throw new Error('No organization selected');
+
+      const remaining = (input.amount || 0) - (input.spent || 0);
+
+      const { data, error } = await supabase
+        .from('department_budgets')
+        .insert({
+          organization_id: organizationId,
+          name: input.name,
+          department_code: input.departmentCode,
+          department_name: input.departmentName || null,
+          gl_account_prefix: input.glAccountPrefix || null,
+          fiscal_year: input.fiscalYear,
+          period: input.period,
+          amount: input.amount,
+          spent: input.spent ?? 0,
+          remaining: remaining,
+          status: input.status,
+        })
+        .select()
+        .single();
+
+      if (error) throw new Error(error.message);
+      return mapBudget(data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['budgets'] });
+      queryClient.invalidateQueries({ queryKey: ['finance_stats'] });
+      options?.onSuccess?.();
+    },
+    onError: (err: Error) => options?.onError?.(err),
+  });
+}
+
+export function useUpdateBudget(options?: { onSuccess?: () => void; onError?: (err: Error) => void }) {
+  const { organizationId } = useOrganization();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, ...input }: Partial<BudgetInput> & { id: string }) => {
+      if (!organizationId) throw new Error('No organization selected');
+
+      const updateData: Record<string, any> = {};
+      if (input.name !== undefined) updateData.name = input.name;
+      if (input.departmentCode !== undefined) updateData.department_code = input.departmentCode;
+      if (input.departmentName !== undefined) updateData.department_name = input.departmentName;
+      if (input.glAccountPrefix !== undefined) updateData.gl_account_prefix = input.glAccountPrefix;
+      if (input.fiscalYear !== undefined) updateData.fiscal_year = input.fiscalYear;
+      if (input.period !== undefined) updateData.period = input.period;
+      if (input.amount !== undefined) updateData.amount = input.amount;
+      if (input.spent !== undefined) updateData.spent = input.spent;
+      if (input.status !== undefined) updateData.status = input.status;
+
+      // Recalculate remaining if amount or spent changed
+      if (input.amount !== undefined || input.spent !== undefined) {
+        const amt = input.amount ?? 0;
+        const spt = input.spent ?? 0;
+        updateData.remaining = amt - spt;
+      }
+
+      const { data, error } = await supabase
+        .from('department_budgets')
+        .update(updateData)
+        .eq('id', id)
+        .eq('organization_id', organizationId)
+        .select()
+        .single();
+
+      if (error) throw new Error(error.message);
+      return mapBudget(data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['budgets'] });
+      queryClient.invalidateQueries({ queryKey: ['finance_stats'] });
+      options?.onSuccess?.();
+    },
+    onError: (err: Error) => options?.onError?.(err),
+  });
+}
+
+export function useDeleteBudget(options?: { onSuccess?: () => void; onError?: (err: Error) => void }) {
+  const { organizationId } = useOrganization();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      if (!organizationId) throw new Error('No organization selected');
+
+      const { error } = await supabase
+        .from('department_budgets')
+        .delete()
+        .eq('id', id)
+        .eq('organization_id', organizationId);
+
+      if (error) throw new Error(error.message);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['budgets'] });
+      queryClient.invalidateQueries({ queryKey: ['finance_stats'] });
+      options?.onSuccess?.();
+    },
+    onError: (err: Error) => options?.onError?.(err),
+  });
+}
+
 export function useJournalEntriesQuery(options?: FinanceQueryOptions) {
   const { organizationId } = useOrganization();
   const { enabled, status, dateFrom, dateTo, searchText, limit } = options || {};
@@ -975,7 +1100,9 @@ export {
   type APInvoice,
   type ARInvoice,
   type GLAccount,
+  type GLAccountInput,
   type Budget,
+  type BudgetInput,
   type JournalEntry,
   type RecurringJournal,
   type Customer,
