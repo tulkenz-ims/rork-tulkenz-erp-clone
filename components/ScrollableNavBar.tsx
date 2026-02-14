@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useCallback } from 'react';
+import React, { useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,50 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { NAVIGATION_MODULES, type NavigationModule } from '@/constants/navigationModules';
 import { useTabBadgeCounts, getBadgeSeverityColor, type TabBadgeCounts } from '@/hooks/useTabBadgeCounts';
 
+// On web, horizontal ScrollView ignores mouse wheel.
+// This wrapper makes a View act as a native scrollable container.
+function WebHorizontalScroll({ children, style }: { children: React.ReactNode; style?: any }) {
+  const containerRef = useRef<View>(null);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    // In react-native-web, View refs expose the underlying DOM node
+    const node = containerRef.current as unknown as HTMLElement;
+    if (!node) return;
+    // Make it horizontally scrollable via CSS
+    node.style.overflowX = 'auto';
+    node.style.overflowY = 'hidden';
+    node.style.scrollbarWidth = 'none'; // Firefox
+    node.style.msOverflowStyle = 'none'; // IE/Edge
+    node.style.webkitOverflowScrolling = 'touch';
+    // Hide scrollbar for WebKit
+    const styleSheet = document.createElement('style');
+    const className = 'nav-scroll-' + Math.random().toString(36).slice(2, 8);
+    node.classList.add(className);
+    styleSheet.textContent = `.${className}::-webkit-scrollbar { display: none; }`;
+    document.head.appendChild(styleSheet);
+
+    // Translate vertical wheel into horizontal scroll
+    const handler = (e: WheelEvent) => {
+      if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+        e.preventDefault();
+        node.scrollLeft += e.deltaY;
+      }
+    };
+    node.addEventListener('wheel', handler, { passive: false });
+    return () => {
+      node.removeEventListener('wheel', handler);
+      styleSheet.remove();
+    };
+  }, []);
+
+  return (
+    <View ref={containerRef} style={[{ flexDirection: 'row' }, style]}>
+      {children}
+    </View>
+  );
+}
+
 interface ScrollableNavBarProps {
   activeRoute: string;
   onNavigate: (route: string) => void;
@@ -28,26 +72,7 @@ export default function ScrollableNavBar({
   const { colors, barColors, barText, companyColors } = useTheme();
   const insets = useSafeAreaInsets();
   const scrollViewRef = useRef<ScrollView>(null);
-  const scrollOffset = useRef(0);
-  const wrapperRef = useRef<View>(null);
   const badgeCounts = useTabBadgeCounts();
-
-  // On web, mouse wheel doesn't scroll horizontal ScrollView by default.
-  // Capture wheel events and translate vertical delta into horizontal scroll.
-  useEffect(() => {
-    if (Platform.OS !== 'web' || !wrapperRef.current) return;
-    const node = wrapperRef.current as unknown as HTMLElement;
-    const handler = (e: WheelEvent) => {
-      if (Math.abs(e.deltaY) > 0) {
-        e.preventDefault();
-        scrollOffset.current += e.deltaY;
-        scrollOffset.current = Math.max(0, scrollOffset.current);
-        scrollViewRef.current?.scrollTo({ x: scrollOffset.current, animated: false });
-      }
-    };
-    node.addEventListener('wheel', handler, { passive: false });
-    return () => node.removeEventListener('wheel', handler);
-  }, []);
 
   const filteredModules = NAVIGATION_MODULES.filter(
     (m) => visibleModules.includes(m.key)
@@ -74,39 +99,37 @@ export default function ScrollableNavBar({
     },
   ];
 
-  const innerContent = (
-    <View ref={wrapperRef} style={{ flex: 1 }}>
-      <ScrollView
-        ref={scrollViewRef}
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-        style={styles.scrollView}
-        bounces={true}
-        scrollEnabled={true}
-        nestedScrollEnabled={true}
-        onScroll={(e) => { scrollOffset.current = e.nativeEvent.contentOffset.x; }}
-        scrollEventThrottle={16}
-      >
-        {filteredModules.map((module) => {
-          const isActive = getIsActive(module);
+  const navItems = filteredModules.map((module) => {
+    const isActive = getIsActive(module);
+    return (
+      <NavItem
+        key={module.key}
+        module={module}
+        isActive={isActive}
+        onPress={() => onNavigate(module.route)}
+        iconColor={iconColor}
+        activeColor={activeColor}
+        activeIconBg={activeIconBg}
+        indicatorColor={indicatorColor}
+        badgeCounts={badgeCounts}
+      />
+    );
+  });
 
-          return (
-            <NavItem
-              key={module.key}
-              module={module}
-              isActive={isActive}
-              onPress={() => onNavigate(module.route)}
-              iconColor={iconColor}
-              activeColor={activeColor}
-              activeIconBg={activeIconBg}
-              indicatorColor={indicatorColor}
-              badgeCounts={badgeCounts}
-            />
-          );
-        })}
-      </ScrollView>
-    </View>
+  const innerContent = Platform.OS === 'web' ? (
+    <WebHorizontalScroll style={styles.scrollContent}>
+      {navItems}
+    </WebHorizontalScroll>
+  ) : (
+    <ScrollView
+      ref={scrollViewRef}
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.scrollContent}
+      style={styles.scrollView}
+    >
+      {navItems}
+    </ScrollView>
   );
 
   if (hasCompanyColors) {
