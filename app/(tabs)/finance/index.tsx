@@ -533,6 +533,13 @@ export default function FinanceHubScreen() {
               <Wallet size={20} color="#fff" />
               <Text style={styles.quickActionText}>Payroll</Text>
             </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.quickAction, { backgroundColor: '#16A34A' }]}
+              onPress={() => router.push('/finance/budgets' as any)}
+            >
+              <PiggyBank size={20} color="#fff" />
+              <Text style={styles.quickActionText}>Budgets</Text>
+            </TouchableOpacity>
           </ScrollView>
         </View>
 
