@@ -1,19 +1,12 @@
 import { Stack } from 'expo-router';
-import { useTheme } from '@/contexts/ThemeContext';
+import { useThemedScreenOptions } from '@/hooks/useThemedScreenOptions';
 import NotificationBell from '@/components/NotificationBell';
 
 export default function DashboardLayout() {
-  const { colors } = useTheme();
+  const screenOptions = useThemedScreenOptions();
   
   return (
-    <Stack
-      screenOptions={{
-        headerStyle: { backgroundColor: colors.surface },
-        headerTintColor: colors.text,
-        headerTitleStyle: { fontWeight: '600' },
-        contentStyle: { backgroundColor: colors.background },
-      }}
-    >
+    <Stack screenOptions={screenOptions}>
       <Stack.Screen 
         name="index" 
         options={{ 
