@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -28,7 +28,26 @@ export default function ScrollableNavBar({
   const { colors, barColors, barText, companyColors } = useTheme();
   const insets = useSafeAreaInsets();
   const scrollViewRef = useRef<ScrollView>(null);
+  const scrollOffset = useRef(0);
+  const wrapperRef = useRef<View>(null);
   const badgeCounts = useTabBadgeCounts();
+
+  // On web, mouse wheel doesn't scroll horizontal ScrollView by default.
+  // Capture wheel events and translate vertical delta into horizontal scroll.
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !wrapperRef.current) return;
+    const node = wrapperRef.current as unknown as HTMLElement;
+    const handler = (e: WheelEvent) => {
+      if (Math.abs(e.deltaY) > 0) {
+        e.preventDefault();
+        scrollOffset.current += e.deltaY;
+        scrollOffset.current = Math.max(0, scrollOffset.current);
+        scrollViewRef.current?.scrollTo({ x: scrollOffset.current, animated: false });
+      }
+    };
+    node.addEventListener('wheel', handler, { passive: false });
+    return () => node.removeEventListener('wheel', handler);
+  }, []);
 
   const filteredModules = NAVIGATION_MODULES.filter(
     (m) => visibleModules.includes(m.key)
@@ -56,34 +75,38 @@ export default function ScrollableNavBar({
   ];
 
   const innerContent = (
-    <ScrollView
-      ref={scrollViewRef}
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.scrollContent}
-      style={styles.scrollView}
-      bounces={true}
-      scrollEnabled={true}
-      nestedScrollEnabled={true}
-    >
-      {filteredModules.map((module) => {
-        const isActive = getIsActive(module);
+    <View ref={wrapperRef} style={{ flex: 1 }}>
+      <ScrollView
+        ref={scrollViewRef}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+        style={styles.scrollView}
+        bounces={true}
+        scrollEnabled={true}
+        nestedScrollEnabled={true}
+        onScroll={(e) => { scrollOffset.current = e.nativeEvent.contentOffset.x; }}
+        scrollEventThrottle={16}
+      >
+        {filteredModules.map((module) => {
+          const isActive = getIsActive(module);
 
-        return (
-          <NavItem
-            key={module.key}
-            module={module}
-            isActive={isActive}
-            onPress={() => onNavigate(module.route)}
-            iconColor={iconColor}
-            activeColor={activeColor}
-            activeIconBg={activeIconBg}
-            indicatorColor={indicatorColor}
-            badgeCounts={badgeCounts}
-          />
-        );
-      })}
-    </ScrollView>
+          return (
+            <NavItem
+              key={module.key}
+              module={module}
+              isActive={isActive}
+              onPress={() => onNavigate(module.route)}
+              iconColor={iconColor}
+              activeColor={activeColor}
+              activeIconBg={activeIconBg}
+              indicatorColor={indicatorColor}
+              badgeCounts={badgeCounts}
+            />
+          );
+        })}
+      </ScrollView>
+    </View>
   );
 
   if (hasCompanyColors) {
