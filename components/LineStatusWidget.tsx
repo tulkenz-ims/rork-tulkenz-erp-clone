@@ -16,6 +16,7 @@ import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useTaskFeedPostsWithTasksQuery } from '@/hooks/useTaskFeedTemplates';
 import { getDepartmentColor } from '@/constants/organizationCodes';
+import { useTheme } from '@/contexts/ThemeContext';
 
 // ── Production lines to track ──────────────────────────────────
 const TRACKED_LINES = [
@@ -111,10 +112,14 @@ function LineCard({
   line,
   isExpanded,
   onToggle,
+  colors,
+  styles,
 }: {
   line: LineStats;
   isExpanded: boolean;
   onToggle: () => void;
+  colors: any;
+  styles: any;
 }) {
   const timer = useLiveTimer(line.activeSince, line.isDown);
 
@@ -122,7 +127,7 @@ function LineCard({
     <Pressable
       style={[
         styles.lineCard,
-        { borderTopColor: line.isDown ? '#EF4444' : '#10B981' },
+        { borderTopColor: line.isDown ? colors.error : colors.success },
         isExpanded && styles.lineCardExpanded,
       ]}
       onPress={() => {
@@ -132,14 +137,14 @@ function LineCard({
     >
       {/* Status dot + name */}
       <View style={styles.lineCardHeader}>
-        <View style={[styles.statusDot, { backgroundColor: line.isDown ? '#EF4444' : '#10B981' }]} />
+        <View style={[styles.statusDot, { backgroundColor: line.isDown ? colors.error : colors.success }]} />
         <Text style={styles.lineLabel}>{line.label}</Text>
       </View>
 
       {line.isDown ? (
         /* ── DOWN: show live timer ── */
         <View style={styles.downContent}>
-          <AlertTriangle size={14} color="#EF4444" />
+          <AlertTriangle size={14} color={colors.error} />
           <Text style={styles.downTimer}>{timer}</Text>
           <Text style={styles.downStatus}>DOWN</Text>
         </View>
@@ -150,7 +155,7 @@ function LineCard({
             <View style={styles.miniBarTrack}>
               <View style={[styles.miniBarFillUp, { width: `${line.uptimePercent}%` }]} />
             </View>
-            <Text style={[styles.miniBarValue, { color: '#10B981' }]}>
+            <Text style={[styles.miniBarValue, { color: colors.success }]}>
               {line.uptimePercent.toFixed(1)}%
             </Text>
           </View>
@@ -158,7 +163,7 @@ function LineCard({
             <View style={styles.miniBarTrack}>
               <View style={[styles.miniBarFillDn, { width: `${Math.min(line.downtimePercent * 5, 100)}%` }]} />
             </View>
-            <Text style={[styles.miniBarValue, { color: line.downtimePercent > 0 ? '#EF4444' : '#4B5563' }]}>
+            <Text style={[styles.miniBarValue, { color: line.downtimePercent > 0 ? colors.error : colors.textTertiary }]}>
               {line.downtimePercent.toFixed(1)}%
             </Text>
           </View>
@@ -169,9 +174,9 @@ function LineCard({
       {/* Expand indicator */}
       <View style={styles.expandIndicator}>
         {isExpanded ? (
-          <ChevronDown size={12} color="#6B7280" />
+          <ChevronDown size={12} color={colors.textTertiary} />
         ) : (
-          <ChevronRight size={12} color="#6B7280" />
+          <ChevronRight size={12} color={colors.textTertiary} />
         )}
       </View>
     </Pressable>
@@ -181,6 +186,8 @@ function LineCard({
 // ── Main Component ─────────────────────────────────────────────
 export default function LineStatusWidget() {
   const router = useRouter();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [expandedLine, setExpandedLine] = useState<string | null>(null);
 
   const { data: posts = [] } = useTaskFeedPostsWithTasksQuery({ limit: 200 });
@@ -291,15 +298,15 @@ export default function LineStatusWidget() {
       {/* ── Header ── */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <View style={[styles.headerIcon, { backgroundColor: anyDown ? '#EF444420' : '#10B98120' }]}>
-            <Activity size={16} color={anyDown ? '#EF4444' : '#10B981'} />
+          <View style={[styles.headerIcon, { backgroundColor: anyDown ? colors.errorBg : colors.successBg }]}>
+            <Activity size={16} color={anyDown ? colors.error : colors.success} />
           </View>
           <View>
             <Text style={styles.headerTitle}>Production Line Status</Text>
             <Text style={styles.headerSub}>Rolling {ROLLING_DAYS}-day uptime</Text>
           </View>
         </View>
-        <View style={[styles.overallBadge, { backgroundColor: anyDown ? '#EF4444' : '#10B981' }]}>
+        <View style={[styles.overallBadge, { backgroundColor: anyDown ? colors.error : colors.success }]}>
           <View style={styles.pulseDot} />
           <Text style={styles.overallText}>
             {anyDown ? `${downCount} DOWN` : 'ALL RUNNING'}
@@ -315,6 +322,8 @@ export default function LineStatusWidget() {
             line={line}
             isExpanded={expandedLine === line.lineId}
             onToggle={() => setExpandedLine(expandedLine === line.lineId ? null : line.lineId)}
+            colors={colors}
+            styles={styles}
           />
         ))}
       </View>
@@ -330,11 +339,11 @@ export default function LineStatusWidget() {
             }
           }}
         >
-          <AlertTriangle size={12} color="#FCA5A5" />
+          <AlertTriangle size={12} color={colors.errorLight} />
           <Text style={styles.activeAlertText}>
             {expandedLineData.activePostNumber} · Tap to view issue
           </Text>
-          <ChevronRight size={12} color="#FCA5A5" />
+          <ChevronRight size={12} color={colors.errorLight} />
         </Pressable>
       )}
 
@@ -361,14 +370,14 @@ export default function LineStatusWidget() {
                         <View style={styles.deptBarTrack}>
                           <View style={[styles.deptBarFill, { width: '0%', backgroundColor: deptColor }]} />
                         </View>
-                        <Text style={[styles.deptValue, { color: '#4B5563' }]}>—</Text>
+                        <Text style={[styles.deptValue, { color: colors.textTertiary }]}>—</Text>
                       </View>
                     );
                   }
                   return (
                     <View key={dept.code} style={styles.deptRow}>
                       <View style={[styles.deptDot, { backgroundColor: deptColor }]} />
-                      <Text style={[styles.deptLabel, { color: '#E5E7EB' }]}>{dept.label}</Text>
+                      <Text style={[styles.deptLabel, { color: colors.text }]}>{dept.label}</Text>
                       <View style={styles.deptBarTrack}>
                         <View
                           style={[
@@ -393,15 +402,16 @@ export default function LineStatusWidget() {
 }
 
 // ── Styles ─────────────────────────────────────────────────────
-const styles = StyleSheet.create({
+const createStyles = (colors: any) => StyleSheet.create({
   container: {
-    backgroundColor: '#1E1E2E',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 16,
     marginHorizontal: 16,
     marginTop: 12,
+    marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#2A2A3E',
+    borderColor: colors.borderLight,
   },
   header: {
     flexDirection: 'row',
@@ -424,12 +434,12 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: colors.text,
     letterSpacing: 0.3,
   },
   headerSub: {
     fontSize: 10,
-    color: '#6B7280',
+    color: colors.textTertiary,
     marginTop: 1,
   },
   overallBadge: {
@@ -460,7 +470,7 @@ const styles = StyleSheet.create({
   },
   lineCard: {
     flex: 1,
-    backgroundColor: '#16162480',
+    backgroundColor: `${colors.backgroundSecondary}80`,
     borderRadius: 10,
     borderTopWidth: 3,
     paddingVertical: 10,
@@ -468,7 +478,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   lineCardExpanded: {
-    backgroundColor: '#1C1C30',
+    backgroundColor: colors.surfaceLight,
   },
   lineCardHeader: {
     flexDirection: 'row',
@@ -484,7 +494,7 @@ const styles = StyleSheet.create({
   lineLabel: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: colors.text,
   },
 
   // ── Running: compact bars ──
@@ -502,18 +512,18 @@ const styles = StyleSheet.create({
   miniBarTrack: {
     flex: 1,
     height: 4,
-    backgroundColor: '#2A2A3E',
+    backgroundColor: colors.backgroundTertiary,
     borderRadius: 2,
     overflow: 'hidden',
   },
   miniBarFillUp: {
     height: '100%',
-    backgroundColor: '#10B981',
+    backgroundColor: colors.success,
     borderRadius: 2,
   },
   miniBarFillDn: {
     height: '100%',
-    backgroundColor: '#EF4444',
+    backgroundColor: colors.error,
     borderRadius: 2,
   },
   miniBarValue: {
@@ -525,7 +535,7 @@ const styles = StyleSheet.create({
   runningStatus: {
     fontSize: 8,
     fontWeight: '700',
-    color: '#10B981',
+    color: colors.success,
     letterSpacing: 0.8,
     marginTop: 4,
     textTransform: 'uppercase',
@@ -540,13 +550,13 @@ const styles = StyleSheet.create({
   downTimer: {
     fontSize: 16,
     fontWeight: '800',
-    color: '#EF4444',
+    color: colors.error,
     fontVariant: ['tabular-nums'],
   },
   downStatus: {
     fontSize: 8,
     fontWeight: '700',
-    color: '#EF4444',
+    color: colors.error,
     letterSpacing: 1,
   },
 
@@ -559,7 +569,7 @@ const styles = StyleSheet.create({
   activeAlert: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#EF444415',
+    backgroundColor: colors.errorBg,
     borderRadius: 6,
     paddingVertical: 6,
     paddingHorizontal: 10,
@@ -569,13 +579,13 @@ const styles = StyleSheet.create({
   activeAlertText: {
     flex: 1,
     fontSize: 10,
-    color: '#FCA5A5',
+    color: colors.errorLight,
     fontWeight: '600',
   },
 
   // ── Department breakdown ──
   deptBreakdown: {
-    backgroundColor: '#13132080',
+    backgroundColor: `${colors.background}80`,
     borderRadius: 8,
     padding: 12,
     marginTop: 8,
@@ -583,14 +593,14 @@ const styles = StyleSheet.create({
   deptBreakdownTitle: {
     fontSize: 10,
     fontWeight: '700',
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
     marginBottom: 10,
   },
   noDtText: {
     fontSize: 11,
-    color: '#4B5563',
+    color: colors.textTertiary,
     fontStyle: 'italic',
   },
   deptRows: {
@@ -609,13 +619,13 @@ const styles = StyleSheet.create({
   deptLabel: {
     fontSize: 11,
     fontWeight: '600',
-    color: '#9CA3AF',
+    color: colors.textSecondary,
     width: 44,
   },
   deptBarTrack: {
     flex: 1,
     height: 8,
-    backgroundColor: '#2A2A3E',
+    backgroundColor: colors.backgroundTertiary,
     borderRadius: 4,
     overflow: 'hidden',
   },
@@ -632,7 +642,7 @@ const styles = StyleSheet.create({
   },
   deptTime: {
     fontSize: 9,
-    color: '#6B7280',
+    color: colors.textTertiary,
     width: 34,
     textAlign: 'right',
   },
