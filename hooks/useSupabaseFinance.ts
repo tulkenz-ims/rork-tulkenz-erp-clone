@@ -71,8 +71,8 @@ export function useFinanceStatsQuery(options?: { enabled?: boolean }) {
         totalARDue,
         apOverdueCount: apOverdue.length,
         arOverdueCount: arOverdue.length,
-        budgetUsed: activeBudget?.totalActual || 0,
-        budgetTotal: activeBudget?.totalBudget || 0,
+        budgetUsed: activeBudget?.spent || 0,
+        budgetTotal: activeBudget?.amount || 0,
         activeVendorsCount: 0,
         pendingPayments: apPending.length,
       };
