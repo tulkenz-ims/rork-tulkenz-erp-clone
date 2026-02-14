@@ -113,10 +113,6 @@ export default function SettingsScreen() {
     setShowThemeModal(true);
   }, [customBg, customPrimary]);
 
-  const applyCustomColors = useCallback(() => {
-    setCustomColors(editBg, editCard);
-  }, [editBg, editCard, setCustomColors]);
-
   const isSuperAdmin = isSuperAdminRole(userProfile?.role) || currentUserRole?.isSystem || currentUserRole?.name === 'Super Admin' || currentUserRole?.name === 'Administrator';
 
   const handleSignOut = () => {
@@ -392,11 +388,7 @@ export default function SettingsScreen() {
                       isSelected && { borderWidth: 2 },
                     ]}
                     onPress={() => {
-                      if (option.value === 'custom') {
-                        applyCustomColors();
-                      } else {
-                        setTheme(option.value);
-                      }
+                      setTheme(option.value);
                     }}
                   >
                     <ThemeIcon size={24} color={option.iconColor} />
