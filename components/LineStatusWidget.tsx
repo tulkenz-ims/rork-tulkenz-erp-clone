@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -83,7 +83,102 @@ interface LineStats {
   deptBreakdown: { code: string; label: string; percent: number; minutes: number }[];
 }
 
-// ── Component ──────────────────────────────────────────────────
+// ── Live Timer Hook ────────────────────────────────────────────
+function useLiveTimer(startedAt: string | undefined, isActive: boolean) {
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    if (!isActive || !startedAt) return;
+    const interval = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, [isActive, startedAt]);
+
+  if (!startedAt || !isActive) return null;
+
+  const diffMs = now - new Date(startedAt).getTime();
+  const totalSec = Math.max(0, Math.floor(diffMs / 1000));
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+
+  if (h > 0) return `${h}h ${m}m ${s}s`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+}
+
+// ── Line Card Sub-component ────────────────────────────────────
+function LineCard({
+  line,
+  isExpanded,
+  onToggle,
+}: {
+  line: LineStats;
+  isExpanded: boolean;
+  onToggle: () => void;
+}) {
+  const timer = useLiveTimer(line.activeSince, line.isDown);
+
+  return (
+    <Pressable
+      style={[
+        styles.lineCard,
+        { borderTopColor: line.isDown ? '#EF4444' : '#10B981' },
+        isExpanded && styles.lineCardExpanded,
+      ]}
+      onPress={() => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        onToggle();
+      }}
+    >
+      {/* Status dot + name */}
+      <View style={styles.lineCardHeader}>
+        <View style={[styles.statusDot, { backgroundColor: line.isDown ? '#EF4444' : '#10B981' }]} />
+        <Text style={styles.lineLabel}>{line.label}</Text>
+      </View>
+
+      {line.isDown ? (
+        /* ── DOWN: show live timer ── */
+        <View style={styles.downContent}>
+          <AlertTriangle size={14} color="#EF4444" />
+          <Text style={styles.downTimer}>{timer}</Text>
+          <Text style={styles.downStatus}>DOWN</Text>
+        </View>
+      ) : (
+        /* ── RUNNING: show compact up/dn bars ── */
+        <View style={styles.barsContent}>
+          <View style={styles.miniBar}>
+            <View style={styles.miniBarTrack}>
+              <View style={[styles.miniBarFillUp, { width: `${line.uptimePercent}%` }]} />
+            </View>
+            <Text style={[styles.miniBarValue, { color: '#10B981' }]}>
+              {line.uptimePercent.toFixed(1)}%
+            </Text>
+          </View>
+          <View style={styles.miniBar}>
+            <View style={styles.miniBarTrack}>
+              <View style={[styles.miniBarFillDn, { width: `${Math.min(line.downtimePercent * 5, 100)}%` }]} />
+            </View>
+            <Text style={[styles.miniBarValue, { color: line.downtimePercent > 0 ? '#EF4444' : '#4B5563' }]}>
+              {line.downtimePercent.toFixed(1)}%
+            </Text>
+          </View>
+          <Text style={styles.runningStatus}>RUNNING</Text>
+        </View>
+      )}
+
+      {/* Expand indicator */}
+      <View style={styles.expandIndicator}>
+        {isExpanded ? (
+          <ChevronDown size={12} color="#6B7280" />
+        ) : (
+          <ChevronRight size={12} color="#6B7280" />
+        )}
+      </View>
+    </Pressable>
+  );
+}
+
+// ── Main Component ─────────────────────────────────────────────
 export default function LineStatusWidget() {
   const router = useRouter();
   const [expandedLine, setExpandedLine] = useState<string | null>(null);
@@ -95,7 +190,6 @@ export default function LineStatusWidget() {
     const windowStart = new Date(now.getTime() - ROLLING_DAYS * 24 * 60 * 60 * 1000);
     const totalWindowMinutes = ROLLING_DAYS * 24 * 60;
 
-    // Collect all downtime events
     const events: DowntimeEvent[] = [];
 
     for (const post of posts) {
@@ -107,8 +201,7 @@ export default function LineStatusWidget() {
       const lineId = resolveLineId(roomLine);
       if (!lineId) continue;
 
-      // Department that owns this downtime = first assigned department
-      let deptCode = '1003'; // default to Production
+      let deptCode = '1003';
       if (post.departmentTasks && post.departmentTasks.length > 0) {
         deptCode = post.departmentTasks[0].departmentCode;
       }
@@ -118,7 +211,6 @@ export default function LineStatusWidget() {
         ? new Date(post.completedAt || post.updatedAt)
         : now;
 
-      // Clamp to rolling window
       const effectiveStart = startedAt < windowStart ? windowStart : startedAt;
       const effectiveEnd = endedAt > now ? now : endedAt;
       if (effectiveEnd <= effectiveStart) continue;
@@ -137,7 +229,6 @@ export default function LineStatusWidget() {
       });
     }
 
-    // Build stats per line
     return TRACKED_LINES.map(line => {
       const lineEvents = events.filter(e => e.lineId === line.id);
       const totalDowntimeMinutes = lineEvents.reduce((sum, e) => sum + e.durationMinutes, 0);
@@ -146,10 +237,8 @@ export default function LineStatusWidget() {
         : 0;
       const uptimePercent = 100 - downtimePercent;
 
-      // Active stoppage (most recent active event)
       const activeEvent = lineEvents.find(e => e.isActive);
 
-      // Department breakdown — percent of THIS LINE'S downtime
       const deptMinutes: Record<string, number> = {};
       for (const e of lineEvents) {
         deptMinutes[e.departmentCode] = (deptMinutes[e.departmentCode] || 0) + e.durationMinutes;
@@ -182,6 +271,7 @@ export default function LineStatusWidget() {
 
   const anyDown = lineStats.some(l => l.isDown);
   const downCount = lineStats.filter(l => l.isDown).length;
+  const expandedLineData = lineStats.find(l => l.lineId === expandedLine);
 
   const formatDuration = (minutes: number) => {
     if (minutes < 1) return '0m';
@@ -194,16 +284,6 @@ export default function LineStatusWidget() {
       return rh > 0 ? `${d}d ${rh}h` : `${d}d`;
     }
     return m > 0 ? `${h}h ${m}m` : `${h}h`;
-  };
-
-  const formatTimeAgo = (dateStr: string) => {
-    const diffMs = Date.now() - new Date(dateStr).getTime();
-    const mins = Math.floor(diffMs / 60000);
-    if (mins < 1) return 'just now';
-    if (mins < 60) return `${mins}m ago`;
-    const hrs = Math.floor(mins / 60);
-    if (hrs < 24) return `${hrs}h ago`;
-    return `${Math.floor(hrs / 24)}d ago`;
   };
 
   return (
@@ -227,137 +307,87 @@ export default function LineStatusWidget() {
         </View>
       </View>
 
-      {/* ── Line Cards ── */}
-      {lineStats.map(line => {
-        const isExpanded = expandedLine === line.lineId;
+      {/* ── Line Cards — side by side ── */}
+      <View style={styles.linesRow}>
+        {lineStats.map(line => (
+          <LineCard
+            key={line.lineId}
+            line={line}
+            isExpanded={expandedLine === line.lineId}
+            onToggle={() => setExpandedLine(expandedLine === line.lineId ? null : line.lineId)}
+          />
+        ))}
+      </View>
 
-        return (
-          <View key={line.lineId} style={styles.lineSection}>
-            {/* Line Row */}
-            <Pressable
-              style={[
-                styles.lineRow,
-                { borderLeftColor: line.isDown ? '#EF4444' : '#10B981' },
-              ]}
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setExpandedLine(isExpanded ? null : line.lineId);
-              }}
-            >
-              {/* Status + Label */}
-              <View style={styles.lineIdentity}>
-                <View style={[styles.statusDot, { backgroundColor: line.isDown ? '#EF4444' : '#10B981' }]} />
-                <View>
-                  <Text style={styles.lineLabel}>{line.label}</Text>
-                  <Text style={[styles.lineStatus, { color: line.isDown ? '#EF4444' : '#10B981' }]}>
-                    {line.isDown ? 'DOWN' : 'Running'}
-                  </Text>
-                </View>
-              </View>
+      {/* ── Active stoppage alert (if expanded line is down) ── */}
+      {expandedLineData?.isDown && (
+        <Pressable
+          style={styles.activeAlert}
+          onPress={() => {
+            if (expandedLineData.activePostId) {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push(`/taskfeed/${expandedLineData.activePostId}`);
+            }
+          }}
+        >
+          <AlertTriangle size={12} color="#FCA5A5" />
+          <Text style={styles.activeAlertText}>
+            {expandedLineData.activePostNumber} · Tap to view issue
+          </Text>
+          <ChevronRight size={12} color="#FCA5A5" />
+        </Pressable>
+      )}
 
-              {/* Uptime / Downtime bars */}
-              <View style={styles.lineMetrics}>
-                {/* Uptime bar */}
-                <View style={styles.metricRow}>
-                  <Text style={styles.metricLabel}>Up</Text>
-                  <View style={styles.barTrack}>
-                    <View style={[styles.barFillUp, { width: `${line.uptimePercent}%` }]} />
-                  </View>
-                  <Text style={[styles.metricValue, { color: '#10B981' }]}>
-                    {line.uptimePercent.toFixed(1)}%
-                  </Text>
-                </View>
-                {/* Downtime bar — scale up for visibility when small */}
-                <View style={styles.metricRow}>
-                  <Text style={styles.metricLabel}>Dn</Text>
-                  <View style={styles.barTrack}>
-                    <View style={[styles.barFillDown, { width: `${Math.min(line.downtimePercent * 5, 100)}%` }]} />
-                  </View>
-                  <Text style={[styles.metricValue, { color: line.downtimePercent > 0 ? '#EF4444' : '#6B7280' }]}>
-                    {line.downtimePercent.toFixed(1)}%
-                  </Text>
-                </View>
-              </View>
-
-              {/* Expand arrow */}
-              {isExpanded ? (
-                <ChevronDown size={16} color="#6B7280" />
-              ) : (
-                <ChevronRight size={16} color="#6B7280" />
-              )}
-            </Pressable>
-
-            {/* Active stoppage alert */}
-            {line.isDown && (
-              <Pressable
-                style={styles.activeAlert}
-                onPress={() => {
-                  if (line.activePostId) {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    router.push(`/taskfeed/${line.activePostId}`);
+      {/* ── Expanded: Department Breakdown ── */}
+      {expandedLineData && (
+        <View style={styles.deptBreakdown}>
+          <Text style={styles.deptBreakdownTitle}>
+            {expandedLineData.label} · Downtime by Department
+            {expandedLineData.totalDowntimeMinutes > 0 ? ` · ${formatDuration(expandedLineData.totalDowntimeMinutes)} total` : ''}
+          </Text>
+          {expandedLineData.totalDowntimeMinutes === 0 ? (
+            <Text style={styles.noDtText}>No downtime recorded in last {ROLLING_DAYS} days</Text>
+          ) : (
+            <View style={styles.deptRows}>
+              {expandedLineData.deptBreakdown
+                .sort((a, b) => b.minutes - a.minutes)
+                .map(dept => {
+                  const deptColor = getDepartmentColor(dept.code);
+                  if (dept.minutes === 0) {
+                    return (
+                      <View key={dept.code} style={styles.deptRow}>
+                        <View style={[styles.deptDot, { backgroundColor: deptColor + '40' }]} />
+                        <Text style={styles.deptLabel}>{dept.label}</Text>
+                        <View style={styles.deptBarTrack}>
+                          <View style={[styles.deptBarFill, { width: '0%', backgroundColor: deptColor }]} />
+                        </View>
+                        <Text style={[styles.deptValue, { color: '#4B5563' }]}>—</Text>
+                      </View>
+                    );
                   }
-                }}
-              >
-                <AlertTriangle size={12} color="#FCA5A5" />
-                <Text style={styles.activeAlertText}>
-                  Stopped {line.activeSince ? formatTimeAgo(line.activeSince) : ''} · {line.activePostNumber}
-                </Text>
-                <ChevronRight size={12} color="#FCA5A5" />
-              </Pressable>
-            )}
-
-            {/* ── Expanded: Department Breakdown ── */}
-            {isExpanded && (
-              <View style={styles.deptBreakdown}>
-                <Text style={styles.deptBreakdownTitle}>
-                  Downtime by Department{line.totalDowntimeMinutes > 0 ? ` · ${formatDuration(line.totalDowntimeMinutes)} total` : ''}
-                </Text>
-                {line.totalDowntimeMinutes === 0 ? (
-                  <Text style={styles.noDtText}>No downtime recorded in last {ROLLING_DAYS} days</Text>
-                ) : (
-                  <View style={styles.deptRows}>
-                    {line.deptBreakdown
-                      .sort((a, b) => b.minutes - a.minutes)
-                      .map(dept => {
-                        const deptColor = getDepartmentColor(dept.code);
-                        if (dept.minutes === 0) {
-                          return (
-                            <View key={dept.code} style={styles.deptRow}>
-                              <View style={[styles.deptDot, { backgroundColor: deptColor + '40' }]} />
-                              <Text style={styles.deptLabel}>{dept.label}</Text>
-                              <View style={styles.deptBarTrack}>
-                                <View style={[styles.deptBarFill, { width: '0%', backgroundColor: deptColor }]} />
-                              </View>
-                              <Text style={[styles.deptValue, { color: '#4B5563' }]}>—</Text>
-                            </View>
-                          );
-                        }
-                        return (
-                          <View key={dept.code} style={styles.deptRow}>
-                            <View style={[styles.deptDot, { backgroundColor: deptColor }]} />
-                            <Text style={[styles.deptLabel, { color: '#E5E7EB' }]}>{dept.label}</Text>
-                            <View style={styles.deptBarTrack}>
-                              <View
-                                style={[
-                                  styles.deptBarFill,
-                                  { width: `${dept.percent}%`, backgroundColor: deptColor },
-                                ]}
-                              />
-                            </View>
-                            <Text style={[styles.deptValue, { color: deptColor }]}>
-                              {dept.percent.toFixed(0)}%
-                            </Text>
-                            <Text style={styles.deptTime}>{formatDuration(dept.minutes)}</Text>
-                          </View>
-                        );
-                      })}
-                  </View>
-                )}
-              </View>
-            )}
-          </View>
-        );
-      })}
+                  return (
+                    <View key={dept.code} style={styles.deptRow}>
+                      <View style={[styles.deptDot, { backgroundColor: deptColor }]} />
+                      <Text style={[styles.deptLabel, { color: '#E5E7EB' }]}>{dept.label}</Text>
+                      <View style={styles.deptBarTrack}>
+                        <View
+                          style={[
+                            styles.deptBarFill,
+                            { width: `${dept.percent}%`, backgroundColor: deptColor },
+                          ]}
+                        />
+                      </View>
+                      <Text style={[styles.deptValue, { color: deptColor }]}>
+                        {dept.percent.toFixed(0)}%
+                      </Text>
+                      <Text style={styles.deptTime}>{formatDuration(dept.minutes)}</Text>
+                    </View>
+                  );
+                })}
+            </View>
+          )}
+        </View>
+      )}
     </View>
   );
 }
@@ -377,7 +407,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   headerLeft: {
     flexDirection: 'row',
@@ -423,81 +453,106 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
 
-  // ── Line section ──
-  lineSection: {
-    marginBottom: 4,
-  },
-  lineRow: {
+  // ── Lines Row (side by side) ──
+  linesRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    gap: 8,
+  },
+  lineCard: {
+    flex: 1,
     backgroundColor: '#16162480',
     borderRadius: 10,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    borderLeftWidth: 3,
-    gap: 12,
+    borderTopWidth: 3,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    alignItems: 'center',
   },
-  lineIdentity: {
+  lineCardExpanded: {
+    backgroundColor: '#1C1C30',
+  },
+  lineCardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    width: 80,
+    gap: 6,
+    marginBottom: 8,
   },
   statusDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
   lineLabel: {
     fontSize: 13,
     fontWeight: '700',
     color: '#FFFFFF',
   },
-  lineStatus: {
-    fontSize: 9,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
 
-  // ── Metrics (uptime / downtime bars) ──
-  lineMetrics: {
-    flex: 1,
-    gap: 4,
+  // ── Running: compact bars ──
+  barsContent: {
+    width: '100%',
+    gap: 3,
+    alignItems: 'center',
   },
-  metricRow: {
+  miniBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 4,
+    width: '100%',
   },
-  metricLabel: {
-    fontSize: 9,
-    fontWeight: '600',
-    color: '#6B7280',
-    width: 16,
-  },
-  barTrack: {
+  miniBarTrack: {
     flex: 1,
-    height: 6,
+    height: 4,
     backgroundColor: '#2A2A3E',
-    borderRadius: 3,
+    borderRadius: 2,
     overflow: 'hidden',
   },
-  barFillUp: {
+  miniBarFillUp: {
     height: '100%',
     backgroundColor: '#10B981',
-    borderRadius: 3,
+    borderRadius: 2,
   },
-  barFillDown: {
+  miniBarFillDn: {
     height: '100%',
     backgroundColor: '#EF4444',
-    borderRadius: 3,
+    borderRadius: 2,
   },
-  metricValue: {
-    fontSize: 10,
+  miniBarValue: {
+    fontSize: 9,
     fontWeight: '700',
-    width: 40,
+    width: 32,
     textAlign: 'right',
+  },
+  runningStatus: {
+    fontSize: 8,
+    fontWeight: '700',
+    color: '#10B981',
+    letterSpacing: 0.8,
+    marginTop: 4,
+    textTransform: 'uppercase',
+  },
+
+  // ── Down: timer display ──
+  downContent: {
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 2,
+  },
+  downTimer: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#EF4444',
+    fontVariant: ['tabular-nums'],
+  },
+  downStatus: {
+    fontSize: 8,
+    fontWeight: '700',
+    color: '#EF4444',
+    letterSpacing: 1,
+  },
+
+  // ── Expand indicator ──
+  expandIndicator: {
+    marginTop: 6,
   },
 
   // ── Active alert ──
@@ -508,8 +563,7 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     paddingVertical: 6,
     paddingHorizontal: 10,
-    marginTop: 4,
-    marginLeft: 3,
+    marginTop: 8,
     gap: 6,
   },
   activeAlertText: {
@@ -524,8 +578,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#13132080',
     borderRadius: 8,
     padding: 12,
-    marginTop: 4,
-    marginLeft: 3,
+    marginTop: 8,
   },
   deptBreakdownTitle: {
     fontSize: 10,
