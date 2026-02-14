@@ -414,7 +414,6 @@ export default function LineStatusWidget() {
 // ── Styles ─────────────────────────────────────────────────────
 const createStyles = (colors: any) => StyleSheet.create({
   container: {
-    marginHorizontal: 16,
     marginTop: 12,
     marginBottom: 16,
   },
