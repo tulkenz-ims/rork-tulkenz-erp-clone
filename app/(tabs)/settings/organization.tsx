@@ -12,6 +12,7 @@ import {
   Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 import {
   Building2,
   Palette,
@@ -37,6 +38,7 @@ import { useUser } from '@/contexts/UserContext';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import { supabase, Tables } from '@/lib/supabase';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import ColorPicker from '@/components/ColorPicker';
 
 type Organization = Tables['organizations'];
 
@@ -139,14 +141,8 @@ const MONTHS = [
   { value: 12, label: 'December' },
 ];
 
-const PRESET_COLORS = [
-  '#1E40AF', '#0369A1', '#0D9488', '#059669', '#65A30D',
-  '#CA8A04', '#EA580C', '#DC2626', '#DB2777', '#9333EA',
-  '#7C3AED', '#4F46E5', '#2563EB', '#0891B2', '#14B8A6',
-];
-
 export default function OrganizationSetupScreen() {
-  const { colors } = useTheme();
+  const { colors, setCompanyColors } = useTheme();
   const { company } = useUser();
   const { organization, setOrganization } = useOrganization();
   const queryClient = useQueryClient();
@@ -231,6 +227,15 @@ export default function OrganizationSetupScreen() {
         currency: orgData.currency || 'USD',
         language: orgData.language || 'en',
       });
+      // Sync brand colors to gradient bars
+      const brandColors = [
+        orgData.primary_color,
+        orgData.secondary_color,
+        orgData.accent_color,
+      ].filter((c): c is string => !!c && c.length === 7);
+      if (brandColors.length > 0) {
+        setCompanyColors(brandColors);
+      }
     }
   }, [orgData]);
 
@@ -285,6 +290,13 @@ export default function OrganizationSetupScreen() {
       if (data) {
         setOrganization(data);
       }
+      // Push brand colors to gradient bars
+      const brandColors = [
+        formData.primary_color,
+        formData.secondary_color,
+        formData.accent_color,
+      ].filter(c => c && c.length === 7);
+      setCompanyColors(brandColors);
       Alert.alert('Success', 'Organization settings updated successfully.');
     },
     onError: (error: Error) => {
@@ -480,11 +492,24 @@ export default function OrganizationSetupScreen() {
       {renderColorPicker('Primary Color', 'primary')}
       {renderColorPicker('Secondary Color', 'secondary')}
       {renderColorPicker('Accent Color', 'accent')}
+
+      <Text style={[styles.subSectionTitle, { color: colors.text, marginTop: 16 }]}>Gradient Preview</Text>
+      <View style={[styles.gradientPreviewBox, { borderColor: colors.border }]}>
+        <LinearGradient
+          colors={[formData.primary_color, formData.secondary_color, formData.accent_color] as [string, string, ...string[]]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={styles.gradientPreviewBar}
+        />
+        <Text style={[styles.gradientPreviewHint, { color: colors.textTertiary }]}>
+          This gradient will appear on the header and navigation bars
+        </Text>
+      </View>
       
       <View style={[styles.infoCard, { backgroundColor: colors.infoBg, borderColor: colors.info }]}>
         <Info size={16} color={colors.info} />
         <Text style={[styles.infoText, { color: colors.info }]}>
-          Brand colors will be displayed on reports, documents, and employee-facing screens.
+          Brand colors set the gradient on the top header and bottom navigation bars across the entire app. Hit Save to apply.
         </Text>
       </View>
     </View>
@@ -682,44 +707,25 @@ export default function OrganizationSetupScreen() {
                 <X size={24} color={colors.textSecondary} />
               </Pressable>
             </View>
-            <View style={styles.colorGrid}>
-              {PRESET_COLORS.map((color) => (
-                <Pressable
-                  key={color}
-                  style={[
-                    styles.colorOption,
-                    { backgroundColor: color },
-                    (formData as Record<string, string>)[`${showColorPicker}_color`] === color && styles.colorOptionSelected,
-                  ]}
-                  onPress={() => {
-                    if (showColorPicker) {
-                      setFormData(prev => ({ ...prev, [`${showColorPicker}_color`]: color }));
-                    }
-                    setShowColorPicker(null);
-                  }}
-                >
-                  {(formData as Record<string, string>)[`${showColorPicker}_color`] === color && (
-                    <Check size={20} color="#FFFFFF" />
-                  )}
-                </Pressable>
-              ))}
-            </View>
-            <View style={styles.customColorSection}>
-              <Text style={[styles.customColorLabel, { color: colors.textSecondary }]}>Custom Color (Hex)</Text>
-              <TextInput
-                style={[styles.customColorInput, { backgroundColor: colors.backgroundSecondary, borderColor: colors.border, color: colors.text }]}
-                value={showColorPicker ? formData[`${showColorPicker}_color`] : ''}
-                onChangeText={(v) => {
-                  if (showColorPicker && /^#[0-9A-Fa-f]{0,6}$/.test(v)) {
-                    setFormData(prev => ({ ...prev, [`${showColorPicker}_color`]: v }));
+            <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
+              <ColorPicker
+                label=""
+                value={showColorPicker ? formData[`${showColorPicker}_color`] : '#000000'}
+                onChange={(hex) => {
+                  if (showColorPicker) {
+                    setFormData(prev => ({ ...prev, [`${showColorPicker}_color`]: hex }));
                   }
                 }}
-                placeholder="#000000"
-                placeholderTextColor={colors.textTertiary}
-                autoCapitalize="characters"
-                maxLength={7}
+                textColor={colors.textSecondary}
+                borderColor={colors.border}
               />
-            </View>
+            </ScrollView>
+            <Pressable
+              style={[styles.colorDoneButton, { backgroundColor: colors.primary }]}
+              onPress={() => setShowColorPicker(null)}
+            >
+              <Text style={styles.colorDoneText}>Done</Text>
+            </Pressable>
           </View>
         </View>
       </Modal>
@@ -1009,36 +1015,29 @@ const styles = StyleSheet.create({
   closeButton: {
     padding: 4,
   },
-  colorGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-    marginBottom: 20,
-  },
-  colorOption: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
-    justifyContent: 'center',
+  colorDoneButton: {
+    marginTop: 16,
+    paddingVertical: 12,
+    borderRadius: 10,
     alignItems: 'center',
   },
-  colorOptionSelected: {
-    borderWidth: 3,
-    borderColor: '#FFFFFF',
-  },
-  customColorSection: {
-    gap: 8,
-  },
-  customColorLabel: {
-    fontSize: 13,
-    fontWeight: '500' as const,
-  },
-  customColorInput: {
-    borderRadius: 10,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
+  colorDoneText: {
+    color: '#FFFFFF',
     fontSize: 15,
-    fontFamily: 'monospace',
+    fontWeight: '600' as const,
+  },
+  gradientPreviewBox: {
+    borderWidth: 1,
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginBottom: 16,
+  },
+  gradientPreviewBar: {
+    height: 48,
+  },
+  gradientPreviewHint: {
+    fontSize: 12,
+    textAlign: 'center' as const,
+    paddingVertical: 8,
   },
 });
