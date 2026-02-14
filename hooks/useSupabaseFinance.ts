@@ -304,7 +304,11 @@ export function useGLAccountsQuery(options?: FinanceQueryOptions) {
     queryFn: async () => {
       if (!organizationId) return [];
 
-      console.log('[useGLAccountsQuery] Fetching GL accounts from Supabase:', { organizationId, accountType });
+      console.log('[useGLAccountsQuery] Fetching GL accounts from Supabase, orgId=' + organizationId + ', accountType=' + (accountType || 'all'));
+
+      // Debug: check auth session
+      const { data: session } = await supabase.auth.getSession();
+      console.log('[useGLAccountsQuery] auth.uid=' + (session?.session?.user?.id || 'NO SESSION'));
 
       let query = supabase
         .from('gl_accounts')
@@ -325,7 +329,7 @@ export function useGLAccountsQuery(options?: FinanceQueryOptions) {
       }
 
       const { data, error, status, statusText } = await query;
-      console.log('[useGLAccountsQuery] Response:', { status, statusText, error, rowCount: data?.length });
+      console.log('[useGLAccountsQuery] Response status=' + status + ' error=' + JSON.stringify(error) + ' rows=' + (data?.length ?? 'null'));
       if (error) {
         console.error('[useGLAccountsQuery] ERROR:', error);
         throw new Error(error.message);
@@ -360,6 +364,121 @@ export function useGLAccountById(id: string | undefined | null) {
       return mapGLAccount(data);
     },
     enabled: !!organizationId && !!id,
+  });
+}
+
+// ── GL Account Mutations ───────────────────────────────────────
+
+export interface GLAccountInput {
+  accountNumber: string;
+  name: string;
+  type: AccountType;
+  balance?: number;
+  description?: string;
+  departmentCode?: string;
+  isHeader?: boolean;
+  isActive?: boolean;
+  parentId?: string;
+}
+
+export function useCreateGLAccount(options?: { onSuccess?: () => void; onError?: (err: Error) => void }) {
+  const { organizationId } = useOrganization();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (input: GLAccountInput) => {
+      if (!organizationId) throw new Error('No organization selected');
+
+      const { data, error } = await supabase
+        .from('gl_accounts')
+        .insert({
+          organization_id: organizationId,
+          account_number: input.accountNumber,
+          name: input.name,
+          type: input.type,
+          balance: input.balance ?? 0,
+          description: input.description || null,
+          department_code: input.departmentCode || null,
+          is_header: input.isHeader ?? false,
+          is_active: input.isActive ?? true,
+          parent_id: input.parentId || null,
+        })
+        .select()
+        .single();
+
+      if (error) throw new Error(error.message);
+      return mapGLAccount(data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['gl_accounts'] });
+      queryClient.invalidateQueries({ queryKey: ['finance_stats'] });
+      options?.onSuccess?.();
+    },
+    onError: (err: Error) => options?.onError?.(err),
+  });
+}
+
+export function useUpdateGLAccount(options?: { onSuccess?: () => void; onError?: (err: Error) => void }) {
+  const { organizationId } = useOrganization();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, ...input }: Partial<GLAccountInput> & { id: string }) => {
+      if (!organizationId) throw new Error('No organization selected');
+
+      const updateData: Record<string, any> = {};
+      if (input.accountNumber !== undefined) updateData.account_number = input.accountNumber;
+      if (input.name !== undefined) updateData.name = input.name;
+      if (input.type !== undefined) updateData.type = input.type;
+      if (input.balance !== undefined) updateData.balance = input.balance;
+      if (input.description !== undefined) updateData.description = input.description;
+      if (input.departmentCode !== undefined) updateData.department_code = input.departmentCode;
+      if (input.isHeader !== undefined) updateData.is_header = input.isHeader;
+      if (input.isActive !== undefined) updateData.is_active = input.isActive;
+      if (input.parentId !== undefined) updateData.parent_id = input.parentId;
+
+      const { data, error } = await supabase
+        .from('gl_accounts')
+        .update(updateData)
+        .eq('id', id)
+        .eq('organization_id', organizationId)
+        .select()
+        .single();
+
+      if (error) throw new Error(error.message);
+      return mapGLAccount(data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['gl_accounts'] });
+      queryClient.invalidateQueries({ queryKey: ['finance_stats'] });
+      options?.onSuccess?.();
+    },
+    onError: (err: Error) => options?.onError?.(err),
+  });
+}
+
+export function useDeleteGLAccount(options?: { onSuccess?: () => void; onError?: (err: Error) => void }) {
+  const { organizationId } = useOrganization();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      if (!organizationId) throw new Error('No organization selected');
+
+      const { error } = await supabase
+        .from('gl_accounts')
+        .delete()
+        .eq('id', id)
+        .eq('organization_id', organizationId);
+
+      if (error) throw new Error(error.message);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['gl_accounts'] });
+      queryClient.invalidateQueries({ queryKey: ['finance_stats'] });
+      options?.onSuccess?.();
+    },
+    onError: (err: Error) => options?.onError?.(err),
   });
 }
 
