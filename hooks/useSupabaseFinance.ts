@@ -4,8 +4,6 @@ import { supabase } from '@/lib/supabase';
 import {
   MOCK_AP_INVOICES,
   MOCK_AR_INVOICES,
-  MOCK_GL_ACCOUNTS,
-  MOCK_BUDGETS,
   MOCK_JOURNAL_ENTRIES,
   MOCK_RECURRING_JOURNALS,
   MOCK_CUSTOMERS,
@@ -19,6 +17,38 @@ import {
   type InvoiceStatus,
   type AccountType,
 } from '@/mocks/financeData';
+
+// ── Supabase → App mappers ──────────────────────────────────
+function mapGLAccount(row: any): GLAccount {
+  return {
+    id: row.id,
+    accountNumber: row.account_number,
+    name: row.name,
+    type: row.type,
+    balance: Number(row.balance) || 0,
+    parentId: row.parent_id || undefined,
+    isActive: row.is_active,
+    isHeader: row.is_header || false,
+    description: row.description || undefined,
+    departmentCode: row.department_code || undefined,
+  };
+}
+
+function mapBudget(row: any): Budget {
+  return {
+    id: row.id,
+    name: row.name,
+    departmentCode: row.department_code,
+    departmentName: row.department_name || undefined,
+    glAccountPrefix: row.gl_account_prefix || undefined,
+    fiscalYear: row.fiscal_year,
+    period: row.period || 'monthly',
+    amount: Number(row.amount) || 0,
+    spent: Number(row.spent) || 0,
+    remaining: Number(row.remaining) || 0,
+    status: row.status,
+  };
+}
 
 export interface FinanceStats {
   cashBalance: number;
@@ -59,20 +89,48 @@ export function useFinanceStatsQuery(options?: { enabled?: boolean }) {
       const apPending = MOCK_AP_INVOICES.filter(i => i.status === 'pending' || i.status === 'approved');
       const apOverdue = MOCK_AP_INVOICES.filter(i => i.status === 'overdue');
       const arPending = MOCK_AR_INVOICES.filter(i => i.status === 'pending');
-      const arOverdue = MOCK_AR_INVOICES.filter(i => i.status === 'overdue');
       const totalAPDue = apPending.reduce((sum, i) => sum + i.balanceDue, 0);
       const totalARDue = arPending.reduce((sum, i) => sum + i.balanceDue, 0);
-      const cashAccount = MOCK_GL_ACCOUNTS.find(a => a.accountNumber === '1010');
-      const activeBudget = MOCK_BUDGETS.find(b => b.status === 'active');
+
+      // Get cash balance from GL
+      let cashBalance = 0;
+      try {
+        const { data: cashRow } = await supabase
+          .from('gl_accounts')
+          .select('balance')
+          .eq('organization_id', organizationId)
+          .eq('account_number', '1010')
+          .single();
+        if (cashRow) cashBalance = Number(cashRow.balance) || 0;
+      } catch (err) {
+        console.log('[useFinanceStatsQuery] Could not fetch cash balance:', err);
+      }
+
+      // Get budget totals from department_budgets
+      let budgetUsed = 0;
+      let budgetTotal = 0;
+      try {
+        const { data: budgetRows } = await supabase
+          .from('department_budgets')
+          .select('amount, spent')
+          .eq('organization_id', organizationId)
+          .eq('status', 'active');
+        if (budgetRows && budgetRows.length > 0) {
+          budgetTotal = budgetRows.reduce((sum, b) => sum + (Number(b.amount) || 0), 0);
+          budgetUsed = budgetRows.reduce((sum, b) => sum + (Number(b.spent) || 0), 0);
+        }
+      } catch (err) {
+        console.log('[useFinanceStatsQuery] Could not fetch budgets:', err);
+      }
 
       const stats: FinanceStats = {
-        cashBalance: cashAccount?.balance || 0,
+        cashBalance,
         totalAPDue,
         totalARDue,
         apOverdueCount: apOverdue.length,
-        arOverdueCount: arOverdue.length,
-        budgetUsed: activeBudget?.spent || 0,
-        budgetTotal: activeBudget?.amount || 0,
+        arOverdueCount: MOCK_AR_INVOICES.filter(i => i.status === 'overdue').length,
+        budgetUsed,
+        budgetTotal,
         activeVendorsCount: 0,
         pendingPayments: apPending.length,
       };
@@ -246,30 +304,32 @@ export function useGLAccountsQuery(options?: FinanceQueryOptions) {
     queryFn: async () => {
       if (!organizationId) return [];
 
-      console.log('[useGLAccountsQuery] Fetching GL accounts with filters:', { accountType });
+      console.log('[useGLAccountsQuery] Fetching GL accounts from Supabase:', { accountType });
 
-      let results = [...MOCK_GL_ACCOUNTS];
+      let query = supabase
+        .from('gl_accounts')
+        .select('*')
+        .eq('organization_id', organizationId)
+        .order('account_number', { ascending: true });
 
       if (accountType) {
-        results = results.filter(acc => acc.type === accountType);
+        query = query.eq('type', accountType);
       }
 
       if (searchText) {
-        const search = searchText.toLowerCase();
-        results = results.filter(acc =>
-          acc.accountNumber.toLowerCase().includes(search) ||
-          acc.name.toLowerCase().includes(search)
-        );
+        query = query.or(`account_number.ilike.%${searchText}%,name.ilike.%${searchText}%`);
       }
-
-      results.sort((a, b) => a.accountNumber.localeCompare(b.accountNumber));
 
       if (limit) {
-        results = results.slice(0, limit);
+        query = query.limit(limit);
       }
 
-      console.log('[useGLAccountsQuery] Returning', results.length, 'accounts');
-      return results as GLAccount[];
+      const { data, error } = await query;
+      if (error) throw new Error(error.message);
+
+      const accounts = (data || []).map(mapGLAccount);
+      console.log('[useGLAccountsQuery] Returning', accounts.length, 'accounts');
+      return accounts;
     },
     enabled: !!organizationId && (enabled !== false),
     staleTime: 1000 * 60 * 10,
@@ -285,8 +345,15 @@ export function useGLAccountById(id: string | undefined | null) {
       if (!organizationId || !id) return null;
 
       console.log('[useGLAccountById] Fetching account:', id);
-      const account = MOCK_GL_ACCOUNTS.find(acc => acc.id === id);
-      return account || null;
+      const { data, error } = await supabase
+        .from('gl_accounts')
+        .select('*')
+        .eq('id', id)
+        .eq('organization_id', organizationId)
+        .single();
+
+      if (error || !data) return null;
+      return mapGLAccount(data);
     },
     enabled: !!organizationId && !!id,
   });
@@ -301,32 +368,36 @@ export function useBudgetsQuery(options?: FinanceQueryOptions) {
     queryFn: async () => {
       if (!organizationId) return [];
 
-      console.log('[useBudgetsQuery] Fetching budgets with filters:', { status, departmentCode });
+      console.log('[useBudgetsQuery] Fetching budgets from Supabase:', { status, departmentCode });
 
-      let results = [...MOCK_BUDGETS];
+      let query = supabase
+        .from('department_budgets')
+        .select('*')
+        .eq('organization_id', organizationId)
+        .order('department_code', { ascending: true });
 
       if (status) {
-        results = results.filter(b => b.status === status);
+        query = query.eq('status', status);
       }
 
       if (departmentCode) {
-        results = results.filter(b => b.departmentCode === departmentCode);
+        query = query.eq('department_code', departmentCode);
       }
 
       if (searchText) {
-        const search = searchText.toLowerCase();
-        results = results.filter(b =>
-          b.name.toLowerCase().includes(search) ||
-          (b.departmentName && b.departmentName.toLowerCase().includes(search))
-        );
+        query = query.or(`name.ilike.%${searchText}%,department_name.ilike.%${searchText}%`);
       }
 
       if (limit) {
-        results = results.slice(0, limit);
+        query = query.limit(limit);
       }
 
-      console.log('[useBudgetsQuery] Returning', results.length, 'budgets');
-      return results as Budget[];
+      const { data, error } = await query;
+      if (error) throw new Error(error.message);
+
+      const budgets = (data || []).map(mapBudget);
+      console.log('[useBudgetsQuery] Returning', budgets.length, 'budgets');
+      return budgets;
     },
     enabled: !!organizationId && (enabled !== false),
     staleTime: 1000 * 60 * 5,
@@ -342,8 +413,15 @@ export function useBudgetById(id: string | undefined | null) {
       if (!organizationId || !id) return null;
 
       console.log('[useBudgetById] Fetching budget:', id);
-      const budget = MOCK_BUDGETS.find(b => b.id === id);
-      return budget || null;
+      const { data, error } = await supabase
+        .from('department_budgets')
+        .select('*')
+        .eq('id', id)
+        .eq('organization_id', organizationId)
+        .single();
+
+      if (error || !data) return null;
+      return mapBudget(data);
     },
     enabled: !!organizationId && !!id,
   });
