@@ -304,7 +304,7 @@ export function useGLAccountsQuery(options?: FinanceQueryOptions) {
     queryFn: async () => {
       if (!organizationId) return [];
 
-      console.log('[useGLAccountsQuery] Fetching GL accounts from Supabase:', { accountType });
+      console.log('[useGLAccountsQuery] Fetching GL accounts from Supabase:', { organizationId, accountType });
 
       let query = supabase
         .from('gl_accounts')
@@ -324,8 +324,12 @@ export function useGLAccountsQuery(options?: FinanceQueryOptions) {
         query = query.limit(limit);
       }
 
-      const { data, error } = await query;
-      if (error) throw new Error(error.message);
+      const { data, error, status, statusText } = await query;
+      console.log('[useGLAccountsQuery] Response:', { status, statusText, error, rowCount: data?.length });
+      if (error) {
+        console.error('[useGLAccountsQuery] ERROR:', error);
+        throw new Error(error.message);
+      }
 
       const accounts = (data || []).map(mapGLAccount);
       console.log('[useGLAccountsQuery] Returning', accounts.length, 'accounts');
@@ -368,7 +372,7 @@ export function useBudgetsQuery(options?: FinanceQueryOptions) {
     queryFn: async () => {
       if (!organizationId) return [];
 
-      console.log('[useBudgetsQuery] Fetching budgets from Supabase:', { status, departmentCode });
+      console.log('[useBudgetsQuery] Fetching budgets from Supabase:', { organizationId, status, departmentCode });
 
       let query = supabase
         .from('department_budgets')
@@ -392,8 +396,12 @@ export function useBudgetsQuery(options?: FinanceQueryOptions) {
         query = query.limit(limit);
       }
 
-      const { data, error } = await query;
-      if (error) throw new Error(error.message);
+      const { data, error, status: respStatus } = await query;
+      console.log('[useBudgetsQuery] Response:', { respStatus, error, rowCount: data?.length });
+      if (error) {
+        console.error('[useBudgetsQuery] ERROR:', error);
+        throw new Error(error.message);
+      }
 
       const budgets = (data || []).map(mapBudget);
       console.log('[useBudgetsQuery] Returning', budgets.length, 'budgets');
