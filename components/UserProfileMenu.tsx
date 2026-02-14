@@ -6,7 +6,6 @@ import {
   Pressable,
   Modal,
   Alert,
-  ScrollView,
 } from 'react-native';
 import {
   User,
@@ -17,38 +16,25 @@ import {
   X,
   Moon,
   Sun,
-  Palette,
 } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useUser } from '@/contexts/UserContext';
 import { useTheme, type ThemeType } from '@/contexts/ThemeContext';
 import { usePermissions } from '@/contexts/PermissionsContext';
 import { isSuperAdminRole, getRoleDisplayName } from '@/constants/roles';
-import ColorPicker from '@/components/ColorPicker';
 
 const themeOptions: { value: ThemeType; label: string; icon: typeof Sun; iconColor: string }[] = [
   { value: 'light', label: 'Light', icon: Sun, iconColor: '#F59E0B' },
   { value: 'dark', label: 'Dark', icon: Moon, iconColor: '#6366F1' },
-  { value: 'custom', label: 'Custom', icon: Palette, iconColor: '#10B981' },
 ];
 
 export default function UserProfileMenu() {
   const router = useRouter();
   const { userProfile, signOut, company } = useUser();
-  const { colors, theme, setTheme, customBg, customPrimary, setCustomColors } = useTheme();
+  const { colors, theme, setTheme } = useTheme();
   const { currentUserRole } = usePermissions();
   const [showMenu, setShowMenu] = useState(false);
   const [showThemeModal, setShowThemeModal] = useState(false);
-
-  // Custom color picker state
-  const [editBg, setEditBg] = useState(customBg);
-  const [editCard, setEditCard] = useState(customPrimary);
-
-  const openThemeModal = useCallback(() => {
-    setEditBg(customBg);
-    setEditCard(customPrimary);
-    setShowThemeModal(true);
-  }, [customBg, customPrimary]);
 
   const isSuperAdmin = isSuperAdminRole(userProfile?.role) || 
                        currentUserRole?.isSystem || 
@@ -81,7 +67,7 @@ export default function UserProfileMenu() {
 
   const handleTheme = () => {
     setShowMenu(false);
-    setTimeout(() => openThemeModal(), 300);
+    setTimeout(() => setShowThemeModal(true), 300);
   };
 
   const currentTheme = themeOptions.find((t) => t.value === theme);
@@ -217,7 +203,6 @@ export default function UserProfileMenu() {
                 <X size={24} color={colors.textSecondary} />
               </Pressable>
             </View>
-            <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
             <View style={styles.themeGrid}>
               {themeOptions.map((option) => {
                 const OptionIcon = option.icon;
@@ -230,15 +215,9 @@ export default function UserProfileMenu() {
                       { backgroundColor: colors.backgroundSecondary, borderColor: isSelected ? colors.primary : colors.border },
                       isSelected && { borderWidth: 2 },
                     ]}
-                    onPress={() => {
-                      if (option.value === 'custom') {
-                        setTheme('custom');
-                      } else {
-                        setTheme(option.value);
-                      }
-                    }}
+                    onPress={() => setTheme(option.value)}
                   >
-                    <OptionIcon size={24} color={option.iconColor} />
+                    <OptionIcon size={28} color={option.iconColor} />
                     <Text style={[styles.themeLabel, { color: colors.text }]}>{option.label}</Text>
                     {isSelected && (
                       <View style={[styles.selectedIndicator, { backgroundColor: colors.primary }]} />
@@ -247,33 +226,9 @@ export default function UserProfileMenu() {
                 );
               })}
             </View>
-
-            {theme === 'custom' && (
-              <View style={styles.colorPickerSection}>
-                <ColorPicker
-                  label="Background Color"
-                  value={editBg}
-                  onChange={(hex) => {
-                    setEditBg(hex);
-                    setCustomColors(hex, editCard);
-                  }}
-                  textColor={colors.textSecondary}
-                  borderColor={colors.border}
-                />
-                <View style={{ height: 12 }} />
-                <ColorPicker
-                  label="Card Color"
-                  value={editCard}
-                  onChange={(hex) => {
-                    setEditCard(hex);
-                    setCustomColors(editBg, hex);
-                  }}
-                  textColor={colors.textSecondary}
-                  borderColor={colors.border}
-                />
-              </View>
-            )}
-            </ScrollView>
+            <Text style={[styles.hint, { color: colors.textTertiary }]}>
+              Company colors can be set in Settings
+            </Text>
           </View>
         </View>
       </Modal>
@@ -412,8 +367,7 @@ const styles = StyleSheet.create({
   },
   themeContent: {
     width: '100%',
-    maxWidth: 380,
-    maxHeight: '80%',
+    maxWidth: 340,
     borderRadius: 20,
     padding: 20,
   },
@@ -432,18 +386,18 @@ const styles = StyleSheet.create({
   },
   themeGrid: {
     flexDirection: 'row',
-    gap: 10,
+    gap: 12,
   },
   themeOption: {
     flex: 1,
-    padding: 14,
+    padding: 16,
     borderRadius: 12,
     borderWidth: 1,
     alignItems: 'center',
     gap: 8,
   },
   themeLabel: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '500' as const,
   },
   selectedIndicator: {
@@ -454,10 +408,9 @@ const styles = StyleSheet.create({
     height: 8,
     borderRadius: 4,
   },
-  colorPickerSection: {
+  hint: {
+    fontSize: 12,
+    textAlign: 'center',
     marginTop: 16,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(128,128,128,0.2)',
   },
 });
