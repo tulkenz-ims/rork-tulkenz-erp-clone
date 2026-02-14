@@ -40,7 +40,7 @@ import {
   MapPin,
   ChevronDown,
 } from 'lucide-react-native';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { useUser } from '@/contexts/UserContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import EmployeeHome from '@/components/EmployeeHome';
@@ -54,6 +54,7 @@ import { useWorkOrdersQuery } from '@/hooks/useSupabaseWorkOrders';
 import { useEmployees } from '@/hooks/useSupabaseEmployees';
 import { useAllAggregatedApprovals } from '@/hooks/useAggregatedApprovals';
 import { useTaskFeedPostsQuery } from '@/hooks/useTaskFeedTemplates';
+import { supabase } from '@/lib/supabase';
 import * as Haptics from 'expo-haptics';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -92,6 +93,24 @@ export default function ExecutiveDashboard() {
   const { data: pendingPosts = [] } = useTaskFeedPostsQuery({ status: 'pending' });
   const { data: inProgressPosts = [] } = useTaskFeedPostsQuery({ status: 'in_progress' });
   const taskFeedPendingCount = pendingPosts.length + inProgressPosts.length;
+
+  // Real-time checked-in count: employees with active time entries (no clock_out)
+  const { data: checkedInCount = 0 } = useQuery({
+    queryKey: ['dashboard-checked-in-count'],
+    queryFn: async () => {
+      const { count, error } = await supabase
+        .from('time_entries')
+        .select('*', { count: 'exact', head: true })
+        .is('clock_out', null);
+      if (error) {
+        console.error('[Dashboard] Error fetching checked-in count:', error);
+        return 0;
+      }
+      return count || 0;
+    },
+    refetchInterval: 30000, // Refresh every 30 seconds
+    staleTime: 15000,
+  });
 
   const erpLoading = materialsLoading || workOrdersLoading || employeesLoading || approvalsLoading;
 
@@ -241,10 +260,10 @@ export default function ExecutiveDashboard() {
       icon: Wrench,
     },
     {
-      label: 'Employees Active',
-      value: stats.activeEmployees.toString(),
-      subValue: `of ${stats.totalEmployees} total`,
-      trend: Math.round((stats.activeEmployees / Math.max(stats.totalEmployees, 1)) * 100),
+      label: 'Checked In',
+      value: `${checkedInCount}/${stats.totalEmployees}`,
+      subValue: checkedInCount > 0 ? `${checkedInCount} on shift` : 'No one checked in',
+      trend: Math.round((checkedInCount / Math.max(stats.totalEmployees, 1)) * 100),
       trendLabel: 'attendance',
       color: '#8B5CF6',
       icon: Users,
@@ -257,7 +276,7 @@ export default function ExecutiveDashboard() {
       color: stats.outOfStockCount > 0 ? '#EF4444' : '#10B981',
       icon: Package,
     },
-  ], [stats, inventoryValue]);
+  ], [stats, inventoryValue, checkedInCount]);
 
   const actionItems = useMemo<ActionItem[]>(() => {
     const items: ActionItem[] = [];
@@ -340,11 +359,11 @@ export default function ExecutiveDashboard() {
       : 0;
     
     const laborUtilization = stats.totalEmployees > 0 
-      ? Math.round((stats.activeEmployees / stats.totalEmployees) * 100)
+      ? Math.round((checkedInCount / stats.totalEmployees) * 100)
       : 0;
 
     return { stockHealth, woCompletion, laborUtilization };
-  }, [stats, workOrders]);
+  }, [stats, workOrders, checkedInCount]);
 
   const facilityBreakdown = useMemo(() => {
     const facilities: Record<string, { value: number; items: number; lowStock: number }> = {};
@@ -389,6 +408,7 @@ export default function ExecutiveDashboard() {
         queryClient.invalidateQueries({ queryKey: ['aggregated_purchase_approvals'] }),
         queryClient.invalidateQueries({ queryKey: ['aggregated_time_approvals'] }),
         queryClient.invalidateQueries({ queryKey: ['aggregated_permit_approvals'] }),
+        queryClient.invalidateQueries({ queryKey: ['dashboard-checked-in-count'] }),
       ]);
       console.log('[Dashboard] Refresh completed');
     } catch (error) {
@@ -518,10 +538,10 @@ export default function ExecutiveDashboard() {
             <View style={[styles.quickActionIcon, { backgroundColor: '#10B98120' }]}>
               <Users size={18} color="#10B981" />
             </View>
-            <Text style={[styles.quickActionStat, { color: '#10B981' }]}>
-              {stats.activeEmployees}/{stats.totalEmployees}
+            <Text style={[styles.quickActionStat, { color: checkedInCount > 0 ? '#10B981' : Colors.textTertiary }]}>
+              {checkedInCount}/{stats.totalEmployees}
             </Text>
-            <Text style={styles.quickActionLabel}>Clocked In</Text>
+            <Text style={styles.quickActionLabel}>Checked In</Text>
             <Text style={styles.quickActionDesc}>Workforce Status</Text>
           </Pressable>
 
@@ -804,8 +824,8 @@ export default function ExecutiveDashboard() {
               </View>
               <View style={styles.workforceDivider} />
               <View style={styles.workforceStat}>
-                <Text style={[styles.workforceStatValue, { color: Colors.success }]}>{stats.activeEmployees}</Text>
-                <Text style={styles.workforceStatLabel}>Active Today</Text>
+                <Text style={[styles.workforceStatValue, { color: Colors.success }]}>{checkedInCount}</Text>
+                <Text style={styles.workforceStatLabel}>Checked In</Text>
               </View>
               <View style={styles.workforceDivider} />
               <View style={styles.workforceStat}>
