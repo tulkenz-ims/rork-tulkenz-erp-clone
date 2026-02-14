@@ -16,7 +16,6 @@ import {
   X,
   Moon,
   Sun,
-  Monitor,
   Palette,
 } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
@@ -28,8 +27,7 @@ import { isSuperAdminRole, getRoleDisplayName } from '@/constants/roles';
 const themeOptions: { value: ThemeType; label: string; icon: typeof Sun; iconColor: string }[] = [
   { value: 'light', label: 'Light', icon: Sun, iconColor: '#F59E0B' },
   { value: 'dark', label: 'Dark', icon: Moon, iconColor: '#6366F1' },
-  { value: 'blue', label: 'Blue', icon: Monitor, iconColor: '#3B82F6' },
-  { value: 'rust', label: 'Rust', icon: Palette, iconColor: '#D97706' },
+  { value: 'custom', label: 'Custom', icon: Palette, iconColor: '#10B981' },
 ];
 
 export default function UserProfileMenu() {
@@ -199,7 +197,7 @@ export default function UserProfileMenu() {
         <View style={styles.themeOverlay}>
           <View style={[styles.themeContent, { backgroundColor: colors.surface }]}>
             <View style={styles.themeHeader}>
-              <Text style={[styles.themeTitle, { color: colors.text }]}>Choose Theme</Text>
+              <Text style={[styles.themeTitle, { color: colors.text }]}>Appearance</Text>
               <Pressable onPress={() => setShowThemeModal(false)} style={styles.closeButton}>
                 <X size={24} color={colors.textSecondary} />
               </Pressable>
@@ -387,19 +385,18 @@ const styles = StyleSheet.create({
   },
   themeGrid: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
+    gap: 10,
   },
   themeOption: {
-    width: '47%',
-    padding: 16,
+    flex: 1,
+    padding: 14,
     borderRadius: 12,
     borderWidth: 1,
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
   },
   themeLabel: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '500' as const,
   },
   selectedIndicator: {
