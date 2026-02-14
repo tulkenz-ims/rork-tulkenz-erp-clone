@@ -3,8 +3,10 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const THEME_STORAGE_KEY = 'tulkenz_theme';
+const CUSTOM_BG_KEY = 'tulkenz_custom_bg';
+const CUSTOM_PRIMARY_KEY = 'tulkenz_custom_primary';
 
-export type ThemeType = 'light' | 'dark' | 'blue' | 'rust';
+export type ThemeType = 'light' | 'dark' | 'custom';
 
 export interface ThemeColors {
   primary: string;
@@ -40,23 +42,130 @@ export interface ThemeColors {
   chartColors: string[];
 }
 
-const themes: Record<ThemeType, ThemeColors> = {
+// ── Color math helpers ─────────────────────────────────────────
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const clean = hex.replace('#', '');
+  const r = parseInt(clean.substring(0, 2), 16);
+  const g = parseInt(clean.substring(2, 4), 16);
+  const b = parseInt(clean.substring(4, 6), 16);
+  return { r, g, b };
+}
+
+function rgbToHex(r: number, g: number, b: number): string {
+  const clamp = (v: number) => Math.max(0, Math.min(255, Math.round(v)));
+  return '#' + [clamp(r), clamp(g), clamp(b)].map(v => v.toString(16).padStart(2, '0')).join('');
+}
+
+function luminance(hex: string): number {
+  const { r, g, b } = hexToRgb(hex);
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+}
+
+function lighten(hex: string, amount: number): string {
+  const { r, g, b } = hexToRgb(hex);
+  return rgbToHex(
+    r + (255 - r) * amount,
+    g + (255 - g) * amount,
+    b + (255 - b) * amount,
+  );
+}
+
+function darken(hex: string, amount: number): string {
+  const { r, g, b } = hexToRgb(hex);
+  return rgbToHex(r * (1 - amount), g * (1 - amount), b * (1 - amount));
+}
+
+function mixColors(hex1: string, hex2: string, weight: number): string {
+  const c1 = hexToRgb(hex1);
+  const c2 = hexToRgb(hex2);
+  return rgbToHex(
+    c1.r * weight + c2.r * (1 - weight),
+    c1.g * weight + c2.g * (1 - weight),
+    c1.b * weight + c2.b * (1 - weight),
+  );
+}
+
+// ── Generate a full theme from background + primary ────────────
+function generateCustomTheme(bg: string, primary: string): ThemeColors {
+  const isDark = luminance(bg) < 0.5;
+
+  // Background variants
+  const backgroundSecondary = isDark ? lighten(bg, 0.05) : darken(bg, 0.04);
+  const backgroundTertiary = isDark ? lighten(bg, 0.10) : darken(bg, 0.08);
+
+  // Surface = cards, slightly offset from background
+  const surface = isDark ? lighten(bg, 0.08) : lighten(bg, 0.06);
+  const surfaceLight = isDark ? lighten(bg, 0.14) : darken(bg, 0.02);
+
+  // Border
+  const border = isDark ? lighten(bg, 0.18) : darken(bg, 0.15);
+  const borderLight = isDark ? lighten(bg, 0.25) : darken(bg, 0.22);
+
+  // Text based on luminance
+  const text = isDark ? '#F0F0F0' : '#1A1A1A';
+  const textSecondary = isDark ? '#A0A0A0' : '#555555';
+  const textTertiary = isDark ? '#707070' : '#888888';
+
+  // Primary variants
+  const primaryDark = darken(primary, 0.25);
+  const primaryLight = lighten(primary, 0.25);
+
+  // Semantic colors — use slightly adjusted versions for light backgrounds
+  const semanticAlpha = isDark ? 0.15 : 0.10;
+
+  return {
+    primary,
+    primaryDark,
+    primaryLight,
+    accent: '#10B981',
+    accentLight: '#34D399',
+    background: bg,
+    backgroundSecondary,
+    backgroundTertiary,
+    surface,
+    surfaceLight,
+    text,
+    textSecondary,
+    textTertiary,
+    border,
+    borderLight,
+    success: '#10B981',
+    successLight: '#34D399',
+    successBg: `rgba(16, 185, 129, ${semanticAlpha})`,
+    warning: isDark ? '#F59E0B' : '#D97706',
+    warningLight: '#FBBF24',
+    warningBg: `rgba(245, 158, 11, ${semanticAlpha})`,
+    error: isDark ? '#EF4444' : '#DC2626',
+    errorLight: '#F87171',
+    errorBg: `rgba(239, 68, 68, ${semanticAlpha})`,
+    info: primary,
+    infoLight: primaryLight,
+    infoBg: `rgba(59, 130, 246, ${semanticAlpha})`,
+    purple: '#8B5CF6',
+    purpleLight: '#A78BFA',
+    purpleBg: `rgba(139, 92, 246, ${semanticAlpha})`,
+    chartColors: [primary, '#10B981', isDark ? '#F59E0B' : '#D97706', isDark ? '#EF4444' : '#DC2626', '#8B5CF6'],
+  };
+}
+
+// ── Preset themes ──────────────────────────────────────────────
+const themes: Record<'light' | 'dark', ThemeColors> = {
   dark: {
     primary: '#0066CC',
     primaryDark: '#004C99',
     primaryLight: '#3399FF',
     accent: '#10B981',
     accentLight: '#34D399',
-    background: '#0A0F1A',
-    backgroundSecondary: '#111827',
-    backgroundTertiary: '#1F2937',
-    surface: '#1A2332',
-    surfaceLight: '#243044',
+    background: '#1C1F26',
+    backgroundSecondary: '#242830',
+    backgroundTertiary: '#2E323B',
+    surface: '#2A2E38',
+    surfaceLight: '#353A45',
     text: '#FFFFFF',
     textSecondary: '#9CA3AF',
     textTertiary: '#6B7280',
-    border: '#374151',
-    borderLight: '#4B5563',
+    border: '#3D424D',
+    borderLight: '#4D535F',
     success: '#10B981',
     successLight: '#34D399',
     successBg: 'rgba(16, 185, 129, 0.15)',
@@ -80,16 +189,16 @@ const themes: Record<ThemeType, ThemeColors> = {
     primaryLight: '#3399FF',
     accent: '#10B981',
     accentLight: '#34D399',
-    background: '#F8FAFC',
-    backgroundSecondary: '#F1F5F9',
-    backgroundTertiary: '#E2E8F0',
-    surface: '#FFFFFF',
-    surfaceLight: '#F8FAFC',
-    text: '#0F172A',
-    textSecondary: '#475569',
-    textTertiary: '#94A3B8',
-    border: '#E2E8F0',
-    borderLight: '#CBD5E1',
+    background: '#EEEEE8',
+    backgroundSecondary: '#E5E5DF',
+    backgroundTertiary: '#D9D9D3',
+    surface: '#F5F5F0',
+    surfaceLight: '#ECECEA',
+    text: '#1A1A1A',
+    textSecondary: '#555555',
+    textTertiary: '#888888',
+    border: '#D0D0CA',
+    borderLight: '#C0C0BA',
     success: '#10B981',
     successLight: '#34D399',
     successBg: 'rgba(16, 185, 129, 0.1)',
@@ -107,112 +216,88 @@ const themes: Record<ThemeType, ThemeColors> = {
     purpleBg: 'rgba(139, 92, 246, 0.1)',
     chartColors: ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6'],
   },
-  blue: {
-    primary: '#0073CF',
-    primaryDark: '#005BA3',
-    primaryLight: '#339FE0',
-    accent: '#06B6D4',
-    accentLight: '#22D3EE',
-    background: '#091520',
-    backgroundSecondary: '#0F1E2E',
-    backgroundTertiary: '#17293D',
-    surface: '#153050',
-    surfaceLight: '#1E4068',
-    text: '#FFFFFF',
-    textSecondary: '#94A3B8',
-    textTertiary: '#64748B',
-    border: '#1E4068',
-    borderLight: '#2A5580',
-    success: '#10B981',
-    successLight: '#34D399',
-    successBg: 'rgba(16, 185, 129, 0.15)',
-    warning: '#F59E0B',
-    warningLight: '#FBBF24',
-    warningBg: 'rgba(245, 158, 11, 0.15)',
-    error: '#EF4444',
-    errorLight: '#F87171',
-    errorBg: 'rgba(239, 68, 68, 0.15)',
-    info: '#0073CF',
-    infoLight: '#339FE0',
-    infoBg: 'rgba(0, 115, 207, 0.15)',
-    purple: '#8B5CF6',
-    purpleLight: '#A78BFA',
-    purpleBg: 'rgba(139, 92, 246, 0.15)',
-    chartColors: ['#339FE0', '#22D3EE', '#34D399', '#FBBF24', '#A78BFA'],
-  },
-  rust: {
-    primary: '#C0C0C0',
-    primaryDark: '#A0A0A0',
-    primaryLight: '#D4D4D4',
-    accent: '#10B981',
-    accentLight: '#34D399',
-    background: '#1A1A1A',
-    backgroundSecondary: '#222222',
-    backgroundTertiary: '#2E2E2E',
-    surface: '#333333',
-    surfaceLight: '#404040',
-    text: '#F0F0F0',
-    textSecondary: '#B0B0B0',
-    textTertiary: '#808080',
-    border: '#404040',
-    borderLight: '#505050',
-    success: '#10B981',
-    successLight: '#34D399',
-    successBg: 'rgba(16, 185, 129, 0.15)',
-    warning: '#F59E0B',
-    warningLight: '#FBBF24',
-    warningBg: 'rgba(245, 158, 11, 0.15)',
-    error: '#EF4444',
-    errorLight: '#F87171',
-    errorBg: 'rgba(239, 68, 68, 0.15)',
-    info: '#3B82F6',
-    infoLight: '#60A5FA',
-    infoBg: 'rgba(59, 130, 246, 0.15)',
-    purple: '#8B5CF6',
-    purpleLight: '#A78BFA',
-    purpleBg: 'rgba(139, 92, 246, 0.15)',
-    chartColors: ['#C0C0C0', '#A0A0A0', '#10B981', '#3B82F6', '#8B5CF6'],
-  },
 };
 
+// ── Context ────────────────────────────────────────────────────
 export const [ThemeProvider, useTheme] = createContextHook(() => {
   const [themeName, setThemeName] = useState<ThemeType>('dark');
+  const [customBg, setCustomBg] = useState('#1C1F26');
+  const [customPrimary, setCustomPrimary] = useState('#0066CC');
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const loadTheme = async () => {
+    const load = async () => {
       try {
-        const savedTheme = await AsyncStorage.getItem(THEME_STORAGE_KEY);
-        if (savedTheme && (savedTheme === 'light' || savedTheme === 'dark' || savedTheme === 'blue' || savedTheme === 'rust')) {
-          setThemeName(savedTheme as ThemeType);
+        const [saved, bg, primary] = await Promise.all([
+          AsyncStorage.getItem(THEME_STORAGE_KEY),
+          AsyncStorage.getItem(CUSTOM_BG_KEY),
+          AsyncStorage.getItem(CUSTOM_PRIMARY_KEY),
+        ]);
+        if (saved === 'light' || saved === 'dark' || saved === 'custom') {
+          setThemeName(saved);
         }
-      } catch (error) {
-        console.error('Error loading theme:', error);
+        // Migrate old blue/rust to custom
+        if (saved === 'blue' || saved === 'rust') {
+          setThemeName('dark');
+          await AsyncStorage.setItem(THEME_STORAGE_KEY, 'dark');
+        }
+        if (bg) setCustomBg(bg);
+        if (primary) setCustomPrimary(primary);
+      } catch (e) {
+        console.error('Error loading theme:', e);
       } finally {
         setIsLoading(false);
       }
     };
-    loadTheme();
+    load();
   }, []);
 
   const setTheme = useCallback(async (newTheme: ThemeType) => {
     try {
       await AsyncStorage.setItem(THEME_STORAGE_KEY, newTheme);
       setThemeName(newTheme);
-      console.log('Theme changed to:', newTheme);
-    } catch (error) {
-      console.error('Error saving theme:', error);
+    } catch (e) {
+      console.error('Error saving theme:', e);
     }
   }, []);
 
-  const colors = useMemo(() => themes[themeName], [themeName]);
+  const setCustomColors = useCallback(async (bg: string, primary: string) => {
+    try {
+      setCustomBg(bg);
+      setCustomPrimary(primary);
+      await Promise.all([
+        AsyncStorage.setItem(CUSTOM_BG_KEY, bg),
+        AsyncStorage.setItem(CUSTOM_PRIMARY_KEY, primary),
+      ]);
+      // Auto-switch to custom theme
+      if (themeName !== 'custom') {
+        setThemeName('custom');
+        await AsyncStorage.setItem(THEME_STORAGE_KEY, 'custom');
+      }
+    } catch (e) {
+      console.error('Error saving custom colors:', e);
+    }
+  }, [themeName]);
+
+  const colors = useMemo<ThemeColors>(() => {
+    if (themeName === 'custom') {
+      return generateCustomTheme(customBg, customPrimary);
+    }
+    return themes[themeName] || themes.dark;
+  }, [themeName, customBg, customPrimary]);
 
   return {
     theme: themeName,
     setTheme,
     colors,
     isLoading,
+    customBg,
+    customPrimary,
+    setCustomColors,
   };
 });
 
-export const getThemeColors = (theme: ThemeType): ThemeColors => themes[theme];
+export const getThemeColors = (theme: ThemeType): ThemeColors => {
+  if (theme === 'custom') return themes.dark; // fallback for static calls
+  return themes[theme] || themes.dark;
+};
