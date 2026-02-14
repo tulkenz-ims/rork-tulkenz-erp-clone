@@ -112,6 +112,7 @@ export function useEmployees(options?: { status?: 'active' | 'inactive' | 'on_le
         .from('employees')
         .select('*')
         .eq('organization_id', organizationId)
+        .neq('is_platform_admin', true)
         .order('last_name', { ascending: true });
 
       if (options?.status) {
