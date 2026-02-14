@@ -24,7 +24,7 @@ export default function BudgetingScreen() {
         <View style={styles.cardHeader}>
           <View>
             <Text style={[styles.budgetName, { color: colors.text }]}>{budget.name}</Text>
-            <Text style={[styles.department, { color: colors.textSecondary }]}>{budget.departmentCode || 'Company-wide'}</Text>
+            <Text style={[styles.department, { color: colors.textSecondary }]}>{budget.departmentName || budget.departmentCode} · GL {budget.glAccountPrefix}xx · {budget.period}</Text>
           </View>
           <View style={[styles.statusBadge, { backgroundColor: budget.status === 'active' ? '#22C55E15' : '#6B728015' }]}>
             <Text style={[styles.statusText, { color: budget.status === 'active' ? '#22C55E' : '#6B7280' }]}>{budget.status.toUpperCase()}</Text>
