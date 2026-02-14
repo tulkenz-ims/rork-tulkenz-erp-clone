@@ -34,11 +34,11 @@ export default function AlertSummaryWidget({ onPress, compact = false }: AlertSu
   const getSeverityConfig = (severity: LowStockAlertSeverity) => {
     switch (severity) {
       case 'critical':
-        return { color: '#EF4444', icon: AlertTriangle, label: 'Critical' };
+        return { color: colors.error, icon: AlertTriangle, label: 'Critical' };
       case 'warning':
-        return { color: '#F59E0B', icon: AlertCircle, label: 'Warning' };
+        return { color: colors.warning, icon: AlertCircle, label: 'Warning' };
       case 'info':
-        return { color: '#3B82F6', icon: Info, label: 'Low' };
+        return { color: colors.info, icon: Info, label: 'Low' };
     }
   };
 
@@ -53,12 +53,12 @@ export default function AlertSummaryWidget({ onPress, compact = false }: AlertSu
         onPress={handlePress}
       >
         <View style={styles.headerRow}>
-          <View style={[styles.iconContainer, { backgroundColor: '#10B98120' }]}>
-            <Package size={20} color="#10B981" />
+          <View style={[styles.iconContainer, { backgroundColor: colors.successBg }]}>
+            <Package size={20} color=colors.success />
           </View>
           <View style={styles.headerText}>
             <Text style={[styles.title, { color: colors.text }]}>Stock Alerts</Text>
-            <Text style={[styles.subtitle, { color: '#10B981' }]}>All Clear</Text>
+            <Text style={[styles.subtitle, { color: colors.success }]}>All Clear</Text>
           </View>
           <ChevronRight size={20} color={colors.textTertiary} />
         </View>
@@ -75,8 +75,8 @@ export default function AlertSummaryWidget({ onPress, compact = false }: AlertSu
         style={({ pressed }) => [
           styles.compactContainer,
           { 
-            backgroundColor: alertData.hasCriticalAlerts ? '#EF444410' : '#F59E0B10',
-            borderColor: alertData.hasCriticalAlerts ? '#EF444440' : '#F59E0B40',
+            backgroundColor: alertData.hasCriticalAlerts ? colors.errorBg : colors.warningBg,
+            borderColor: alertData.hasCriticalAlerts ? `${colors.error}40` : `${colors.warning}40`,
           },
           pressed && styles.pressed,
         ]}
@@ -84,17 +84,17 @@ export default function AlertSummaryWidget({ onPress, compact = false }: AlertSu
       >
         <AlertTriangle 
           size={16} 
-          color={alertData.hasCriticalAlerts ? '#EF4444' : '#F59E0B'} 
+          color={alertData.hasCriticalAlerts ? colors.error : colors.warning} 
         />
         <Text style={[
           styles.compactText, 
-          { color: alertData.hasCriticalAlerts ? '#EF4444' : '#F59E0B' }
+          { color: alertData.hasCriticalAlerts ? colors.error : colors.warning }
         ]}>
           {alertData.totalAlerts} Stock Alert{alertData.totalAlerts !== 1 ? 's' : ''}
         </Text>
         <ChevronRight 
           size={16} 
-          color={alertData.hasCriticalAlerts ? '#EF4444' : '#F59E0B'} 
+          color={alertData.hasCriticalAlerts ? colors.error : colors.warning} 
         />
       </Pressable>
     );
@@ -110,8 +110,8 @@ export default function AlertSummaryWidget({ onPress, compact = false }: AlertSu
       onPress={handlePress}
     >
       <View style={styles.headerRow}>
-        <View style={[styles.iconContainer, { backgroundColor: '#EF444420' }]}>
-          <AlertTriangle size={20} color="#EF4444" />
+        <View style={[styles.iconContainer, { backgroundColor: colors.errorBg }]}>
+          <AlertTriangle size={20} color=colors.error />
         </View>
         <View style={styles.headerText}>
           <Text style={[styles.title, { color: colors.text }]}>Stock Alerts</Text>
@@ -124,30 +124,30 @@ export default function AlertSummaryWidget({ onPress, compact = false }: AlertSu
 
       <View style={styles.severityRow}>
         {alertData.criticalCount > 0 && (
-          <View style={[styles.severityBadge, { backgroundColor: '#EF444420' }]}>
-            <AlertTriangle size={12} color="#EF4444" />
-            <Text style={[styles.severityCount, { color: '#EF4444' }]}>
+          <View style={[styles.severityBadge, { backgroundColor: colors.errorBg }]}>
+            <AlertTriangle size={12} color=colors.error />
+            <Text style={[styles.severityCount, { color: colors.error }]}>
               {alertData.criticalCount}
             </Text>
-            <Text style={[styles.severityLabel, { color: '#EF4444' }]}>Critical</Text>
+            <Text style={[styles.severityLabel, { color: colors.error }]}>Critical</Text>
           </View>
         )}
         {alertData.warningCount > 0 && (
-          <View style={[styles.severityBadge, { backgroundColor: '#F59E0B20' }]}>
-            <AlertCircle size={12} color="#F59E0B" />
-            <Text style={[styles.severityCount, { color: '#F59E0B' }]}>
+          <View style={[styles.severityBadge, { backgroundColor: colors.warningBg }]}>
+            <AlertCircle size={12} color=colors.warning />
+            <Text style={[styles.severityCount, { color: colors.warning }]}>
               {alertData.warningCount}
             </Text>
-            <Text style={[styles.severityLabel, { color: '#F59E0B' }]}>Warning</Text>
+            <Text style={[styles.severityLabel, { color: colors.warning }]}>Warning</Text>
           </View>
         )}
         {alertData.infoCount > 0 && (
-          <View style={[styles.severityBadge, { backgroundColor: '#3B82F620' }]}>
-            <Info size={12} color="#3B82F6" />
-            <Text style={[styles.severityCount, { color: '#3B82F6' }]}>
+          <View style={[styles.severityBadge, { backgroundColor: colors.infoBg }]}>
+            <Info size={12} color=colors.info />
+            <Text style={[styles.severityCount, { color: colors.info }]}>
               {alertData.infoCount}
             </Text>
-            <Text style={[styles.severityLabel, { color: '#3B82F6' }]}>Low</Text>
+            <Text style={[styles.severityLabel, { color: colors.info }]}>Low</Text>
           </View>
         )}
       </View>
