@@ -1,1044 +1,320 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  RefreshControl,
-  ActivityIndicator,
-  Pressable,
-  Dimensions,
-  Alert,
-  Modal,
-} from 'react-native';
-import { useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import {
-  Package,
-  Wrench,
-  Users,
-  RefreshCw,
-  Clock,
-  CheckCircle,
-  ChevronRight,
-  Flame,
-  Siren,
-  Tornado,
-  ShieldAlert,
-  X,
-  ClipboardList,
-  MapPin,
-  ChevronDown,
-  ShoppingCart,
-} from 'lucide-react-native';
-import { useQueryClient, useQuery } from '@tanstack/react-query';
-import { useUser } from '@/contexts/UserContext';
-import { useTheme } from '@/contexts/ThemeContext';
-import EmployeeHome from '@/components/EmployeeHome';
-import LowStockAlerts from '@/components/LowStockAlerts';
-import UserProfileMenu from '@/components/UserProfileMenu';
-import LineStatusWidget from '@/components/LineStatusWidget';
-import ScoreCardSection from '@/components/ScoreCardSection';
-import { useMaterialsQuery } from '@/hooks/useSupabaseMaterials';
-import { useWorkOrdersQuery } from '@/hooks/useSupabaseWorkOrders';
-import { useEmployees } from '@/hooks/useSupabaseEmployees';
-import { useFacilities } from '@/hooks/useSupabaseEmployees';
-import { useAllAggregatedApprovals } from '@/hooks/useAggregatedApprovals';
-import { usePurchaseRequestsQuery, usePurchaseRequisitionsQuery, useProcurementPurchaseOrdersQuery } from '@/hooks/useSupabaseProcurement';
-import { useTaskFeedPostsQuery } from '@/hooks/useTaskFeedTemplates';
-import { supabase } from '@/lib/supabase';
-import * as Haptics from 'expo-haptics';
+export type InvoiceStatus = 'draft' | 'pending' | 'approved' | 'paid' | 'overdue' | 'cancelled';
+export type AccountType = 'asset' | 'liability' | 'equity' | 'revenue' | 'expense';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-
-export default function ExecutiveDashboard() {
-  const { company, loading: authLoading, isAuthenticated, isEmployee } = useUser();
-  const router = useRouter();
-  const queryClient = useQueryClient();
-  const { colors: Colors } = useTheme();
-  const styles = useMemo(() => createStyles(Colors), [Colors]);
-
-  const { data: materials = [], isLoading: materialsLoading } = useMaterialsQuery();
-  const { data: workOrders = [], isLoading: workOrdersLoading } = useWorkOrdersQuery();
-  const { data: employees = [], isLoading: employeesLoading } = useEmployees();
-  const { data: facilities = [] } = useFacilities();
-  const { purchaseApprovals, timeApprovals, permitApprovals, isLoading: approvalsLoading } = useAllAggregatedApprovals();
-  const { data: purchaseRequests = [] } = usePurchaseRequestsQuery();
-  const { data: purchaseRequisitions = [] } = usePurchaseRequisitionsQuery();
-  const { data: purchaseOrders = [] } = useProcurementPurchaseOrdersQuery();
-  const { data: pendingPosts = [] } = useTaskFeedPostsQuery({ status: 'pending' });
-  const { data: inProgressPosts = [] } = useTaskFeedPostsQuery({ status: 'in_progress' });
-  const taskFeedPendingCount = pendingPosts.length + inProgressPosts.length;
-
-  // Real-time checked-in count: employees with active time entries (no clock_out)
-  const { data: checkedInCount = 0 } = useQuery({
-    queryKey: ['dashboard-checked-in-count', company?.id],
-    queryFn: async () => {
-      if (!company?.id) return 0;
-      const { count, error } = await supabase
-        .from('time_entries')
-        .select('*', { count: 'exact', head: true })
-        .eq('organization_id', company.id)
-        .is('clock_out', null);
-      if (error) {
-        console.error('[Dashboard] Error fetching checked-in count:', error);
-        return 0;
-      }
-      return count || 0;
-    },
-    enabled: !!company?.id,
-    refetchInterval: 30000,
-    staleTime: 15000,
-  });
-
-  const erpLoading = materialsLoading || workOrdersLoading || employeesLoading || approvalsLoading;
-
-  const approvals = useMemo(() => {
-    return [
-      ...purchaseApprovals.map(a => ({
-        ...a,
-        type: 'purchase' as const,
-        status: a.status === 'pending' || a.status === 'in_progress' ? 'pending' as const : a.status as 'approved' | 'rejected',
-        amount: a.amount || 0,
-      })),
-      ...timeApprovals.map(a => ({
-        ...a,
-        type: a.type as 'time_off' | 'overtime' | 'schedule_change',
-        status: a.status === 'pending' || a.status === 'in_progress' ? 'pending' as const : a.status as 'approved' | 'rejected',
-      })),
-      ...permitApprovals.map(a => ({
-        ...a,
-        type: 'permit' as const,
-        status: a.status === 'pending' || a.status === 'in_progress' ? 'pending' as const : a.status as 'approved' | 'rejected',
-      })),
-    ];
-  }, [purchaseApprovals, timeApprovals, permitApprovals]);
-
-  const stats = useMemo(() => {
-    const totalMaterials = materials.length;
-    const lowStockCount = materials.filter(m => m.on_hand <= m.min_level && m.on_hand > 0).length;
-    const outOfStockCount = materials.filter(m => m.on_hand <= 0).length;
-    
-    const openWorkOrders = workOrders.filter(w => w.status === 'open').length;
-    const inProgressWorkOrders = workOrders.filter(w => w.status === 'in_progress').length;
-    const completedWorkOrders = workOrders.filter(w => w.status === 'completed').length;
-    const overdueWorkOrders = workOrders.filter(w => {
-      if (w.status === 'completed' || w.status === 'cancelled') return false;
-      if (!w.due_date) return false;
-      return new Date(w.due_date) < new Date();
-    }).length;
-    
-    const totalEmployees = employees.length;
-    const activeEmployees = employees.filter(e => e.status === 'active').length;
-    
-    return {
-      totalMaterials,
-      lowStockCount,
-      outOfStockCount,
-      openWorkOrders,
-      inProgressWorkOrders,
-      completedWorkOrders,
-      overdueWorkOrders,
-      totalEmployees,
-      activeEmployees,
-    };
-  }, [materials, workOrders, employees]);
-
-  const [refreshing, setRefreshing] = useState(false);
-  const [currentTime, setCurrentTime] = useState(new Date());
-  const [showLowStockAlerts, setShowLowStockAlerts] = useState(false);
-  const [showEmergencyModal, setShowEmergencyModal] = useState(false);
-  const [showFacilityPicker, setShowFacilityPicker] = useState(false);
-  const [selectedFacility, setSelectedFacility] = useState<string>('all');
-
-  const handleMaterialPress = useCallback((materialId: string) => {
-    console.log('[Dashboard] handleMaterialPress called with materialId:', materialId);
-    Haptics.selectionAsync();
-    setShowLowStockAlerts(false);
-    router.push({
-      pathname: '/inventory/itemrecords',
-      params: { materialId, fromAlert: 'true' },
-    });
-  }, [router]);
-
-  const materialsList = useMemo(() => {
-    return materials.map(m => ({
-      ...m,
-      facility_name: m.facility_name || 'Unassigned',
-      vendor: m.vendor || 'Unknown Vendor',
-    }));
-  }, [materials]);
-
-  const handleCreatePurchaseRequest = useCallback((materialId: string) => {
-    console.log('[Dashboard] handleCreatePurchaseRequest called with materialId:', materialId);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    
-    const material = materialsList.find(m => m.id === materialId);
-    if (!material) {
-      console.warn('[Dashboard] Material not found:', materialId);
-      Alert.alert('Error', 'Material not found');
-      return;
-    }
-
-    const suggestedQty = Math.max(
-      material.max_level - material.on_hand,
-      material.min_level * 2
-    );
-    const vendorName = material.vendor || 'Unknown Vendor';
-
-    console.log('[Dashboard] Navigating to procurement requisitions with:', {
-      materialId,
-      materialName: material.name,
-      materialSku: material.sku,
-      suggestedQty,
-      vendor: vendorName,
-      unitPrice: material.unit_price,
-    });
-
-    setShowLowStockAlerts(false);
-    router.push({
-      pathname: '/procurement/requisitions',
-      params: {
-        createPR: 'true',
-        materialId,
-        materialName: material.name,
-        materialSku: material.sku,
-        suggestedQty: suggestedQty.toString(),
-        vendor: vendorName,
-        unitPrice: material.unit_price.toString(),
-      },
-    });
-  }, [materialsList, router]);
-
-  useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(new Date()), 60000);
-    return () => clearInterval(timer);
-  }, []);
-
-  const inventoryValue = useMemo(() => {
-    return materialsList.reduce((sum, m) => sum + (m.on_hand * m.unit_price), 0);
-  }, [materialsList]);
-
-
-  const performanceMetrics = useMemo(() => {
-    const stockHealth = stats.totalMaterials > 0 
-      ? Math.round((1 - (stats.lowStockCount + stats.outOfStockCount) / stats.totalMaterials) * 100)
-      : 100;
-    
-    const woCompletion = workOrders.length > 0 
-      ? Math.round((stats.completedWorkOrders / workOrders.length) * 100)
-      : 0;
-    
-    const laborUtilization = stats.activeEmployees > 0 
-      ? Math.round((checkedInCount / stats.activeEmployees) * 100)
-      : 0;
-
-    return { stockHealth, woCompletion, laborUtilization };
-  }, [stats, workOrders, checkedInCount]);
-
-  const facilityBreakdown = useMemo(() => {
-    const facilityMap: Record<string, { value: number; items: number; lowStock: number }> = {};
-    
-    materialsList.forEach(m => {
-      const facility = m.facility_name || 'Unassigned';
-      if (!facilityMap[facility]) {
-        facilityMap[facility] = { value: 0, items: 0, lowStock: 0 };
-      }
-      facilityMap[facility].value += m.on_hand * m.unit_price;
-      facilityMap[facility].items++;
-      if (m.on_hand <= m.min_level) facilityMap[facility].lowStock++;
-    });
-    
-    return Object.entries(facilityMap)
-      .map(([name, data]) => ({ name, ...data }))
-      .sort((a, b) => b.value - a.value);
-  }, [materialsList]);
-
-  const facilityNames = useMemo(() => {
-    const names = facilities.map(f => f.name).sort();
-    return ['All Facilities', ...names];
-  }, [facilities]);
-
-  useEffect(() => {
-    console.log('Auth state:', { authLoading, isAuthenticated });
-    if (!authLoading && !isAuthenticated) {
-      console.log('Not authenticated, redirecting to login');
-      router.replace('/login');
-    }
-  }, [authLoading, isAuthenticated, router]);
-
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    try {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['materials'] }),
-        queryClient.invalidateQueries({ queryKey: ['work_orders'] }),
-        queryClient.invalidateQueries({ queryKey: ['employees'] }),
-        queryClient.invalidateQueries({ queryKey: ['aggregated_purchase_approvals'] }),
-        queryClient.invalidateQueries({ queryKey: ['aggregated_time_approvals'] }),
-        queryClient.invalidateQueries({ queryKey: ['aggregated_permit_approvals'] }),
-        queryClient.invalidateQueries({ queryKey: ['dashboard-checked-in-count'] }),
-        queryClient.invalidateQueries({ queryKey: ['facilities'] }),
-      ]);
-      console.log('[Dashboard] Refresh completed');
-    } catch (error) {
-      console.error('[Dashboard] Refresh error:', error);
-    } finally {
-      setRefreshing(false);
-    }
-  }, [queryClient]);
-
-  if (authLoading) {
-    return (
-      <SafeAreaView style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={styles.loadingText}>Loading...</Text>
-      </SafeAreaView>
-    );
-  }
-
-  if (!isAuthenticated) {
-    return null;
-  }
-
-  if (isEmployee) {
-    return <EmployeeHome />;
-  }
-
-  if (erpLoading) {
-    return (
-      <SafeAreaView style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={styles.loadingText}>Loading dashboard...</Text>
-      </SafeAreaView>
-    );
-  }
-
-  return (
-    <View style={styles.container}>
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={Colors.primary}
-            colors={[Colors.primary]}
-          />
-        }
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.header}>
-          <View style={styles.headerTop}>
-            <View style={styles.headerLeft}>
-              <Text style={styles.greeting}>Executive Overview</Text>
-              <Text style={styles.companyName}>{company?.name || 'TulKenz IMS'}</Text>
-            </View>
-            <View style={styles.headerActions}>
-              <Pressable
-                style={({ pressed }) => [styles.facilityButton, pressed && styles.pressed]}
-                onPress={() => setShowFacilityPicker(true)}
-              >
-                <MapPin size={16} color="#3B82F6" />
-                <Text style={styles.facilityButtonText} numberOfLines={1}>
-                  {selectedFacility === 'all' ? 'All Facilities' : selectedFacility.length > 12 ? selectedFacility.slice(0, 11) + '…' : selectedFacility}
-                </Text>
-                <ChevronDown size={12} color={Colors.textSecondary} />
-              </Pressable>
-              <Pressable
-                style={({ pressed }) => [styles.refreshButton, pressed && styles.pressed]}
-                onPress={onRefresh}
-              >
-                <RefreshCw size={20} color={Colors.text} />
-              </Pressable>
-              <UserProfileMenu />
-            </View>
-          </View>
-          <View style={styles.dateRow}>
-            <Clock size={14} color={Colors.textSecondary} />
-            <Text style={styles.dateText}>
-              {currentTime.toLocaleDateString('en-US', { 
-                weekday: 'long', 
-                year: 'numeric', 
-                month: 'long', 
-                day: 'numeric' 
-              })}
-            </Text>
-          </View>
-        </View>
-
-        {/* Quick Actions */}
-        <Text style={styles.quickActionTitle}>Quick Actions</Text>
-        <View style={styles.quickActionBar}>
-          <Pressable
-            style={({ pressed }) => [styles.quickActionBtn, pressed && { opacity: 0.7 }]}
-            onPress={() => router.push('/taskfeed')}
-          >
-            <View style={[styles.quickActionIcon, { backgroundColor: '#F59E0B20' }]}>
-              <ClipboardList size={18} color="#F59E0B" />
-            </View>
-            <Text style={[styles.quickActionStat, { color: taskFeedPendingCount > 0 ? '#F59E0B' : '#10B981' }]}>
-              {taskFeedPendingCount}
-            </Text>
-            <Text style={styles.quickActionLabel}>Task Feed</Text>
-            <Text style={styles.quickActionDesc}>Pending Items</Text>
-          </Pressable>
-
-          <Pressable
-            style={({ pressed }) => [styles.quickActionBtn, pressed && { opacity: 0.7 }]}
-            onPress={() => router.push('/timeclock')}
-          >
-            <View style={[styles.quickActionIcon, { backgroundColor: '#10B98120' }]}>
-              <Users size={18} color="#10B981" />
-            </View>
-            <Text style={[styles.quickActionStat, { color: checkedInCount > 0 ? '#10B981' : Colors.textTertiary }]}>
-              {checkedInCount}/{stats.activeEmployees}
-            </Text>
-            <Text style={styles.quickActionLabel}>Facility Headcount</Text>
-            <Text style={styles.quickActionDesc}>Checked In Now</Text>
-          </Pressable>
-
-          <Pressable
-            style={({ pressed }) => [styles.quickActionBtn, pressed && { opacity: 0.7 }]}
-            onPress={() => {
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-              setShowEmergencyModal(true);
-            }}
-          >
-            <View style={[styles.quickActionIcon, { backgroundColor: '#DC262620' }]}>
-              <Siren size={18} color="#DC2626" />
-            </View>
-            <Text style={[styles.quickActionStat, { color: '#DC2626' }]}>SOS</Text>
-            <Text style={styles.quickActionLabel}>Emergency</Text>
-            <Text style={styles.quickActionDesc}>Initiate Protocol</Text>
-          </Pressable>
-        </View>
-
-        <LineStatusWidget />
-
-        {/* ── CMMS Performance Scorecard ── */}
-        <ScoreCardSection
-          title="CMMS Performance"
-          subtitle="30-day"
-          icon={<Wrench size={16} color={Colors.warning} />}
-          gauges={[
-            {
-              label: 'WO Completion',
-              value: performanceMetrics.woCompletion,
-              displayValue: `${performanceMetrics.woCompletion}%`,
-            },
-            {
-              label: 'On-Time Rate',
-              value: workOrders.length > 0 
-                ? Math.round(((stats.completedWorkOrders - stats.overdueWorkOrders) / Math.max(stats.completedWorkOrders, 1)) * 100)
-                : 0,
-              displayValue: `${workOrders.length > 0 
-                ? Math.round(((stats.completedWorkOrders - stats.overdueWorkOrders) / Math.max(stats.completedWorkOrders, 1)) * 100)
-                : 0}%`,
-            },
-            {
-              label: 'Overdue',
-              value: Math.max(0, 100 - (stats.overdueWorkOrders / Math.max(stats.openWorkOrders + stats.inProgressWorkOrders, 1)) * 100),
-              displayValue: `${stats.overdueWorkOrders}`,
-              color: stats.overdueWorkOrders > 0 ? '#EF4444' : '#10B981',
-            },
-            {
-              label: 'Backlog',
-              value: Math.max(0, 100 - (stats.openWorkOrders / Math.max(workOrders.length, 1)) * 100),
-              displayValue: `${stats.openWorkOrders}`,
-              color: stats.openWorkOrders > 5 ? '#F59E0B' : '#10B981',
-            },
-            {
-              label: 'In Progress',
-              value: stats.inProgressWorkOrders > 0 ? 60 : 0,
-              displayValue: `${stats.inProgressWorkOrders}`,
-              color: '#3B82F6',
-            },
-            {
-              label: 'Labor Active',
-              value: performanceMetrics.laborUtilization,
-              displayValue: `${performanceMetrics.laborUtilization}%`,
-            },
-          ]}
-        />
-
-        {/* ── Inventory Scorecard ── */}
-        <ScoreCardSection
-          title="Inventory Scorecard"
-          icon={<Package size={16} color={Colors.info} />}
-          gauges={[
-            {
-              label: 'Stock Health',
-              value: performanceMetrics.stockHealth,
-              displayValue: `${performanceMetrics.stockHealth}%`,
-            },
-            {
-              label: 'Fill Rate',
-              value: stats.totalMaterials > 0
-                ? Math.round(((stats.totalMaterials - stats.outOfStockCount) / stats.totalMaterials) * 100)
-                : 100,
-              displayValue: `${stats.totalMaterials > 0
-                ? Math.round(((stats.totalMaterials - stats.outOfStockCount) / stats.totalMaterials) * 100)
-                : 100}%`,
-            },
-            {
-              label: 'Low Stock',
-              value: Math.max(0, 100 - (stats.lowStockCount / Math.max(stats.totalMaterials, 1)) * 100),
-              displayValue: `${stats.lowStockCount}`,
-              color: stats.lowStockCount > 0 ? '#F59E0B' : '#10B981',
-            },
-            {
-              label: 'Out of Stock',
-              value: Math.max(0, 100 - (stats.outOfStockCount / Math.max(stats.totalMaterials, 1)) * 100),
-              displayValue: `${stats.outOfStockCount}`,
-              color: stats.outOfStockCount > 0 ? '#EF4444' : '#10B981',
-            },
-            {
-              label: 'Total SKUs',
-              value: Math.min(100, stats.totalMaterials * 10),
-              displayValue: `${stats.totalMaterials}`,
-              color: '#3B82F6',
-            },
-            {
-              label: 'Value',
-              value: 75,
-              displayValue: `$${(inventoryValue / 1000).toFixed(0)}K`,
-              color: '#10B981',
-            },
-          ]}
-        />
-
-        {/* ── Procurement Scorecard ── */}
-        <ScoreCardSection
-          title="Procurement Scorecard"
-          subtitle="This month"
-          icon={<ShoppingCart size={16} color={Colors.success} />}
-          gauges={[
-            {
-              label: 'Pending Requests',
-              value: Math.max(0, 100 - (purchaseRequests.filter(r => r.status === 'pending' || r.status === 'submitted').length * 20)),
-              displayValue: `${purchaseRequests.filter(r => r.status === 'pending' || r.status === 'submitted').length}`,
-              color: purchaseRequests.filter(r => r.status === 'pending' || r.status === 'submitted').length > 0 ? '#F59E0B' : '#10B981',
-            },
-            {
-              label: 'Pending Approvals',
-              value: Math.max(0, 100 - (purchaseOrders.filter(po => po.status === 'pending_approval').length * 25)),
-              displayValue: `${purchaseOrders.filter(po => po.status === 'pending_approval').length}`,
-              color: purchaseOrders.filter(po => po.status === 'pending_approval').length > 0 ? '#F59E0B' : '#10B981',
-            },
-            {
-              label: 'Pending Reqs',
-              value: Math.max(0, 100 - (purchaseRequisitions.filter(r => r.status === 'pending' || r.status === 'pending_approval').length * 20)),
-              displayValue: `${purchaseRequisitions.filter(r => r.status === 'pending' || r.status === 'pending_approval').length}`,
-              color: purchaseRequisitions.filter(r => r.status === 'pending' || r.status === 'pending_approval').length > 0 ? '#F59E0B' : '#10B981',
-            },
-            {
-              label: 'Pending Receipt',
-              value: Math.max(0, 100 - (purchaseOrders.filter(po => po.status === 'approved' || po.status === 'ordered' || po.status === 'shipped').length * 15)),
-              displayValue: `${purchaseOrders.filter(po => po.status === 'approved' || po.status === 'ordered' || po.status === 'shipped').length}`,
-              color: purchaseOrders.filter(po => po.status === 'approved' || po.status === 'ordered' || po.status === 'shipped').length > 0 ? '#3B82F6' : '#10B981',
-            },
-            {
-              label: 'Active POs',
-              value: purchaseOrders.length > 0 ? 65 : 0,
-              displayValue: `${purchaseOrders.filter(po => po.status !== 'cancelled' && po.status !== 'closed').length}`,
-              color: '#3B82F6',
-            },
-            {
-              label: 'Avg Days',
-              value: (() => {
-                const completed = purchaseOrders.filter(po => po.status === 'received' && po.created_at);
-                if (completed.length === 0) return 100;
-                const avgDays = completed.reduce((sum, po) => {
-                  const created = new Date(po.created_at);
-                  const updated = new Date(po.updated_at || po.created_at);
-                  return sum + Math.max(1, Math.round((updated.getTime() - created.getTime()) / (1000 * 60 * 60 * 24)));
-                }, 0) / completed.length;
-                return Math.max(0, 100 - (avgDays * 5));
-              })(),
-              displayValue: (() => {
-                const completed = purchaseOrders.filter(po => po.status === 'received' && po.created_at);
-                if (completed.length === 0) return 'N/A';
-                const avgDays = completed.reduce((sum, po) => {
-                  const created = new Date(po.created_at);
-                  const updated = new Date(po.updated_at || po.created_at);
-                  return sum + Math.max(1, Math.round((updated.getTime() - created.getTime()) / (1000 * 60 * 60 * 24)));
-                }, 0) / completed.length;
-                return `${Math.round(avgDays)}d`;
-              })(),
-              color: '#8B5CF6',
-            },
-          ]}
-        />
-
-        <View style={styles.bottomPadding} />
-      </ScrollView>
-
-      <Modal
-        visible={showEmergencyModal}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setShowEmergencyModal(false)}
-      >
-        <View style={styles.emergencyModalOverlay}>
-          <View style={styles.emergencyModalContent}>
-            <View style={styles.emergencyModalHeader}>
-              <Text style={styles.emergencyModalTitle}>Initiate Emergency or Drill</Text>
-              <Pressable onPress={() => setShowEmergencyModal(false)} hitSlop={12}>
-                <X size={22} color={Colors.text} />
-              </Pressable>
-            </View>
-            <Text style={styles.emergencyModalDesc}>
-              Select type — roll call starts immediately. Details can be added after.
-            </Text>
-
-            <Text style={styles.emergencyModalSectionLabel}>LIVE EMERGENCY</Text>
-            {[
-              { type: 'fire', label: 'Fire', Icon: Flame, color: '#EF4444' },
-              { type: 'tornado', label: 'Tornado', Icon: Tornado, color: '#7C3AED' },
-              { type: 'active_shooter', label: 'Active Shooter', Icon: ShieldAlert, color: '#DC2626' },
-            ].map(({ type, label, Icon, color }) => (
-              <Pressable
-                key={type}
-                style={({ pressed }) => [
-                  styles.emergencyModalRow,
-                  { borderLeftColor: color, opacity: pressed ? 0.8 : 1 },
-                ]}
-                onPress={() => {
-                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-                  setShowEmergencyModal(false);
-                  router.push({
-                    pathname: '/headcount/emergencyprotocol',
-                    params: { type, drill: 'false' },
-                  });
-                }}
-              >
-                <View style={[styles.emergencyModalIconBox, { backgroundColor: color + '18' }]}>
-                  <Icon size={22} color={color} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.emergencyModalRowTitle}>{label} Emergency</Text>
-                  <Text style={styles.emergencyModalRowSub}>Live — starts roll call now</Text>
-                </View>
-                <ChevronRight size={18} color={Colors.textTertiary} />
-              </Pressable>
-            ))}
-
-            <Text style={[styles.emergencyModalSectionLabel, { marginTop: 16 }]}>DRILL MODE</Text>
-            {[
-              { type: 'fire', label: 'Fire Drill', Icon: Flame, color: '#F97316' },
-              { type: 'tornado', label: 'Tornado Drill', Icon: Tornado, color: '#7C3AED' },
-              { type: 'active_shooter', label: 'Active Shooter Drill', Icon: ShieldAlert, color: '#6B7280' },
-            ].map(({ type, label, Icon, color }) => (
-              <Pressable
-                key={`drill-${type}`}
-                style={({ pressed }) => [
-                  styles.emergencyModalRow,
-                  { borderLeftColor: '#3B82F6', opacity: pressed ? 0.8 : 1 },
-                ]}
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                  setShowEmergencyModal(false);
-                  router.push({
-                    pathname: '/headcount/emergencyprotocol',
-                    params: { type, drill: 'true' },
-                  });
-                }}
-              >
-                <View style={[styles.emergencyModalIconBox, { backgroundColor: '#3B82F618' }]}>
-                  <Icon size={22} color="#3B82F6" />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.emergencyModalRowTitle}>{label}</Text>
-                  <Text style={styles.emergencyModalRowSub}>Training exercise — starts roll call</Text>
-                </View>
-                <ChevronRight size={18} color={Colors.textTertiary} />
-              </Pressable>
-            ))}
-
-            <Pressable
-              style={({ pressed }) => [
-                styles.emergencyModalMoreBtn,
-                pressed && { opacity: 0.7 },
-              ]}
-              onPress={() => {
-                setShowEmergencyModal(false);
-                router.push('/safety/emergencyinitiation' as any);
-              }}
-            >
-              <Text style={styles.emergencyModalMoreText}>More Emergency Types & Options →</Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Facility Picker Modal */}
-      <Modal
-        visible={showFacilityPicker}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowFacilityPicker(false)}
-      >
-        <Pressable 
-          style={styles.facilityPickerOverlay} 
-          onPress={() => setShowFacilityPicker(false)}
-        >
-          <View style={styles.facilityPickerContent}>
-            <View style={styles.facilityPickerHeader}>
-              <MapPin size={16} color={Colors.primary} />
-              <Text style={styles.facilityPickerTitle}>Select Facility</Text>
-            </View>
-            {facilityNames.map((name) => {
-              const key = name === 'All Facilities' ? 'all' : name;
-              const isSelected = selectedFacility === key;
-              return (
-                <Pressable
-                  key={name}
-                  style={[styles.facilityPickerItem, isSelected && styles.facilityPickerItemActive]}
-                  onPress={() => {
-                    setSelectedFacility(key);
-                    setShowFacilityPicker(false);
-                  }}
-                >
-                  <Text style={[
-                    styles.facilityPickerItemText,
-                    isSelected && { color: Colors.primary, fontWeight: '600' }
-                  ]}>
-                    {name}
-                  </Text>
-                  {isSelected && <CheckCircle size={16} color={Colors.primary} />}
-                </Pressable>
-              );
-            })}
-          </View>
-        </Pressable>
-      </Modal>
-
-      <LowStockAlerts
-        visible={showLowStockAlerts}
-        onClose={() => setShowLowStockAlerts(false)}
-        onMaterialPress={handleMaterialPress}
-        onCreatePurchaseRequest={handleCreatePurchaseRequest}
-      />
-    </View>
-  );
+export interface APInvoice {
+  id: string;
+  invoiceNumber: string;
+  vendorId: string;
+  vendorName: string;
+  amount: number;
+  dueDate: string;
+  status: InvoiceStatus;
+  description: string;
+  createdAt: string;
+  paidAt?: string;
+  departmentCode?: string;
 }
 
-const createStyles = (Colors: any) => StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
+export interface ARInvoice {
+  id: string;
+  invoiceNumber: string;
+  customerId: string;
+  customerName: string;
+  amount: number;
+  dueDate: string;
+  status: InvoiceStatus;
+  description: string;
+  createdAt: string;
+  paidAt?: string;
+  departmentCode?: string;
+}
+
+export interface GLAccount {
+  id: string;
+  accountNumber: string;
+  name: string;
+  type: AccountType;
+  balance: number;
+  parentId?: string;
+  isActive: boolean;
+  isHeader?: boolean;
+  description?: string;
+  departmentCode?: string;
+}
+
+export interface Budget {
+  id: string;
+  name: string;
+  departmentCode: string;
+  departmentName?: string;
+  glAccountPrefix?: string;  // e.g. '61' maps to 6100-6199
+  fiscalYear: number;
+  period: 'monthly' | 'quarterly' | 'annual';
+  amount: number;
+  spent: number;
+  remaining: number;
+  status: 'active' | 'closed' | 'draft';
+}
+
+export interface JournalEntry {
+  id: string;
+  entryNumber: string;
+  date: string;
+  description: string;
+  debitAccountId: string;
+  creditAccountId: string;
+  amount: number;
+  status: 'draft' | 'posted' | 'reversed';
+  createdBy: string;
+  createdAt: string;
+}
+
+export interface RecurringJournal {
+  id: string;
+  name: string;
+  frequency: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly';
+  nextRunDate: string;
+  template: Omit<JournalEntry, 'id' | 'entryNumber' | 'date' | 'status' | 'createdAt'>;
+  isActive: boolean;
+}
+
+export interface Customer {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  address?: string;
+  balance: number;
+  creditLimit: number;
+  isActive: boolean;
+}
+
+export const MOCK_AP_INVOICES: APInvoice[] = [
+  {
+    id: 'ap-1',
+    invoiceNumber: 'AP-2024-001',
+    vendorId: 'vendor-1',
+    vendorName: 'Acme Supplies Co',
+    amount: 15000,
+    dueDate: '2024-02-15',
+    status: 'pending',
+    description: 'Monthly supplies',
+    createdAt: '2024-01-15T10:00:00Z',
+    departmentCode: 'MAINT',
   },
-  loadingContainer: {
-    flex: 1,
-    backgroundColor: Colors.background,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 16,
+  {
+    id: 'ap-2',
+    invoiceNumber: 'AP-2024-002',
+    vendorId: 'vendor-2',
+    vendorName: 'Industrial Parts Inc',
+    amount: 8500,
+    dueDate: '2024-02-10',
+    status: 'overdue',
+    description: 'Equipment parts',
+    createdAt: '2024-01-10T09:00:00Z',
+    departmentCode: 'PROD',
   },
-  loadingText: {
-    color: Colors.textSecondary,
-    fontSize: 16,
+  {
+    id: 'ap-3',
+    invoiceNumber: 'AP-2024-003',
+    vendorId: 'vendor-3',
+    vendorName: 'Tech Solutions LLC',
+    amount: 25000,
+    dueDate: '2024-03-01',
+    status: 'approved',
+    description: 'Software licenses',
+    createdAt: '2024-01-20T14:00:00Z',
+    departmentCode: 'IT',
   },
-  scrollView: {
-    flex: 1,
+];
+
+export const MOCK_AR_INVOICES: ARInvoice[] = [
+  {
+    id: 'ar-1',
+    invoiceNumber: 'AR-2024-001',
+    customerId: 'cust-1',
+    customerName: 'Global Manufacturing',
+    amount: 45000,
+    dueDate: '2024-02-20',
+    status: 'pending',
+    description: 'Product order #1234',
+    createdAt: '2024-01-20T10:00:00Z',
   },
-  scrollContent: {
-    paddingHorizontal: 16,
-    paddingTop: 60,
+  {
+    id: 'ar-2',
+    invoiceNumber: 'AR-2024-002',
+    customerId: 'cust-2',
+    customerName: 'Regional Distributors',
+    amount: 18500,
+    dueDate: '2024-02-05',
+    status: 'overdue',
+    description: 'Service contract Q1',
+    createdAt: '2024-01-05T09:00:00Z',
   },
-  header: {
-    marginBottom: 24,
+  {
+    id: 'ar-3',
+    invoiceNumber: 'AR-2024-003',
+    customerId: 'cust-3',
+    customerName: 'Local Retail Chain',
+    amount: 32000,
+    dueDate: '2024-02-28',
+    status: 'paid',
+    description: 'Bulk order',
+    createdAt: '2024-01-25T14:00:00Z',
+    paidAt: '2024-02-10T11:00:00Z',
   },
-  headerTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
+];
+
+export const MOCK_GL_ACCOUNTS: GLAccount[] = [
+  // ── ASSETS (1000-1999) ──
+  { id: 'gl-1000', accountNumber: '1000', name: 'Assets', type: 'asset', balance: 0, isActive: true, isHeader: true },
+  { id: 'gl-1010', accountNumber: '1010', name: 'Operating Cash', type: 'asset', balance: 185000, isActive: true, parentId: 'gl-1000' },
+  { id: 'gl-1020', accountNumber: '1020', name: 'Payroll Account', type: 'asset', balance: 42000, isActive: true, parentId: 'gl-1000' },
+  { id: 'gl-1100', accountNumber: '1100', name: 'Accounts Receivable', type: 'asset', balance: 95500, isActive: true, parentId: 'gl-1000' },
+  { id: 'gl-1200', accountNumber: '1200', name: 'Raw Materials Inventory', type: 'asset', balance: 34200, isActive: true, parentId: 'gl-1000' },
+  { id: 'gl-1210', accountNumber: '1210', name: 'Packaging Inventory', type: 'asset', balance: 12800, isActive: true, parentId: 'gl-1000' },
+  { id: 'gl-1220', accountNumber: '1220', name: 'Finished Goods Inventory', type: 'asset', balance: 67500, isActive: true, parentId: 'gl-1000' },
+  { id: 'gl-1300', accountNumber: '1300', name: 'MRO Parts Inventory', type: 'asset', balance: 18600, isActive: true, parentId: 'gl-1000' },
+  { id: 'gl-1400', accountNumber: '1400', name: 'Prepaid Expenses', type: 'asset', balance: 8400, isActive: true, parentId: 'gl-1000' },
+  { id: 'gl-1500', accountNumber: '1500', name: 'Equipment & Machinery', type: 'asset', balance: 450000, isActive: true, parentId: 'gl-1000' },
+  { id: 'gl-1510', accountNumber: '1510', name: 'Accumulated Depreciation', type: 'asset', balance: -125000, isActive: true, parentId: 'gl-1000' },
+
+  // ── LIABILITIES (2000-2999) ──
+  { id: 'gl-2000', accountNumber: '2000', name: 'Liabilities', type: 'liability', balance: 0, isActive: true, isHeader: true },
+  { id: 'gl-2010', accountNumber: '2010', name: 'Accounts Payable - Trade', type: 'liability', balance: 38200, isActive: true, parentId: 'gl-2000' },
+  { id: 'gl-2020', accountNumber: '2020', name: 'Accounts Payable - MRO', type: 'liability', balance: 6100, isActive: true, parentId: 'gl-2000' },
+  { id: 'gl-2100', accountNumber: '2100', name: 'Accrued Payroll', type: 'liability', balance: 28500, isActive: true, parentId: 'gl-2000' },
+  { id: 'gl-2200', accountNumber: '2200', name: 'Sales Tax Payable', type: 'liability', balance: 4200, isActive: true, parentId: 'gl-2000' },
+  { id: 'gl-2300', accountNumber: '2300', name: 'Equipment Loan', type: 'liability', balance: 120000, isActive: true, parentId: 'gl-2000' },
+
+  // ── EQUITY (3000-3999) ──
+  { id: 'gl-3000', accountNumber: '3000', name: 'Equity', type: 'equity', balance: 0, isActive: true, isHeader: true },
+  { id: 'gl-3010', accountNumber: '3010', name: 'Owner\'s Equity', type: 'equity', balance: 350000, isActive: true, parentId: 'gl-3000' },
+  { id: 'gl-3020', accountNumber: '3020', name: 'Retained Earnings', type: 'equity', balance: 165000, isActive: true, parentId: 'gl-3000' },
+
+  // ── REVENUE (4000-4999) ──
+  { id: 'gl-4000', accountNumber: '4000', name: 'Revenue', type: 'revenue', balance: 0, isActive: true, isHeader: true },
+  { id: 'gl-4010', accountNumber: '4010', name: 'Product Sales', type: 'revenue', balance: 680000, isActive: true, parentId: 'gl-4000' },
+  { id: 'gl-4020', accountNumber: '4020', name: 'Co-Pack Revenue', type: 'revenue', balance: 45000, isActive: true, parentId: 'gl-4000' },
+  { id: 'gl-4030', accountNumber: '4030', name: 'Scrap/Salvage Sales', type: 'revenue', balance: 3200, isActive: true, parentId: 'gl-4000' },
+
+  // ── COGS (5000-5499) ──
+  { id: 'gl-5000', accountNumber: '5000', name: 'Cost of Goods Sold', type: 'expense', balance: 0, isActive: true, isHeader: true },
+  { id: 'gl-5010', accountNumber: '5010', name: 'Raw Materials Used', type: 'expense', balance: 285000, isActive: true, parentId: 'gl-5000' },
+  { id: 'gl-5020', accountNumber: '5020', name: 'Packaging Materials', type: 'expense', balance: 42000, isActive: true, parentId: 'gl-5000' },
+  { id: 'gl-5030', accountNumber: '5030', name: 'Direct Labor', type: 'expense', balance: 156000, isActive: true, parentId: 'gl-5000' },
+  { id: 'gl-5040', accountNumber: '5040', name: 'Manufacturing Overhead', type: 'expense', balance: 38000, isActive: true, parentId: 'gl-5000' },
+
+  // ── OPERATING EXPENSES (6000-6999) ──
+  { id: 'gl-6000', accountNumber: '6000', name: 'Operating Expenses', type: 'expense', balance: 0, isActive: true, isHeader: true },
+
+  // Maintenance
+  { id: 'gl-6100', accountNumber: '6100', name: 'Maintenance - Parts & Supplies', type: 'expense', balance: 4200, isActive: true, parentId: 'gl-6000', departmentCode: 'MAINT' },
+  { id: 'gl-6110', accountNumber: '6110', name: 'Maintenance - Contract Services', type: 'expense', balance: 2800, isActive: true, parentId: 'gl-6000', departmentCode: 'MAINT' },
+  { id: 'gl-6120', accountNumber: '6120', name: 'Maintenance - Equipment Repair', type: 'expense', balance: 1600, isActive: true, parentId: 'gl-6000', departmentCode: 'MAINT' },
+
+  // Quality
+  { id: 'gl-6200', accountNumber: '6200', name: 'Quality - Lab Supplies', type: 'expense', balance: 1200, isActive: true, parentId: 'gl-6000', departmentCode: 'QA' },
+  { id: 'gl-6210', accountNumber: '6210', name: 'Quality - Testing Services', type: 'expense', balance: 900, isActive: true, parentId: 'gl-6000', departmentCode: 'QA' },
+  { id: 'gl-6220', accountNumber: '6220', name: 'Quality - Certifications', type: 'expense', balance: 3500, isActive: true, parentId: 'gl-6000', departmentCode: 'QA' },
+
+  // Safety
+  { id: 'gl-6300', accountNumber: '6300', name: 'Safety - PPE & Supplies', type: 'expense', balance: 1100, isActive: true, parentId: 'gl-6000', departmentCode: 'SAFETY' },
+  { id: 'gl-6310', accountNumber: '6310', name: 'Safety - Training', type: 'expense', balance: 700, isActive: true, parentId: 'gl-6000', departmentCode: 'SAFETY' },
+
+  // Sanitation
+  { id: 'gl-6400', accountNumber: '6400', name: 'Sanitation - Chemicals', type: 'expense', balance: 2400, isActive: true, parentId: 'gl-6000', departmentCode: 'SAN' },
+  { id: 'gl-6410', accountNumber: '6410', name: 'Sanitation - Supplies', type: 'expense', balance: 1000, isActive: true, parentId: 'gl-6000', departmentCode: 'SAN' },
+
+  // Warehouse
+  { id: 'gl-6500', accountNumber: '6500', name: 'Warehouse - Supplies', type: 'expense', balance: 3200, isActive: true, parentId: 'gl-6000', departmentCode: 'WH' },
+  { id: 'gl-6510', accountNumber: '6510', name: 'Warehouse - Equipment', type: 'expense', balance: 2400, isActive: true, parentId: 'gl-6000', departmentCode: 'WH' },
+
+  // Shipping
+  { id: 'gl-6600', accountNumber: '6600', name: 'Shipping - Freight Out', type: 'expense', balance: 2800, isActive: true, parentId: 'gl-6000', departmentCode: 'SHIP' },
+  { id: 'gl-6610', accountNumber: '6610', name: 'Shipping - Supplies', type: 'expense', balance: 400, isActive: true, parentId: 'gl-6000', departmentCode: 'SHIP' },
+
+  // Admin / Overhead
+  { id: 'gl-6700', accountNumber: '6700', name: 'Admin - Office Supplies', type: 'expense', balance: 800, isActive: true, parentId: 'gl-6000', departmentCode: 'ADMIN' },
+  { id: 'gl-6710', accountNumber: '6710', name: 'Admin - Software & Subscriptions', type: 'expense', balance: 700, isActive: true, parentId: 'gl-6000', departmentCode: 'ADMIN' },
+
+  // R&D
+  { id: 'gl-6800', accountNumber: '6800', name: 'R&D - Materials', type: 'expense', balance: 600, isActive: true, parentId: 'gl-6000', departmentCode: 'RND' },
+  { id: 'gl-6810', accountNumber: '6810', name: 'R&D - Testing', type: 'expense', balance: 300, isActive: true, parentId: 'gl-6000', departmentCode: 'RND' },
+
+  // Production (non-COGS operating)
+  { id: 'gl-6900', accountNumber: '6900', name: 'Production - Supplies', type: 'expense', balance: 4100, isActive: true, parentId: 'gl-6000', departmentCode: 'PROD' },
+  { id: 'gl-6910', accountNumber: '6910', name: 'Production - Uniforms', type: 'expense', balance: 1200, isActive: true, parentId: 'gl-6000', departmentCode: 'PROD' },
+
+  // Utilities & Facility
+  { id: 'gl-7000', accountNumber: '7000', name: 'Facility Expenses', type: 'expense', balance: 0, isActive: true, isHeader: true },
+  { id: 'gl-7010', accountNumber: '7010', name: 'Utilities - Electric', type: 'expense', balance: 18000, isActive: true, parentId: 'gl-7000' },
+  { id: 'gl-7020', accountNumber: '7020', name: 'Utilities - Water/Sewer', type: 'expense', balance: 6500, isActive: true, parentId: 'gl-7000' },
+  { id: 'gl-7030', accountNumber: '7030', name: 'Utilities - Gas', type: 'expense', balance: 8200, isActive: true, parentId: 'gl-7000' },
+  { id: 'gl-7040', accountNumber: '7040', name: 'Waste Removal & Recycling', type: 'expense', balance: 3800, isActive: true, parentId: 'gl-7000' },
+  { id: 'gl-7050', accountNumber: '7050', name: 'Pest Control', type: 'expense', balance: 2400, isActive: true, parentId: 'gl-7000' },
+  { id: 'gl-7060', accountNumber: '7060', name: 'Rent/Lease', type: 'expense', balance: 36000, isActive: true, parentId: 'gl-7000' },
+  { id: 'gl-7070', accountNumber: '7070', name: 'Insurance', type: 'expense', balance: 14000, isActive: true, parentId: 'gl-7000' },
+];
+
+export const MOCK_BUDGETS: Budget[] = [
+  { id: 'budget-1', name: 'Maintenance', departmentCode: 'MAINT', departmentName: 'Maintenance', glAccountPrefix: '61', fiscalYear: 2026, period: 'monthly', amount: 15000, spent: 8600, remaining: 6400, status: 'active' },
+  { id: 'budget-2', name: 'Production', departmentCode: 'PROD', departmentName: 'Production', glAccountPrefix: '69', fiscalYear: 2026, period: 'monthly', amount: 25000, spent: 5300, remaining: 19700, status: 'active' },
+  { id: 'budget-3', name: 'Quality', departmentCode: 'QA', departmentName: 'Quality Assurance', glAccountPrefix: '62', fiscalYear: 2026, period: 'monthly', amount: 8000, spent: 5600, remaining: 2400, status: 'active' },
+  { id: 'budget-4', name: 'Safety', departmentCode: 'SAFETY', departmentName: 'Safety', glAccountPrefix: '63', fiscalYear: 2026, period: 'monthly', amount: 6000, spent: 1800, remaining: 4200, status: 'active' },
+  { id: 'budget-5', name: 'Sanitation', departmentCode: 'SAN', departmentName: 'Sanitation', glAccountPrefix: '64', fiscalYear: 2026, period: 'monthly', amount: 10000, spent: 3400, remaining: 6600, status: 'active' },
+  { id: 'budget-6', name: 'Warehouse', departmentCode: 'WH', departmentName: 'Warehouse', glAccountPrefix: '65', fiscalYear: 2026, period: 'monthly', amount: 12000, spent: 5600, remaining: 6400, status: 'active' },
+  { id: 'budget-7', name: 'Shipping', departmentCode: 'SHIP', departmentName: 'Shipping & Logistics', glAccountPrefix: '66', fiscalYear: 2026, period: 'monthly', amount: 8000, spent: 3200, remaining: 4800, status: 'active' },
+  { id: 'budget-8', name: 'Admin', departmentCode: 'ADMIN', departmentName: 'Administration', glAccountPrefix: '67', fiscalYear: 2026, period: 'monthly', amount: 5000, spent: 1500, remaining: 3500, status: 'active' },
+  { id: 'budget-9', name: 'R&D', departmentCode: 'RND', departmentName: 'Research & Development', glAccountPrefix: '68', fiscalYear: 2026, period: 'monthly', amount: 4000, spent: 900, remaining: 3100, status: 'active' },
+];
+
+export const MOCK_JOURNAL_ENTRIES: JournalEntry[] = [
+  {
+    id: 'je-1',
+    entryNumber: 'JE-2024-001',
+    date: '2024-01-31',
+    description: 'Monthly depreciation',
+    debitAccountId: 'gl-6',
+    creditAccountId: 'gl-1',
+    amount: 5000,
+    status: 'posted',
+    createdBy: 'Finance Admin',
+    createdAt: '2024-01-31T17:00:00Z',
   },
-  headerLeft: {
-    flex: 1,
+  {
+    id: 'je-2',
+    entryNumber: 'JE-2024-002',
+    date: '2024-02-01',
+    description: 'Accrued expenses',
+    debitAccountId: 'gl-7',
+    creditAccountId: 'gl-3',
+    amount: 12000,
+    status: 'posted',
+    createdBy: 'Finance Admin',
+    createdAt: '2024-02-01T09:00:00Z',
   },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+];
+
+export const MOCK_RECURRING_JOURNALS: RecurringJournal[] = [
+  {
+    id: 'rj-1',
+    name: 'Monthly Depreciation',
+    frequency: 'monthly',
+    nextRunDate: '2024-02-28',
+    template: {
+      description: 'Monthly depreciation entry',
+      debitAccountId: 'gl-6',
+      creditAccountId: 'gl-1',
+      amount: 5000,
+      createdBy: 'System',
+    },
+    isActive: true,
   },
-  greeting: {
-    fontSize: 14,
-    color: Colors.textSecondary,
-    fontWeight: '500' as const,
-    textTransform: 'uppercase' as const,
-    letterSpacing: 1,
-  },
-  companyName: {
-    fontSize: 28,
-    fontWeight: '700' as const,
-    color: Colors.text,
-    marginTop: 4,
-  },
-  refreshButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: Colors.surface,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  facilityButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    height: 44,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    gap: 6,
-  },
-  facilityButtonText: {
-    fontSize: 13,
-    fontWeight: '600' as const,
-    color: Colors.text,
-    maxWidth: 120,
-  },
-  pressed: {
-    opacity: 0.7,
-  },
-  dateRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 8,
-  },
-  dateText: {
-    fontSize: 13,
-    color: Colors.textSecondary,
-  },
-  section: {
-    marginBottom: 24,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  sectionTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600' as const,
-    color: Colors.text,
-  },
-  bottomPadding: {
-    height: 40,
-  },
-  quickActionTitle: {
-    fontSize: 15,
-    fontWeight: '700' as const,
-    color: Colors.text,
-    marginBottom: 10,
-    letterSpacing: 0.3,
-  },
-  quickActionBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-    gap: 6,
-  },
-  quickActionBtn: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 4,
-    borderRadius: 12,
-    backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    gap: 4,
-  },
-  quickActionIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  quickActionLabel: {
-    fontSize: 10,
-    fontWeight: '600' as const,
-    color: Colors.textSecondary,
-    textAlign: 'center',
-  },
-  quickActionStat: {
-    fontSize: 16,
-    fontWeight: '700' as const,
-    color: Colors.text,
-    textAlign: 'center',
-  },
-  quickActionDesc: {
-    fontSize: 9,
-    color: Colors.textTertiary,
-    textAlign: 'center',
-    marginTop: 1,
-  },
-  emergencyButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#DC2626',
-    borderRadius: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    marginBottom: 16,
-    gap: 8,
-  },
-  emergencyIconBox: {
-    width: 28,
-    height: 28,
-    borderRadius: 6,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  emergencyTextContainer: {
-    flex: 1,
-  },
-  emergencyButtonTitle: {
-    flex: 1,
-    fontSize: 13,
-    fontWeight: '700' as const,
-    color: '#FFFFFF',
-    letterSpacing: 0.5,
-  },
-  emergencyButtonSubtitle: {
-    fontSize: 11,
-    color: 'rgba(255,255,255,0.8)',
-    marginTop: 2,
-  },
-  facilityPickerOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 40,
-  },
-  facilityPickerContent: {
-    backgroundColor: Colors.surface,
-    borderRadius: 16,
-    padding: 8,
-    width: '100%',
-    maxWidth: 320,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  facilityPickerHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-    marginBottom: 4,
-  },
-  facilityPickerTitle: {
-    fontSize: 14,
-    fontWeight: '600' as const,
-    color: Colors.text,
-  },
-  facilityPickerItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
-  facilityPickerItemActive: {
-    backgroundColor: `${Colors.primary}15`,
-  },
-  facilityPickerItemText: {
-    fontSize: 14,
-    color: Colors.text,
-  },
-  emergencyModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    justifyContent: 'flex-end',
-  },
-  emergencyModalContent: {
-    backgroundColor: Colors.surface,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 20,
-    paddingBottom: 36,
-    maxHeight: '85%',
-  },
-  emergencyModalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  emergencyModalTitle: {
-    fontSize: 18,
-    fontWeight: '700' as const,
-    color: Colors.text,
-  },
-  emergencyModalDesc: {
-    fontSize: 13,
-    color: Colors.textSecondary,
-    marginBottom: 18,
-    lineHeight: 18,
-  },
-  emergencyModalSectionLabel: {
-    fontSize: 11,
-    fontWeight: '700' as const,
-    color: Colors.textTertiary,
-    letterSpacing: 1,
-    marginBottom: 8,
-  },
-  emergencyModalRow: {
-    flexDirection: 'row' as const,
-    alignItems: 'center',
-    backgroundColor: Colors.background,
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 8,
-    borderLeftWidth: 4,
-    gap: 12,
-  },
-  emergencyModalIconBox: {
-    width: 42,
-    height: 42,
-    borderRadius: 10,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-  },
-  emergencyModalRowTitle: {
-    fontSize: 15,
-    fontWeight: '600' as const,
-    color: Colors.text,
-  },
-  emergencyModalRowSub: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-    marginTop: 1,
-  },
-  emergencyModalMoreBtn: {
-    marginTop: 14,
-    alignItems: 'center' as const,
-    paddingVertical: 10,
-  },
-  emergencyModalMoreText: {
-    fontSize: 14,
-    fontWeight: '600' as const,
-    color: Colors.primary,
-  },
-});
+];
+
+export const MOCK_CUSTOMERS: Customer[] = [
+  { id: 'cust-1', name: 'Global Manufacturing', email: 'ap@globalmfg.com', phone: '555-0100', balance: 45000, creditLimit: 100000, isActive: true },
+  { id: 'cust-2', name: 'Regional Distributors', email: 'accounts@regionaldist.com', phone: '555-0101', balance: 18500, creditLimit: 50000, isActive: true },
+  { id: 'cust-3', name: 'Local Retail Chain', email: 'finance@localretail.com', phone: '555-0102', balance: 0, creditLimit: 75000, isActive: true },
+];
