@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,8 @@ import {
   Pressable,
   Modal,
   Alert,
+  TextInput,
+  ScrollView,
 } from 'react-native';
 import {
   User,
@@ -17,6 +19,8 @@ import {
   Moon,
   Sun,
   Palette,
+  Check,
+  Paintbrush,
 } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useUser } from '@/contexts/UserContext';
@@ -30,13 +34,47 @@ const themeOptions: { value: ThemeType; label: string; icon: typeof Sun; iconCol
   { value: 'custom', label: 'Custom', icon: Palette, iconColor: '#10B981' },
 ];
 
+const BG_PRESETS = [
+  '#1C1F26', '#2C2F36', '#1A1A2E', '#0F3460',
+  '#1B2838', '#2D1B38', '#1A2F1A', '#3B1F1F',
+  '#D6E6F5', '#D4D4D4', '#E8E0D0', '#EEEEE8',
+  '#F5E6D0', '#D8EFD3', '#E6D6F0', '#FDE8E8',
+];
+
+const CARD_PRESETS = [
+  '#2A2E38', '#353A45', '#1E3A5F', '#2D1B38',
+  '#1A2F1A', '#3B1F1F', '#3D2D1F', '#1A2332',
+  '#F5F5F0', '#E2EEF8', '#E0E0E0', '#F5E6D0',
+  '#D8EFD3', '#E6D6F0', '#FDE8E8', '#FFF8DC',
+];
+
 export default function UserProfileMenu() {
   const router = useRouter();
   const { userProfile, signOut, company } = useUser();
-  const { colors, theme, setTheme } = useTheme();
+  const { colors, theme, setTheme, customBg, customPrimary, setCustomColors } = useTheme();
   const { currentUserRole } = usePermissions();
   const [showMenu, setShowMenu] = useState(false);
   const [showThemeModal, setShowThemeModal] = useState(false);
+
+  // Custom color picker state
+  const [editBg, setEditBg] = useState(customBg);
+  const [editPrimary, setEditPrimary] = useState(customPrimary);
+  const [hexInputBg, setHexInputBg] = useState(customBg);
+  const [hexInputPrimary, setHexInputPrimary] = useState(customPrimary);
+
+  const isValidHex = (s: string) => /^#[0-9A-Fa-f]{6}$/.test(s);
+
+  const openThemeModal = useCallback(() => {
+    setEditBg(customBg);
+    setEditPrimary(customPrimary);
+    setHexInputBg(customBg);
+    setHexInputPrimary(customPrimary);
+    openThemeModal();
+  }, [customBg, customPrimary]);
+
+  const applyCustomColors = useCallback(() => {
+    setCustomColors(editBg, editPrimary);
+  }, [editBg, editPrimary, setCustomColors]);
 
   const isSuperAdmin = isSuperAdminRole(userProfile?.role) || 
                        currentUserRole?.isSystem || 
@@ -69,7 +107,7 @@ export default function UserProfileMenu() {
 
   const handleTheme = () => {
     setShowMenu(false);
-    setShowThemeModal(true);
+    openThemeModal();
   };
 
   const currentTheme = themeOptions.find((t) => t.value === theme);
@@ -202,6 +240,7 @@ export default function UserProfileMenu() {
                 <X size={24} color={colors.textSecondary} />
               </Pressable>
             </View>
+            <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
             <View style={styles.themeGrid}>
               {themeOptions.map((option) => {
                 const OptionIcon = option.icon;
@@ -215,11 +254,14 @@ export default function UserProfileMenu() {
                       isSelected && { borderWidth: 2 },
                     ]}
                     onPress={() => {
-                      setTheme(option.value);
-                      setShowThemeModal(false);
+                      if (option.value === 'custom') {
+                        applyCustomColors();
+                      } else {
+                        setTheme(option.value);
+                      }
                     }}
                   >
-                    <OptionIcon size={28} color={option.iconColor} />
+                    <OptionIcon size={24} color={option.iconColor} />
                     <Text style={[styles.themeLabel, { color: colors.text }]}>{option.label}</Text>
                     {isSelected && (
                       <View style={[styles.selectedIndicator, { backgroundColor: colors.primary }]} />
@@ -228,6 +270,91 @@ export default function UserProfileMenu() {
                 );
               })}
             </View>
+
+            {theme === 'custom' && (
+              <View style={styles.colorPickerSection}>
+                <Text style={[styles.pickerLabel, { color: colors.textSecondary }]}>Background Color</Text>
+                <View style={styles.colorGrid}>
+                  {BG_PRESETS.map((color) => (
+                    <Pressable
+                      key={`bg-${color}`}
+                      style={[
+                        styles.colorSwatch,
+                        { backgroundColor: color, borderColor: editBg === color ? '#FFFFFF' : 'transparent' },
+                        editBg === color && styles.colorSwatchSelected,
+                      ]}
+                      onPress={() => {
+                        setEditBg(color);
+                        setHexInputBg(color);
+                        setCustomColors(color, editPrimary);
+                      }}
+                    >
+                      {editBg === color && <Check size={14} color={parseInt(color.slice(1,3), 16) > 160 ? '#000' : '#FFF'} />}
+                    </Pressable>
+                  ))}
+                </View>
+                <View style={styles.hexInputRow}>
+                  <Paintbrush size={16} color={colors.textTertiary} />
+                  <TextInput
+                    style={[styles.hexInput, { color: colors.text, borderColor: colors.border }]}
+                    value={hexInputBg}
+                    onChangeText={(t) => {
+                      setHexInputBg(t);
+                      if (isValidHex(t)) {
+                        setEditBg(t);
+                        setCustomColors(t, editPrimary);
+                      }
+                    }}
+                    placeholder="#1C1F26"
+                    placeholderTextColor={colors.textTertiary}
+                    maxLength={7}
+                    autoCapitalize="none"
+                  />
+                  <View style={[styles.hexPreview, { backgroundColor: editBg }]} />
+                </View>
+
+                <Text style={[styles.pickerLabel, { color: colors.textSecondary, marginTop: 16 }]}>Card Color</Text>
+                <View style={styles.colorGrid}>
+                  {CARD_PRESETS.map((color) => (
+                    <Pressable
+                      key={`cd-${color}`}
+                      style={[
+                        styles.colorSwatch,
+                        { backgroundColor: color, borderColor: editPrimary === color ? '#FFFFFF' : 'transparent' },
+                        editPrimary === color && styles.colorSwatchSelected,
+                      ]}
+                      onPress={() => {
+                        setEditPrimary(color);
+                        setHexInputPrimary(color);
+                        setCustomColors(editBg, color);
+                      }}
+                    >
+                      {editPrimary === color && <Check size={14} color={parseInt(color.slice(1,3), 16) > 160 ? '#000' : '#FFF'} />}
+                    </Pressable>
+                  ))}
+                </View>
+                <View style={styles.hexInputRow}>
+                  <Palette size={16} color={colors.textTertiary} />
+                  <TextInput
+                    style={[styles.hexInput, { color: colors.text, borderColor: colors.border }]}
+                    value={hexInputPrimary}
+                    onChangeText={(t) => {
+                      setHexInputPrimary(t);
+                      if (isValidHex(t)) {
+                        setEditPrimary(t);
+                        setCustomColors(editBg, t);
+                      }
+                    }}
+                    placeholder="#2A2E38"
+                    placeholderTextColor={colors.textTertiary}
+                    maxLength={7}
+                    autoCapitalize="none"
+                  />
+                  <View style={[styles.hexPreview, { backgroundColor: editPrimary }]} />
+                </View>
+              </View>
+            )}
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -366,7 +493,8 @@ const styles = StyleSheet.create({
   },
   themeContent: {
     width: '100%',
-    maxWidth: 340,
+    maxWidth: 380,
+    maxHeight: '80%',
     borderRadius: 20,
     padding: 20,
   },
@@ -406,5 +534,58 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
+  },
+  colorPickerSection: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(128,128,128,0.2)',
+  },
+  pickerLabel: {
+    fontSize: 12,
+    fontWeight: '600' as const,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.5,
+    marginBottom: 10,
+  },
+  colorGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 10,
+  },
+  colorSwatch: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    borderWidth: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  colorSwatchSelected: {
+    borderWidth: 2,
+    transform: [{ scale: 1.1 }],
+  },
+  hexInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  hexInput: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600' as const,
+    fontVariant: ['tabular-nums'] as any,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderRadius: 8,
+  },
+  hexPreview: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(128,128,128,0.3)',
   },
 });
