@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   Pressable,
   Alert,
   Modal,
+  TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -20,7 +21,6 @@ import {
   AlertTriangle,
   Sun,
   Moon,
-  Monitor,
   Palette,
   Globe,
   Star,
@@ -36,6 +36,8 @@ import {
   BookOpen,
   Briefcase,
   ClipboardList,
+  Check,
+  Paintbrush,
 } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useUser } from '@/contexts/UserContext';
@@ -81,8 +83,21 @@ function SettingItem({ icon: Icon, label, value, onPress, danger, colors }: Sett
 const themeOptions: { value: ThemeType; label: string; icon: typeof Sun; iconColor: string }[] = [
   { value: 'light', label: 'Light', icon: Sun, iconColor: '#F59E0B' },
   { value: 'dark', label: 'Dark', icon: Moon, iconColor: '#6366F1' },
-  { value: 'blue', label: 'Blue', icon: Monitor, iconColor: '#0073CF' },
-  { value: 'rust', label: 'Silver', icon: Palette, iconColor: '#C0C0C0' },
+  { value: 'custom', label: 'Custom', icon: Palette, iconColor: '#10B981' },
+];
+
+const BG_PRESETS = [
+  '#1C1F26', '#2C2F36', '#1A1A2E', '#0F3460',
+  '#1B2838', '#2D1B38', '#1A2F1A', '#3B1F1F',
+  '#D6E6F5', '#D4D4D4', '#E8E0D0', '#EEEEE8',
+  '#F5E6D0', '#D8EFD3', '#E6D6F0', '#FDE8E8',
+];
+
+const PRIMARY_PRESETS = [
+  '#0066CC', '#0073CF', '#3B82F6', '#6366F1',
+  '#8B5CF6', '#A855F7', '#EC4899', '#EF4444',
+  '#F59E0B', '#D97706', '#10B981', '#06B6D4',
+  '#14B8A6', '#22C55E', '#84CC16', '#9CA3AF',
 ];
 
 const getTierIcon = (tier: string) => {
@@ -98,11 +113,31 @@ const getTierIcon = (tier: string) => {
 export default function SettingsScreen() {
   const router = useRouter();
   const { userProfile, company, tierInfo, signOut, isPlatformAdmin } = useUser();
-  const { theme, setTheme, colors } = useTheme();
+  const { theme, setTheme, colors, customBg, customPrimary, setCustomColors } = useTheme();
   const { currentUserRole } = usePermissions();
   const { licenseType, setLicenseType } = useLicense();
   const [showThemeModal, setShowThemeModal] = useState(false);
   const [showLicenseModal, setShowLicenseModal] = useState(false);
+
+  // Custom color picker state
+  const [editBg, setEditBg] = useState(customBg);
+  const [editPrimary, setEditPrimary] = useState(customPrimary);
+  const [hexInputBg, setHexInputBg] = useState(customBg);
+  const [hexInputPrimary, setHexInputPrimary] = useState(customPrimary);
+
+  const isValidHex = (s: string) => /^#[0-9A-Fa-f]{6}$/.test(s);
+
+  const openThemeModal = useCallback(() => {
+    setEditBg(customBg);
+    setEditPrimary(customPrimary);
+    setHexInputBg(customBg);
+    setHexInputPrimary(customPrimary);
+    setShowThemeModal(true);
+  }, [customBg, customPrimary]);
+
+  const applyCustomColors = useCallback(() => {
+    setCustomColors(editBg, editPrimary);
+  }, [editBg, editPrimary, setCustomColors]);
 
   const isSuperAdmin = isSuperAdminRole(userProfile?.role) || currentUserRole?.isSystem || currentUserRole?.name === 'Super Admin' || currentUserRole?.name === 'Administrator';
 
@@ -254,7 +289,7 @@ export default function SettingsScreen() {
               icon={currentTheme?.icon || Moon}
               label="Appearance"
               value={currentTheme?.label || 'Dark'}
-              onPress={() => setShowThemeModal(true)}
+              onPress={() => openThemeModal()}
               colors={colors}
             />
             <SettingItem
@@ -356,13 +391,16 @@ export default function SettingsScreen() {
         onRequestClose={() => setShowThemeModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
+          <View style={[styles.modalContent, { backgroundColor: colors.surface, maxWidth: 380 }]}>
             <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: colors.text }]}>Choose Theme</Text>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Appearance</Text>
               <Pressable onPress={() => setShowThemeModal(false)} style={styles.closeButton}>
                 <X size={24} color={colors.textSecondary} />
               </Pressable>
             </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
+            {/* Dark / Light / Custom selector */}
             <View style={styles.themeGrid}>
               {themeOptions.map((option) => {
                 const ThemeIcon = option.icon;
@@ -376,11 +414,14 @@ export default function SettingsScreen() {
                       isSelected && { borderWidth: 2 },
                     ]}
                     onPress={() => {
-                      setTheme(option.value);
-                      setShowThemeModal(false);
+                      if (option.value === 'custom') {
+                        applyCustomColors();
+                      } else {
+                        setTheme(option.value);
+                      }
                     }}
                   >
-                    <ThemeIcon size={28} color={option.iconColor} />
+                    <ThemeIcon size={24} color={option.iconColor} />
                     <Text style={[styles.themeLabel, { color: colors.text }]}>{option.label}</Text>
                     {isSelected && (
                       <View style={[styles.selectedIndicator, { backgroundColor: colors.primary }]} />
@@ -389,6 +430,94 @@ export default function SettingsScreen() {
                 );
               })}
             </View>
+
+            {/* Color Picker — shown when Custom is selected or tapped */}
+            {theme === 'custom' && (
+              <View style={styles.colorPickerSection}>
+                {/* Background Color */}
+                <Text style={[styles.pickerLabel, { color: colors.textSecondary }]}>Background Color</Text>
+                <View style={styles.colorGrid}>
+                  {BG_PRESETS.map((color) => (
+                    <Pressable
+                      key={`bg-${color}`}
+                      style={[
+                        styles.colorSwatch,
+                        { backgroundColor: color, borderColor: editBg === color ? '#FFFFFF' : 'transparent' },
+                        editBg === color && styles.colorSwatchSelected,
+                      ]}
+                      onPress={() => {
+                        setEditBg(color);
+                        setHexInputBg(color);
+                        setCustomColors(color, editPrimary);
+                      }}
+                    >
+                      {editBg === color && <Check size={14} color={parseInt(color.slice(1,3), 16) > 160 ? '#000' : '#FFF'} />}
+                    </Pressable>
+                  ))}
+                </View>
+                <View style={styles.hexInputRow}>
+                  <Paintbrush size={16} color={colors.textTertiary} />
+                  <TextInput
+                    style={[styles.hexInput, { color: colors.text, borderColor: colors.border }]}
+                    value={hexInputBg}
+                    onChangeText={(t) => {
+                      setHexInputBg(t);
+                      if (isValidHex(t)) {
+                        setEditBg(t);
+                        setCustomColors(t, editPrimary);
+                      }
+                    }}
+                    placeholder="#1C1F26"
+                    placeholderTextColor={colors.textTertiary}
+                    maxLength={7}
+                    autoCapitalize="none"
+                  />
+                  <View style={[styles.hexPreview, { backgroundColor: editBg }]} />
+                </View>
+
+                {/* Primary / Accent Color */}
+                <Text style={[styles.pickerLabel, { color: colors.textSecondary, marginTop: 16 }]}>Accent Color</Text>
+                <View style={styles.colorGrid}>
+                  {PRIMARY_PRESETS.map((color) => (
+                    <Pressable
+                      key={`pr-${color}`}
+                      style={[
+                        styles.colorSwatch,
+                        { backgroundColor: color, borderColor: editPrimary === color ? '#FFFFFF' : 'transparent' },
+                        editPrimary === color && styles.colorSwatchSelected,
+                      ]}
+                      onPress={() => {
+                        setEditPrimary(color);
+                        setHexInputPrimary(color);
+                        setCustomColors(editBg, color);
+                      }}
+                    >
+                      {editPrimary === color && <Check size={14} color="#FFFFFF" />}
+                    </Pressable>
+                  ))}
+                </View>
+                <View style={styles.hexInputRow}>
+                  <Palette size={16} color={colors.textTertiary} />
+                  <TextInput
+                    style={[styles.hexInput, { color: colors.text, borderColor: colors.border }]}
+                    value={hexInputPrimary}
+                    onChangeText={(t) => {
+                      setHexInputPrimary(t);
+                      if (isValidHex(t)) {
+                        setEditPrimary(t);
+                        setCustomColors(editBg, t);
+                      }
+                    }}
+                    placeholder="#0066CC"
+                    placeholderTextColor={colors.textTertiary}
+                    maxLength={7}
+                    autoCapitalize="none"
+                  />
+                  <View style={[styles.hexPreview, { backgroundColor: editPrimary }]} />
+                </View>
+              </View>
+            )}
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -616,6 +745,7 @@ const styles = StyleSheet.create({
   modalContent: {
     width: '100%',
     maxWidth: 340,
+    maxHeight: '80%',
     borderRadius: 20,
     padding: 20,
   },
@@ -634,19 +764,19 @@ const styles = StyleSheet.create({
   },
   themeGrid: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
+    gap: 10,
+    marginBottom: 4,
   },
   themeOption: {
-    width: '47%',
-    padding: 16,
+    flex: 1,
+    padding: 14,
     borderRadius: 12,
     borderWidth: 1,
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
   },
   themeLabel: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '500' as const,
   },
   selectedIndicator: {
@@ -656,6 +786,59 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
+  },
+  colorPickerSection: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(128,128,128,0.2)',
+  },
+  pickerLabel: {
+    fontSize: 12,
+    fontWeight: '600' as const,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.5,
+    marginBottom: 10,
+  },
+  colorGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 10,
+  },
+  colorSwatch: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    borderWidth: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  colorSwatchSelected: {
+    borderWidth: 2,
+    transform: [{ scale: 1.1 }],
+  },
+  hexInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  hexInput: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600' as const,
+    fontVariant: ['tabular-nums'] as any,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderRadius: 8,
+  },
+  hexPreview: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(128,128,128,0.3)',
   },
   licenseDescription: {
     fontSize: 14,
