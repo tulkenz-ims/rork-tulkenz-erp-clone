@@ -52,6 +52,7 @@ import LineStatusWidget from '@/components/LineStatusWidget';
 import { useMaterialsQuery } from '@/hooks/useSupabaseMaterials';
 import { useWorkOrdersQuery } from '@/hooks/useSupabaseWorkOrders';
 import { useEmployees } from '@/hooks/useSupabaseEmployees';
+import { useFacilities } from '@/hooks/useSupabaseEmployees';
 import { useAllAggregatedApprovals } from '@/hooks/useAggregatedApprovals';
 import { useTaskFeedPostsQuery } from '@/hooks/useTaskFeedTemplates';
 import { supabase } from '@/lib/supabase';
@@ -89,6 +90,7 @@ export default function ExecutiveDashboard() {
   const { data: materials = [], isLoading: materialsLoading } = useMaterialsQuery();
   const { data: workOrders = [], isLoading: workOrdersLoading } = useWorkOrdersQuery();
   const { data: employees = [], isLoading: employeesLoading } = useEmployees();
+  const { data: facilities = [] } = useFacilities();
   const { purchaseApprovals, timeApprovals, permitApprovals, isLoading: approvalsLoading } = useAllAggregatedApprovals();
   const { data: pendingPosts = [] } = useTaskFeedPostsQuery({ status: 'pending' });
   const { data: inProgressPosts = [] } = useTaskFeedPostsQuery({ status: 'in_progress' });
@@ -101,10 +103,9 @@ export default function ExecutiveDashboard() {
       if (!company?.id) return 0;
       const { count, error } = await supabase
         .from('time_entries')
-        .select('*, employees!inner(is_platform_admin)', { count: 'exact', head: true })
+        .select('*', { count: 'exact', head: true })
         .eq('organization_id', company.id)
-        .is('clock_out', null)
-        .neq('employees.is_platform_admin', true);
+        .is('clock_out', null);
       if (error) {
         console.error('[Dashboard] Error fetching checked-in count:', error);
         return 0;
@@ -189,7 +190,7 @@ export default function ExecutiveDashboard() {
   const materialsList = useMemo(() => {
     return materials.map(m => ({
       ...m,
-      facility_name: 'Main Facility',
+      facility_name: m.facility_name || 'Unassigned',
       vendor: m.vendor || 'Unknown Vendor',
     }));
   }, [materials]);
@@ -370,29 +371,27 @@ export default function ExecutiveDashboard() {
   }, [stats, workOrders, checkedInCount]);
 
   const facilityBreakdown = useMemo(() => {
-    const facilities: Record<string, { value: number; items: number; lowStock: number }> = {};
+    const facilityMap: Record<string, { value: number; items: number; lowStock: number }> = {};
     
     materialsList.forEach(m => {
       const facility = m.facility_name || 'Unassigned';
-      if (!facilities[facility]) {
-        facilities[facility] = { value: 0, items: 0, lowStock: 0 };
+      if (!facilityMap[facility]) {
+        facilityMap[facility] = { value: 0, items: 0, lowStock: 0 };
       }
-      facilities[facility].value += m.on_hand * m.unit_price;
-      facilities[facility].items++;
-      if (m.on_hand <= m.min_level) facilities[facility].lowStock++;
+      facilityMap[facility].value += m.on_hand * m.unit_price;
+      facilityMap[facility].items++;
+      if (m.on_hand <= m.min_level) facilityMap[facility].lowStock++;
     });
     
-    return Object.entries(facilities)
+    return Object.entries(facilityMap)
       .map(([name, data]) => ({ name, ...data }))
       .sort((a, b) => b.value - a.value);
   }, [materialsList]);
 
   const facilityNames = useMemo(() => {
-    const names = new Set<string>();
-    materialsList.forEach(m => { if (m.facility_name) names.add(m.facility_name); });
-    if (names.size === 0) names.add('Main Facility');
-    return ['All Facilities', ...Array.from(names).sort()];
-  }, [materialsList]);
+    const names = facilities.map(f => f.name).sort();
+    return ['All Facilities', ...names];
+  }, [facilities]);
 
   useEffect(() => {
     console.log('Auth state:', { authLoading, isAuthenticated });
@@ -413,6 +412,7 @@ export default function ExecutiveDashboard() {
         queryClient.invalidateQueries({ queryKey: ['aggregated_time_approvals'] }),
         queryClient.invalidateQueries({ queryKey: ['aggregated_permit_approvals'] }),
         queryClient.invalidateQueries({ queryKey: ['dashboard-checked-in-count'] }),
+        queryClient.invalidateQueries({ queryKey: ['facilities'] }),
       ]);
       console.log('[Dashboard] Refresh completed');
     } catch (error) {
