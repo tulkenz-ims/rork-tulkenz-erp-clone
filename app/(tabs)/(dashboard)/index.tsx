@@ -31,6 +31,9 @@ import {
   ChevronDown,
   ShoppingCart,
   DollarSign,
+  Droplets,
+  Microscope,
+  HardHat,
 } from 'lucide-react-native';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { useUser } from '@/contexts/UserContext';
@@ -493,6 +496,7 @@ export default function ExecutiveDashboard() {
             title="Department Budgets"
             subtitle={`FY${budgets[0]?.fiscalYear || new Date().getFullYear()}`}
             icon={<DollarSign size={16} color="#10B981" />}
+            compact
             cards={budgets.map(b => {
               const usedPct = b.amount > 0 ? Math.round((b.spent / b.amount) * 100) : 0;
               return {
@@ -500,7 +504,7 @@ export default function ExecutiveDashboard() {
                 value: `${usedPct}`,
                 unit: '%',
                 trend: usedPct > 100 ? -(usedPct - 100) : 0,
-                trendLabel: `$${(b.remaining / 1000).toFixed(0)}K left`,
+                trendLabel: `$${(b.remaining / 1000).toFixed(0)}K`,
                 color: usedPct > 100 ? '#EF4444' : usedPct > 80 ? '#F59E0B' : '#10B981',
               };
             })}
@@ -558,10 +562,8 @@ export default function ExecutiveDashboard() {
           title="CMMS Performance"
           subtitle="30-day"
           icon={<Wrench size={16} color={Colors.warning} />}
+          compact
           cards={(() => {
-            const completed = workOrders.filter(wo => wo.status === 'completed');
-            const total = workOrders.length;
-            const overdue = stats.overdueWorkOrders;
             const open = stats.openWorkOrders;
             const planned = workOrders.filter(wo => wo.type === 'preventive' || wo.type === 'pm' || wo.priority === 'low' || wo.priority === 'medium').length;
             const unplanned = workOrders.filter(wo => wo.type === 'reactive' || wo.type === 'emergency' || wo.type === 'corrective' || wo.priority === 'critical' || wo.priority === 'emergency').length;
@@ -572,14 +574,60 @@ export default function ExecutiveDashboard() {
             return [
               { label: 'MTTR', value: '0', unit: 'hrs', trend: 0 },
               { label: 'MTBF', value: '0', unit: 'hrs', trend: 0 },
-              { label: 'Wrench Time', value: performanceMetrics.laborUtilization.toString(), unit: '%', trend: 0 },
               { label: 'PM Compliance', value: pmCompliance.toString(), unit: '%', trend: 0, color: pmCompliance >= 90 ? '#10B981' : pmCompliance >= 70 ? '#F59E0B' : '#EF4444' },
               { label: 'Backlog', value: open.toString(), unit: 'WOs', trend: 0, color: open > 5 ? '#F59E0B' : '#10B981' },
-              { label: 'First Time Fix', value: '0', unit: '%', trend: 0 },
               { label: 'Planned', value: planned.toString(), unit: 'WOs', trend: 0, color: '#3B82F6' },
               { label: 'Unplanned', value: unplanned.toString(), unit: 'WOs', trend: 0, color: unplanned > 0 ? '#EF4444' : '#10B981' },
             ];
           })()}
+        />
+
+        {/* ── Sanitation ── */}
+        <MetricCardsSection
+          title="Sanitation"
+          subtitle="This week"
+          icon={<Droplets size={16} color="#06B6D4" />}
+          compact
+          cards={[
+            { label: 'Pre-Op Done', value: '0', unit: '/ 5', trend: 0, color: '#06B6D4' },
+            { label: 'CIP Cycles', value: '0', unit: '/ 3', trend: 0, color: '#06B6D4' },
+            { label: 'Swab Tests', value: '0', unit: 'pass', trend: 0, color: '#10B981' },
+            { label: 'Open CARs', value: '0', trend: 0, color: '#10B981' },
+            { label: 'Zone 1 Clean', value: '100', unit: '%', trend: 0, color: '#10B981' },
+            { label: 'Overdue Tasks', value: '0', trend: 0, color: '#10B981' },
+          ]}
+        />
+
+        {/* ── Quality ── */}
+        <MetricCardsSection
+          title="Quality"
+          subtitle="This month"
+          icon={<Microscope size={16} color="#8B5CF6" />}
+          compact
+          cards={[
+            { label: 'Hold Lots', value: '0', trend: 0, color: '#10B981' },
+            { label: 'Rejections', value: '0', trend: 0, color: '#10B981' },
+            { label: 'NCRs Open', value: '0', trend: 0, color: '#10B981' },
+            { label: 'CCP Deviations', value: '0', trend: 0, color: '#10B981' },
+            { label: 'COA Pending', value: '0', trend: 0, color: '#10B981' },
+            { label: 'Spec Compliance', value: '100', unit: '%', trend: 0, color: '#10B981' },
+          ]}
+        />
+
+        {/* ── Safety ── */}
+        <MetricCardsSection
+          title="Safety"
+          subtitle="YTD"
+          icon={<HardHat size={16} color="#F59E0B" />}
+          compact
+          cards={[
+            { label: 'Days No Incident', value: '0', trend: 0, color: '#10B981' },
+            { label: 'Near Misses', value: '0', trend: 0, color: '#10B981' },
+            { label: 'Open Actions', value: '0', trend: 0, color: '#10B981' },
+            { label: 'Training Due', value: '0', trend: 0, color: '#10B981' },
+            { label: 'PPE Compliance', value: '100', unit: '%', trend: 0, color: '#10B981' },
+            { label: 'Permits Active', value: '0', trend: 0, color: '#3B82F6' },
+          ]}
         />
 
         <View style={styles.bottomPadding} />
