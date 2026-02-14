@@ -39,6 +39,7 @@ import {
   BarChart3,
   MapPin,
   ChevronDown,
+  ShoppingCart,
 } from 'lucide-react-native';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { useUser } from '@/contexts/UserContext';
@@ -49,6 +50,7 @@ import LowStockAlerts from '@/components/LowStockAlerts';
 import UserProfileMenu from '@/components/UserProfileMenu';
 import ProcurementWidget from '@/components/ProcurementWidget';
 import LineStatusWidget from '@/components/LineStatusWidget';
+import ScoreCardSection from '@/components/ScoreCardSection';
 import { useMaterialsQuery } from '@/hooks/useSupabaseMaterials';
 import { useWorkOrdersQuery } from '@/hooks/useSupabaseWorkOrders';
 import { useEmployees } from '@/hooks/useSupabaseEmployees';
@@ -59,16 +61,6 @@ import { supabase } from '@/lib/supabase';
 import * as Haptics from 'expo-haptics';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-
-interface KPIData {
-  label: string;
-  value: string;
-  subValue?: string;
-  trend?: number;
-  trendLabel?: string;
-  color: string;
-  icon: React.ComponentType<{ size: number; color: string }>;
-}
 
 interface ActionItem {
   id: string;
@@ -244,44 +236,6 @@ export default function ExecutiveDashboard() {
   const inventoryValue = useMemo(() => {
     return materialsList.reduce((sum, m) => sum + (m.on_hand * m.unit_price), 0);
   }, [materialsList]);
-
-  const kpis = useMemo<KPIData[]>(() => [
-    {
-      label: 'Inventory Value',
-      value: `$${(inventoryValue / 1000).toFixed(0)}K`,
-      subValue: `${stats.totalMaterials} SKUs`,
-      trend: 5.2,
-      trendLabel: 'vs last month',
-      color: '#10B981',
-      icon: DollarSign,
-    },
-    {
-      label: 'Active Work Orders',
-      value: (stats.openWorkOrders + stats.inProgressWorkOrders).toString(),
-      subValue: `${stats.overdueWorkOrders} overdue`,
-      trend: stats.overdueWorkOrders > 0 ? -12 : 8,
-      trendLabel: 'completion rate',
-      color: stats.overdueWorkOrders > 0 ? '#F59E0B' : '#3B82F6',
-      icon: Wrench,
-    },
-    {
-      label: 'Checked In',
-      value: `${checkedInCount}/${stats.activeEmployees}`,
-      subValue: checkedInCount > 0 ? `${checkedInCount} on shift` : 'No one checked in',
-      trend: Math.round((checkedInCount / Math.max(stats.activeEmployees, 1)) * 100),
-      trendLabel: 'attendance',
-      color: '#8B5CF6',
-      icon: Users,
-    },
-    {
-      label: 'Stock Alerts',
-      value: (stats.lowStockCount + stats.outOfStockCount).toString(),
-      subValue: `${stats.outOfStockCount} critical`,
-      trend: stats.outOfStockCount > 0 ? -100 : 0,
-      color: stats.outOfStockCount > 0 ? '#EF4444' : '#10B981',
-      icon: Package,
-    },
-  ], [stats, inventoryValue, checkedInCount]);
 
   const actionItems = useMemo<ActionItem[]>(() => {
     const items: ActionItem[] = [];
@@ -568,50 +522,129 @@ export default function ExecutiveDashboard() {
 
         <LineStatusWidget />
 
-        <View style={styles.kpiGrid}>
-          {kpis.map((kpi, index) => {
-            const KpiIcon = kpi.icon;
-            return (
-              <View key={index} style={styles.kpiCard}>
-                <View style={styles.kpiHeader}>
-                  <View style={[styles.kpiIconBox, { backgroundColor: `${kpi.color}20` }]}>
-                    <KpiIcon size={20} color={kpi.color} />
-                  </View>
-                  {kpi.trend !== undefined && kpi.trend !== 0 && (
-                    <View style={[
-                      styles.trendBadge, 
-                      { backgroundColor: kpi.trend > 0 ? '#10B98120' : '#EF444420' }
-                    ]}>
-                      {kpi.trend > 0 ? (
-                        <TrendingUp size={12} color="#10B981" />
-                      ) : (
-                        <TrendingDown size={12} color="#EF4444" />
-                      )}
-                      <Text style={[
-                        styles.trendText, 
-                        { color: kpi.trend > 0 ? '#10B981' : '#EF4444' }
-                      ]}>
-                        {Math.abs(kpi.trend)}%
-                      </Text>
-                    </View>
-                  )}
-                </View>
-                <Text style={[styles.kpiValue, { color: kpi.color }]}>{kpi.value}</Text>
-                <Text style={styles.kpiLabel}>{kpi.label}</Text>
-                {kpi.subValue && (
-                  <Text style={styles.kpiSubValue}>{kpi.subValue}</Text>
-                )}
-              </View>
-            );
-          })}
-        </View>
+        {/* ── CMMS Performance Scorecard ── */}
+        <ScoreCardSection
+          title="CMMS Performance"
+          subtitle="30-day"
+          icon={<Wrench size={16} color={Colors.warning} />}
+          gauges={[
+            {
+              label: 'WO Completion',
+              value: performanceMetrics.woCompletion,
+              displayValue: `${performanceMetrics.woCompletion}%`,
+            },
+            {
+              label: 'On-Time Rate',
+              value: workOrders.length > 0 
+                ? Math.round(((stats.completedWorkOrders - stats.overdueWorkOrders) / Math.max(stats.completedWorkOrders, 1)) * 100)
+                : 0,
+              displayValue: `${workOrders.length > 0 
+                ? Math.round(((stats.completedWorkOrders - stats.overdueWorkOrders) / Math.max(stats.completedWorkOrders, 1)) * 100)
+                : 0}%`,
+            },
+            {
+              label: 'Overdue',
+              value: Math.max(0, 100 - (stats.overdueWorkOrders / Math.max(stats.openWorkOrders + stats.inProgressWorkOrders, 1)) * 100),
+              displayValue: `${stats.overdueWorkOrders}`,
+              color: stats.overdueWorkOrders > 0 ? '#EF4444' : '#10B981',
+            },
+            {
+              label: 'Backlog',
+              value: Math.max(0, 100 - (stats.openWorkOrders / Math.max(workOrders.length, 1)) * 100),
+              displayValue: `${stats.openWorkOrders}`,
+              color: stats.openWorkOrders > 5 ? '#F59E0B' : '#10B981',
+            },
+            {
+              label: 'In Progress',
+              value: stats.inProgressWorkOrders > 0 ? 60 : 0,
+              displayValue: `${stats.inProgressWorkOrders}`,
+              color: '#3B82F6',
+            },
+            {
+              label: 'Labor Active',
+              value: performanceMetrics.laborUtilization,
+              displayValue: `${performanceMetrics.laborUtilization}%`,
+            },
+          ]}
+        />
 
-        <AlertSummaryWidget onPress={() => setShowLowStockAlerts(true)} />
+        {/* ── Inventory Scorecard ── */}
+        <ScoreCardSection
+          title="Inventory Scorecard"
+          icon={<Package size={16} color={Colors.info} />}
+          gauges={[
+            {
+              label: 'Stock Health',
+              value: performanceMetrics.stockHealth,
+              displayValue: `${performanceMetrics.stockHealth}%`,
+            },
+            {
+              label: 'Fill Rate',
+              value: stats.totalMaterials > 0
+                ? Math.round(((stats.totalMaterials - stats.outOfStockCount) / stats.totalMaterials) * 100)
+                : 100,
+              displayValue: `${stats.totalMaterials > 0
+                ? Math.round(((stats.totalMaterials - stats.outOfStockCount) / stats.totalMaterials) * 100)
+                : 100}%`,
+            },
+            {
+              label: 'Low Stock',
+              value: Math.max(0, 100 - (stats.lowStockCount / Math.max(stats.totalMaterials, 1)) * 100),
+              displayValue: `${stats.lowStockCount}`,
+              color: stats.lowStockCount > 0 ? '#F59E0B' : '#10B981',
+            },
+            {
+              label: 'Out of Stock',
+              value: Math.max(0, 100 - (stats.outOfStockCount / Math.max(stats.totalMaterials, 1)) * 100),
+              displayValue: `${stats.outOfStockCount}`,
+              color: stats.outOfStockCount > 0 ? '#EF4444' : '#10B981',
+            },
+            {
+              label: 'Total SKUs',
+              value: Math.min(100, stats.totalMaterials * 10),
+              displayValue: `${stats.totalMaterials}`,
+              color: '#3B82F6',
+            },
+            {
+              label: 'Value',
+              value: 75,
+              displayValue: `$${(inventoryValue / 1000).toFixed(0)}K`,
+              color: '#10B981',
+            },
+          ]}
+        />
 
-        <View style={styles.section}>
-          <ProcurementWidget />
-        </View>
+        {/* ── Procurement Scorecard ── */}
+        <ScoreCardSection
+          title="Procurement Scorecard"
+          subtitle="This month"
+          icon={<ShoppingCart size={16} color={Colors.success} />}
+          gauges={[
+            {
+              label: 'Pending Approvals',
+              value: Math.max(0, 100 - (approvals.filter(a => a.type === 'purchase' && a.status === 'pending').length * 25)),
+              displayValue: `${approvals.filter(a => a.type === 'purchase' && a.status === 'pending').length}`,
+              color: approvals.filter(a => a.type === 'purchase' && a.status === 'pending').length > 0 ? '#F59E0B' : '#10B981',
+            },
+            {
+              label: 'Active POs',
+              value: 65,
+              displayValue: `${approvals.filter(a => a.type === 'purchase').length}`,
+              color: '#3B82F6',
+            },
+            {
+              label: 'Approval Rate',
+              value: approvals.filter(a => a.type === 'purchase').length > 0
+                ? Math.round((approvals.filter(a => a.type === 'purchase' && a.status === 'approved').length / Math.max(approvals.filter(a => a.type === 'purchase').length, 1)) * 100)
+                : 100,
+              displayValue: `${approvals.filter(a => a.type === 'purchase').length > 0
+                ? Math.round((approvals.filter(a => a.type === 'purchase' && a.status === 'approved').length / Math.max(approvals.filter(a => a.type === 'purchase').length, 1)) * 100)
+                : 100}%`,
+            },
+          ]}
+        />
 
+        {/* ── Requires Attention ── */}
         {actionItems.length > 0 && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
@@ -660,159 +693,13 @@ export default function ExecutiveDashboard() {
           </View>
         )}
 
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <View style={styles.sectionTitleRow}>
-              <Target size={18} color={Colors.primary} />
-              <Text style={styles.sectionTitle}>Performance Scorecard</Text>
-            </View>
-          </View>
-          
-          <View style={styles.performanceCard}>
-            <View style={styles.performanceRow}>
-              <View style={styles.performanceItem}>
-                <View style={styles.performanceCircle}>
-                  <Text style={[
-                    styles.performanceValue,
-                    { color: performanceMetrics.stockHealth >= 80 ? '#10B981' : performanceMetrics.stockHealth >= 60 ? '#F59E0B' : '#EF4444' }
-                  ]}>
-                    {performanceMetrics.stockHealth}%
-                  </Text>
-                </View>
-                <Text style={styles.performanceLabel}>Stock Health</Text>
-              </View>
-              
-              <View style={styles.performanceItem}>
-                <View style={styles.performanceCircle}>
-                  <Text style={[
-                    styles.performanceValue,
-                    { color: performanceMetrics.woCompletion >= 80 ? '#10B981' : performanceMetrics.woCompletion >= 60 ? '#F59E0B' : '#EF4444' }
-                  ]}>
-                    {performanceMetrics.woCompletion}%
-                  </Text>
-                </View>
-                <Text style={styles.performanceLabel}>WO Completion</Text>
-              </View>
-              
-              <View style={styles.performanceItem}>
-                <View style={styles.performanceCircle}>
-                  <Text style={[
-                    styles.performanceValue,
-                    { color: performanceMetrics.laborUtilization >= 80 ? '#10B981' : performanceMetrics.laborUtilization >= 60 ? '#F59E0B' : '#EF4444' }
-                  ]}>
-                    {performanceMetrics.laborUtilization}%
-                  </Text>
-                </View>
-                <Text style={styles.performanceLabel}>Labor Active</Text>
-              </View>
-            </View>
-          </View>
-        </View>
+        <AlertSummaryWidget onPress={() => setShowLowStockAlerts(true)} />
 
         <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <View style={styles.sectionTitleRow}>
-              <Activity size={18} color={Colors.info} />
-              <Text style={styles.sectionTitle}>Operations Summary</Text>
-            </View>
-          </View>
-          
-          <View style={styles.summaryGrid}>
-            <View style={styles.summaryCard}>
-              <View style={styles.summaryHeader}>
-                <Package size={16} color={Colors.info} />
-                <Text style={styles.summaryTitle}>Inventory</Text>
-              </View>
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Total SKUs</Text>
-                <Text style={styles.summaryValue}>{stats.totalMaterials}</Text>
-              </View>
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Low Stock</Text>
-                <Text style={[styles.summaryValue, stats.lowStockCount > 0 && { color: Colors.warning }]}>
-                  {stats.lowStockCount}
-                </Text>
-              </View>
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Out of Stock</Text>
-                <Text style={[styles.summaryValue, stats.outOfStockCount > 0 && { color: Colors.error }]}>
-                  {stats.outOfStockCount}
-                </Text>
-              </View>
-            </View>
-            
-            <View style={styles.summaryCard}>
-              <View style={styles.summaryHeader}>
-                <Wrench size={16} color={Colors.warning} />
-                <Text style={styles.summaryTitle}>Work Orders</Text>
-              </View>
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Open</Text>
-                <Text style={styles.summaryValue}>{stats.openWorkOrders}</Text>
-              </View>
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>In Progress</Text>
-                <Text style={[styles.summaryValue, { color: Colors.info }]}>{stats.inProgressWorkOrders}</Text>
-              </View>
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Overdue</Text>
-                <Text style={[styles.summaryValue, stats.overdueWorkOrders > 0 && { color: Colors.error }]}>
-                  {stats.overdueWorkOrders}
-                </Text>
-              </View>
-            </View>
-          </View>
+          <ProcurementWidget />
         </View>
 
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <View style={styles.sectionTitleRow}>
-              <Building2 size={18} color={Colors.purple} />
-              <Text style={styles.sectionTitle}>Facility Overview</Text>
-            </View>
-          </View>
-          
-          {facilityBreakdown.length > 0 ? (
-            facilityBreakdown.map((facility, index) => {
-              const percentage = inventoryValue > 0 
-                ? Math.round((facility.value / inventoryValue) * 100) 
-                : 0;
-              
-              return (
-                <View key={facility.name} style={styles.facilityCard}>
-                  <View style={styles.facilityHeader}>
-                    <View style={styles.facilityInfo}>
-                      <Text style={styles.facilityName}>{facility.name}</Text>
-                      <Text style={styles.facilityMeta}>
-                        {facility.items} items • {facility.lowStock > 0 ? `${facility.lowStock} low` : 'All stocked'}
-                      </Text>
-                    </View>
-                    <View style={styles.facilityValueContainer}>
-                      <Text style={styles.facilityValue}>${(facility.value / 1000).toFixed(1)}K</Text>
-                      <Text style={styles.facilityPercent}>{percentage}%</Text>
-                    </View>
-                  </View>
-                  <View style={styles.facilityBarContainer}>
-                    <View 
-                      style={[
-                        styles.facilityBar, 
-                        { 
-                          width: `${percentage}%`,
-                          backgroundColor: facility.lowStock > 0 ? Colors.warning : Colors.success
-                        }
-                      ]} 
-                    />
-                  </View>
-                </View>
-              );
-            })
-          ) : (
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyText}>No facilities configured</Text>
-            </View>
-          )}
-        </View>
-
+        {/* ── Workforce Summary ── */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <View style={styles.sectionTitleRow}>
@@ -1088,60 +975,6 @@ const createStyles = (Colors: any) => StyleSheet.create({
     fontSize: 13,
     color: Colors.textSecondary,
   },
-  kpiGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-    marginBottom: 24,
-  },
-  kpiCard: {
-    width: (SCREEN_WIDTH - 44) / 2,
-    backgroundColor: Colors.surface,
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  kpiHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  kpiIconBox: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  trendBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    gap: 4,
-  },
-  trendText: {
-    fontSize: 11,
-    fontWeight: '600' as const,
-  },
-  kpiValue: {
-    fontSize: 28,
-    fontWeight: '700' as const,
-  },
-  kpiLabel: {
-    fontSize: 13,
-    color: Colors.textSecondary,
-    marginTop: 4,
-    fontWeight: '500' as const,
-  },
-  kpiSubValue: {
-    fontSize: 11,
-    color: Colors.textTertiary,
-    marginTop: 4,
-  },
   section: {
     marginBottom: 24,
   },
@@ -1221,143 +1054,6 @@ const createStyles = (Colors: any) => StyleSheet.create({
     fontSize: 14,
     fontWeight: '700' as const,
     marginTop: 4,
-  },
-  performanceCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: 16,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  performanceRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-  },
-  performanceItem: {
-    alignItems: 'center',
-  },
-  performanceCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: Colors.backgroundSecondary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 3,
-    borderColor: Colors.border,
-  },
-  performanceValue: {
-    fontSize: 22,
-    fontWeight: '700' as const,
-  },
-  performanceLabel: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-    marginTop: 8,
-    fontWeight: '500' as const,
-  },
-  summaryGrid: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  summaryCard: {
-    flex: 1,
-    backgroundColor: Colors.surface,
-    borderRadius: 14,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  summaryHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 12,
-    paddingBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  summaryTitle: {
-    fontSize: 14,
-    fontWeight: '600' as const,
-    color: Colors.text,
-  },
-  summaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 6,
-  },
-  summaryLabel: {
-    fontSize: 13,
-    color: Colors.textSecondary,
-  },
-  summaryValue: {
-    fontSize: 14,
-    fontWeight: '600' as const,
-    color: Colors.text,
-  },
-  facilityCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  facilityHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 10,
-  },
-  facilityInfo: {
-    flex: 1,
-  },
-  facilityName: {
-    fontSize: 15,
-    fontWeight: '600' as const,
-    color: Colors.text,
-  },
-  facilityMeta: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-    marginTop: 2,
-  },
-  facilityValueContainer: {
-    alignItems: 'flex-end',
-  },
-  facilityValue: {
-    fontSize: 16,
-    fontWeight: '700' as const,
-    color: Colors.success,
-  },
-  facilityPercent: {
-    fontSize: 11,
-    color: Colors.textTertiary,
-    marginTop: 2,
-  },
-  facilityBarContainer: {
-    height: 6,
-    backgroundColor: Colors.backgroundSecondary,
-    borderRadius: 3,
-    overflow: 'hidden',
-  },
-  facilityBar: {
-    height: '100%',
-    borderRadius: 3,
-  },
-  emptyState: {
-    backgroundColor: Colors.surface,
-    borderRadius: 14,
-    padding: 24,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  emptyText: {
-    fontSize: 14,
-    color: Colors.textTertiary,
   },
   workforceCard: {
     backgroundColor: Colors.surface,
