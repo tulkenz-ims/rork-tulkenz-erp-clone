@@ -8,6 +8,7 @@ import {
   Platform,
   Animated,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/contexts/ThemeContext';
 import { NAVIGATION_MODULES, type NavigationModule } from '@/constants/navigationModules';
@@ -24,7 +25,7 @@ export default function ScrollableNavBar({
   onNavigate,
   visibleModules,
 }: ScrollableNavBarProps) {
-  const { colors } = useTheme();
+  const { colors, barColors, barText, companyColors } = useTheme();
   const insets = useSafeAreaInsets();
   const scrollViewRef = useRef<ScrollView>(null);
   const badgeCounts = useTabBadgeCounts();
@@ -33,26 +34,31 @@ export default function ScrollableNavBar({
     (m) => visibleModules.includes(m.key)
   );
 
+  const hasCompanyColors = companyColors.length > 0;
+  // When company colors are set, use contrasting text; otherwise use theme colors
+  const iconColor = hasCompanyColors ? barText : colors.textSecondary;
+  const activeColor = hasCompanyColors ? barText : colors.primary;
+  const activeIconBg = hasCompanyColors ? (barText === '#FFFFFF' ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)') : colors.primary + '20';
+  const indicatorColor = hasCompanyColors ? barText : colors.primary;
+
   const getIsActive = (module: NavigationModule) => {
     if (module.route === activeRoute) return true;
     if (module.route === '(dashboard)' && activeRoute === '(dashboard)') return true;
     return false;
   };
 
-  return (
-    <View
-      style={[
-        styles.container,
-        {
-          backgroundColor: colors.surface,
-          borderTopColor: colors.border,
-          paddingBottom: Platform.OS === 'web' ? 8 : insets.bottom,
-        },
-      ]}
-    >
-      <ScrollView
-        ref={scrollViewRef}
-        horizontal
+  const containerStyle = [
+    styles.container,
+    {
+      borderTopColor: hasCompanyColors ? 'transparent' : colors.border,
+      paddingBottom: Platform.OS === 'web' ? 8 : insets.bottom,
+    },
+  ];
+
+  const innerContent = (
+    <ScrollView
+      ref={scrollViewRef}
+      horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
         style={styles.scrollView}
@@ -66,12 +72,33 @@ export default function ScrollableNavBar({
               module={module}
               isActive={isActive}
               onPress={() => onNavigate(module.route)}
-              colors={colors}
+              iconColor={iconColor}
+              activeColor={activeColor}
+              activeIconBg={activeIconBg}
+              indicatorColor={indicatorColor}
               badgeCounts={badgeCounts}
             />
           );
         })}
       </ScrollView>
+  );
+
+  if (hasCompanyColors) {
+    return (
+      <LinearGradient
+        colors={barColors as [string, string, ...string[]]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={containerStyle}
+      >
+        {innerContent}
+      </LinearGradient>
+    );
+  }
+
+  return (
+    <View style={[containerStyle, { backgroundColor: colors.surface }]}>
+      {innerContent}
     </View>
   );
 }
@@ -80,11 +107,14 @@ interface NavItemProps {
   module: NavigationModule;
   isActive: boolean;
   onPress: () => void;
-  colors: any;
+  iconColor: string;
+  activeColor: string;
+  activeIconBg: string;
+  indicatorColor: string;
   badgeCounts: TabBadgeCounts;
 }
 
-function NavItem({ module, isActive, onPress, colors, badgeCounts }: NavItemProps) {
+function NavItem({ module, isActive, onPress, iconColor, activeColor, activeIconBg, indicatorColor, badgeCounts }: NavItemProps) {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const ModuleIcon = module.icon;
 
@@ -140,13 +170,13 @@ function NavItem({ module, isActive, onPress, colors, badgeCounts }: NavItemProp
           style={[
             styles.iconContainer,
             {
-              backgroundColor: isActive ? colors.primary + '20' : 'transparent',
+              backgroundColor: isActive ? activeIconBg : 'transparent',
             },
           ]}
         >
           <ModuleIcon
             size={22}
-            color={isActive ? colors.primary : colors.textSecondary}
+            color={isActive ? activeColor : iconColor}
           />
           {badge && badge.count > 0 && (
             <View
@@ -167,7 +197,7 @@ function NavItem({ module, isActive, onPress, colors, badgeCounts }: NavItemProp
           style={[
             styles.label,
             {
-              color: isActive ? colors.primary : colors.textSecondary,
+              color: isActive ? activeColor : iconColor,
               fontWeight: isActive ? '600' : '400',
             },
           ]}
@@ -176,7 +206,7 @@ function NavItem({ module, isActive, onPress, colors, badgeCounts }: NavItemProp
           {module.label}
         </Text>
         {isActive && (
-          <View style={[styles.activeIndicator, { backgroundColor: colors.primary }]} />
+          <View style={[styles.activeIndicator, { backgroundColor: indicatorColor }]} />
         )}
       </Animated.View>
     </Pressable>
