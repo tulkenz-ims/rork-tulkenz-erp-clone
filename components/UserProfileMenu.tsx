@@ -113,7 +113,10 @@ export default function UserProfileMenu() {
         onRequestClose={() => setShowMenu(false)}
       >
         <Pressable style={styles.overlay} onPress={() => setShowMenu(false)}>
-          <View style={[styles.menuContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Pressable 
+            style={[styles.menuContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}
+            onPress={() => {}}
+          >
             <View style={[styles.menuHeader, { borderBottomColor: colors.border }]}>
               <View style={[styles.menuAvatar, { backgroundColor: colors.primary }]}>
                 <Text style={styles.menuAvatarText}>
@@ -196,7 +199,7 @@ export default function UserProfileMenu() {
                 <Text style={[styles.companyName, { color: colors.textTertiary }]}>{company.name}</Text>
               </View>
             )}
-          </View>
+          </Pressable>
         </Pressable>
       </Modal>
 
