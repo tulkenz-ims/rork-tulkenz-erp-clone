@@ -35,6 +35,10 @@ import {
   Tornado,
   ShieldAlert,
   X,
+  ClipboardList,
+  BarChart3,
+  MapPin,
+  ChevronDown,
 } from 'lucide-react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import { useUser } from '@/contexts/UserContext';
@@ -140,6 +144,8 @@ export default function ExecutiveDashboard() {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [showLowStockAlerts, setShowLowStockAlerts] = useState(false);
   const [showEmergencyModal, setShowEmergencyModal] = useState(false);
+  const [showFacilityPicker, setShowFacilityPicker] = useState(false);
+  const [selectedFacility, setSelectedFacility] = useState<string>('all');
 
   const handleMaterialPress = useCallback((materialId: string) => {
     console.log('[Dashboard] handleMaterialPress called with materialId:', materialId);
@@ -352,6 +358,14 @@ export default function ExecutiveDashboard() {
       .sort((a, b) => b.value - a.value);
   }, [materialsList]);
 
+  const facilityNames = useMemo(() => {
+    const names = new Set<string>();
+    materialsList.forEach(m => { if (m.facility_name) names.add(m.facility_name); });
+    workOrders.forEach(w => { if ((w as any).location) names.add((w as any).location); });
+    if (names.size === 0) names.add('Main Facility');
+    return ['All Facilities', ...Array.from(names).sort()];
+  }, [materialsList, workOrders]);
+
   useEffect(() => {
     console.log('Auth state:', { authLoading, isAuthenticated });
     if (!authLoading && !isAuthenticated) {
@@ -466,25 +480,54 @@ export default function ExecutiveDashboard() {
           </View>
         </View>
 
-        <Pressable
-          style={({ pressed }) => [
-            styles.emergencyButton,
-            pressed && styles.pressed,
-          ]}
-          onPress={() => {
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-            setShowEmergencyModal(true);
-          }}
-        >
-          <View style={styles.emergencyIconBox}>
-            <Siren size={24} color="#FFFFFF" />
-          </View>
-          <View style={styles.emergencyTextContainer}>
-            <Text style={styles.emergencyButtonTitle}>EMERGENCY / DRILL</Text>
-            <Text style={styles.emergencyButtonSubtitle}>Initiate emergency or drill with roll call</Text>
-          </View>
-          <ChevronRight size={20} color="#FFFFFF" />
-        </Pressable>
+        {/* Quick Action Bar */}
+        <View style={styles.quickActionBar}>
+          <Pressable
+            style={({ pressed }) => [styles.quickActionBtn, pressed && { opacity: 0.7 }]}
+            onPress={() => setShowFacilityPicker(true)}
+          >
+            <View style={[styles.quickActionIcon, { backgroundColor: '#3B82F620' }]}>
+              <MapPin size={18} color="#3B82F6" />
+            </View>
+            <Text style={styles.quickActionLabel} numberOfLines={1}>
+              {selectedFacility === 'all' ? 'All Sites' : selectedFacility.length > 8 ? selectedFacility.slice(0, 7) + '…' : selectedFacility}
+            </Text>
+            <ChevronDown size={10} color={Colors.textSecondary} style={{ marginTop: -2 }} />
+          </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [styles.quickActionBtn, pressed && { opacity: 0.7 }]}
+            onPress={() => {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+              setShowEmergencyModal(true);
+            }}
+          >
+            <View style={[styles.quickActionIcon, { backgroundColor: '#DC262620' }]}>
+              <Siren size={18} color="#DC2626" />
+            </View>
+            <Text style={styles.quickActionLabel}>Emergency</Text>
+          </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [styles.quickActionBtn, pressed && { opacity: 0.7 }]}
+            onPress={() => router.push('/timeclock')}
+          >
+            <View style={[styles.quickActionIcon, { backgroundColor: '#10B98120' }]}>
+              <Users size={18} color="#10B981" />
+            </View>
+            <Text style={styles.quickActionLabel}>Workforce</Text>
+          </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [styles.quickActionBtn, pressed && { opacity: 0.7 }]}
+            onPress={() => router.push('/taskfeed')}
+          >
+            <View style={[styles.quickActionIcon, { backgroundColor: '#F59E0B20' }]}>
+              <ClipboardList size={18} color="#F59E0B" />
+            </View>
+            <Text style={styles.quickActionLabel}>Task Feed</Text>
+          </Pressable>
+        </View>
 
         <LineStatusWidget />
 
@@ -862,6 +905,48 @@ export default function ExecutiveDashboard() {
             </Pressable>
           </View>
         </View>
+      </Modal>
+
+      {/* Facility Picker Modal */}
+      <Modal
+        visible={showFacilityPicker}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowFacilityPicker(false)}
+      >
+        <Pressable 
+          style={styles.facilityPickerOverlay} 
+          onPress={() => setShowFacilityPicker(false)}
+        >
+          <View style={styles.facilityPickerContent}>
+            <View style={styles.facilityPickerHeader}>
+              <MapPin size={16} color={Colors.primary} />
+              <Text style={styles.facilityPickerTitle}>Select Facility</Text>
+            </View>
+            {facilityNames.map((name) => {
+              const key = name === 'All Facilities' ? 'all' : name;
+              const isSelected = selectedFacility === key;
+              return (
+                <Pressable
+                  key={name}
+                  style={[styles.facilityPickerItem, isSelected && styles.facilityPickerItemActive]}
+                  onPress={() => {
+                    setSelectedFacility(key);
+                    setShowFacilityPicker(false);
+                  }}
+                >
+                  <Text style={[
+                    styles.facilityPickerItemText,
+                    isSelected && { color: Colors.primary, fontWeight: '600' }
+                  ]}>
+                    {name}
+                  </Text>
+                  {isSelected && <CheckCircle size={16} color={Colors.primary} />}
+                </Pressable>
+              );
+            })}
+          </View>
+        </Pressable>
       </Modal>
 
       <LowStockAlerts
@@ -1254,19 +1339,50 @@ const styles = StyleSheet.create({
   bottomPadding: {
     height: 40,
   },
+  quickActionBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+    gap: 6,
+  },
+  quickActionBtn: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+    borderRadius: 12,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    gap: 4,
+  },
+  quickActionIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  quickActionLabel: {
+    fontSize: 10,
+    fontWeight: '600' as const,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+  },
   emergencyButton: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#DC2626',
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 20,
-    gap: 12,
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginBottom: 16,
+    gap: 8,
   },
   emergencyIconBox: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
+    width: 28,
+    height: 28,
+    borderRadius: 6,
     backgroundColor: 'rgba(255,255,255,0.2)',
     justifyContent: 'center',
     alignItems: 'center',
@@ -1275,15 +1391,62 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   emergencyButtonTitle: {
-    fontSize: 16,
+    flex: 1,
+    fontSize: 13,
     fontWeight: '700' as const,
     color: '#FFFFFF',
     letterSpacing: 0.5,
   },
   emergencyButtonSubtitle: {
-    fontSize: 12,
+    fontSize: 11,
     color: 'rgba(255,255,255,0.8)',
     marginTop: 2,
+  },
+  facilityPickerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 40,
+  },
+  facilityPickerContent: {
+    backgroundColor: Colors.surface,
+    borderRadius: 16,
+    padding: 8,
+    width: '100%',
+    maxWidth: 320,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  facilityPickerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+    marginBottom: 4,
+  },
+  facilityPickerTitle: {
+    fontSize: 14,
+    fontWeight: '600' as const,
+    color: Colors.text,
+  },
+  facilityPickerItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  facilityPickerItemActive: {
+    backgroundColor: `${Colors.primary}15`,
+  },
+  facilityPickerItemText: {
+    fontSize: 14,
+    color: Colors.text,
   },
   emergencyModalOverlay: {
     flex: 1,
