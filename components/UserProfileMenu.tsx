@@ -50,10 +50,6 @@ export default function UserProfileMenu() {
     setShowThemeModal(true);
   }, [customBg, customPrimary]);
 
-  const applyCustomColors = useCallback(() => {
-    setCustomColors(editBg, editCard);
-  }, [editBg, editCard, setCustomColors]);
-
   const isSuperAdmin = isSuperAdminRole(userProfile?.role) || 
                        currentUserRole?.isSystem || 
                        currentUserRole?.name === 'Super Admin' ||
@@ -233,7 +229,7 @@ export default function UserProfileMenu() {
                     ]}
                     onPress={() => {
                       if (option.value === 'custom') {
-                        applyCustomColors();
+                        setTheme('custom');
                       } else {
                         setTheme(option.value);
                       }
