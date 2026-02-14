@@ -62,7 +62,7 @@ export function useFinanceStatsQuery(options?: { enabled?: boolean }) {
       const arOverdue = MOCK_AR_INVOICES.filter(i => i.status === 'overdue');
       const totalAPDue = apPending.reduce((sum, i) => sum + i.balanceDue, 0);
       const totalARDue = arPending.reduce((sum, i) => sum + i.balanceDue, 0);
-      const cashAccount = MOCK_GL_ACCOUNTS.find(a => a.accountNumber === '1100');
+      const cashAccount = MOCK_GL_ACCOUNTS.find(a => a.accountNumber === '1010');
       const activeBudget = MOCK_BUDGETS.find(b => b.status === 'active');
 
       const stats: FinanceStats = {
