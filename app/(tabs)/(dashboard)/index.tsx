@@ -464,6 +464,16 @@ export default function ExecutiveDashboard() {
             </View>
             <View style={styles.headerActions}>
               <Pressable
+                style={({ pressed }) => [styles.facilityButton, pressed && styles.pressed]}
+                onPress={() => setShowFacilityPicker(true)}
+              >
+                <MapPin size={16} color="#3B82F6" />
+                <Text style={styles.facilityButtonText} numberOfLines={1}>
+                  {selectedFacility === 'all' ? 'All Facilities' : selectedFacility.length > 12 ? selectedFacility.slice(0, 11) + '…' : selectedFacility}
+                </Text>
+                <ChevronDown size={12} color={Colors.textSecondary} />
+              </Pressable>
+              <Pressable
                 style={({ pressed }) => [styles.refreshButton, pressed && styles.pressed]}
                 onPress={onRefresh}
               >
@@ -489,18 +499,30 @@ export default function ExecutiveDashboard() {
         <View style={styles.quickActionBar}>
           <Pressable
             style={({ pressed }) => [styles.quickActionBtn, pressed && { opacity: 0.7 }]}
-            onPress={() => setShowFacilityPicker(true)}
+            onPress={() => router.push('/taskfeed')}
           >
-            <View style={[styles.quickActionIcon, { backgroundColor: '#3B82F620' }]}>
-              <MapPin size={18} color="#3B82F6" />
+            <View style={[styles.quickActionIcon, { backgroundColor: '#F59E0B20' }]}>
+              <ClipboardList size={18} color="#F59E0B" />
             </View>
-            <Text style={styles.quickActionStat} numberOfLines={1}>
-              {selectedFacility === 'all' ? `${facilityNames.length - 1}` : '1'}
+            <Text style={[styles.quickActionStat, { color: taskFeedPendingCount > 0 ? '#F59E0B' : '#10B981' }]}>
+              {taskFeedPendingCount}
             </Text>
-            <Text style={styles.quickActionLabel} numberOfLines={1}>
-              {selectedFacility === 'all' ? (facilityNames.length - 1 === 1 ? 'Facility' : 'Facilities') : selectedFacility.length > 10 ? selectedFacility.slice(0, 9) + '…' : selectedFacility}
+            <Text style={styles.quickActionLabel}>Pending Tasks</Text>
+            <Text style={styles.quickActionDesc}>Issues & Requests</Text>
+          </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [styles.quickActionBtn, pressed && { opacity: 0.7 }]}
+            onPress={() => router.push('/timeclock')}
+          >
+            <View style={[styles.quickActionIcon, { backgroundColor: '#10B98120' }]}>
+              <Users size={18} color="#10B981" />
+            </View>
+            <Text style={[styles.quickActionStat, { color: '#10B981' }]}>
+              {stats.activeEmployees}/{stats.totalEmployees}
             </Text>
-            <ChevronDown size={10} color={Colors.textSecondary} style={{ marginTop: -2 }} />
+            <Text style={styles.quickActionLabel}>Clocked In</Text>
+            <Text style={styles.quickActionDesc}>Workforce Status</Text>
           </Pressable>
 
           <Pressable
@@ -515,32 +537,7 @@ export default function ExecutiveDashboard() {
             </View>
             <Text style={[styles.quickActionStat, { color: '#DC2626' }]}>SOS</Text>
             <Text style={styles.quickActionLabel}>Emergency</Text>
-          </Pressable>
-
-          <Pressable
-            style={({ pressed }) => [styles.quickActionBtn, pressed && { opacity: 0.7 }]}
-            onPress={() => router.push('/timeclock')}
-          >
-            <View style={[styles.quickActionIcon, { backgroundColor: '#10B98120' }]}>
-              <Users size={18} color="#10B981" />
-            </View>
-            <Text style={[styles.quickActionStat, { color: '#10B981' }]}>
-              {stats.activeEmployees}/{stats.totalEmployees}
-            </Text>
-            <Text style={styles.quickActionLabel}>Active</Text>
-          </Pressable>
-
-          <Pressable
-            style={({ pressed }) => [styles.quickActionBtn, pressed && { opacity: 0.7 }]}
-            onPress={() => router.push('/taskfeed')}
-          >
-            <View style={[styles.quickActionIcon, { backgroundColor: '#F59E0B20' }]}>
-              <ClipboardList size={18} color="#F59E0B" />
-            </View>
-            <Text style={[styles.quickActionStat, { color: taskFeedPendingCount > 0 ? '#F59E0B' : '#10B981' }]}>
-              {taskFeedPendingCount}
-            </Text>
-            <Text style={styles.quickActionLabel}>Pending</Text>
+            <Text style={styles.quickActionDesc}>Alert All Staff</Text>
           </Pressable>
         </View>
 
@@ -1036,6 +1033,23 @@ const createStyles = (Colors: any) => StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
   },
+  facilityButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: 44,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    gap: 6,
+  },
+  facilityButtonText: {
+    fontSize: 13,
+    fontWeight: '600' as const,
+    color: Colors.text,
+    maxWidth: 120,
+  },
   pressed: {
     opacity: 0.7,
   },
@@ -1389,6 +1403,12 @@ const createStyles = (Colors: any) => StyleSheet.create({
     fontWeight: '700' as const,
     color: Colors.text,
     textAlign: 'center',
+  },
+  quickActionDesc: {
+    fontSize: 9,
+    color: Colors.textTertiary,
+    textAlign: 'center',
+    marginTop: 1,
   },
   emergencyButton: {
     flexDirection: 'row',
