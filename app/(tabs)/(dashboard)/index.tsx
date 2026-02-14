@@ -38,6 +38,7 @@ import EmployeeHome from '@/components/EmployeeHome';
 import LowStockAlerts from '@/components/LowStockAlerts';
 import UserProfileMenu from '@/components/UserProfileMenu';
 import LineStatusWidget from '@/components/LineStatusWidget';
+import MetricCardsSection from '@/components/MetricCardsSection';
 import ScoreCardSection from '@/components/ScoreCardSection';
 import { useMaterialsQuery } from '@/hooks/useSupabaseMaterials';
 import { useWorkOrdersQuery } from '@/hooks/useSupabaseWorkOrders';
@@ -417,50 +418,33 @@ export default function ExecutiveDashboard() {
 
         <LineStatusWidget />
 
-        {/* ── CMMS Performance Scorecard ── */}
-        <ScoreCardSection
+        {/* ── CMMS Performance Cards ── */}
+        <MetricCardsSection
           title="CMMS Performance"
           subtitle="30-day"
           icon={<Wrench size={16} color={Colors.warning} />}
-          gauges={[
-            {
-              label: 'WO Completion',
-              value: performanceMetrics.woCompletion,
-              displayValue: `${performanceMetrics.woCompletion}%`,
-            },
-            {
-              label: 'On-Time Rate',
-              value: workOrders.length > 0 
-                ? Math.round(((stats.completedWorkOrders - stats.overdueWorkOrders) / Math.max(stats.completedWorkOrders, 1)) * 100)
-                : 0,
-              displayValue: `${workOrders.length > 0 
-                ? Math.round(((stats.completedWorkOrders - stats.overdueWorkOrders) / Math.max(stats.completedWorkOrders, 1)) * 100)
-                : 0}%`,
-            },
-            {
-              label: 'Overdue',
-              value: Math.max(0, 100 - (stats.overdueWorkOrders / Math.max(stats.openWorkOrders + stats.inProgressWorkOrders, 1)) * 100),
-              displayValue: `${stats.overdueWorkOrders}`,
-              color: stats.overdueWorkOrders > 0 ? '#EF4444' : '#10B981',
-            },
-            {
-              label: 'Backlog',
-              value: Math.max(0, 100 - (stats.openWorkOrders / Math.max(workOrders.length, 1)) * 100),
-              displayValue: `${stats.openWorkOrders}`,
-              color: stats.openWorkOrders > 5 ? '#F59E0B' : '#10B981',
-            },
-            {
-              label: 'In Progress',
-              value: stats.inProgressWorkOrders > 0 ? 60 : 0,
-              displayValue: `${stats.inProgressWorkOrders}`,
-              color: '#3B82F6',
-            },
-            {
-              label: 'Labor Active',
-              value: performanceMetrics.laborUtilization,
-              displayValue: `${performanceMetrics.laborUtilization}%`,
-            },
-          ]}
+          cards={(() => {
+            const completed = workOrders.filter(wo => wo.status === 'completed');
+            const total = workOrders.length;
+            const overdue = stats.overdueWorkOrders;
+            const open = stats.openWorkOrders;
+            const planned = workOrders.filter(wo => wo.type === 'preventive' || wo.type === 'pm' || wo.priority === 'low' || wo.priority === 'medium').length;
+            const unplanned = workOrders.filter(wo => wo.type === 'reactive' || wo.type === 'emergency' || wo.type === 'corrective' || wo.priority === 'critical' || wo.priority === 'emergency').length;
+            const pmWOs = workOrders.filter(wo => wo.type === 'preventive' || wo.type === 'pm');
+            const pmCompleted = pmWOs.filter(wo => wo.status === 'completed').length;
+            const pmCompliance = pmWOs.length > 0 ? Math.round((pmCompleted / pmWOs.length) * 100) : 100;
+
+            return [
+              { label: 'MTTR', value: '0', unit: 'hrs', trend: 0 },
+              { label: 'MTBF', value: '0', unit: 'hrs', trend: 0 },
+              { label: 'Wrench Time', value: performanceMetrics.laborUtilization.toString(), unit: '%', trend: 0 },
+              { label: 'PM Compliance', value: pmCompliance.toString(), unit: '%', trend: 0, color: pmCompliance >= 90 ? '#10B981' : pmCompliance >= 70 ? '#F59E0B' : '#EF4444' },
+              { label: 'Backlog', value: open.toString(), unit: 'WOs', trend: 0, color: open > 5 ? '#F59E0B' : '#10B981' },
+              { label: 'First Time Fix', value: '0', unit: '%', trend: 0 },
+              { label: 'Planned', value: planned.toString(), unit: 'WOs', trend: 0, color: '#3B82F6' },
+              { label: 'Unplanned', value: unplanned.toString(), unit: 'WOs', trend: 0, color: unplanned > 0 ? '#EF4444' : '#10B981' },
+            ];
+          })()}
         />
 
         {/* ── Inventory Scorecard ── */}
