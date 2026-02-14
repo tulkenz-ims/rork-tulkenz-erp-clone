@@ -81,8 +81,8 @@ function SettingItem({ icon: Icon, label, value, onPress, danger, colors }: Sett
 const themeOptions: { value: ThemeType; label: string; icon: typeof Sun; iconColor: string }[] = [
   { value: 'light', label: 'Light', icon: Sun, iconColor: '#F59E0B' },
   { value: 'dark', label: 'Dark', icon: Moon, iconColor: '#6366F1' },
-  { value: 'blue', label: 'Blue', icon: Monitor, iconColor: '#3B82F6' },
-  { value: 'rust', label: 'Rust', icon: Palette, iconColor: '#D97706' },
+  { value: 'blue', label: 'Blue', icon: Monitor, iconColor: '#0073CF' },
+  { value: 'rust', label: 'Silver', icon: Palette, iconColor: '#C0C0C0' },
 ];
 
 const getTierIcon = (tier: string) => {
