@@ -53,6 +53,7 @@ import { useMaterialsQuery } from '@/hooks/useSupabaseMaterials';
 import { useWorkOrdersQuery } from '@/hooks/useSupabaseWorkOrders';
 import { useEmployees } from '@/hooks/useSupabaseEmployees';
 import { useAllAggregatedApprovals } from '@/hooks/useAggregatedApprovals';
+import { useTaskFeedPostsQuery } from '@/hooks/useTaskFeedTemplates';
 import * as Haptics from 'expo-haptics';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -86,6 +87,9 @@ export default function ExecutiveDashboard() {
   const { data: workOrders = [], isLoading: workOrdersLoading } = useWorkOrdersQuery();
   const { data: employees = [], isLoading: employeesLoading } = useEmployees();
   const { purchaseApprovals, timeApprovals, permitApprovals, isLoading: approvalsLoading } = useAllAggregatedApprovals();
+  const { data: pendingPosts = [] } = useTaskFeedPostsQuery({ status: 'pending' });
+  const { data: inProgressPosts = [] } = useTaskFeedPostsQuery({ status: 'in_progress' });
+  const taskFeedPendingCount = pendingPosts.length + inProgressPosts.length;
 
   const erpLoading = materialsLoading || workOrdersLoading || employeesLoading || approvalsLoading;
 
@@ -361,10 +365,9 @@ export default function ExecutiveDashboard() {
   const facilityNames = useMemo(() => {
     const names = new Set<string>();
     materialsList.forEach(m => { if (m.facility_name) names.add(m.facility_name); });
-    workOrders.forEach(w => { if ((w as any).location) names.add((w as any).location); });
     if (names.size === 0) names.add('Main Facility');
     return ['All Facilities', ...Array.from(names).sort()];
-  }, [materialsList, workOrders]);
+  }, [materialsList]);
 
   useEffect(() => {
     console.log('Auth state:', { authLoading, isAuthenticated });
@@ -489,8 +492,11 @@ export default function ExecutiveDashboard() {
             <View style={[styles.quickActionIcon, { backgroundColor: '#3B82F620' }]}>
               <MapPin size={18} color="#3B82F6" />
             </View>
+            <Text style={styles.quickActionStat} numberOfLines={1}>
+              {selectedFacility === 'all' ? `${facilityNames.length - 1}` : '1'}
+            </Text>
             <Text style={styles.quickActionLabel} numberOfLines={1}>
-              {selectedFacility === 'all' ? 'All Sites' : selectedFacility.length > 8 ? selectedFacility.slice(0, 7) + '…' : selectedFacility}
+              {selectedFacility === 'all' ? (facilityNames.length - 1 === 1 ? 'Facility' : 'Facilities') : selectedFacility.length > 10 ? selectedFacility.slice(0, 9) + '…' : selectedFacility}
             </Text>
             <ChevronDown size={10} color={Colors.textSecondary} style={{ marginTop: -2 }} />
           </Pressable>
@@ -505,6 +511,7 @@ export default function ExecutiveDashboard() {
             <View style={[styles.quickActionIcon, { backgroundColor: '#DC262620' }]}>
               <Siren size={18} color="#DC2626" />
             </View>
+            <Text style={[styles.quickActionStat, { color: '#DC2626' }]}>SOS</Text>
             <Text style={styles.quickActionLabel}>Emergency</Text>
           </Pressable>
 
@@ -515,7 +522,10 @@ export default function ExecutiveDashboard() {
             <View style={[styles.quickActionIcon, { backgroundColor: '#10B98120' }]}>
               <Users size={18} color="#10B981" />
             </View>
-            <Text style={styles.quickActionLabel}>Workforce</Text>
+            <Text style={[styles.quickActionStat, { color: '#10B981' }]}>
+              {stats.activeEmployees}/{stats.totalEmployees}
+            </Text>
+            <Text style={styles.quickActionLabel}>Active</Text>
           </Pressable>
 
           <Pressable
@@ -525,7 +535,10 @@ export default function ExecutiveDashboard() {
             <View style={[styles.quickActionIcon, { backgroundColor: '#F59E0B20' }]}>
               <ClipboardList size={18} color="#F59E0B" />
             </View>
-            <Text style={styles.quickActionLabel}>Task Feed</Text>
+            <Text style={[styles.quickActionStat, { color: taskFeedPendingCount > 0 ? '#F59E0B' : '#10B981' }]}>
+              {taskFeedPendingCount}
+            </Text>
+            <Text style={styles.quickActionLabel}>Pending</Text>
           </Pressable>
         </View>
 
@@ -1367,6 +1380,12 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '600' as const,
     color: Colors.textSecondary,
+    textAlign: 'center',
+  },
+  quickActionStat: {
+    fontSize: 16,
+    fontWeight: '700' as const,
+    color: Colors.text,
     textAlign: 'center',
   },
   emergencyButton: {
