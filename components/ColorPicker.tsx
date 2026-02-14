@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -17,119 +17,207 @@ interface ColorPickerProps {
 }
 
 // ── Color math ─────────────────────────────────────────────────
-function hslToHex(h: number, s: number, l: number): string {
-  s /= 100;
-  l /= 100;
-  const a = s * Math.min(l, 1 - l);
-  const f = (n: number) => {
-    const k = (n + h / 30) % 12;
-    const color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
-    return Math.round(255 * Math.max(0, Math.min(1, color)))
-      .toString(16)
-      .padStart(2, '0');
-  };
-  return `#${f(0)}${f(8)}${f(4)}`;
+function hsvToHex(h: number, s: number, v: number): string {
+  h = h / 360;
+  s = s / 100;
+  v = v / 100;
+  let r = 0, g = 0, b = 0;
+  const i = Math.floor(h * 6);
+  const f = h * 6 - i;
+  const p = v * (1 - s);
+  const q = v * (1 - f * s);
+  const t = v * (1 - (1 - f) * s);
+  switch (i % 6) {
+    case 0: r = v; g = t; b = p; break;
+    case 1: r = q; g = v; b = p; break;
+    case 2: r = p; g = v; b = t; break;
+    case 3: r = p; g = q; b = v; break;
+    case 4: r = t; g = p; b = v; break;
+    case 5: r = v; g = p; b = q; break;
+  }
+  const toHex = (n: number) => Math.round(n * 255).toString(16).padStart(2, '0');
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
 }
 
-function hexToHsl(hex: string): { h: number; s: number; l: number } {
+function hexToHsv(hex: string): { h: number; s: number; v: number } {
   const clean = hex.replace('#', '');
-  let r = parseInt(clean.substring(0, 2), 16) / 255;
-  let g = parseInt(clean.substring(2, 4), 16) / 255;
-  let b = parseInt(clean.substring(4, 6), 16) / 255;
-
+  const r = parseInt(clean.substring(0, 2), 16) / 255;
+  const g = parseInt(clean.substring(2, 4), 16) / 255;
+  const b = parseInt(clean.substring(4, 6), 16) / 255;
   const max = Math.max(r, g, b);
   const min = Math.min(r, g, b);
+  const d = max - min;
   let h = 0;
-  let s = 0;
-  const l = (max + min) / 2;
-
-  if (max !== min) {
-    const d = max - min;
-    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  const s = max === 0 ? 0 : d / max;
+  const v = max;
+  if (d !== 0) {
     switch (max) {
       case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
       case g: h = ((b - r) / d + 2) / 6; break;
       case b: h = ((r - g) / d + 4) / 6; break;
     }
   }
-
-  return { h: Math.round(h * 360), s: Math.round(s * 100), l: Math.round(l * 100) };
+  return { h: Math.round(h * 360), s: Math.round(s * 100), v: Math.round(v * 100) };
 }
 
 const isValidHex = (s: string) => /^#[0-9A-Fa-f]{6}$/.test(s);
+const clamp = (val: number, min: number, max: number) => Math.max(min, Math.min(max, val));
 
-// ── Slider Bar ─────────────────────────────────────────────────
-function SliderBar({
-  gradient,
-  value,
-  max,
-  onChange,
-  thumbColor,
+// Number of strips for gradient simulation
+const WHITE_COLS = 20;
+const BLACK_ROWS = 15;
+
+// ── 2D Palette (saturation X, brightness Y) ────────────────────
+function PaletteBox({
+  hue,
+  saturation,
+  brightness,
+  onChangeSV,
 }: {
-  gradient: string[];
-  value: number;
-  max: number;
-  onChange: (val: number) => void;
-  thumbColor: string;
+  hue: number;
+  saturation: number;
+  brightness: number;
+  onChangeSV: (s: number, v: number) => void;
 }) {
-  const barWidth = useRef(0);
+  const boxSize = useRef({ w: 0, h: 0 });
+
+  const handleTouch = useCallback((x: number, y: number) => {
+    if (boxSize.current.w > 0) {
+      const s = clamp((x / boxSize.current.w) * 100, 0, 100);
+      const v = clamp(100 - (y / boxSize.current.h) * 100, 0, 100);
+      onChangeSV(Math.round(s), Math.round(v));
+    }
+  }, [onChangeSV]);
 
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: (evt) => {
-        const x = evt.nativeEvent.locationX;
-        if (barWidth.current > 0) {
-          onChange(Math.max(0, Math.min(max, (x / barWidth.current) * max)));
-        }
-      },
-      onPanResponderMove: (evt) => {
-        const x = evt.nativeEvent.locationX;
-        if (barWidth.current > 0) {
-          onChange(Math.max(0, Math.min(max, (x / barWidth.current) * max)));
-        }
-      },
+      onPanResponderGrant: (evt) => handleTouch(evt.nativeEvent.locationX, evt.nativeEvent.locationY),
+      onPanResponderMove: (evt) => handleTouch(evt.nativeEvent.locationX, evt.nativeEvent.locationY),
     })
   ).current;
 
   const onLayout = (e: LayoutChangeEvent) => {
-    barWidth.current = e.nativeEvent.layout.width;
+    boxSize.current = { w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height };
   };
 
-  const position = barWidth.current > 0 ? (value / max) * barWidth.current : (value / max) * 280;
+  const pureColor = hsvToHex(hue, 100, 100);
+  const cursorX = (saturation / 100) * (boxSize.current.w || 200);
+  const cursorY = ((100 - brightness) / 100) * (boxSize.current.h || 150);
+
+  // Pre-build white column overlays (saturation gradient: white→transparent, left→right)
+  const whiteCols = useMemo(() => {
+    return Array.from({ length: WHITE_COLS }, (_, i) => {
+      const opacity = 1 - (i / (WHITE_COLS - 1));
+      return (
+        <View
+          key={`w${i}`}
+          style={{
+            flex: 1,
+            backgroundColor: `rgba(255,255,255,${opacity})`,
+          }}
+        />
+      );
+    });
+  }, []);
+
+  // Pre-build black row overlays (brightness gradient: transparent→black, top→bottom)
+  const blackRows = useMemo(() => {
+    return Array.from({ length: BLACK_ROWS }, (_, i) => {
+      const opacity = i / (BLACK_ROWS - 1);
+      return (
+        <View
+          key={`b${i}`}
+          style={{
+            flex: 1,
+            backgroundColor: `rgba(0,0,0,${opacity})`,
+          }}
+        />
+      );
+    });
+  }, []);
 
   return (
     <View
-      style={styles.sliderContainer}
+      style={[styles.paletteBox, { backgroundColor: pureColor }]}
       onLayout={onLayout}
       {...panResponder.panHandlers}
     >
-      <View style={styles.sliderTrack}>
-        {/* Gradient segments */}
-        {gradient.map((color, i) => (
-          <View
-            key={i}
-            style={[
-              styles.gradientSegment,
-              {
-                backgroundColor: color,
-                borderTopLeftRadius: i === 0 ? 6 : 0,
-                borderBottomLeftRadius: i === 0 ? 6 : 0,
-                borderTopRightRadius: i === gradient.length - 1 ? 6 : 0,
-                borderBottomRightRadius: i === gradient.length - 1 ? 6 : 0,
-              },
-            ]}
-          />
-        ))}
+      {/* White overlay: columns left→right with decreasing opacity */}
+      <View style={[StyleSheet.absoluteFill, { flexDirection: 'row' }]}>
+        {whiteCols}
       </View>
+      {/* Black overlay: rows top→bottom with increasing opacity */}
+      <View style={StyleSheet.absoluteFill}>
+        {blackRows}
+      </View>
+      {/* Cursor */}
       <View
         style={[
-          styles.sliderThumb,
+          styles.cursor,
           {
-            left: Math.max(0, position - 10),
-            backgroundColor: thumbColor,
+            left: clamp(cursorX - 9, -4, (boxSize.current.w || 200) - 14),
+            top: clamp(cursorY - 9, -4, (boxSize.current.h || 150) - 14),
           },
+        ]}
+      />
+    </View>
+  );
+}
+
+// ── Hue Strip (vertical) ───────────────────────────────────────
+function HueStrip({
+  hue,
+  onChangeHue,
+}: {
+  hue: number;
+  onChangeHue: (h: number) => void;
+}) {
+  const stripHeight = useRef(0);
+
+  const handleTouch = useCallback((y: number) => {
+    if (stripHeight.current > 0) {
+      const h = clamp((y / stripHeight.current) * 360, 0, 360);
+      onChangeHue(Math.round(h));
+    }
+  }, [onChangeHue]);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: (evt) => handleTouch(evt.nativeEvent.locationY),
+      onPanResponderMove: (evt) => handleTouch(evt.nativeEvent.locationY),
+    })
+  ).current;
+
+  const onLayout = (e: LayoutChangeEvent) => {
+    stripHeight.current = e.nativeEvent.layout.height;
+  };
+
+  const position = stripHeight.current > 0 ? (hue / 360) * stripHeight.current : 0;
+
+  // 13 hue stops for smooth rainbow
+  const hueColors = useMemo(() => [
+    '#FF0000', '#FF8000', '#FFFF00', '#80FF00',
+    '#00FF00', '#00FF80', '#00FFFF', '#0080FF',
+    '#0000FF', '#8000FF', '#FF00FF', '#FF0080', '#FF0000',
+  ], []);
+
+  return (
+    <View
+      style={styles.hueStrip}
+      onLayout={onLayout}
+      {...panResponder.panHandlers}
+    >
+      {hueColors.map((color, i) => (
+        <View key={i} style={{ flex: 1, backgroundColor: color }} />
+      ))}
+      <View
+        style={[
+          styles.hueIndicator,
+          { top: clamp(position - 3, 0, (stripHeight.current || 150) - 6) },
         ]}
       />
     </View>
@@ -138,104 +226,54 @@ function SliderBar({
 
 // ── Main Component ─────────────────────────────────────────────
 export default function ColorPicker({ label, value, onChange, textColor, borderColor }: ColorPickerProps) {
-  const hsl = hexToHsl(value);
-  const [hue, setHue] = useState(hsl.h);
-  const [saturation, setSaturation] = useState(hsl.s);
-  const [lightness, setLightness] = useState(hsl.l);
+  const hsv = hexToHsv(value);
+  const [hue, setHue] = useState(hsv.h);
+  const [sat, setSat] = useState(hsv.s);
+  const [bri, setBri] = useState(hsv.v);
   const [hexInput, setHexInput] = useState(value);
 
-  const updateFromHsl = useCallback((h: number, s: number, l: number) => {
-    const hex = hslToHex(h, s, l);
+  const updateFromHsv = useCallback((h: number, s: number, v: number) => {
+    const hex = hsvToHex(h, s, v);
     setHexInput(hex);
     onChange(hex);
   }, [onChange]);
 
+  const handleSVChange = useCallback((s: number, v: number) => {
+    setSat(s);
+    setBri(v);
+    updateFromHsv(hue, s, v);
+  }, [hue, updateFromHsv]);
+
   const handleHueChange = useCallback((h: number) => {
-    const rounded = Math.round(h);
-    setHue(rounded);
-    updateFromHsl(rounded, saturation, lightness);
-  }, [saturation, lightness, updateFromHsl]);
-
-  const handleSaturationChange = useCallback((s: number) => {
-    const rounded = Math.round(s);
-    setSaturation(rounded);
-    updateFromHsl(hue, rounded, lightness);
-  }, [hue, lightness, updateFromHsl]);
-
-  const handleLightnessChange = useCallback((l: number) => {
-    const rounded = Math.round(l);
-    setLightness(rounded);
-    updateFromHsl(hue, saturation, rounded);
-  }, [hue, saturation, updateFromHsl]);
+    setHue(h);
+    updateFromHsv(h, sat, bri);
+  }, [sat, bri, updateFromHsv]);
 
   const handleHexInput = useCallback((text: string) => {
     setHexInput(text);
     if (isValidHex(text)) {
-      const newHsl = hexToHsl(text);
-      setHue(newHsl.h);
-      setSaturation(newHsl.s);
-      setLightness(newHsl.l);
+      const newHsv = hexToHsv(text);
+      setHue(newHsv.h);
+      setSat(newHsv.s);
+      setBri(newHsv.v);
       onChange(text);
     }
   }, [onChange]);
-
-  // Build gradient arrays
-  const hueGradient = Array.from({ length: 12 }, (_, i) =>
-    hslToHex(i * 30, Math.max(saturation, 50), 50)
-  );
-
-  const satGradient = [
-    hslToHex(hue, 0, lightness),
-    hslToHex(hue, 50, lightness),
-    hslToHex(hue, 100, lightness),
-  ];
-
-  const lightnessGradient = [
-    hslToHex(hue, saturation, 5),
-    hslToHex(hue, saturation, 25),
-    hslToHex(hue, saturation, 50),
-    hslToHex(hue, saturation, 75),
-    hslToHex(hue, saturation, 95),
-  ];
 
   return (
     <View style={styles.container}>
       <Text style={[styles.label, { color: textColor }]}>{label}</Text>
 
-      {/* Hue slider */}
-      <View style={styles.sliderRow}>
-        <Text style={[styles.sliderLabel, { color: textColor }]}>Hue</Text>
-        <SliderBar
-          gradient={hueGradient}
-          value={hue}
-          max={360}
-          onChange={handleHueChange}
-          thumbColor={hslToHex(hue, Math.max(saturation, 50), 50)}
+      <View style={styles.pickerRow}>
+        {/* 2D sat/brightness palette */}
+        <PaletteBox
+          hue={hue}
+          saturation={sat}
+          brightness={bri}
+          onChangeSV={handleSVChange}
         />
-      </View>
-
-      {/* Saturation slider */}
-      <View style={styles.sliderRow}>
-        <Text style={[styles.sliderLabel, { color: textColor }]}>Sat</Text>
-        <SliderBar
-          gradient={satGradient}
-          value={saturation}
-          max={100}
-          onChange={handleSaturationChange}
-          thumbColor={hslToHex(hue, saturation, lightness)}
-        />
-      </View>
-
-      {/* Lightness slider */}
-      <View style={styles.sliderRow}>
-        <Text style={[styles.sliderLabel, { color: textColor }]}>Light</Text>
-        <SliderBar
-          gradient={lightnessGradient}
-          value={lightness}
-          max={100}
-          onChange={handleLightnessChange}
-          thumbColor={hslToHex(hue, saturation, lightness)}
-        />
+        {/* Vertical hue strip */}
+        <HueStrip hue={hue} onChangeHue={handleHueChange} />
       </View>
 
       {/* Hex input + preview */}
@@ -266,44 +304,49 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     marginBottom: 10,
   },
-  sliderRow: {
+  pickerRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    gap: 10,
     marginBottom: 12,
-    gap: 8,
   },
-  sliderLabel: {
-    fontSize: 10,
-    fontWeight: '600',
-    width: 32,
-    textTransform: 'uppercase',
-    letterSpacing: 0.3,
-    opacity: 0.6,
-  },
-  sliderContainer: {
+  paletteBox: {
     flex: 1,
-    height: 28,
-    justifyContent: 'center',
-  },
-  sliderTrack: {
-    height: 16,
+    height: 150,
     borderRadius: 8,
-    flexDirection: 'row',
     overflow: 'hidden',
+    position: 'relative',
   },
-  gradientSegment: {
-    flex: 1,
-  },
-  sliderThumb: {
+  cursor: {
     position: 'absolute',
-    width: 20,
-    height: 20,
-    borderRadius: 10,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
     borderWidth: 3,
     borderColor: '#FFFFFF',
     elevation: 4,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.5,
+    shadowRadius: 3,
+  },
+  hueStrip: {
+    width: 24,
+    height: 150,
+    borderRadius: 6,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  hueIndicator: {
+    position: 'absolute',
+    left: -1,
+    right: -1,
+    height: 6,
+    borderRadius: 3,
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.3,
     shadowRadius: 2,
   },
@@ -311,7 +354,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    marginTop: 2,
   },
   preview: {
     width: 36,
