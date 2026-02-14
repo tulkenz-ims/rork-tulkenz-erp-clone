@@ -42,7 +42,7 @@ import {
 } from 'lucide-react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import { useUser } from '@/contexts/UserContext';
-import Colors from '@/constants/colors';
+import { useTheme } from '@/contexts/ThemeContext';
 import EmployeeHome from '@/components/EmployeeHome';
 import AlertSummaryWidget from '@/components/AlertSummaryWidget';
 import LowStockAlerts from '@/components/LowStockAlerts';
@@ -82,6 +82,8 @@ export default function ExecutiveDashboard() {
   const { company, loading: authLoading, isAuthenticated, isEmployee } = useUser();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { colors: Colors } = useTheme();
+  const styles = useMemo(() => createStyles(Colors), [Colors]);
 
   const { data: materials = [], isLoading: materialsLoading } = useMaterialsQuery();
   const { data: workOrders = [], isLoading: workOrdersLoading } = useWorkOrdersQuery();
@@ -972,7 +974,7 @@ export default function ExecutiveDashboard() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (Colors: any) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.background,
