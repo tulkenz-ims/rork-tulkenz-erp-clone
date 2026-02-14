@@ -85,38 +85,35 @@ function mixColors(hex1: string, hex2: string, weight: number): string {
   );
 }
 
-// ── Generate a full theme from background + primary ────────────
-function generateCustomTheme(bg: string, primary: string): ThemeColors {
-  const isDark = luminance(bg) < 0.5;
+// ── Generate a full theme from background + card color ─────────
+function generateCustomTheme(bg: string, cardColor: string): ThemeColors {
+  const bgLum = luminance(bg);
+  const cardLum = luminance(cardColor);
+  const isDark = bgLum < 0.5;
+  const cardIsDark = cardLum < 0.5;
 
-  // Background variants
-  const backgroundSecondary = isDark ? lighten(bg, 0.05) : darken(bg, 0.04);
-  const backgroundTertiary = isDark ? lighten(bg, 0.10) : darken(bg, 0.08);
+  // Background variants — derived from bg
+  const backgroundSecondary = isDark ? lighten(bg, 0.04) : darken(bg, 0.03);
+  const backgroundTertiary = isDark ? lighten(bg, 0.08) : darken(bg, 0.06);
 
-  // Surface = cards, slightly offset from background
-  const surface = isDark ? lighten(bg, 0.08) : lighten(bg, 0.06);
-  const surfaceLight = isDark ? lighten(bg, 0.14) : darken(bg, 0.02);
+  // Surface = cards — derived from the card color
+  const surface = cardColor;
+  const surfaceLight = isDark ? lighten(cardColor, 0.08) : darken(cardColor, 0.05);
 
-  // Border
-  const border = isDark ? lighten(bg, 0.18) : darken(bg, 0.15);
-  const borderLight = isDark ? lighten(bg, 0.25) : darken(bg, 0.22);
+  // Border — blend between card and white/black for subtle edge
+  const border = mixColors(cardColor, isDark ? '#FFFFFF' : '#000000', 0.7);
+  const borderLight = mixColors(cardColor, isDark ? '#FFFFFF' : '#000000', 0.55);
 
-  // Text based on luminance
-  const text = isDark ? '#F0F0F0' : '#1A1A1A';
-  const textSecondary = isDark ? '#A0A0A0' : '#555555';
-  const textTertiary = isDark ? '#707070' : '#888888';
+  // Text — pick based on card luminance since text sits on cards
+  const text = cardIsDark ? '#F0F0F0' : '#1A1A1A';
+  const textSecondary = cardIsDark ? '#A0A0A0' : '#555555';
+  const textTertiary = cardIsDark ? '#707070' : '#888888';
 
-  // Primary variants
-  const primaryDark = darken(primary, 0.25);
-  const primaryLight = lighten(primary, 0.25);
-
-  // Semantic colors — use slightly adjusted versions for light backgrounds
-  const semanticAlpha = isDark ? 0.15 : 0.10;
-
+  // ALL semantic colors stay fixed — these never change with theme
   return {
-    primary,
-    primaryDark,
-    primaryLight,
+    primary: '#0066CC',
+    primaryDark: '#004C99',
+    primaryLight: '#3399FF',
     accent: '#10B981',
     accentLight: '#34D399',
     background: bg,
@@ -131,20 +128,20 @@ function generateCustomTheme(bg: string, primary: string): ThemeColors {
     borderLight,
     success: '#10B981',
     successLight: '#34D399',
-    successBg: `rgba(16, 185, 129, ${semanticAlpha})`,
-    warning: isDark ? '#F59E0B' : '#D97706',
+    successBg: 'rgba(16, 185, 129, 0.15)',
+    warning: '#F59E0B',
     warningLight: '#FBBF24',
-    warningBg: `rgba(245, 158, 11, ${semanticAlpha})`,
-    error: isDark ? '#EF4444' : '#DC2626',
+    warningBg: 'rgba(245, 158, 11, 0.15)',
+    error: '#EF4444',
     errorLight: '#F87171',
-    errorBg: `rgba(239, 68, 68, ${semanticAlpha})`,
-    info: primary,
-    infoLight: primaryLight,
-    infoBg: `rgba(59, 130, 246, ${semanticAlpha})`,
+    errorBg: 'rgba(239, 68, 68, 0.15)',
+    info: '#3B82F6',
+    infoLight: '#60A5FA',
+    infoBg: 'rgba(59, 130, 246, 0.15)',
     purple: '#8B5CF6',
     purpleLight: '#A78BFA',
-    purpleBg: `rgba(139, 92, 246, ${semanticAlpha})`,
-    chartColors: [primary, '#10B981', isDark ? '#F59E0B' : '#D97706', isDark ? '#EF4444' : '#DC2626', '#8B5CF6'],
+    purpleBg: 'rgba(139, 92, 246, 0.15)',
+    chartColors: ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6'],
   };
 }
 
