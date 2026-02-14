@@ -96,19 +96,23 @@ export default function ExecutiveDashboard() {
 
   // Real-time checked-in count: employees with active time entries (no clock_out)
   const { data: checkedInCount = 0 } = useQuery({
-    queryKey: ['dashboard-checked-in-count'],
+    queryKey: ['dashboard-checked-in-count', company?.id],
     queryFn: async () => {
+      if (!company?.id) return 0;
       const { count, error } = await supabase
         .from('time_entries')
-        .select('*', { count: 'exact', head: true })
-        .is('clock_out', null);
+        .select('*, employees!inner(is_platform_admin)', { count: 'exact', head: true })
+        .eq('organization_id', company.id)
+        .is('clock_out', null)
+        .neq('employees.is_platform_admin', true);
       if (error) {
         console.error('[Dashboard] Error fetching checked-in count:', error);
         return 0;
       }
       return count || 0;
     },
-    refetchInterval: 30000, // Refresh every 30 seconds
+    enabled: !!company?.id,
+    refetchInterval: 30000,
     staleTime: 15000,
   });
 
