@@ -14,29 +14,19 @@ import {
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
-  Building2,
   Package,
   Wrench,
   Users,
-  AlertTriangle,
-  TrendingUp,
-  TrendingDown,
   RefreshCw,
-  Activity,
-  DollarSign,
   Clock,
   CheckCircle,
-  XCircle,
   ChevronRight,
-  Target,
-  Zap,
   Flame,
   Siren,
   Tornado,
   ShieldAlert,
   X,
   ClipboardList,
-  BarChart3,
   MapPin,
   ChevronDown,
   ShoppingCart,
@@ -45,10 +35,8 @@ import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { useUser } from '@/contexts/UserContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import EmployeeHome from '@/components/EmployeeHome';
-import AlertSummaryWidget from '@/components/AlertSummaryWidget';
 import LowStockAlerts from '@/components/LowStockAlerts';
 import UserProfileMenu from '@/components/UserProfileMenu';
-import ProcurementWidget from '@/components/ProcurementWidget';
 import LineStatusWidget from '@/components/LineStatusWidget';
 import ScoreCardSection from '@/components/ScoreCardSection';
 import { useMaterialsQuery } from '@/hooks/useSupabaseMaterials';
@@ -56,21 +44,12 @@ import { useWorkOrdersQuery } from '@/hooks/useSupabaseWorkOrders';
 import { useEmployees } from '@/hooks/useSupabaseEmployees';
 import { useFacilities } from '@/hooks/useSupabaseEmployees';
 import { useAllAggregatedApprovals } from '@/hooks/useAggregatedApprovals';
+import { usePurchaseRequestsQuery, usePurchaseRequisitionsQuery, useProcurementPurchaseOrdersQuery } from '@/hooks/useSupabaseProcurement';
 import { useTaskFeedPostsQuery } from '@/hooks/useTaskFeedTemplates';
 import { supabase } from '@/lib/supabase';
 import * as Haptics from 'expo-haptics';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-
-interface ActionItem {
-  id: string;
-  type: 'approval' | 'alert' | 'task';
-  title: string;
-  subtitle: string;
-  urgency: 'critical' | 'high' | 'medium' | 'low';
-  count?: number;
-  value?: string;
-}
 
 export default function ExecutiveDashboard() {
   const { company, loading: authLoading, isAuthenticated, isEmployee } = useUser();
@@ -84,6 +63,9 @@ export default function ExecutiveDashboard() {
   const { data: employees = [], isLoading: employeesLoading } = useEmployees();
   const { data: facilities = [] } = useFacilities();
   const { purchaseApprovals, timeApprovals, permitApprovals, isLoading: approvalsLoading } = useAllAggregatedApprovals();
+  const { data: purchaseRequests = [] } = usePurchaseRequestsQuery();
+  const { data: purchaseRequisitions = [] } = usePurchaseRequisitionsQuery();
+  const { data: purchaseOrders = [] } = useProcurementPurchaseOrdersQuery();
   const { data: pendingPosts = [] } = useTaskFeedPostsQuery({ status: 'pending' });
   const { data: inProgressPosts = [] } = useTaskFeedPostsQuery({ status: 'in_progress' });
   const taskFeedPendingCount = pendingPosts.length + inProgressPosts.length;
@@ -237,76 +219,6 @@ export default function ExecutiveDashboard() {
     return materialsList.reduce((sum, m) => sum + (m.on_hand * m.unit_price), 0);
   }, [materialsList]);
 
-  const actionItems = useMemo<ActionItem[]>(() => {
-    const items: ActionItem[] = [];
-    
-    const purchaseApprovals = approvals.filter(a => a.type === 'purchase' && a.status === 'pending');
-    if (purchaseApprovals.length > 0) {
-      const totalValue = purchaseApprovals.reduce((acc, a) => {
-        if (a.type === 'purchase') return acc + a.amount;
-        return acc;
-      }, 0);
-      items.push({
-        id: 'purchase-approvals',
-        type: 'approval',
-        title: 'Purchase Approvals',
-        subtitle: `${purchaseApprovals.length} pending requests`,
-        urgency: purchaseApprovals.some(a => a.urgency === 'high') ? 'high' : 'medium',
-        count: purchaseApprovals.length,
-        value: `$${totalValue.toLocaleString()}`,
-      });
-    }
-
-    const timeApprovals = approvals.filter(a => 
-      (a.type === 'time_off' || a.type === 'overtime' || a.type === 'schedule_change') && 
-      a.status === 'pending'
-    );
-    if (timeApprovals.length > 0) {
-      items.push({
-        id: 'time-approvals',
-        type: 'approval',
-        title: 'Time Requests',
-        subtitle: `${timeApprovals.length} awaiting review`,
-        urgency: timeApprovals.some(a => a.urgency === 'high') ? 'high' : 'low',
-        count: timeApprovals.length,
-      });
-    }
-
-    if (stats.outOfStockCount > 0) {
-      items.push({
-        id: 'out-of-stock',
-        type: 'alert',
-        title: 'Out of Stock Items',
-        subtitle: `${stats.outOfStockCount} items need immediate attention`,
-        urgency: 'critical',
-        count: stats.outOfStockCount,
-      });
-    }
-
-    if (stats.overdueWorkOrders > 0) {
-      items.push({
-        id: 'overdue-wo',
-        type: 'alert',
-        title: 'Overdue Work Orders',
-        subtitle: `${stats.overdueWorkOrders} past due date`,
-        urgency: 'high',
-        count: stats.overdueWorkOrders,
-      });
-    }
-
-    if (stats.lowStockCount > 3) {
-      items.push({
-        id: 'low-stock',
-        type: 'alert',
-        title: 'Low Stock Warning',
-        subtitle: `${stats.lowStockCount} items below minimum`,
-        urgency: 'medium',
-        count: stats.lowStockCount,
-      });
-    }
-
-    return items.slice(0, 5);
-  }, [approvals, stats]);
 
   const performanceMetrics = useMemo(() => {
     const stockHealth = stats.totalMaterials > 0 
@@ -375,23 +287,6 @@ export default function ExecutiveDashboard() {
       setRefreshing(false);
     }
   }, [queryClient]);
-
-  const getUrgencyColor = (urgency: string) => {
-    switch (urgency) {
-      case 'critical': return '#EF4444';
-      case 'high': return '#F59E0B';
-      case 'medium': return '#3B82F6';
-      case 'low': return '#10B981';
-      default: return Colors.textSecondary;
-    }
-  };
-
-  const getActionIcon = (type: string, urgency: string) => {
-    if (type === 'alert') {
-      return urgency === 'critical' ? XCircle : AlertTriangle;
-    }
-    return CheckCircle;
-  };
 
   if (authLoading) {
     return (
@@ -621,114 +516,61 @@ export default function ExecutiveDashboard() {
           icon={<ShoppingCart size={16} color={Colors.success} />}
           gauges={[
             {
+              label: 'Pending Requests',
+              value: Math.max(0, 100 - (purchaseRequests.filter(r => r.status === 'pending' || r.status === 'submitted').length * 20)),
+              displayValue: `${purchaseRequests.filter(r => r.status === 'pending' || r.status === 'submitted').length}`,
+              color: purchaseRequests.filter(r => r.status === 'pending' || r.status === 'submitted').length > 0 ? '#F59E0B' : '#10B981',
+            },
+            {
               label: 'Pending Approvals',
-              value: Math.max(0, 100 - (approvals.filter(a => a.type === 'purchase' && a.status === 'pending').length * 25)),
-              displayValue: `${approvals.filter(a => a.type === 'purchase' && a.status === 'pending').length}`,
-              color: approvals.filter(a => a.type === 'purchase' && a.status === 'pending').length > 0 ? '#F59E0B' : '#10B981',
+              value: Math.max(0, 100 - (purchaseOrders.filter(po => po.status === 'pending_approval').length * 25)),
+              displayValue: `${purchaseOrders.filter(po => po.status === 'pending_approval').length}`,
+              color: purchaseOrders.filter(po => po.status === 'pending_approval').length > 0 ? '#F59E0B' : '#10B981',
+            },
+            {
+              label: 'Pending Reqs',
+              value: Math.max(0, 100 - (purchaseRequisitions.filter(r => r.status === 'pending' || r.status === 'pending_approval').length * 20)),
+              displayValue: `${purchaseRequisitions.filter(r => r.status === 'pending' || r.status === 'pending_approval').length}`,
+              color: purchaseRequisitions.filter(r => r.status === 'pending' || r.status === 'pending_approval').length > 0 ? '#F59E0B' : '#10B981',
+            },
+            {
+              label: 'Pending Receipt',
+              value: Math.max(0, 100 - (purchaseOrders.filter(po => po.status === 'approved' || po.status === 'ordered' || po.status === 'shipped').length * 15)),
+              displayValue: `${purchaseOrders.filter(po => po.status === 'approved' || po.status === 'ordered' || po.status === 'shipped').length}`,
+              color: purchaseOrders.filter(po => po.status === 'approved' || po.status === 'ordered' || po.status === 'shipped').length > 0 ? '#3B82F6' : '#10B981',
             },
             {
               label: 'Active POs',
-              value: 65,
-              displayValue: `${approvals.filter(a => a.type === 'purchase').length}`,
+              value: purchaseOrders.length > 0 ? 65 : 0,
+              displayValue: `${purchaseOrders.filter(po => po.status !== 'cancelled' && po.status !== 'closed').length}`,
               color: '#3B82F6',
             },
             {
-              label: 'Approval Rate',
-              value: approvals.filter(a => a.type === 'purchase').length > 0
-                ? Math.round((approvals.filter(a => a.type === 'purchase' && a.status === 'approved').length / Math.max(approvals.filter(a => a.type === 'purchase').length, 1)) * 100)
-                : 100,
-              displayValue: `${approvals.filter(a => a.type === 'purchase').length > 0
-                ? Math.round((approvals.filter(a => a.type === 'purchase' && a.status === 'approved').length / Math.max(approvals.filter(a => a.type === 'purchase').length, 1)) * 100)
-                : 100}%`,
+              label: 'Avg Days',
+              value: (() => {
+                const completed = purchaseOrders.filter(po => po.status === 'received' && po.created_at);
+                if (completed.length === 0) return 100;
+                const avgDays = completed.reduce((sum, po) => {
+                  const created = new Date(po.created_at);
+                  const updated = new Date(po.updated_at || po.created_at);
+                  return sum + Math.max(1, Math.round((updated.getTime() - created.getTime()) / (1000 * 60 * 60 * 24)));
+                }, 0) / completed.length;
+                return Math.max(0, 100 - (avgDays * 5));
+              })(),
+              displayValue: (() => {
+                const completed = purchaseOrders.filter(po => po.status === 'received' && po.created_at);
+                if (completed.length === 0) return 'N/A';
+                const avgDays = completed.reduce((sum, po) => {
+                  const created = new Date(po.created_at);
+                  const updated = new Date(po.updated_at || po.created_at);
+                  return sum + Math.max(1, Math.round((updated.getTime() - created.getTime()) / (1000 * 60 * 60 * 24)));
+                }, 0) / completed.length;
+                return `${Math.round(avgDays)}d`;
+              })(),
+              color: '#8B5CF6',
             },
           ]}
         />
-
-        {/* ── Requires Attention ── */}
-        {actionItems.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <View style={styles.sectionTitleRow}>
-                <Zap size={18} color={Colors.warning} />
-                <Text style={styles.sectionTitle}>Requires Attention</Text>
-              </View>
-              <View style={styles.countBadge}>
-                <Text style={styles.countBadgeText}>{actionItems.length}</Text>
-              </View>
-            </View>
-            
-            {actionItems.map((item) => {
-              const ActionIcon = getActionIcon(item.type, item.urgency);
-              const urgencyColor = getUrgencyColor(item.urgency);
-              
-              return (
-                <Pressable 
-                  key={item.id}
-                  style={({ pressed }) => [
-                    styles.actionCard,
-                    pressed && styles.pressed
-                  ]}
-                >
-                  <View style={[styles.actionIconBox, { backgroundColor: `${urgencyColor}15` }]}>
-                    <ActionIcon size={20} color={urgencyColor} />
-                  </View>
-                  <View style={styles.actionContent}>
-                    <View style={styles.actionTitleRow}>
-                      <Text style={styles.actionTitle}>{item.title}</Text>
-                      {item.count && (
-                        <View style={[styles.actionCountBadge, { backgroundColor: `${urgencyColor}20` }]}>
-                          <Text style={[styles.actionCountText, { color: urgencyColor }]}>{item.count}</Text>
-                        </View>
-                      )}
-                    </View>
-                    <Text style={styles.actionSubtitle}>{item.subtitle}</Text>
-                    {item.value && (
-                      <Text style={[styles.actionValue, { color: urgencyColor }]}>{item.value}</Text>
-                    )}
-                  </View>
-                  <ChevronRight size={20} color={Colors.textTertiary} />
-                </Pressable>
-              );
-            })}
-          </View>
-        )}
-
-        <AlertSummaryWidget onPress={() => setShowLowStockAlerts(true)} />
-
-        <View style={styles.section}>
-          <ProcurementWidget />
-        </View>
-
-        {/* ── Workforce Summary ── */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <View style={styles.sectionTitleRow}>
-              <Users size={18} color={Colors.purple} />
-              <Text style={styles.sectionTitle}>Workforce</Text>
-            </View>
-          </View>
-          
-          <View style={styles.workforceCard}>
-            <View style={styles.workforceStats}>
-              <View style={styles.workforceStat}>
-                <Text style={styles.workforceStatValue}>{stats.activeEmployees}</Text>
-                <Text style={styles.workforceStatLabel}>Total Active</Text>
-              </View>
-              <View style={styles.workforceDivider} />
-              <View style={styles.workforceStat}>
-                <Text style={[styles.workforceStatValue, { color: Colors.success }]}>{checkedInCount}</Text>
-                <Text style={styles.workforceStatLabel}>Checked In</Text>
-              </View>
-              <View style={styles.workforceDivider} />
-              <View style={styles.workforceStat}>
-                <Text style={[styles.workforceStatValue, { color: Colors.warning }]}>
-                  {employees.filter(e => e.status === 'on_leave').length}
-                </Text>
-                <Text style={styles.workforceStatLabel}>On Leave</Text>
-              </View>
-            </View>
-          </View>
-        </View>
 
         <View style={styles.bottomPadding} />
       </ScrollView>
@@ -993,98 +835,6 @@ const createStyles = (Colors: any) => StyleSheet.create({
     fontSize: 16,
     fontWeight: '600' as const,
     color: Colors.text,
-  },
-  countBadge: {
-    backgroundColor: Colors.error,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  countBadgeText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '700' as const,
-  },
-  actionCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.surface,
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    gap: 12,
-  },
-  actionIconBox: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  actionContent: {
-    flex: 1,
-  },
-  actionTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  actionTitle: {
-    fontSize: 15,
-    fontWeight: '600' as const,
-    color: Colors.text,
-  },
-  actionCountBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 10,
-  },
-  actionCountText: {
-    fontSize: 11,
-    fontWeight: '700' as const,
-  },
-  actionSubtitle: {
-    fontSize: 13,
-    color: Colors.textSecondary,
-    marginTop: 2,
-  },
-  actionValue: {
-    fontSize: 14,
-    fontWeight: '700' as const,
-    marginTop: 4,
-  },
-  workforceCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: 14,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  workforceStats: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-  },
-  workforceStat: {
-    alignItems: 'center',
-  },
-  workforceStatValue: {
-    fontSize: 28,
-    fontWeight: '700' as const,
-    color: Colors.text,
-  },
-  workforceStatLabel: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-    marginTop: 4,
-    fontWeight: '500' as const,
-  },
-  workforceDivider: {
-    width: 1,
-    height: 40,
-    backgroundColor: Colors.border,
   },
   bottomPadding: {
     height: 40,
