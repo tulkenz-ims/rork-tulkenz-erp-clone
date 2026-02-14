@@ -59,28 +59,31 @@ export default function ScrollableNavBar({
     <ScrollView
       ref={scrollViewRef}
       horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-        style={styles.scrollView}
-      >
-        {filteredModules.map((module) => {
-          const isActive = getIsActive(module);
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.scrollContent}
+      style={styles.scrollView}
+      bounces={true}
+      scrollEnabled={true}
+      nestedScrollEnabled={true}
+    >
+      {filteredModules.map((module) => {
+        const isActive = getIsActive(module);
 
-          return (
-            <NavItem
-              key={module.key}
-              module={module}
-              isActive={isActive}
-              onPress={() => onNavigate(module.route)}
-              iconColor={iconColor}
-              activeColor={activeColor}
-              activeIconBg={activeIconBg}
-              indicatorColor={indicatorColor}
-              badgeCounts={badgeCounts}
-            />
-          );
-        })}
-      </ScrollView>
+        return (
+          <NavItem
+            key={module.key}
+            module={module}
+            isActive={isActive}
+            onPress={() => onNavigate(module.route)}
+            iconColor={iconColor}
+            activeColor={activeColor}
+            activeIconBg={activeIconBg}
+            indicatorColor={indicatorColor}
+            badgeCounts={badgeCounts}
+          />
+        );
+      })}
+    </ScrollView>
   );
 
   if (hasCompanyColors) {
