@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase, Tables } from '@/lib/supabase';
+import { useTheme } from '@/contexts/ThemeContext';
 
 const ORG_STORAGE_KEY = 'tulkenz_organization';
 const FACILITY_STORAGE_KEY = 'tulkenz_facility';
@@ -35,6 +36,7 @@ const defaultOrganizationContext = {
 
 export const [OrganizationProvider, useOrganization] = createContextHook(() => {
   const queryClient = useQueryClient();
+  const { setCompanyColors } = useTheme();
   const [state, setState] = useState<OrganizationState>({
     organization: null,
     facility: null,
@@ -105,6 +107,43 @@ export const [OrganizationProvider, useOrganization] = createContextHook(() => {
       });
     }
   }, [storedOrg]);
+
+  // Sync brand colors from organization to ThemeContext on startup
+  // This ensures colors persist across deploys even if localStorage is cleared
+  useEffect(() => {
+    const syncBrandColors = async () => {
+      const org = state.organization;
+      if (!org?.id) return;
+
+      // First try the org object we already have (from AsyncStorage)
+      let colors: string[] = [];
+      if (org.primary_color) colors.push(org.primary_color);
+      if (org.secondary_color) colors.push(org.secondary_color);
+      if (org.accent_color) colors.push(org.accent_color);
+
+      // Also fetch fresh from Supabase in case AsyncStorage is stale
+      try {
+        const { data } = await supabase
+          .from('organizations')
+          .select('primary_color, secondary_color, accent_color')
+          .eq('id', org.id)
+          .single();
+        if (data) {
+          colors = [];
+          if (data.primary_color) colors.push(data.primary_color);
+          if (data.secondary_color) colors.push(data.secondary_color);
+          if (data.accent_color) colors.push(data.accent_color);
+        }
+      } catch (e) {
+        // Fall back to what we had from AsyncStorage
+      }
+
+      if (colors.length > 0) {
+        setCompanyColors(colors);
+      }
+    };
+    syncBrandColors();
+  }, [state.organization?.id]);
 
   useEffect(() => {
     if (facilitiesData) {
