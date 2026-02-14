@@ -261,9 +261,9 @@ export default function ExecutiveDashboard() {
     },
     {
       label: 'Checked In',
-      value: `${checkedInCount}/${stats.totalEmployees}`,
+      value: `${checkedInCount}/${stats.activeEmployees}`,
       subValue: checkedInCount > 0 ? `${checkedInCount} on shift` : 'No one checked in',
-      trend: Math.round((checkedInCount / Math.max(stats.totalEmployees, 1)) * 100),
+      trend: Math.round((checkedInCount / Math.max(stats.activeEmployees, 1)) * 100),
       trendLabel: 'attendance',
       color: '#8B5CF6',
       icon: Users,
@@ -358,8 +358,8 @@ export default function ExecutiveDashboard() {
       ? Math.round((stats.completedWorkOrders / workOrders.length) * 100)
       : 0;
     
-    const laborUtilization = stats.totalEmployees > 0 
-      ? Math.round((checkedInCount / stats.totalEmployees) * 100)
+    const laborUtilization = stats.activeEmployees > 0 
+      ? Math.round((checkedInCount / stats.activeEmployees) * 100)
       : 0;
 
     return { stockHealth, woCompletion, laborUtilization };
@@ -515,7 +515,8 @@ export default function ExecutiveDashboard() {
           </View>
         </View>
 
-        {/* Quick Action Bar */}
+        {/* Quick Actions */}
+        <Text style={styles.quickActionTitle}>Quick Actions</Text>
         <View style={styles.quickActionBar}>
           <Pressable
             style={({ pressed }) => [styles.quickActionBtn, pressed && { opacity: 0.7 }]}
@@ -527,8 +528,8 @@ export default function ExecutiveDashboard() {
             <Text style={[styles.quickActionStat, { color: taskFeedPendingCount > 0 ? '#F59E0B' : '#10B981' }]}>
               {taskFeedPendingCount}
             </Text>
-            <Text style={styles.quickActionLabel}>Pending Tasks</Text>
-            <Text style={styles.quickActionDesc}>Issues & Requests</Text>
+            <Text style={styles.quickActionLabel}>Task Feed</Text>
+            <Text style={styles.quickActionDesc}>Pending Items</Text>
           </Pressable>
 
           <Pressable
@@ -539,10 +540,10 @@ export default function ExecutiveDashboard() {
               <Users size={18} color="#10B981" />
             </View>
             <Text style={[styles.quickActionStat, { color: checkedInCount > 0 ? '#10B981' : Colors.textTertiary }]}>
-              {checkedInCount}/{stats.totalEmployees}
+              {checkedInCount}/{stats.activeEmployees}
             </Text>
-            <Text style={styles.quickActionLabel}>Checked In</Text>
-            <Text style={styles.quickActionDesc}>Workforce Status</Text>
+            <Text style={styles.quickActionLabel}>Facility Headcount</Text>
+            <Text style={styles.quickActionDesc}>Checked In Now</Text>
           </Pressable>
 
           <Pressable
@@ -557,7 +558,7 @@ export default function ExecutiveDashboard() {
             </View>
             <Text style={[styles.quickActionStat, { color: '#DC2626' }]}>SOS</Text>
             <Text style={styles.quickActionLabel}>Emergency</Text>
-            <Text style={styles.quickActionDesc}>Alert All Staff</Text>
+            <Text style={styles.quickActionDesc}>Initiate Protocol</Text>
           </Pressable>
         </View>
 
@@ -819,8 +820,8 @@ export default function ExecutiveDashboard() {
           <View style={styles.workforceCard}>
             <View style={styles.workforceStats}>
               <View style={styles.workforceStat}>
-                <Text style={styles.workforceStatValue}>{stats.totalEmployees}</Text>
-                <Text style={styles.workforceStatLabel}>Total</Text>
+                <Text style={styles.workforceStatValue}>{stats.activeEmployees}</Text>
+                <Text style={styles.workforceStatLabel}>Total Active</Text>
               </View>
               <View style={styles.workforceDivider} />
               <View style={styles.workforceStat}>
@@ -1387,6 +1388,13 @@ const createStyles = (Colors: any) => StyleSheet.create({
   },
   bottomPadding: {
     height: 40,
+  },
+  quickActionTitle: {
+    fontSize: 15,
+    fontWeight: '700' as const,
+    color: Colors.text,
+    marginBottom: 10,
+    letterSpacing: 0.3,
   },
   quickActionBar: {
     flexDirection: 'row',
