@@ -37,6 +37,7 @@ import {
   ClipboardList,
 } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useUser } from '@/contexts/UserContext';
 import { useTheme, type ThemeType } from '@/contexts/ThemeContext';
 import { usePermissions } from '@/contexts/PermissionsContext';
@@ -81,7 +82,6 @@ function SettingItem({ icon: Icon, label, value, onPress, danger, colors }: Sett
 const themeOptions: { value: ThemeType; label: string; icon: typeof Sun; iconColor: string }[] = [
   { value: 'light', label: 'Light', icon: Sun, iconColor: '#F59E0B' },
   { value: 'dark', label: 'Dark', icon: Moon, iconColor: '#6366F1' },
-  { value: 'custom', label: 'Custom', icon: Palette, iconColor: '#10B981' },
 ];
 
 const getTierIcon = (tier: string) => {
@@ -97,21 +97,22 @@ const getTierIcon = (tier: string) => {
 export default function SettingsScreen() {
   const router = useRouter();
   const { userProfile, company, tierInfo, signOut, isPlatformAdmin } = useUser();
-  const { theme, setTheme, colors, customBg, customPrimary, setCustomColors } = useTheme();
+  const { theme, setTheme, colors, companyColors, setCompanyColors } = useTheme();
   const { currentUserRole } = usePermissions();
   const { licenseType, setLicenseType } = useLicense();
   const [showThemeModal, setShowThemeModal] = useState(false);
   const [showLicenseModal, setShowLicenseModal] = useState(false);
-
-  // Custom color picker state
-  const [editBg, setEditBg] = useState(customBg);
-  const [editCard, setEditCard] = useState(customPrimary);
+  const [showCompanyColorsModal, setShowCompanyColorsModal] = useState(false);
+  const [editColors, setEditColors] = useState<string[]>(companyColors);
 
   const openThemeModal = useCallback(() => {
-    setEditBg(customBg);
-    setEditCard(customPrimary);
     setShowThemeModal(true);
-  }, [customBg, customPrimary]);
+  }, []);
+
+  const openCompanyColorsModal = useCallback(() => {
+    setEditColors(companyColors.length > 0 ? [...companyColors] : ['#0066CC']);
+    setShowCompanyColorsModal(true);
+  }, [companyColors]);
 
   const isSuperAdmin = isSuperAdminRole(userProfile?.role) || currentUserRole?.isSystem || currentUserRole?.name === 'Super Admin' || currentUserRole?.name === 'Administrator';
 
@@ -267,6 +268,13 @@ export default function SettingsScreen() {
               colors={colors}
             />
             <SettingItem
+              icon={Palette}
+              label="Company Colors"
+              value={companyColors.length > 0 ? `${companyColors.length} color${companyColors.length > 1 ? 's' : ''}` : 'Not set'}
+              onPress={() => openCompanyColorsModal()}
+              colors={colors}
+            />
+            <SettingItem
               icon={Globe}
               label="Language"
               value="English"
@@ -365,16 +373,13 @@ export default function SettingsScreen() {
         onRequestClose={() => setShowThemeModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: colors.surface, maxWidth: 380 }]}>
+          <View style={[styles.modalContent, { backgroundColor: colors.surface, maxWidth: 340 }]}>
             <View style={styles.modalHeader}>
               <Text style={[styles.modalTitle, { color: colors.text }]}>Appearance</Text>
               <Pressable onPress={() => setShowThemeModal(false)} style={styles.closeButton}>
                 <X size={24} color={colors.textSecondary} />
               </Pressable>
             </View>
-
-            <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
-            {/* Dark / Light / Custom selector */}
             <View style={styles.themeGrid}>
               {themeOptions.map((option) => {
                 const ThemeIcon = option.icon;
@@ -387,11 +392,9 @@ export default function SettingsScreen() {
                       { backgroundColor: colors.backgroundSecondary, borderColor: isSelected ? colors.primary : colors.border },
                       isSelected && { borderWidth: 2 },
                     ]}
-                    onPress={() => {
-                      setTheme(option.value);
-                    }}
+                    onPress={() => setTheme(option.value)}
                   >
-                    <ThemeIcon size={24} color={option.iconColor} />
+                    <ThemeIcon size={28} color={option.iconColor} />
                     <Text style={[styles.themeLabel, { color: colors.text }]}>{option.label}</Text>
                     {isSelected && (
                       <View style={[styles.selectedIndicator, { backgroundColor: colors.primary }]} />
@@ -400,34 +403,104 @@ export default function SettingsScreen() {
                 );
               })}
             </View>
+          </View>
+        </View>
+      </Modal>
 
-            {/* Color Picker — shown when Custom is selected or tapped */}
-            {theme === 'custom' && (
-              <View style={styles.colorPickerSection}>
-                <ColorPicker
-                  label="Background Color"
-                  value={editBg}
-                  onChange={(hex) => {
-                    setEditBg(hex);
-                    setCustomColors(hex, editCard);
-                  }}
-                  textColor={colors.textSecondary}
-                  borderColor={colors.border}
-                />
-                <View style={{ height: 12 }} />
-                <ColorPicker
-                  label="Card Color"
-                  value={editCard}
-                  onChange={(hex) => {
-                    setEditCard(hex);
-                    setCustomColors(editBg, hex);
-                  }}
-                  textColor={colors.textSecondary}
-                  borderColor={colors.border}
-                />
-              </View>
-            )}
+      <Modal
+        visible={showCompanyColorsModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowCompanyColorsModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.surface, maxWidth: 400 }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Company Colors</Text>
+              <Pressable onPress={() => setShowCompanyColorsModal(false)} style={styles.closeButton}>
+                <X size={24} color={colors.textSecondary} />
+              </Pressable>
+            </View>
+
+            <Text style={[styles.companyColorsHint, { color: colors.textSecondary }]}>
+              Set up to 3 brand colors. These create a gradient on the top and bottom bars.
+            </Text>
+
+            <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
+              {editColors.map((color, index) => (
+                <View key={index} style={styles.companyColorRow}>
+                  <ColorPicker
+                    label={`Color ${index + 1}`}
+                    value={color}
+                    onChange={(hex) => {
+                      const updated = [...editColors];
+                      updated[index] = hex;
+                      setEditColors(updated);
+                    }}
+                    textColor={colors.textSecondary}
+                    borderColor={colors.border}
+                  />
+                  {editColors.length > 1 && (
+                    <Pressable
+                      style={[styles.removeColorBtn, { backgroundColor: colors.errorBg }]}
+                      onPress={() => {
+                        const updated = editColors.filter((_, i) => i !== index);
+                        setEditColors(updated);
+                      }}
+                    >
+                      <X size={16} color={colors.error} />
+                      <Text style={[styles.removeColorText, { color: colors.error }]}>Remove</Text>
+                    </Pressable>
+                  )}
+                </View>
+              ))}
+
+              {editColors.length < 3 && (
+                <Pressable
+                  style={[styles.addColorBtn, { borderColor: colors.border }]}
+                  onPress={() => setEditColors([...editColors, '#10B981'])}
+                >
+                  <Text style={[styles.addColorText, { color: colors.primary }]}>+ Add Color</Text>
+                </Pressable>
+              )}
+
+              {/* Live preview */}
+              {editColors.length > 0 && (
+                <View style={styles.previewSection}>
+                  <Text style={[styles.previewLabel, { color: colors.textSecondary }]}>Preview</Text>
+                  <View style={[styles.previewBar, { overflow: 'hidden', borderRadius: 8 }]}>
+                    <LinearGradient
+                      colors={editColors.length === 1 ? [editColors[0], editColors[0]] : editColors as [string, string, ...string[]]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                      style={{ height: 40, borderRadius: 8 }}
+                    />
+                  </View>
+                </View>
+              )}
             </ScrollView>
+
+            <View style={styles.companyColorActions}>
+              <Pressable
+                style={[styles.companyColorActionBtn, { backgroundColor: colors.backgroundSecondary }]}
+                onPress={() => {
+                  setEditColors([]);
+                  setCompanyColors([]);
+                  setShowCompanyColorsModal(false);
+                }}
+              >
+                <Text style={[styles.companyColorActionText, { color: colors.textSecondary }]}>Clear</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.companyColorActionBtn, { backgroundColor: colors.primary }]}
+                onPress={() => {
+                  setCompanyColors(editColors);
+                  setShowCompanyColorsModal(false);
+                }}
+              >
+                <Text style={[styles.companyColorActionText, { color: '#FFFFFF' }]}>Apply</Text>
+              </Pressable>
+            </View>
           </View>
         </View>
       </Modal>
@@ -735,5 +808,73 @@ const styles = StyleSheet.create({
   licenseSublabel: {
     fontSize: 12,
     textAlign: 'center' as const,
+  },
+  companyColorsHint: {
+    fontSize: 13,
+    lineHeight: 18,
+    marginBottom: 16,
+  },
+  companyColorRow: {
+    marginBottom: 12,
+  },
+  removeColorBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-end',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    gap: 4,
+    marginTop: 6,
+  },
+  removeColorText: {
+    fontSize: 12,
+    fontWeight: '500' as const,
+  },
+  addColorBtn: {
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderRadius: 10,
+    padding: 12,
+    alignItems: 'center',
+    marginTop: 4,
+    marginBottom: 12,
+  },
+  addColorText: {
+    fontSize: 14,
+    fontWeight: '600' as const,
+  },
+  previewSection: {
+    marginTop: 8,
+    marginBottom: 12,
+  },
+  previewLabel: {
+    fontSize: 12,
+    fontWeight: '600' as const,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 8,
+  },
+  previewBar: {
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  companyColorActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(128,128,128,0.2)',
+  },
+  companyColorActionBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  companyColorActionText: {
+    fontSize: 15,
+    fontWeight: '600' as const,
   },
 });
