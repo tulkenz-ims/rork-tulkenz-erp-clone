@@ -30,6 +30,7 @@ import {
   MapPin,
   ChevronDown,
   ShoppingCart,
+  DollarSign,
 } from 'lucide-react-native';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { useUser } from '@/contexts/UserContext';
@@ -38,6 +39,7 @@ import EmployeeHome from '@/components/EmployeeHome';
 import LowStockAlerts from '@/components/LowStockAlerts';
 import UserProfileMenu from '@/components/UserProfileMenu';
 import LineStatusWidget from '@/components/LineStatusWidget';
+import ComplianceCountdown from '@/components/ComplianceCountdown';
 import MetricCardsSection from '@/components/MetricCardsSection';
 import ScoreCardSection from '@/components/ScoreCardSection';
 import { useMaterialsQuery } from '@/hooks/useSupabaseMaterials';
@@ -47,6 +49,7 @@ import { useFacilities } from '@/hooks/useSupabaseEmployees';
 import { useAllAggregatedApprovals } from '@/hooks/useAggregatedApprovals';
 import { usePurchaseRequestsQuery, usePurchaseRequisitionsQuery, useProcurementPurchaseOrdersQuery } from '@/hooks/useSupabaseProcurement';
 import { useTaskFeedPostsQuery } from '@/hooks/useTaskFeedTemplates';
+import { useBudgetsQuery } from '@/hooks/useSupabaseFinance';
 import { supabase } from '@/lib/supabase';
 import * as Haptics from 'expo-haptics';
 
@@ -69,6 +72,7 @@ export default function ExecutiveDashboard() {
   const { data: purchaseOrders = [] } = useProcurementPurchaseOrdersQuery();
   const { data: pendingPosts = [] } = useTaskFeedPostsQuery({ status: 'pending' });
   const { data: inProgressPosts = [] } = useTaskFeedPostsQuery({ status: 'in_progress' });
+  const { data: budgets = [] } = useBudgetsQuery();
   const taskFeedPendingCount = pendingPosts.length + inProgressPosts.length;
 
   // Real-time checked-in count: employees with active time entries (no clock_out)
@@ -416,82 +420,9 @@ export default function ExecutiveDashboard() {
           </Pressable>
         </View>
 
+        <ComplianceCountdown />
+
         <LineStatusWidget />
-
-        {/* ── CMMS Performance Cards ── */}
-        <MetricCardsSection
-          title="CMMS Performance"
-          subtitle="30-day"
-          icon={<Wrench size={16} color={Colors.warning} />}
-          cards={(() => {
-            const completed = workOrders.filter(wo => wo.status === 'completed');
-            const total = workOrders.length;
-            const overdue = stats.overdueWorkOrders;
-            const open = stats.openWorkOrders;
-            const planned = workOrders.filter(wo => wo.type === 'preventive' || wo.type === 'pm' || wo.priority === 'low' || wo.priority === 'medium').length;
-            const unplanned = workOrders.filter(wo => wo.type === 'reactive' || wo.type === 'emergency' || wo.type === 'corrective' || wo.priority === 'critical' || wo.priority === 'emergency').length;
-            const pmWOs = workOrders.filter(wo => wo.type === 'preventive' || wo.type === 'pm');
-            const pmCompleted = pmWOs.filter(wo => wo.status === 'completed').length;
-            const pmCompliance = pmWOs.length > 0 ? Math.round((pmCompleted / pmWOs.length) * 100) : 100;
-
-            return [
-              { label: 'MTTR', value: '0', unit: 'hrs', trend: 0 },
-              { label: 'MTBF', value: '0', unit: 'hrs', trend: 0 },
-              { label: 'Wrench Time', value: performanceMetrics.laborUtilization.toString(), unit: '%', trend: 0 },
-              { label: 'PM Compliance', value: pmCompliance.toString(), unit: '%', trend: 0, color: pmCompliance >= 90 ? '#10B981' : pmCompliance >= 70 ? '#F59E0B' : '#EF4444' },
-              { label: 'Backlog', value: open.toString(), unit: 'WOs', trend: 0, color: open > 5 ? '#F59E0B' : '#10B981' },
-              { label: 'First Time Fix', value: '0', unit: '%', trend: 0 },
-              { label: 'Planned', value: planned.toString(), unit: 'WOs', trend: 0, color: '#3B82F6' },
-              { label: 'Unplanned', value: unplanned.toString(), unit: 'WOs', trend: 0, color: unplanned > 0 ? '#EF4444' : '#10B981' },
-            ];
-          })()}
-        />
-
-        {/* ── Inventory Scorecard ── */}
-        <ScoreCardSection
-          title="Inventory Scorecard"
-          icon={<Package size={16} color={Colors.info} />}
-          gauges={[
-            {
-              label: 'Stock Health',
-              value: performanceMetrics.stockHealth,
-              displayValue: `${performanceMetrics.stockHealth}%`,
-            },
-            {
-              label: 'Fill Rate',
-              value: stats.totalMaterials > 0
-                ? Math.round(((stats.totalMaterials - stats.outOfStockCount) / stats.totalMaterials) * 100)
-                : 100,
-              displayValue: `${stats.totalMaterials > 0
-                ? Math.round(((stats.totalMaterials - stats.outOfStockCount) / stats.totalMaterials) * 100)
-                : 100}%`,
-            },
-            {
-              label: 'Low Stock',
-              value: Math.max(0, 100 - (stats.lowStockCount / Math.max(stats.totalMaterials, 1)) * 100),
-              displayValue: `${stats.lowStockCount}`,
-              color: stats.lowStockCount > 0 ? '#F59E0B' : '#10B981',
-            },
-            {
-              label: 'Out of Stock',
-              value: Math.max(0, 100 - (stats.outOfStockCount / Math.max(stats.totalMaterials, 1)) * 100),
-              displayValue: `${stats.outOfStockCount}`,
-              color: stats.outOfStockCount > 0 ? '#EF4444' : '#10B981',
-            },
-            {
-              label: 'Total SKUs',
-              value: Math.min(100, stats.totalMaterials * 10),
-              displayValue: `${stats.totalMaterials}`,
-              color: '#3B82F6',
-            },
-            {
-              label: 'Value',
-              value: 75,
-              displayValue: `$${(inventoryValue / 1000).toFixed(0)}K`,
-              color: '#10B981',
-            },
-          ]}
-        />
 
         {/* ── Procurement Scorecard ── */}
         <ScoreCardSection
@@ -554,6 +485,101 @@ export default function ExecutiveDashboard() {
               color: '#8B5CF6',
             },
           ]}
+        />
+
+        {/* ── Department Budgets ── */}
+        {budgets.length > 0 && (
+          <MetricCardsSection
+            title="Department Budgets"
+            subtitle={`FY${budgets[0]?.fiscalYear || new Date().getFullYear()}`}
+            icon={<DollarSign size={16} color="#10B981" />}
+            cards={budgets.map(b => {
+              const usedPct = b.amount > 0 ? Math.round((b.spent / b.amount) * 100) : 0;
+              return {
+                label: b.departmentName || b.departmentCode,
+                value: `${usedPct}`,
+                unit: '%',
+                trend: usedPct > 100 ? -(usedPct - 100) : 0,
+                trendLabel: `$${(b.remaining / 1000).toFixed(0)}K left`,
+                color: usedPct > 100 ? '#EF4444' : usedPct > 80 ? '#F59E0B' : '#10B981',
+              };
+            })}
+          />
+        )}
+
+        {/* ── Inventory Scorecard ── */}
+        <ScoreCardSection
+          title="Inventory Scorecard"
+          icon={<Package size={16} color={Colors.info} />}
+          gauges={[
+            {
+              label: 'Stock Health',
+              value: performanceMetrics.stockHealth,
+              displayValue: `${performanceMetrics.stockHealth}%`,
+            },
+            {
+              label: 'Fill Rate',
+              value: stats.totalMaterials > 0
+                ? Math.round(((stats.totalMaterials - stats.outOfStockCount) / stats.totalMaterials) * 100)
+                : 100,
+              displayValue: `${stats.totalMaterials > 0
+                ? Math.round(((stats.totalMaterials - stats.outOfStockCount) / stats.totalMaterials) * 100)
+                : 100}%`,
+            },
+            {
+              label: 'Low Stock',
+              value: Math.max(0, 100 - (stats.lowStockCount / Math.max(stats.totalMaterials, 1)) * 100),
+              displayValue: `${stats.lowStockCount}`,
+              color: stats.lowStockCount > 0 ? '#F59E0B' : '#10B981',
+            },
+            {
+              label: 'Out of Stock',
+              value: Math.max(0, 100 - (stats.outOfStockCount / Math.max(stats.totalMaterials, 1)) * 100),
+              displayValue: `${stats.outOfStockCount}`,
+              color: stats.outOfStockCount > 0 ? '#EF4444' : '#10B981',
+            },
+            {
+              label: 'Total SKUs',
+              value: Math.min(100, stats.totalMaterials * 10),
+              displayValue: `${stats.totalMaterials}`,
+              color: '#3B82F6',
+            },
+            {
+              label: 'Value',
+              value: 75,
+              displayValue: `$${(inventoryValue / 1000).toFixed(0)}K`,
+              color: '#10B981',
+            },
+          ]}
+        />
+
+        {/* ── CMMS Performance Cards ── */}
+        <MetricCardsSection
+          title="CMMS Performance"
+          subtitle="30-day"
+          icon={<Wrench size={16} color={Colors.warning} />}
+          cards={(() => {
+            const completed = workOrders.filter(wo => wo.status === 'completed');
+            const total = workOrders.length;
+            const overdue = stats.overdueWorkOrders;
+            const open = stats.openWorkOrders;
+            const planned = workOrders.filter(wo => wo.type === 'preventive' || wo.type === 'pm' || wo.priority === 'low' || wo.priority === 'medium').length;
+            const unplanned = workOrders.filter(wo => wo.type === 'reactive' || wo.type === 'emergency' || wo.type === 'corrective' || wo.priority === 'critical' || wo.priority === 'emergency').length;
+            const pmWOs = workOrders.filter(wo => wo.type === 'preventive' || wo.type === 'pm');
+            const pmCompleted = pmWOs.filter(wo => wo.status === 'completed').length;
+            const pmCompliance = pmWOs.length > 0 ? Math.round((pmCompleted / pmWOs.length) * 100) : 100;
+
+            return [
+              { label: 'MTTR', value: '0', unit: 'hrs', trend: 0 },
+              { label: 'MTBF', value: '0', unit: 'hrs', trend: 0 },
+              { label: 'Wrench Time', value: performanceMetrics.laborUtilization.toString(), unit: '%', trend: 0 },
+              { label: 'PM Compliance', value: pmCompliance.toString(), unit: '%', trend: 0, color: pmCompliance >= 90 ? '#10B981' : pmCompliance >= 70 ? '#F59E0B' : '#EF4444' },
+              { label: 'Backlog', value: open.toString(), unit: 'WOs', trend: 0, color: open > 5 ? '#F59E0B' : '#10B981' },
+              { label: 'First Time Fix', value: '0', unit: '%', trend: 0 },
+              { label: 'Planned', value: planned.toString(), unit: 'WOs', trend: 0, color: '#3B82F6' },
+              { label: 'Unplanned', value: unplanned.toString(), unit: 'WOs', trend: 0, color: unplanned > 0 ? '#EF4444' : '#10B981' },
+            ];
+          })()}
         />
 
         <View style={styles.bottomPadding} />
