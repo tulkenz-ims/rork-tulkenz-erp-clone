@@ -54,7 +54,7 @@ export default function AlertSummaryWidget({ onPress, compact = false }: AlertSu
       >
         <View style={styles.headerRow}>
           <View style={[styles.iconContainer, { backgroundColor: colors.successBg }]}>
-            <Package size={20} color=colors.success />
+            <Package size={20} color={colors.success} />
           </View>
           <View style={styles.headerText}>
             <Text style={[styles.title, { color: colors.text }]}>Stock Alerts</Text>
@@ -111,7 +111,7 @@ export default function AlertSummaryWidget({ onPress, compact = false }: AlertSu
     >
       <View style={styles.headerRow}>
         <View style={[styles.iconContainer, { backgroundColor: colors.errorBg }]}>
-          <AlertTriangle size={20} color=colors.error />
+          <AlertTriangle size={20} color={colors.error} />
         </View>
         <View style={styles.headerText}>
           <Text style={[styles.title, { color: colors.text }]}>Stock Alerts</Text>
@@ -125,7 +125,7 @@ export default function AlertSummaryWidget({ onPress, compact = false }: AlertSu
       <View style={styles.severityRow}>
         {alertData.criticalCount > 0 && (
           <View style={[styles.severityBadge, { backgroundColor: colors.errorBg }]}>
-            <AlertTriangle size={12} color=colors.error />
+            <AlertTriangle size={12} color={colors.error} />
             <Text style={[styles.severityCount, { color: colors.error }]}>
               {alertData.criticalCount}
             </Text>
@@ -134,7 +134,7 @@ export default function AlertSummaryWidget({ onPress, compact = false }: AlertSu
         )}
         {alertData.warningCount > 0 && (
           <View style={[styles.severityBadge, { backgroundColor: colors.warningBg }]}>
-            <AlertCircle size={12} color=colors.warning />
+            <AlertCircle size={12} color={colors.warning} />
             <Text style={[styles.severityCount, { color: colors.warning }]}>
               {alertData.warningCount}
             </Text>
@@ -143,7 +143,7 @@ export default function AlertSummaryWidget({ onPress, compact = false }: AlertSu
         )}
         {alertData.infoCount > 0 && (
           <View style={[styles.severityBadge, { backgroundColor: colors.infoBg }]}>
-            <Info size={12} color=colors.info />
+            <Info size={12} color={colors.info} />
             <Text style={[styles.severityCount, { color: colors.info }]}>
               {alertData.infoCount}
             </Text>
