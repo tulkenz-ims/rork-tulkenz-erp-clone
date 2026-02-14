@@ -15,7 +15,7 @@ export default function BudgetingScreen() {
   const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0 }).format(amount);
 
   const renderBudget = (budget: Budget) => {
-    const usedPercent = (budget.totalActual / budget.totalBudget) * 100;
+    const usedPercent = budget.amount > 0 ? (budget.spent / budget.amount) * 100 : 0;
     const isOverBudget = usedPercent > 100;
     const progressColor = isOverBudget ? '#EF4444' : usedPercent > 80 ? '#F59E0B' : '#22C55E';
 
@@ -24,7 +24,7 @@ export default function BudgetingScreen() {
         <View style={styles.cardHeader}>
           <View>
             <Text style={[styles.budgetName, { color: colors.text }]}>{budget.name}</Text>
-            <Text style={[styles.department, { color: colors.textSecondary }]}>{budget.departmentName || 'Company-wide'}</Text>
+            <Text style={[styles.department, { color: colors.textSecondary }]}>{budget.departmentCode || 'Company-wide'}</Text>
           </View>
           <View style={[styles.statusBadge, { backgroundColor: budget.status === 'active' ? '#22C55E15' : '#6B728015' }]}>
             <Text style={[styles.statusText, { color: budget.status === 'active' ? '#22C55E' : '#6B7280' }]}>{budget.status.toUpperCase()}</Text>
@@ -44,30 +44,30 @@ export default function BudgetingScreen() {
         <View style={styles.budgetDetails}>
           <View style={styles.detailRow}>
             <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Total Budget</Text>
-            <Text style={[styles.detailValue, { color: colors.text }]}>{formatCurrency(budget.totalBudget)}</Text>
+            <Text style={[styles.detailValue, { color: colors.text }]}>{formatCurrency(budget.amount)}</Text>
           </View>
           <View style={styles.detailRow}>
             <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Spent to Date</Text>
-            <Text style={[styles.detailValue, { color: colors.text }]}>{formatCurrency(budget.totalActual)}</Text>
+            <Text style={[styles.detailValue, { color: colors.text }]}>{formatCurrency(budget.spent)}</Text>
           </View>
           <View style={styles.detailRow}>
             <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Remaining</Text>
-            <Text style={[styles.detailValue, { color: budget.totalVariance >= 0 ? '#22C55E' : '#EF4444' }]}>{formatCurrency(budget.totalVariance)}</Text>
+            <Text style={[styles.detailValue, { color: budget.remaining >= 0 ? '#22C55E' : '#EF4444' }]}>{formatCurrency(budget.remaining)}</Text>
           </View>
         </View>
 
         {isOverBudget && (
           <View style={[styles.warningBanner, { backgroundColor: '#EF444415' }]}>
             <AlertTriangle size={16} color="#EF4444" />
-            <Text style={styles.warningText}>Over budget by {formatCurrency(Math.abs(budget.totalVariance))}</Text>
+            <Text style={styles.warningText}>Over budget by {formatCurrency(Math.abs(budget.remaining))}</Text>
           </View>
         )}
       </TouchableOpacity>
     );
   };
 
-  const totalBudget = budgets.reduce((sum, b) => sum + b.totalBudget, 0);
-  const totalActual = budgets.reduce((sum, b) => sum + b.totalActual, 0);
+  const totalBudget = budgets.reduce((sum, b) => sum + b.amount, 0);
+  const totalActual = budgets.reduce((sum, b) => sum + b.spent, 0);
 
   if (isLoading) {
     return (
