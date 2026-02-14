@@ -3,10 +3,9 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const THEME_STORAGE_KEY = 'tulkenz_theme';
-const CUSTOM_BG_KEY = 'tulkenz_custom_bg';
-const CUSTOM_PRIMARY_KEY = 'tulkenz_custom_primary';
+const COMPANY_COLORS_KEY = 'tulkenz_company_colors';
 
-export type ThemeType = 'light' | 'dark' | 'custom';
+export type ThemeType = 'light' | 'dark';
 
 export interface ThemeColors {
   primary: string;
@@ -42,111 +41,8 @@ export interface ThemeColors {
   chartColors: string[];
 }
 
-// ── Color math helpers ─────────────────────────────────────────
-function hexToRgb(hex: string): { r: number; g: number; b: number } {
-  const clean = hex.replace('#', '');
-  const r = parseInt(clean.substring(0, 2), 16);
-  const g = parseInt(clean.substring(2, 4), 16);
-  const b = parseInt(clean.substring(4, 6), 16);
-  return { r, g, b };
-}
-
-function rgbToHex(r: number, g: number, b: number): string {
-  const clamp = (v: number) => Math.max(0, Math.min(255, Math.round(v)));
-  return '#' + [clamp(r), clamp(g), clamp(b)].map(v => v.toString(16).padStart(2, '0')).join('');
-}
-
-function luminance(hex: string): number {
-  const { r, g, b } = hexToRgb(hex);
-  return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-}
-
-function lighten(hex: string, amount: number): string {
-  const { r, g, b } = hexToRgb(hex);
-  return rgbToHex(
-    r + (255 - r) * amount,
-    g + (255 - g) * amount,
-    b + (255 - b) * amount,
-  );
-}
-
-function darken(hex: string, amount: number): string {
-  const { r, g, b } = hexToRgb(hex);
-  return rgbToHex(r * (1 - amount), g * (1 - amount), b * (1 - amount));
-}
-
-function mixColors(hex1: string, hex2: string, weight: number): string {
-  const c1 = hexToRgb(hex1);
-  const c2 = hexToRgb(hex2);
-  return rgbToHex(
-    c1.r * weight + c2.r * (1 - weight),
-    c1.g * weight + c2.g * (1 - weight),
-    c1.b * weight + c2.b * (1 - weight),
-  );
-}
-
-// ── Generate a full theme from background + card color ─────────
-function generateCustomTheme(bg: string, cardColor: string): ThemeColors {
-  const bgLum = luminance(bg);
-  const cardLum = luminance(cardColor);
-  const isDark = bgLum < 0.5;
-  const cardIsDark = cardLum < 0.5;
-
-  // Background variants — derived from bg
-  const backgroundSecondary = isDark ? lighten(bg, 0.04) : darken(bg, 0.03);
-  const backgroundTertiary = isDark ? lighten(bg, 0.08) : darken(bg, 0.06);
-
-  // Surface = cards — derived from the card color
-  const surface = cardColor;
-  const surfaceLight = isDark ? lighten(cardColor, 0.08) : darken(cardColor, 0.05);
-
-  // Border — blend between card and white/black for subtle edge
-  const border = mixColors(cardColor, isDark ? '#FFFFFF' : '#000000', 0.7);
-  const borderLight = mixColors(cardColor, isDark ? '#FFFFFF' : '#000000', 0.55);
-
-  // Text — pick based on card luminance since text sits on cards
-  const text = cardIsDark ? '#F0F0F0' : '#1A1A1A';
-  const textSecondary = cardIsDark ? '#A0A0A0' : '#555555';
-  const textTertiary = cardIsDark ? '#707070' : '#888888';
-
-  // ALL semantic colors stay fixed — these never change with theme
-  return {
-    primary: '#0066CC',
-    primaryDark: '#004C99',
-    primaryLight: '#3399FF',
-    accent: '#10B981',
-    accentLight: '#34D399',
-    background: bg,
-    backgroundSecondary,
-    backgroundTertiary,
-    surface,
-    surfaceLight,
-    text,
-    textSecondary,
-    textTertiary,
-    border,
-    borderLight,
-    success: '#10B981',
-    successLight: '#34D399',
-    successBg: 'rgba(16, 185, 129, 0.15)',
-    warning: '#F59E0B',
-    warningLight: '#FBBF24',
-    warningBg: 'rgba(245, 158, 11, 0.15)',
-    error: '#EF4444',
-    errorLight: '#F87171',
-    errorBg: 'rgba(239, 68, 68, 0.15)',
-    info: '#3B82F6',
-    infoLight: '#60A5FA',
-    infoBg: 'rgba(59, 130, 246, 0.15)',
-    purple: '#8B5CF6',
-    purpleLight: '#A78BFA',
-    purpleBg: 'rgba(139, 92, 246, 0.15)',
-    chartColors: ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6'],
-  };
-}
-
 // ── Preset themes ──────────────────────────────────────────────
-const themes: Record<'light' | 'dark', ThemeColors> = {
+const themes: Record<ThemeType, ThemeColors> = {
   dark: {
     primary: '#0066CC',
     primaryDark: '#004C99',
@@ -215,31 +111,45 @@ const themes: Record<'light' | 'dark', ThemeColors> = {
   },
 };
 
+// ── Helper: compute contrasting text for any bar color ─────────
+function barTextColor(hexColors: string[]): string {
+  if (hexColors.length === 0) return '#FFFFFF';
+  // Use the first color to determine text contrast
+  const hex = hexColors[0].replace('#', '');
+  const r = parseInt(hex.substring(0, 2), 16);
+  const g = parseInt(hex.substring(2, 4), 16);
+  const b = parseInt(hex.substring(4, 6), 16);
+  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return lum > 0.55 ? '#1A1A1A' : '#FFFFFF';
+}
+
 // ── Context ────────────────────────────────────────────────────
 export const [ThemeProvider, useTheme] = createContextHook(() => {
   const [themeName, setThemeName] = useState<ThemeType>('dark');
-  const [customBg, setCustomBg] = useState('#1C1F26');
-  const [customPrimary, setCustomPrimary] = useState('#2A2E38');
+  const [companyColors, setCompanyColorsState] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const load = async () => {
       try {
-        const [saved, bg, primary] = await Promise.all([
+        const [saved, savedColors] = await Promise.all([
           AsyncStorage.getItem(THEME_STORAGE_KEY),
-          AsyncStorage.getItem(CUSTOM_BG_KEY),
-          AsyncStorage.getItem(CUSTOM_PRIMARY_KEY),
+          AsyncStorage.getItem(COMPANY_COLORS_KEY),
         ]);
-        if (saved === 'light' || saved === 'dark' || saved === 'custom') {
+        if (saved === 'light' || saved === 'dark') {
           setThemeName(saved);
         }
-        // Migrate old blue/rust to custom
-        if (saved === 'blue' || saved === 'rust') {
+        // Migrate old custom/blue/rust → dark
+        if (saved === 'custom' || saved === 'blue' || saved === 'rust') {
           setThemeName('dark');
           await AsyncStorage.setItem(THEME_STORAGE_KEY, 'dark');
         }
-        if (bg) setCustomBg(bg);
-        if (primary) setCustomPrimary(primary);
+        if (savedColors) {
+          try {
+            const parsed = JSON.parse(savedColors);
+            if (Array.isArray(parsed)) setCompanyColorsState(parsed);
+          } catch {}
+        }
       } catch (e) {
         console.error('Error loading theme:', e);
       } finally {
@@ -258,43 +168,43 @@ export const [ThemeProvider, useTheme] = createContextHook(() => {
     }
   }, []);
 
-  const setCustomColors = useCallback(async (bg: string, primary: string) => {
+  const setCompanyColors = useCallback(async (newColors: string[]) => {
     try {
-      setCustomBg(bg);
-      setCustomPrimary(primary);
-      await Promise.all([
-        AsyncStorage.setItem(CUSTOM_BG_KEY, bg),
-        AsyncStorage.setItem(CUSTOM_PRIMARY_KEY, primary),
-      ]);
-      // Auto-switch to custom theme
-      if (themeName !== 'custom') {
-        setThemeName('custom');
-        await AsyncStorage.setItem(THEME_STORAGE_KEY, 'custom');
-      }
+      // Max 3 colors
+      const trimmed = newColors.slice(0, 3);
+      setCompanyColorsState(trimmed);
+      await AsyncStorage.setItem(COMPANY_COLORS_KEY, JSON.stringify(trimmed));
     } catch (e) {
-      console.error('Error saving custom colors:', e);
+      console.error('Error saving company colors:', e);
     }
-  }, [themeName]);
+  }, []);
 
   const colors = useMemo<ThemeColors>(() => {
-    if (themeName === 'custom') {
-      return generateCustomTheme(customBg, customPrimary);
-    }
     return themes[themeName] || themes.dark;
-  }, [themeName, customBg, customPrimary]);
+  }, [themeName]);
+
+  // Bar gradient: returns the array for LinearGradient colors prop
+  // Falls back to surface color if no company colors set
+  const barColors = useMemo<string[]>(() => {
+    if (companyColors.length === 0) return [colors.surface, colors.surface];
+    if (companyColors.length === 1) return [companyColors[0], companyColors[0]];
+    return companyColors;
+  }, [companyColors, colors.surface]);
+
+  const barText = useMemo(() => barTextColor(companyColors), [companyColors]);
 
   return {
     theme: themeName,
     setTheme,
     colors,
     isLoading,
-    customBg,
-    customPrimary,
-    setCustomColors,
+    companyColors,
+    setCompanyColors,
+    barColors,
+    barText,
   };
 });
 
 export const getThemeColors = (theme: ThemeType): ThemeColors => {
-  if (theme === 'custom') return themes.dark; // fallback for static calls
   return themes[theme] || themes.dark;
 };
