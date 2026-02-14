@@ -4,13 +4,14 @@ import {
   Text,
   StyleSheet,
   Pressable,
+  Dimensions,
 } from 'react-native';
 import {
   Activity,
   AlertTriangle,
   ChevronRight,
   ChevronDown,
-  Clock,
+  TrendingUp,
 } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -57,6 +58,19 @@ function isProductionStopped(post: any): boolean {
   if (post.formData?.productionStopped === 'Yes') return true;
   if (post.notes && post.notes.includes('PRODUCTION STOPPED')) return true;
   return false;
+}
+
+function formatDurationStatic(minutes: number): string {
+  if (minutes < 1) return '0m';
+  if (minutes < 60) return `${Math.round(minutes)}m`;
+  const h = Math.floor(minutes / 60);
+  const m = Math.round(minutes % 60);
+  if (h >= 24) {
+    const d = Math.floor(h / 24);
+    const rh = h % 24;
+    return rh > 0 ? `${d}d ${rh}h` : `${d}d`;
+  }
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
 }
 
 // ── Types ──────────────────────────────────────────────────────
@@ -122,61 +136,70 @@ function LineCard({
   styles: any;
 }) {
   const timer = useLiveTimer(line.activeSince, line.isDown);
+  const statusColor = line.isDown ? colors.error : colors.success;
 
   return (
     <Pressable
-      style={[
+      style={({ pressed }) => [
         styles.lineCard,
-        { borderTopColor: line.isDown ? colors.error : colors.success },
         isExpanded && styles.lineCardExpanded,
+        pressed && { opacity: 0.7 },
       ]}
       onPress={() => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         onToggle();
       }}
     >
-      {/* Status dot + name */}
-      <View style={styles.lineCardHeader}>
-        <View style={[styles.statusDot, { backgroundColor: line.isDown ? colors.error : colors.success }]} />
-        <Text style={styles.lineLabel}>{line.label}</Text>
-      </View>
-
-      {line.isDown ? (
-        /* ── DOWN: show live timer ── */
-        <View style={styles.downContent}>
-          <AlertTriangle size={14} color={colors.error} />
-          <Text style={styles.downTimer}>{timer}</Text>
-          <Text style={styles.downStatus}>DOWN</Text>
+      {/* Icon + trend badge */}
+      <View style={styles.lineCardTop}>
+        <View style={[styles.lineIconBox, { backgroundColor: statusColor + '20' }]}>
+          <Activity size={20} color={statusColor} />
         </View>
-      ) : (
-        /* ── RUNNING: show compact up/dn bars ── */
-        <View style={styles.barsContent}>
-          <View style={styles.miniBar}>
-            <View style={styles.miniBarTrack}>
-              <View style={[styles.miniBarFillUp, { width: `${line.uptimePercent}%` }]} />
-            </View>
-            <Text style={[styles.miniBarValue, { color: colors.success }]}>
-              {line.uptimePercent.toFixed(1)}%
-            </Text>
-          </View>
-          <View style={styles.miniBar}>
-            <View style={styles.miniBarTrack}>
-              <View style={[styles.miniBarFillDn, { width: `${Math.min(line.downtimePercent * 5, 100)}%` }]} />
-            </View>
-            <Text style={[styles.miniBarValue, { color: line.downtimePercent > 0 ? colors.error : colors.textTertiary }]}>
+        {!line.isDown && line.downtimePercent > 0 && (
+          <View style={[styles.lineTrendBadge, { backgroundColor: colors.errorBg }]}>
+            <AlertTriangle size={10} color={colors.error} />
+            <Text style={[styles.lineTrendText, { color: colors.error }]}>
               {line.downtimePercent.toFixed(1)}%
             </Text>
           </View>
-          <Text style={styles.runningStatus}>RUNNING</Text>
+        )}
+        {!line.isDown && line.downtimePercent === 0 && (
+          <View style={[styles.lineTrendBadge, { backgroundColor: colors.successBg }]}>
+            <TrendingUp size={10} color={colors.success} />
+            <Text style={[styles.lineTrendText, { color: colors.success }]}>100%</Text>
+          </View>
+        )}
+      </View>
+
+      {/* Hero number */}
+      {line.isDown ? (
+        <View>
+          <Text style={[styles.lineHeroValue, { color: colors.error }]}>{timer}</Text>
+          <Text style={[styles.lineStatusLabel, { color: colors.error }]}>DOWN</Text>
+        </View>
+      ) : (
+        <View>
+          <Text style={[styles.lineHeroValue, { color: colors.success }]}>
+            {line.uptimePercent.toFixed(1)}%
+          </Text>
+          <Text style={[styles.lineStatusLabel, { color: colors.success }]}>RUNNING</Text>
         </View>
       )}
 
-      {/* Expand indicator */}
-      <View style={styles.expandIndicator}>
+      {/* Line name */}
+      <Text style={styles.lineLabel}>{line.label}</Text>
+      {!line.isDown && line.totalDowntimeMinutes > 0 && (
+        <Text style={styles.lineSubLabel}>
+          {formatDurationStatic(line.totalDowntimeMinutes)} downtime
+        </Text>
+      )}
+
+      {/* Expand chevron */}
+      <View style={styles.expandChevron}>
         {isExpanded ? (
-          <ChevronDown size={12} color={colors.textTertiary} />
+          <ChevronDown size={14} color={colors.textTertiary} />
         ) : (
-          <ChevronRight size={12} color={colors.textTertiary} />
+          <ChevronRight size={14} color={colors.textTertiary} />
         )}
       </View>
     </Pressable>
@@ -280,22 +303,9 @@ export default function LineStatusWidget() {
   const downCount = lineStats.filter(l => l.isDown).length;
   const expandedLineData = lineStats.find(l => l.lineId === expandedLine);
 
-  const formatDuration = (minutes: number) => {
-    if (minutes < 1) return '0m';
-    if (minutes < 60) return `${Math.round(minutes)}m`;
-    const h = Math.floor(minutes / 60);
-    const m = Math.round(minutes % 60);
-    if (h >= 24) {
-      const d = Math.floor(h / 24);
-      const rh = h % 24;
-      return rh > 0 ? `${d}d ${rh}h` : `${d}d`;
-    }
-    return m > 0 ? `${h}h ${m}m` : `${h}h`;
-  };
-
   return (
     <View style={styles.container}>
-      {/* ── Header ── */}
+      {/* ── Header Row ── */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <View style={[styles.headerIcon, { backgroundColor: anyDown ? colors.errorBg : colors.successBg }]}>
@@ -306,9 +316,9 @@ export default function LineStatusWidget() {
             <Text style={styles.headerSub}>Rolling {ROLLING_DAYS}-day uptime</Text>
           </View>
         </View>
-        <View style={[styles.overallBadge, { backgroundColor: anyDown ? colors.error : colors.success }]}>
+        <View style={[styles.statusBadge, { backgroundColor: anyDown ? colors.error : colors.success }]}>
           <View style={styles.pulseDot} />
-          <Text style={styles.overallText}>
+          <Text style={styles.statusBadgeText}>
             {anyDown ? `${downCount} DOWN` : 'ALL RUNNING'}
           </Text>
         </View>
@@ -328,7 +338,7 @@ export default function LineStatusWidget() {
         ))}
       </View>
 
-      {/* ── Active stoppage alert (if expanded line is down) ── */}
+      {/* ── Active stoppage alert ── */}
       {expandedLineData?.isDown && (
         <Pressable
           style={styles.activeAlert}
@@ -352,7 +362,7 @@ export default function LineStatusWidget() {
         <View style={styles.deptBreakdown}>
           <Text style={styles.deptBreakdownTitle}>
             {expandedLineData.label} · Downtime by Department
-            {expandedLineData.totalDowntimeMinutes > 0 ? ` · ${formatDuration(expandedLineData.totalDowntimeMinutes)} total` : ''}
+            {expandedLineData.totalDowntimeMinutes > 0 ? ` · ${formatDurationStatic(expandedLineData.totalDowntimeMinutes)} total` : ''}
           </Text>
           {expandedLineData.totalDowntimeMinutes === 0 ? (
             <Text style={styles.noDtText}>No downtime recorded in last {ROLLING_DAYS} days</Text>
@@ -389,7 +399,7 @@ export default function LineStatusWidget() {
                       <Text style={[styles.deptValue, { color: deptColor }]}>
                         {dept.percent.toFixed(0)}%
                       </Text>
-                      <Text style={styles.deptTime}>{formatDuration(dept.minutes)}</Text>
+                      <Text style={styles.deptTime}>{formatDurationStatic(dept.minutes)}</Text>
                     </View>
                   );
                 })}
@@ -404,14 +414,9 @@ export default function LineStatusWidget() {
 // ── Styles ─────────────────────────────────────────────────────
 const createStyles = (colors: any) => StyleSheet.create({
   container: {
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    padding: 16,
     marginHorizontal: 16,
     marginTop: 12,
     marginBottom: 16,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
   },
   header: {
     flexDirection: 'row',
@@ -442,7 +447,7 @@ const createStyles = (colors: any) => StyleSheet.create({
     color: colors.textTertiary,
     marginTop: 1,
   },
-  overallBadge: {
+  statusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 10,
@@ -456,139 +461,101 @@ const createStyles = (colors: any) => StyleSheet.create({
     borderRadius: 3,
     backgroundColor: '#FFFFFF',
   },
-  overallText: {
+  statusBadgeText: {
     fontSize: 10,
     fontWeight: '800',
     color: '#FFFFFF',
     letterSpacing: 1,
   },
-
-  // ── Lines Row (side by side) ──
   linesRow: {
     flexDirection: 'row',
-    gap: 8,
+    gap: 12,
   },
   lineCard: {
     flex: 1,
-    backgroundColor: `${colors.backgroundSecondary}80`,
-    borderRadius: 10,
-    borderTopWidth: 3,
-    paddingVertical: 10,
-    paddingHorizontal: 8,
-    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   lineCardExpanded: {
-    backgroundColor: colors.surfaceLight,
+    borderColor: colors.primary,
   },
-  lineCardHeader: {
+  lineCardTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  lineIconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  lineTrendBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    marginBottom: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 10,
+    gap: 3,
   },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+  lineTrendText: {
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  lineHeroValue: {
+    fontSize: 22,
+    fontWeight: '700',
+  },
+  lineStatusLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    marginTop: 2,
   },
   lineLabel: {
     fontSize: 13,
-    fontWeight: '700',
-    color: colors.text,
-  },
-
-  // ── Running: compact bars ──
-  barsContent: {
-    width: '100%',
-    gap: 3,
-    alignItems: 'center',
-  },
-  miniBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    width: '100%',
-  },
-  miniBarTrack: {
-    flex: 1,
-    height: 4,
-    backgroundColor: colors.backgroundTertiary,
-    borderRadius: 2,
-    overflow: 'hidden',
-  },
-  miniBarFillUp: {
-    height: '100%',
-    backgroundColor: colors.success,
-    borderRadius: 2,
-  },
-  miniBarFillDn: {
-    height: '100%',
-    backgroundColor: colors.error,
-    borderRadius: 2,
-  },
-  miniBarValue: {
-    fontSize: 9,
-    fontWeight: '700',
-    width: 32,
-    textAlign: 'right',
-  },
-  runningStatus: {
-    fontSize: 8,
-    fontWeight: '700',
-    color: colors.success,
-    letterSpacing: 0.8,
+    color: colors.textSecondary,
     marginTop: 4,
-    textTransform: 'uppercase',
+    fontWeight: '500',
   },
-
-  // ── Down: timer display ──
-  downContent: {
-    alignItems: 'center',
-    gap: 4,
-    paddingVertical: 2,
+  lineSubLabel: {
+    fontSize: 11,
+    color: colors.textTertiary,
+    marginTop: 2,
   },
-  downTimer: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: colors.error,
-    fontVariant: ['tabular-nums'],
+  expandChevron: {
+    position: 'absolute',
+    bottom: 8,
+    right: 8,
   },
-  downStatus: {
-    fontSize: 8,
-    fontWeight: '700',
-    color: colors.error,
-    letterSpacing: 1,
-  },
-
-  // ── Expand indicator ──
-  expandIndicator: {
-    marginTop: 6,
-  },
-
-  // ── Active alert ──
   activeAlert: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.errorBg,
-    borderRadius: 6,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    marginTop: 8,
+    borderRadius: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginTop: 10,
     gap: 6,
   },
   activeAlertText: {
     flex: 1,
-    fontSize: 10,
+    fontSize: 11,
     color: colors.errorLight,
     fontWeight: '600',
   },
-
-  // ── Department breakdown ──
   deptBreakdown: {
-    backgroundColor: `${colors.background}80`,
-    borderRadius: 8,
-    padding: 12,
-    marginTop: 8,
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    padding: 16,
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   deptBreakdownTitle: {
     fontSize: 10,
