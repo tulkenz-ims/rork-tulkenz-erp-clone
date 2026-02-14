@@ -219,7 +219,7 @@ const themes: Record<'light' | 'dark', ThemeColors> = {
 export const [ThemeProvider, useTheme] = createContextHook(() => {
   const [themeName, setThemeName] = useState<ThemeType>('dark');
   const [customBg, setCustomBg] = useState('#1C1F26');
-  const [customPrimary, setCustomPrimary] = useState('#0066CC');
+  const [customPrimary, setCustomPrimary] = useState('#2A2E38');
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
