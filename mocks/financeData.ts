@@ -171,9 +171,15 @@ export const MOCK_GL_ACCOUNTS: GLAccount[] = [
 ];
 
 export const MOCK_BUDGETS: Budget[] = [
-  { id: 'budget-1', name: 'Maintenance Budget 2024', departmentCode: 'MAINT', fiscalYear: 2024, amount: 500000, spent: 125000, remaining: 375000, status: 'active' },
-  { id: 'budget-2', name: 'IT Budget 2024', departmentCode: 'IT', fiscalYear: 2024, amount: 300000, spent: 180000, remaining: 120000, status: 'active' },
-  { id: 'budget-3', name: 'Production Budget 2024', departmentCode: 'PROD', fiscalYear: 2024, amount: 1000000, spent: 650000, remaining: 350000, status: 'active' },
+  { id: 'budget-1', name: 'Maintenance Budget 2026', departmentCode: 'MAINT', fiscalYear: 2026, amount: 15000, spent: 4200, remaining: 10800, status: 'active' },
+  { id: 'budget-2', name: 'Production Budget 2026', departmentCode: 'PROD', fiscalYear: 2026, amount: 25000, spent: 18500, remaining: 6500, status: 'active' },
+  { id: 'budget-3', name: 'Quality Budget 2026', departmentCode: 'QA', fiscalYear: 2026, amount: 8000, spent: 2100, remaining: 5900, status: 'active' },
+  { id: 'budget-4', name: 'Safety Budget 2026', departmentCode: 'SAFETY', fiscalYear: 2026, amount: 6000, spent: 1800, remaining: 4200, status: 'active' },
+  { id: 'budget-5', name: 'Sanitation Budget 2026', departmentCode: 'SAN', fiscalYear: 2026, amount: 10000, spent: 3400, remaining: 6600, status: 'active' },
+  { id: 'budget-6', name: 'Warehouse Budget 2026', departmentCode: 'WH', fiscalYear: 2026, amount: 12000, spent: 5600, remaining: 6400, status: 'active' },
+  { id: 'budget-7', name: 'Shipping Budget 2026', departmentCode: 'SHIP', fiscalYear: 2026, amount: 8000, spent: 3200, remaining: 4800, status: 'active' },
+  { id: 'budget-8', name: 'Admin Budget 2026', departmentCode: 'ADMIN', fiscalYear: 2026, amount: 5000, spent: 1500, remaining: 3500, status: 'active' },
+  { id: 'budget-9', name: 'R&D Budget 2026', departmentCode: 'RND', fiscalYear: 2026, amount: 4000, spent: 900, remaining: 3100, status: 'active' },
 ];
 
 export const MOCK_JOURNAL_ENTRIES: JournalEntry[] = [
