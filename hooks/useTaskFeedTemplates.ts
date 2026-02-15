@@ -513,7 +513,8 @@ export function useDepartmentTasksForPostQuery(postId: string, options?: { enabl
 
 export function useDepartmentTasksQuery(options?: {
   departmentCode?: string;
-  status?: 'pending' | 'completed';
+  status?: 'pending' | 'in_progress' | 'completed' | 'signed_off';
+  statusIn?: string[];
   limit?: number;
   enabled?: boolean;
 }) {
@@ -551,7 +552,9 @@ export function useDepartmentTasksQuery(options?: {
         query = query.eq('department_code', options.departmentCode);
       }
 
-      if (options?.status) {
+      if (options?.statusIn && options.statusIn.length > 0) {
+        query = query.in('status', options.statusIn);
+      } else if (options?.status) {
         query = query.eq('status', options.status);
       }
 
