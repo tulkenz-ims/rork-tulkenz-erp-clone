@@ -26,13 +26,15 @@ import {
   ClipboardList,
   Image as ImageIcon,
   ExternalLink,
+  Trash2,
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useTaskFeedPostDetail } from '@/hooks/useTaskFeedPostDetail';
 import { getDepartmentColor, getDepartmentName } from '@/constants/organizationCodes';
 import DepartmentCompletionBadges from '@/components/DepartmentCompletionBadges';
+import ProductionStoppedBanner from '@/components/ProductionStoppedBanner';
 import EscalationModal from '@/components/EscalationModal';
-import { useSignoffDepartmentTask } from '@/hooks/useTaskFeedTemplates';
+import { useSignoffDepartmentTask, useDeleteTaskFeedPost } from '@/hooks/useTaskFeedTemplates';
 import { useUser } from '@/contexts/UserContext';
 
 const PRIORITY_COLORS: Record<string, { bg: string; text: string }> = {
@@ -70,6 +72,32 @@ export default function TaskFeedPostDetailScreen() {
       Alert.alert('Error', err.message || 'Failed to sign off');
     },
   });
+
+  const deletePostMutation = useDeleteTaskFeedPost({
+    onSuccess: () => {
+      Alert.alert('Deleted', 'Post has been deleted.');
+      router.back();
+    },
+    onError: (err) => {
+      Alert.alert('Error', err.message || 'Failed to delete post.');
+    },
+  });
+
+  const handleDeletePost = useCallback(() => {
+    if (!post) return;
+    Alert.alert(
+      'Delete Post',
+      `Are you sure you want to delete ${post.postNumber}?\n\nThis will also remove all department tasks and cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => deletePostMutation.mutate(post.id),
+        },
+      ]
+    );
+  }, [post, deletePostMutation]);
 
   useEffect(() => {
     if (Platform.OS === 'web') {
@@ -438,6 +466,9 @@ export default function TaskFeedPostDetailScreen() {
               <TouchableOpacity onPress={handlePrint} style={styles.headerButton}>
                 <Printer size={22} color={colors.text} />
               </TouchableOpacity>
+              <TouchableOpacity onPress={handleDeletePost} style={styles.headerButton}>
+                <Trash2 size={22} color="#EF4444" />
+              </TouchableOpacity>
             </View>
           ),
         }}
@@ -493,6 +524,16 @@ export default function TaskFeedPostDetailScreen() {
                 <Text style={[styles.metaText, { color: colors.text }]}>{post.locationName}</Text>
               </View>
             </View>
+          )}
+
+          {/* Production Hold Banner */}
+          {post.isProductionHold && (post.holdStatus === 'active' || post.holdStatus === 'reinstated' || post.holdStatus === 'cleared') && (
+            <ProductionStoppedBanner
+              notes={post.productionLine ? `Room/Line: ${post.productionLine}` : (post.locationName ? `Room/Line: ${post.locationName}` : '')}
+              status={(post.holdStatus === 'active' || post.holdStatus === 'reinstated') ? 'flagged' : 'verified'}
+              createdAt={post.createdAt}
+              resolvedAt={post.holdClearedAt}
+            />
           )}
 
           {totalCount > 0 && (
