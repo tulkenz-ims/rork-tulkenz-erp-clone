@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useEffect } from 'react';
+import React, { useCallback, useMemo, useRef, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -31,6 +31,9 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useTaskFeedPostDetail } from '@/hooks/useTaskFeedPostDetail';
 import { getDepartmentColor, getDepartmentName } from '@/constants/organizationCodes';
 import DepartmentCompletionBadges from '@/components/DepartmentCompletionBadges';
+import EscalationModal from '@/components/EscalationModal';
+import { useSignoffDepartmentTask } from '@/hooks/useTaskFeedTemplates';
+import { useUser } from '@/contexts/UserContext';
 
 const PRIORITY_COLORS: Record<string, { bg: string; text: string }> = {
   low: { bg: '#D1FAE5', text: '#065F46' },
@@ -54,8 +57,19 @@ export default function TaskFeedPostDetailScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   const scrollRef = useRef<ScrollView>(null);
+  const { user } = useUser();
+  const [showEscalation, setShowEscalation] = useState(false);
 
   const { data, isLoading, error } = useTaskFeedPostDetail(postId);
+
+  const signoff = useSignoffDepartmentTask({
+    onSuccess: () => {
+      Alert.alert('Signed Off', 'Department task signed off successfully.');
+    },
+    onError: (err) => {
+      Alert.alert('Error', err.message || 'Failed to sign off');
+    },
+  });
 
   useEffect(() => {
     if (Platform.OS === 'web') {
@@ -591,17 +605,15 @@ export default function TaskFeedPostDetailScreen() {
               departmentTasks={post.departmentTasks}
               showEscalateButton={post.status !== 'completed' && post.status !== 'cancelled'}
               isProductionHold={post.isProductionHold}
-              onEscalatePress={() => {
-                Alert.alert('Send to Department', 'Escalation modal coming soon');
-              }}
+              onEscalatePress={() => setShowEscalation(true)}
               onSignoffPress={(task) => {
                 Alert.alert(
                   'Sign Off',
-                  `Confirm sign-off for ${task.departmentName}?`,
+                  `Confirm sign-off for ${task.departmentName}?\n\nThis verifies their work is complete and approved.`,
                   [
                     { text: 'Cancel', style: 'cancel' },
-                    { text: 'Sign Off', onPress: () => {
-                      Alert.alert('Signed off', `${task.departmentName} signed off successfully`);
+                    { text: 'Sign Off', style: 'default', onPress: () => {
+                      signoff.mutate({ taskId: task.id, notes: `Signed off by ${user?.first_name} ${user?.last_name}` });
                     }},
                   ]
                 );
@@ -726,6 +738,20 @@ export default function TaskFeedPostDetailScreen() {
           </View>
         )}
       </ScrollView>
+
+      {/* Escalation Modal */}
+      {post && (
+        <EscalationModal
+          visible={showEscalation}
+          onClose={() => setShowEscalation(false)}
+          postId={post.id}
+          postNumber={post.postNumber}
+          organizationId={post.organizationId}
+          fromDepartmentCode={post.originatingDepartmentCode || post.departmentTasks?.[0]?.departmentCode || '1004'}
+          fromTaskId={post.departmentTasks?.[0]?.id || ''}
+          existingDepartments={post.departmentTasks?.map(t => t.departmentCode) || []}
+        />
+      )}
     </View>
   );
 }
