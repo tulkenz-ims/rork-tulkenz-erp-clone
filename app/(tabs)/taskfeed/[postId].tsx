@@ -85,20 +85,21 @@ export default function TaskFeedPostDetailScreen() {
   });
 
   const handleDeletePost = useCallback(() => {
-    if (!post) return;
+    if (!data?.post) return;
+    const p = data.post;
     Alert.alert(
       'Delete Post',
-      `Are you sure you want to delete ${post.postNumber}?\n\nThis will also remove all department tasks and cannot be undone.`,
+      `Are you sure you want to delete ${p.postNumber}?\n\nThis will also remove all department tasks and cannot be undone.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Delete',
           style: 'destructive',
-          onPress: () => deletePostMutation.mutate(post.id),
+          onPress: () => deletePostMutation.mutate(p.id),
         },
       ]
     );
-  }, [post, deletePostMutation]);
+  }, [data, deletePostMutation]);
 
   // Linked forms query
   const { data: linkedForms } = usePostFormLinks(postId);
