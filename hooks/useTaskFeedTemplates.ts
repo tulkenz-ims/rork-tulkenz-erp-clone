@@ -42,6 +42,8 @@ const mapTemplateFromDb = (row: any): TaskFeedTemplate => ({
   updatedById: row.updated_by_id,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
+  departmentFormSuggestions: row.department_form_suggestions || {},
+  isProductionHold: row.is_production_hold ?? false,
 });
 
 const mapPostFromDb = (row: any): TaskFeedPost => ({
@@ -235,6 +237,8 @@ export function useCreateTaskFeedTemplate(callbacks?: MutationCallbacks<TaskFeed
         workflow_rules: input.workflowRules || [],
         is_active: input.isActive ?? true,
         sort_order: input.sortOrder ?? 0,
+        is_production_hold: input.isProductionHold ?? false,
+        department_form_suggestions: input.departmentFormSuggestions || {},
         created_by: user ? `${user.first_name} ${user.last_name}` : 'System',
         created_by_id: user?.id,
       };
@@ -294,6 +298,8 @@ export function useUpdateTaskFeedTemplate(callbacks?: MutationCallbacks<TaskFeed
       if (input.workflowRules !== undefined) updateData.workflow_rules = input.workflowRules;
       if (input.isActive !== undefined) updateData.is_active = input.isActive;
       if (input.sortOrder !== undefined) updateData.sort_order = input.sortOrder;
+      if (input.isProductionHold !== undefined) updateData.is_production_hold = input.isProductionHold;
+      if (input.departmentFormSuggestions !== undefined) updateData.department_form_suggestions = input.departmentFormSuggestions;
 
       console.log('[useUpdateTaskFeedTemplate] Update data:', JSON.stringify(updateData, null, 2));
 
