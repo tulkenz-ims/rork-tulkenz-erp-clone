@@ -34,6 +34,7 @@ import {
   Droplets,
   Microscope,
   HardHat,
+  Zap,
 } from 'lucide-react-native';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { useUser } from '@/contexts/UserContext';
@@ -382,7 +383,10 @@ export default function ExecutiveDashboard() {
         {/* Row 1: Quick Actions + Compliance */}
         <View style={isWide ? styles.wideRow : undefined}>
           <View style={isWide ? styles.wideHalf : undefined}>
-            <Text style={styles.quickActionTitle}>Quick Actions</Text>
+            <View style={styles.quickActionTitleRow}>
+              <Zap size={15} color="#F59E0B" />
+              <Text style={styles.quickActionTitle}>Quick Actions</Text>
+            </View>
             <View style={styles.quickActionBar}>
               <Pressable
                 style={({ pressed }) => [styles.quickActionBtn, pressed && { opacity: 0.7 }]}
@@ -912,11 +916,16 @@ const createStyles = (Colors: any) => StyleSheet.create({
   wideHalf: {
     flex: 1,
   },
+  quickActionTitleRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 10,
+  },
   quickActionTitle: {
     fontSize: 15,
     fontWeight: '700' as const,
     color: Colors.text,
-    marginBottom: 10,
     letterSpacing: 0.3,
   },
   quickActionBar: {
