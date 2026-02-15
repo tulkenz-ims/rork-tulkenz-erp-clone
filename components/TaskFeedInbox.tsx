@@ -29,11 +29,12 @@ import {
   ClipboardList,
   Wrench,
   Clock,
+  Factory,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useUser } from '@/contexts/UserContext';
-import { useDepartmentTasksQuery, useCompleteDepartmentTask, useStartDepartmentTask } from '@/hooks/useTaskFeedTemplates';
+import { useDepartmentTasksQuery, useCompleteDepartmentTask, useStartDepartmentTask, useClearProductionHold } from '@/hooks/useTaskFeedTemplates';
 import { TaskFeedDepartmentTask } from '@/types/taskFeedTemplates';
 import { getDepartmentColor, getDepartmentName } from '@/constants/organizationCodes';
 import WorkOrderCompletionForm from './WorkOrderCompletionForm';
@@ -89,7 +90,7 @@ export default function TaskFeedInbox({
   requiresFullWorkOrder,
 }: TaskFeedInboxProps) {
   const { colors } = useTheme();
-  useUser();
+  const { user } = useUser();
   const router = useRouter();
   const { data: workOrders = [] } = useWorkOrdersQuery();
   const [isExpanded, setIsExpanded] = useState(true);
@@ -139,6 +140,8 @@ export default function TaskFeedInbox({
         location_name: task.task_feed_posts.location_name,
         is_production_hold: task.task_feed_posts.is_production_hold || false,
         isProductionHold: task.task_feed_posts.is_production_hold || false,
+        hold_status: task.task_feed_posts.hold_status || 'none',
+        holdStatus: task.task_feed_posts.hold_status || 'none',
       } : undefined,
     }));
   }, [rawTasks]);
@@ -171,6 +174,15 @@ export default function TaskFeedInbox({
     },
     onError: (error) => {
       console.error('[TaskFeedInbox] Error logging signature:', error);
+    },
+  });
+
+  const clearHoldMutation = useClearProductionHold({
+    onSuccess: (data) => {
+      console.log('[TaskFeedInbox] Production hold cleared for post:', data.postNumber);
+    },
+    onError: (error) => {
+      console.error('[TaskFeedInbox] Error clearing hold:', error);
     },
   });
 
@@ -264,8 +276,21 @@ export default function TaskFeedInbox({
         referenceNumber: selectedTask.postNumber,
       });
 
-      // TODO: Update production hold status based on lineOperational
-      // This will be handled by the post-level logic when all departments complete
+      // Clear production hold if line is operational
+      if (data.lineOperational && selectedTask.post?.is_production_hold) {
+        const holdStatus = selectedTask.post?.hold_status || 'active';
+        if (holdStatus === 'active' || holdStatus === 'reinstated') {
+          clearHoldMutation.mutate({
+            postId: selectedTask.postId,
+            clearedByName: data.signature.employeeName,
+            clearedById: data.signature.employeeId,
+            departmentCode,
+            departmentName: getDepartmentName(departmentCode),
+            notes: data.completionNotes,
+            signatureStamp: data.signature.signatureStamp,
+          });
+        }
+      }
 
       onTaskCompleted?.(selectedTask);
       setShowDecisionModal(false);
@@ -497,6 +522,18 @@ export default function TaskFeedInbox({
                     <Text style={[styles.postNumber, { color: accentColor }]}>
                       {task.postNumber}
                     </Text>
+                    {task.post?.is_production_hold && (
+                      <View style={[styles.holdIndicator, {
+                        backgroundColor: task.post?.hold_status === 'cleared' ? '#10B98120' : '#EF444420',
+                      }]}>
+                        <Factory size={9} color={task.post?.hold_status === 'cleared' ? '#10B981' : '#EF4444'} />
+                        <Text style={[styles.holdIndicatorText, {
+                          color: task.post?.hold_status === 'cleared' ? '#10B981' : '#EF4444',
+                        }]}>
+                          {task.post?.hold_status === 'cleared' ? 'RELEASED' : 'HOLD'}
+                        </Text>
+                      </View>
+                    )}
                     <Text style={[styles.timeAgo, { color: colors.textSecondary }]}>
                       {formatTimeAgo(task.assignedAt)}
                     </Text>
@@ -1053,6 +1090,19 @@ const styles = StyleSheet.create({
   formCountText: {
     fontSize: 10,
     fontWeight: '700' as const,
+  },
+  holdIndicator: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 3,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  holdIndicatorText: {
+    fontSize: 8,
+    fontWeight: '800' as const,
+    letterSpacing: 0.5,
   },
   locationRow: {
     flexDirection: 'row',
