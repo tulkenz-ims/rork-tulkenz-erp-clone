@@ -239,6 +239,33 @@ export default function TaskFeedScreen() {
     return map;
   }, [postsWithTasksData]);
 
+  // Map post IDs to hold/production data for banner display
+  const postHoldDataMap = useMemo(() => {
+    const map = new Map<string, {
+      isProductionHold: boolean;
+      holdStatus: string;
+      holdClearedAt?: string;
+      productionLine?: string;
+      createdAt: string;
+      locationName?: string;
+    }>();
+    if (postsWithTasksData) {
+      postsWithTasksData.forEach((post: any) => {
+        if (post.isProductionHold) {
+          map.set(post.id, {
+            isProductionHold: post.isProductionHold,
+            holdStatus: post.holdStatus || 'none',
+            holdClearedAt: post.holdClearedAt,
+            productionLine: post.productionLine,
+            createdAt: post.createdAt,
+            locationName: post.locationName,
+          });
+        }
+      });
+    }
+    return map;
+  }, [postsWithTasksData]);
+
   const additionalPhotosByPostId = useMemo(() => {
     const map = new Map<string, string[]>();
     if (postsWithTasksData) {
@@ -1807,6 +1834,25 @@ export default function TaskFeedScreen() {
                     resolvedAt={verification.reviewedAt}
                   />
                 )}
+
+                {/* Template-based Production Hold Banner */}
+                {verification.sourceId && 
+                 postHoldDataMap.has(verification.sourceId) && 
+                 !(verification.notes && verification.notes.includes('PRODUCTION STOPPED')) && (() => {
+                  const holdData = postHoldDataMap.get(verification.sourceId!);
+                  if (!holdData) return null;
+                  const roomLine = holdData.productionLine || holdData.locationName || '';
+                  const holdNotes = roomLine ? `Room/Line: ${roomLine}` : '';
+                  const holdBannerStatus = (holdData.holdStatus === 'active' || holdData.holdStatus === 'reinstated') ? 'flagged' : 'verified';
+                  return (
+                    <ProductionStoppedBanner
+                      notes={holdNotes}
+                      status={holdBannerStatus}
+                      createdAt={holdData.createdAt}
+                      resolvedAt={holdData.holdClearedAt}
+                    />
+                  );
+                })()}
 
                 {/* Clean Notes - Compact */}
                 {cleanNotes && (
