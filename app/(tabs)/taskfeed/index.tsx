@@ -492,6 +492,8 @@ export default function TaskFeedScreen() {
   const [showFieldOptionsPicker, setShowFieldOptionsPicker] = useState(false);
   const [activeDropdownField, setActiveDropdownField] = useState<FormField | null>(null);
   const [templatePhotoError, setTemplatePhotoError] = useState(false);
+  const [templateProductionStopped, setTemplateProductionStopped] = useState(false);
+  const [templateRoomLine, setTemplateRoomLine] = useState('');
 
   const stats = useMemo(() => {
     if (statsData) {
@@ -1079,6 +1081,8 @@ export default function TaskFeedScreen() {
     setTemplatePhotoUris([]);
     setTemplatePhotoError(false);
     setTemplateNotes('');
+    setTemplateProductionStopped(false);
+    setTemplateRoomLine('');
     setShowNewPostModal(false);
     setShowTemplatePicker(false);
     resetActionFlow();
@@ -1308,6 +1312,12 @@ export default function TaskFeedScreen() {
     if (!validateTemplateForm()) {
       return;
     }
+
+    // Validate room/line when production stopped
+    if (templateProductionStopped && !templateRoomLine) {
+      Alert.alert('Required', 'Please select which room/line is affected.');
+      return;
+    }
     
     // Try to find location from form values - check multiple possible field names
     const locationValue = 
@@ -1321,6 +1331,19 @@ export default function TaskFeedScreen() {
     const matchingLocation = taskLocations.find(loc => loc.name === locationValue);
     
     console.log('[TaskFeed] Submitting with location:', locationValue, 'matchingLocation:', matchingLocation?.id);
+
+    // Build notes with production stopped info
+    const productionStoppedNote = templateProductionStopped 
+      ? `\n\n⚠️ PRODUCTION STOPPED\nRoom/Line: ${templateRoomLine}\nStopped at: ${new Date().toLocaleTimeString()}`
+      : '';
+    const finalNotes = `${templateNotes.trim()}${productionStoppedNote}`.trim() || undefined;
+
+    // Merge production stopped into form data for reporting
+    const finalFormData = {
+      ...templateFormValues,
+      productionStopped: templateProductionStopped ? 'Yes' : 'No',
+      ...(templateProductionStopped ? { production_line: templateRoomLine } : {}),
+    };
     
     try {
       const primaryPhoto = templatePhotoUris[0] || undefined;
@@ -1330,15 +1353,17 @@ export default function TaskFeedScreen() {
         templateId: selectedTemplate.id,
         locationId: matchingLocation?.id || selectedLocation?.id,
         locationName: locationValue || 'Not Specified',
-        formData: templateFormValues,
+        formData: finalFormData,
         photoUrl: primaryPhoto,
         additionalPhotos: additionalPhotos.length > 0 ? additionalPhotos : undefined,
-        notes: templateNotes.trim() || undefined,
+        notes: finalNotes,
+        productionStopped: templateProductionStopped,
+        roomLine: templateProductionStopped ? templateRoomLine : undefined,
       });
     } catch (error) {
       console.error('[TaskFeed] Error submitting template post:', error);
     }
-  }, [selectedTemplate, templateFormValues, templatePhotoUris, templateNotes, selectedLocation, taskLocations, validateTemplateForm, createTaskFeedPostMutation]);
+  }, [selectedTemplate, templateFormValues, templatePhotoUris, templateNotes, templateProductionStopped, templateRoomLine, selectedLocation, taskLocations, validateTemplateForm, createTaskFeedPostMutation]);
 
   const hasActiveFilters = filterDepartment || filterCategory || filterDateFrom || filterDateTo || filterSourceType || searchDateFrom || searchDateTo;
 
@@ -2988,6 +3013,52 @@ export default function TaskFeedScreen() {
                 onDropdownPress={handleDropdownFieldPress}
               />
             )}
+
+            {/* Has Production Stopped? */}
+            <View style={[styles.productionStopSection, { backgroundColor: '#EF4444' + '10', borderColor: templateProductionStopped ? '#EF4444' : '#EF444440' }]}>
+              <View style={styles.productionStopHeader}>
+                <Text style={[styles.productionStopTitle, { color: '#EF4444' }]}>Has production stopped?</Text>
+                <TouchableOpacity
+                  style={[
+                    styles.toggleButton,
+                    { backgroundColor: templateProductionStopped ? '#EF4444' : colors.surface },
+                  ]}
+                  onPress={() => setTemplateProductionStopped(!templateProductionStopped)}
+                >
+                  <Text style={[styles.toggleButtonText, { color: templateProductionStopped ? '#fff' : colors.text }]}>
+                    {templateProductionStopped ? 'YES' : 'NO'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              {templateProductionStopped && (
+                <View style={styles.roomLineSection}>
+                  <Text style={[styles.roomLineLabel, { color: colors.text }]}>Which room/line? *</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.roomLineScroll}>
+                    {ROOM_LINE_OPTIONS.map(room => (
+                      <TouchableOpacity
+                        key={room}
+                        style={[
+                          styles.roomLineChip,
+                          {
+                            backgroundColor: templateRoomLine === room ? '#EF4444' : colors.surface,
+                          },
+                        ]}
+                        onPress={() => setTemplateRoomLine(room)}
+                      >
+                        <Text
+                          style={[
+                            styles.roomLineChipText,
+                            { color: templateRoomLine === room ? '#FFFFFF' : colors.text },
+                          ]}
+                        >
+                          {room}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
+            </View>
 
             <View style={[styles.notesContainer, { backgroundColor: colors.surface, marginTop: 16 }]}>
               <TextInput
