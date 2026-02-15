@@ -20,19 +20,17 @@ import {
   User,
   Calendar,
   FileText,
-  CheckCircle2,
   AlertTriangle,
   Wrench,
   ChevronRight,
-  Building,
   ClipboardList,
   Image as ImageIcon,
-  Link2,
   ExternalLink,
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useTaskFeedPostDetail } from '@/hooks/useTaskFeedPostDetail';
 import { getDepartmentColor, getDepartmentName } from '@/constants/organizationCodes';
+import DepartmentCompletionBadges from '@/components/DepartmentCompletionBadges';
 
 const PRIORITY_COLORS: Record<string, { bg: string; text: string }> = {
   low: { bg: '#D1FAE5', text: '#065F46' },
@@ -589,73 +587,31 @@ export default function TaskFeedPostDetailScreen() {
         {/* Department Tasks Section */}
         {post.departmentTasks && post.departmentTasks.length > 0 && (
           <View style={[styles.card, { backgroundColor: colors.surface }]}>
-            <View style={styles.sectionHeader}>
-              <Building size={18} color={colors.primary} />
-              <Text style={[styles.sectionTitle, { color: colors.text }]}>
-                Assigned Departments ({post.departmentTasks.length})
-              </Text>
-            </View>
-            {post.departmentTasks.map((task) => (
-              <View
-                key={task.id}
-                style={[
-                  styles.deptTaskItem,
-                  { borderLeftColor: getDepartmentColor(task.departmentCode) },
-                ]}
-              >
-                <View style={styles.deptTaskHeader}>
-                  <View style={styles.deptTaskLeft}>
-                    <View
-                      style={[
-                        styles.deptTaskDot,
-                        { backgroundColor: getDepartmentColor(task.departmentCode) },
-                      ]}
-                    />
-                    <Text style={[styles.deptTaskName, { color: colors.text }]}>
-                      {task.departmentName}
-                    </Text>
-                  </View>
-                  <View
-                    style={[
-                      styles.deptTaskStatus,
-                      { backgroundColor: STATUS_COLORS[task.status || 'pending']?.bg || colors.surface },
-                    ]}
-                  >
-                    {task.status === 'completed' && <CheckCircle2 size={12} color="#10B981" />}
-                    <Text
-                      style={[
-                        styles.deptTaskStatusText,
-                        { color: STATUS_COLORS[task.status || 'pending']?.text || colors.text },
-                      ]}
-                    >
-                      {(task.status || 'pending').replace(/_/g, ' ')}
-                    </Text>
-                  </View>
-                </View>
-                {task.completedByName && (
-                  <View style={styles.deptTaskMeta}>
-                    <Text style={[styles.deptTaskMetaText, { color: colors.textSecondary }]}>
-                      Completed by {task.completedByName} on {formatDateTime(task.completedAt)}
-                    </Text>
-                  </View>
-                )}
-                {task.completionNotes && (
-                  <Text style={[styles.deptTaskNotes, { color: colors.textSecondary }]}>
-                    {task.completionNotes}
-                  </Text>
-                )}
-                {task.moduleHistoryType === 'work_order' && task.moduleHistoryId && (
-                  <TouchableOpacity
-                    style={[styles.linkedWOBadge, { backgroundColor: '#EF4444' + '15' }]}
-                    onPress={() => handleWorkOrderPress(task.moduleHistoryId!)}
-                  >
-                    <Link2 size={12} color="#EF4444" />
-                    <Text style={styles.linkedWOText}>View Linked Work Order</Text>
-                    <ChevronRight size={14} color="#EF4444" />
-                  </TouchableOpacity>
-                )}
-              </View>
-            ))}
+            <DepartmentCompletionBadges
+              departmentTasks={post.departmentTasks}
+              showEscalateButton={post.status !== 'completed' && post.status !== 'cancelled'}
+              isProductionHold={post.isProductionHold}
+              onEscalatePress={() => {
+                Alert.alert('Send to Department', 'Escalation modal coming soon');
+              }}
+              onSignoffPress={(task) => {
+                Alert.alert(
+                  'Sign Off',
+                  `Confirm sign-off for ${task.departmentName}?`,
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Sign Off', onPress: () => {
+                      Alert.alert('Signed off', `${task.departmentName} signed off successfully`);
+                    }},
+                  ]
+                );
+              }}
+              onBadgePress={(task) => {
+                if (task.moduleHistoryType === 'work_order' && task.moduleHistoryId) {
+                  handleWorkOrderPress(task.moduleHistoryId);
+                }
+              }}
+            />
           </View>
         )}
 
