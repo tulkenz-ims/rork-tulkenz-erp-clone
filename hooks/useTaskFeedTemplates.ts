@@ -99,6 +99,10 @@ const mapDepartmentTaskFromDb = (row: any): TaskFeedDepartmentTask & { task_feed
   formRoute: row.form_route,
   formResponse: row.form_response || {},
   formPhotos: row.form_photos || [],
+  formCompletions: row.form_completions || [],
+  suggestedForms: row.suggested_forms || [],
+  formsCompleted: row.forms_completed || 0,
+  formsSuggested: row.forms_suggested || 0,
   isOriginal: row.is_original ?? false,
   escalatedFromDepartment: row.escalated_from_department,
   escalatedFromTaskId: row.escalated_from_task_id,
@@ -1749,6 +1753,117 @@ export function useEscalateToDepartment(callbacks?: MutationCallbacks<TaskFeedDe
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['task_feed_department_tasks'] });
       queryClient.invalidateQueries({ queryKey: ['task_feed_posts'] });
+      callbacks?.onSuccess?.(data);
+    },
+    onError: (error: Error) => callbacks?.onError?.(error),
+  });
+}
+
+// ── ADD FORM COMPLETION TO DEPARTMENT TASK ────────────────────
+// Appends a completed form to the form_completions array without completing the task
+export interface AddFormCompletionInput {
+  taskId: string;
+  formId: string;
+  formType: string;
+  formRoute: string;
+  formResponse?: Record<string, any>;
+  formPhotos?: string[];
+}
+
+export function useAddFormCompletion(callbacks?: MutationCallbacks<TaskFeedDepartmentTask>) {
+  const queryClient = useQueryClient();
+  const { user } = useUser();
+
+  return useMutation({
+    mutationFn: async (input: AddFormCompletionInput) => {
+      // Get current form_completions
+      const { data: current, error: fetchError } = await supabase
+        .from('task_feed_department_tasks')
+        .select('form_completions, forms_completed, status')
+        .eq('id', input.taskId)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      const completions = current.form_completions || [];
+      const newCompletion = {
+        formId: input.formId,
+        formType: input.formType,
+        formRoute: input.formRoute,
+        formResponse: input.formResponse || {},
+        formPhotos: input.formPhotos || [],
+        completedAt: new Date().toISOString(),
+        completedByName: user ? `${user.first_name} ${user.last_name}` : 'System',
+      };
+
+      completions.push(newCompletion);
+
+      const updateData: any = {
+        form_completions: completions,
+        forms_completed: completions.length,
+      };
+
+      // If task was pending, move to in_progress
+      if (current.status === 'pending') {
+        updateData.status = 'in_progress';
+        updateData.started_at = new Date().toISOString();
+        updateData.started_by_id = user?.id;
+        updateData.started_by_name = user ? `${user.first_name} ${user.last_name}` : 'System';
+      }
+
+      // Also set the legacy single-form fields to the latest form
+      updateData.form_type = input.formType;
+      updateData.form_route = input.formRoute;
+      updateData.form_response = input.formResponse || {};
+
+      const { data, error } = await supabase
+        .from('task_feed_department_tasks')
+        .update(updateData)
+        .eq('id', input.taskId)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Update parent post to in_progress if needed
+      await supabase
+        .from('task_feed_posts')
+        .update({ status: 'in_progress' })
+        .eq('id', data.post_id)
+        .eq('status', 'pending');
+
+      return mapDepartmentTaskFromDb(data);
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['task_feed_department_tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['task_feed_posts'] });
+      callbacks?.onSuccess?.(data);
+    },
+    onError: (error: Error) => callbacks?.onError?.(error),
+  });
+}
+
+// ── SET SUGGESTED FORMS ───────────────────────────────────────
+export function useSetSuggestedForms(callbacks?: MutationCallbacks<TaskFeedDepartmentTask>) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (input: { taskId: string; suggestedForms: { formId: string; formType: string; formRoute: string; required: boolean }[] }) => {
+      const { data, error } = await supabase
+        .from('task_feed_department_tasks')
+        .update({
+          suggested_forms: input.suggestedForms,
+          forms_suggested: input.suggestedForms.length,
+        })
+        .eq('id', input.taskId)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return mapDepartmentTaskFromDb(data);
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['task_feed_department_tasks'] });
       callbacks?.onSuccess?.(data);
     },
     onError: (error: Error) => callbacks?.onError?.(error),
