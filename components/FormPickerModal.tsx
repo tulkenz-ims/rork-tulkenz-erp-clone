@@ -64,6 +64,7 @@ const QUALITY_FORMS: FormDef[] = [
   { id: 'atplog', label: 'ATP Swab Log', route: '/(tabs)/quality/atplog', category: 'Environmental Monitoring', icon: FlaskConical, description: 'ATP surface testing results', keywords: ['atp', 'swab', 'surface', 'test'] },
   { id: 'envswablog', label: 'Environmental Swab Log', route: '/(tabs)/quality/envswablog', category: 'Environmental Monitoring', icon: FlaskConical, keywords: ['environmental', 'swab', 'listeria'] },
   // Hygiene & Allergen
+  { id: 'roomhygienelog', label: 'Room Hygiene Log', route: '/(tabs)/quality/roomhygienelog', category: 'Hygiene & Allergen', icon: Eye, description: 'Log room entry — who, what, when for contamination tracking', keywords: ['room', 'hygiene', 'entry', 'log', 'contamination', 'room entry'] },
   { id: 'employeehygiene', label: 'Employee Hygiene Check', route: '/(tabs)/quality/employeehygiene', category: 'Hygiene & Allergen', icon: Eye, keywords: ['hygiene', 'employee', 'gmp'] },
   { id: 'allergenchangeover', label: 'Allergen Changeover', route: '/(tabs)/quality/allergenchangeover', category: 'Hygiene & Allergen', icon: AlertTriangle, keywords: ['allergen', 'changeover', 'cleaning'] },
   // Traceability
