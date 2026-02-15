@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { Check, Clock, Play, ShieldCheck, AlertTriangle, ArrowRight, FileText } from 'lucide-react-native';
+import { Check, Clock, Play, ShieldCheck, AlertTriangle, ArrowRight, FileText, Wrench, Link2 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { getDepartmentName, getDepartmentColor } from '@/constants/organizationCodes';
 import { TaskFeedDepartmentTask } from '@/types/taskFeedTemplates';
@@ -28,6 +28,10 @@ interface DepartmentCompletionBadgesProps {
   showEscalateButton?: boolean;
   isProductionHold?: boolean;
   holdStatus?: string;
+  linkedWorkOrders?: Array<{ id: string; work_order_number?: string; department?: string; title?: string; status?: string }>;
+  linkedForms?: Array<{ id: string; formNumber?: string; formType: string; departmentCode?: string | null; formTitle?: string }>;
+  onWorkOrderPress?: (woId: string) => void;
+  onFormPress?: (link: any) => void;
 }
 
 export default function DepartmentCompletionBadges({
@@ -40,6 +44,10 @@ export default function DepartmentCompletionBadges({
   showEscalateButton = false,
   isProductionHold = false,
   holdStatus,
+  linkedWorkOrders = [],
+  linkedForms = [],
+  onWorkOrderPress,
+  onFormPress,
 }: DepartmentCompletionBadgesProps) {
   const { colors } = useTheme();
 
@@ -148,6 +156,38 @@ export default function DepartmentCompletionBadges({
                     ✓ Signed: {task.signoffByName}
                   </Text>
                 )}
+
+                {/* Linked Work Orders for this department */}
+                {linkedWorkOrders.filter(wo => wo.department === deptCode || (task?.moduleHistoryType === 'work_order' && task?.moduleHistoryId === wo.id)).map(wo => (
+                  <TouchableOpacity
+                    key={wo.id}
+                    style={styles.linkedItemRow}
+                    onPress={() => onWorkOrderPress?.(wo.id)}
+                    activeOpacity={0.7}
+                  >
+                    <Wrench size={10} color="#EF4444" />
+                    <Text style={[styles.linkedItemText, { color: '#EF4444' }]} numberOfLines={1}>
+                      {wo.work_order_number || 'Work Order'}
+                    </Text>
+                    <ArrowRight size={8} color="#EF4444" />
+                  </TouchableOpacity>
+                ))}
+
+                {/* Linked Forms for this department */}
+                {linkedForms.filter(f => f.departmentCode === deptCode).map(f => (
+                  <TouchableOpacity
+                    key={f.id}
+                    style={styles.linkedItemRow}
+                    onPress={() => onFormPress?.(f)}
+                    activeOpacity={0.7}
+                  >
+                    <FileText size={10} color="#8B5CF6" />
+                    <Text style={[styles.linkedItemText, { color: '#8B5CF6' }]} numberOfLines={1}>
+                      {f.formNumber || f.formType}
+                    </Text>
+                    <ArrowRight size={8} color="#8B5CF6" />
+                  </TouchableOpacity>
+                ))}
               </View>
 
               {/* Sign-off button for completed tasks needing sign-off */}
@@ -406,6 +446,21 @@ const styles = StyleSheet.create({
   badgeCompletedBy: {
     fontSize: 10,
     marginTop: 1,
+  },
+  linkedItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 4,
+    paddingVertical: 3,
+    paddingHorizontal: 6,
+    backgroundColor: '#00000020',
+    borderRadius: 4,
+  },
+  linkedItemText: {
+    fontSize: 10,
+    fontWeight: '600',
+    flex: 1,
   },
   signoffBtn: {
     width: 32,
