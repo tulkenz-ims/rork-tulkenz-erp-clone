@@ -576,7 +576,7 @@ export default function TaskFeedInbox({
 
                 <View style={styles.taskActions}>
                   {/* Not Involved button — only for pending tasks */}
-                  {!isMaintenanceDept && task.status === 'pending' && (
+                  {task.status === 'pending' && (
                     <TouchableOpacity
                       style={[styles.actionButton, { backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border }]}
                       onPress={() => handleNotInvolvedPress(task)}
