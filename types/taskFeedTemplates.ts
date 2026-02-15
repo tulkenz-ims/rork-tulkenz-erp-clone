@@ -202,6 +202,8 @@ export interface CreatePostInput {
   photoUrl?: string;
   additionalPhotos?: string[];
   notes?: string;
+  productionStopped?: boolean;
+  roomLine?: string;
 }
 
 export interface CompleteTaskInput {
