@@ -27,6 +27,7 @@ interface DepartmentCompletionBadgesProps {
   onSignoffPress?: (task: TaskFeedDepartmentTask) => void;
   showEscalateButton?: boolean;
   isProductionHold?: boolean;
+  holdStatus?: string;
 }
 
 export default function DepartmentCompletionBadges({
@@ -38,6 +39,7 @@ export default function DepartmentCompletionBadges({
   onSignoffPress,
   showEscalateButton = false,
   isProductionHold = false,
+  holdStatus,
 }: DepartmentCompletionBadgesProps) {
   const { colors } = useTheme();
 
@@ -58,7 +60,7 @@ export default function DepartmentCompletionBadges({
           <Text style={[styles.headerText, { color: colors.textSecondary }]}>
             Department Status
           </Text>
-          {isProductionHold && (
+          {isProductionHold && (holdStatus === 'active' || holdStatus === 'reinstated') && (
             <View style={styles.holdBadge}>
               <AlertTriangle size={10} color="#DC2626" />
               <Text style={styles.holdText}>HOLD</Text>
