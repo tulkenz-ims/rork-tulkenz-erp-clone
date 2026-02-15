@@ -48,6 +48,8 @@ interface PostFormDecisionModalProps {
     lineOperational: boolean;
     completionNotes: string;
     signature: SignatureVerification;
+    rootCauseDepartment?: string;
+    rootCauseDepartmentName?: string;
   }) => void;
   /** User confirms not involved */
   onNotInvolved: (data: {
@@ -84,6 +86,7 @@ export default function PostFormDecisionModal({
   const [taskResolved, setTaskResolved] = useState<boolean | null>(null);
   const [completionNotes, setCompletionNotes] = useState('');
   const [signature, setSignature] = useState<SignatureVerification | null>(null);
+  const [rootCauseDepartment, setRootCauseDepartment] = useState<string | null>(null);
 
   // Not-involved state
   const [notInvolvedReason, setNotInvolvedReason] = useState('');
@@ -98,6 +101,7 @@ export default function PostFormDecisionModal({
     setCompletionNotes('');
     setSignature(null);
     setNotInvolvedReason('');
+    setRootCauseDepartment(null);
   };
 
   const handleClose = () => {
@@ -127,6 +131,11 @@ export default function PostFormDecisionModal({
       Alert.alert('Required', 'Indicate whether the production line is operational.');
       return;
     }
+    // Require root cause when clearing a production hold
+    if (isProductionHold && lineOperational === true && !rootCauseDepartment) {
+      Alert.alert('Required', 'Select the root cause department before clearing the hold.');
+      return;
+    }
     if (!completionNotes.trim()) {
       Alert.alert('Required', 'Add completion notes or enter N/A.');
       return;
@@ -136,6 +145,8 @@ export default function PostFormDecisionModal({
       lineOperational: isProductionHold ? lineOperational! : true,
       completionNotes: completionNotes.trim(),
       signature,
+      rootCauseDepartment: rootCauseDepartment || undefined,
+      rootCauseDepartmentName: rootCauseDepartment ? getDepartmentName(rootCauseDepartment) : undefined,
     });
   };
 
@@ -335,6 +346,46 @@ export default function PostFormDecisionModal({
               </>
             )}
 
+            {/* Root Cause Department — only when clearing a hold */}
+            {isProductionHold && lineOperational === true && (
+              <>
+                <Text style={[styles.questionLabel, { color: colors.text }]}>
+                  What department is the root cause?
+                </Text>
+                <View style={styles.rootCauseGrid}>
+                  {[
+                    { code: '1004', name: 'Quality' },
+                    { code: '1005', name: 'Safety' },
+                    { code: '1002', name: 'Sanitation' },
+                    { code: '1001', name: 'Maintenance' },
+                    { code: '1003', name: 'Production' },
+                  ].map(dept => {
+                    const selected = rootCauseDepartment === dept.code;
+                    const color = getDepartmentColor(dept.code);
+                    return (
+                      <TouchableOpacity
+                        key={dept.code}
+                        style={[styles.rootCauseBtn, {
+                          backgroundColor: selected ? color + '20' : colors.background,
+                          borderColor: selected ? color : colors.border,
+                        }]}
+                        onPress={() => setRootCauseDepartment(selected ? null : dept.code)}
+                      >
+                        {selected ? (
+                          <CheckCircle size={14} color={color} />
+                        ) : (
+                          <Circle size={14} color={colors.textTertiary} />
+                        )}
+                        <Text style={[styles.rootCauseText, { color: selected ? color : colors.textSecondary }]}>
+                          {dept.name}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </>
+            )}
+
             {/* If not a production hold, skip line question — default operational */}
             {!isProductionHold && lineOperational === null && (() => { /* auto-set */ return null; })()}
 
@@ -504,6 +555,9 @@ const styles = StyleSheet.create({
   divider: { height: 1, marginVertical: 16 },
   questionLabel: { fontSize: 15, fontWeight: '700', marginBottom: 10, marginTop: 4 },
   toggleRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },
+  rootCauseGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
+  rootCauseBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, borderWidth: 1 },
+  rootCauseText: { fontSize: 13, fontWeight: '600' },
   toggleBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, padding: 14, borderRadius: 12, borderWidth: 1.5 },
   toggleText: { fontSize: 13, fontWeight: '600', flex: 1 },
   nextActions: { gap: 10, marginBottom: 8 },
