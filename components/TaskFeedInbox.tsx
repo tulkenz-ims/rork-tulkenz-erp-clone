@@ -28,6 +28,7 @@ import {
   AlertTriangle,
   ClipboardList,
   Wrench,
+  Clock,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -37,6 +38,8 @@ import { TaskFeedDepartmentTask } from '@/types/taskFeedTemplates';
 import { getDepartmentColor, getDepartmentName } from '@/constants/organizationCodes';
 import WorkOrderCompletionForm from './WorkOrderCompletionForm';
 import FormPickerModal from './FormPickerModal';
+import PostFormDecisionModal from './PostFormDecisionModal';
+import { SignatureVerification, useLogSignature } from '@/hooks/usePinSignature';
 
 interface WorkOrderCompletionData {
   workPerformed: string;
@@ -96,6 +99,8 @@ export default function TaskFeedInbox({
   const [showCompleteModal, setShowCompleteModal] = useState(false);
   const [showWorkOrderModal, setShowWorkOrderModal] = useState(false);
   const [showFormPicker, setShowFormPicker] = useState(false);
+  const [showDecisionModal, setShowDecisionModal] = useState(false);
+  const [showNotInvolved, setShowNotInvolved] = useState(false);
   const [completionNotes, setCompletionNotes] = useState('');
   const [isCompleting, setIsCompleting] = useState(false);
 
@@ -113,6 +118,14 @@ export default function TaskFeedInbox({
   const pendingTasks = useMemo(() => {
     return rawTasks.map((task: any) => ({
       ...task,
+      // Map snake_case DB fields to camelCase for component use
+      formCompletions: task.form_completions || [],
+      suggestedForms: task.suggested_forms || [],
+      formsCompleted: task.forms_completed || 0,
+      formsSuggested: task.forms_suggested || 0,
+      formType: task.form_type || '',
+      formRoute: task.form_route || '',
+      isProductionHold: task.task_feed_posts?.is_production_hold || false,
       post: task.task_feed_posts ? {
         id: task.task_feed_posts.id,
         post_number: task.task_feed_posts.post_number,
@@ -124,6 +137,8 @@ export default function TaskFeedInbox({
         created_at: task.task_feed_posts.created_at,
         created_by_name: task.task_feed_posts.created_by_name,
         location_name: task.task_feed_posts.location_name,
+        is_production_hold: task.task_feed_posts.is_production_hold || false,
+        isProductionHold: task.task_feed_posts.is_production_hold || false,
       } : undefined,
     }));
   }, [rawTasks]);
@@ -150,6 +165,15 @@ export default function TaskFeedInbox({
     },
   });
 
+  const logSignature = useLogSignature({
+    onSuccess: (data) => {
+      console.log('[TaskFeedInbox] Signature logged:', data.id);
+    },
+    onError: (error) => {
+      console.error('[TaskFeedInbox] Error logging signature:', error);
+    },
+  });
+
   const visibleTasks = showAllTasks ? pendingTasks : pendingTasks.slice(0, maxVisible);
   const hasMoreTasks = pendingTasks.length > maxVisible;
 
@@ -172,12 +196,21 @@ export default function TaskFeedInbox({
       } else {
         setShowCompleteModal(true);
       }
+    } else if (task.status === 'in_progress') {
+      // Task already started — show decision modal
+      setShowDecisionModal(true);
     } else {
-      // Show form picker for non-maintenance departments
+      // Pending task — show form picker to start
       setShowFormPicker(true);
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   }, [isMaintenanceDept, createFullWorkOrder, workOrders, router]);
+
+  const handleNotInvolvedPress = useCallback((task: TaskFeedDepartmentTask & { post?: PostDetails }) => {
+    setSelectedTask(task);
+    setShowNotInvolved(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }, []);
 
   const handleFormSelected = useCallback((form: { id: string; label: string; route: string }) => {
     if (!selectedTask) return;
@@ -190,15 +223,120 @@ export default function TaskFeedInbox({
     });
 
     setShowFormPicker(false);
+    setShowDecisionModal(false);
     
     // Navigate to the form
     router.push(form.route as any);
   }, [selectedTask, startTaskMutation, router]);
 
   const handleFormPickerClose = useCallback(() => {
-    // User chose "Complete without form" — open regular complete modal
     setShowFormPicker(false);
-    setShowCompleteModal(true);
+    // If task is in_progress (came from decision → another form → cancelled), go back to decision
+    if (selectedTask?.status === 'in_progress') {
+      setShowDecisionModal(true);
+    } else {
+      // Pending task — open regular complete modal as fallback
+      setShowCompleteModal(true);
+    }
+  }, [selectedTask]);
+
+  const handleDecisionResolve = useCallback(async (data: {
+    lineOperational: boolean;
+    completionNotes: string;
+    signature: SignatureVerification;
+  }) => {
+    if (!selectedTask) return;
+
+    setIsCompleting(true);
+    try {
+      // Complete the department task
+      await completeMutation.mutateAsync({
+        taskId: selectedTask.id,
+        completionNotes: data.completionNotes,
+      });
+
+      // Log the signature
+      logSignature.mutate({
+        verification: data.signature,
+        formType: 'Task Completion',
+        referenceType: 'task_feed_post',
+        referenceId: selectedTask.postId,
+        referenceNumber: selectedTask.postNumber,
+      });
+
+      // TODO: Update production hold status based on lineOperational
+      // This will be handled by the post-level logic when all departments complete
+
+      onTaskCompleted?.(selectedTask);
+      setShowDecisionModal(false);
+      setSelectedTask(null);
+
+      Alert.alert(
+        'Task Resolved',
+        `${getDepartmentName(departmentCode)} has completed their task for ${selectedTask.postNumber}.`,
+        [{ text: 'OK' }]
+      );
+    } catch (error) {
+      console.error('[TaskFeedInbox] Error resolving task:', error);
+      Alert.alert('Error', 'Failed to resolve task.');
+    } finally {
+      setIsCompleting(false);
+    }
+  }, [selectedTask, completeMutation, logSignature, onTaskCompleted, departmentCode]);
+
+  const handleNotInvolvedConfirm = useCallback(async (data: {
+    reason: string;
+    signature: SignatureVerification;
+  }) => {
+    if (!selectedTask) return;
+
+    setIsCompleting(true);
+    try {
+      // Complete with "not involved" notes
+      await completeMutation.mutateAsync({
+        taskId: selectedTask.id,
+        completionNotes: `NOT INVOLVED: ${data.reason}\n\nVerified by: ${data.signature.signatureStamp}`,
+      });
+
+      // Log the signature
+      logSignature.mutate({
+        verification: data.signature,
+        formType: 'Not Involved Verification',
+        referenceType: 'task_feed_post',
+        referenceId: selectedTask.postId,
+        referenceNumber: selectedTask.postNumber,
+      });
+
+      onTaskCompleted?.(selectedTask);
+      setShowNotInvolved(false);
+      setSelectedTask(null);
+
+      Alert.alert(
+        'Verified',
+        `${getDepartmentName(departmentCode)} confirmed not involved in ${selectedTask.postNumber}.`,
+        [{ text: 'OK' }]
+      );
+    } catch (error) {
+      console.error('[TaskFeedInbox] Error confirming not involved:', error);
+      Alert.alert('Error', 'Failed to confirm.');
+    } finally {
+      setIsCompleting(false);
+    }
+  }, [selectedTask, completeMutation, logSignature, onTaskCompleted, departmentCode]);
+
+  const handleDecisionEscalate = useCallback(() => {
+    // Close decision, the parent page handles escalation
+    setShowDecisionModal(false);
+    // Navigate to post detail where escalation modal lives
+    if (selectedTask?.postId) {
+      router.push(`/(tabs)/taskfeed/${selectedTask.postId}`);
+    }
+  }, [selectedTask, router]);
+
+  const handleDecisionAnotherForm = useCallback(() => {
+    // Close decision, open form picker
+    setShowDecisionModal(false);
+    setShowFormPicker(true);
   }, []);
 
   const handleConfirmComplete = useCallback(async () => {
@@ -366,6 +504,21 @@ export default function TaskFeedInbox({
                   <Text style={[styles.templateName, { color: colors.text }]} numberOfLines={1}>
                     {task.post?.template_name || 'Task'}
                   </Text>
+                  {/* Status indicator for in-progress tasks */}
+                  {task.status === 'in_progress' && (
+                    <View style={styles.inProgressRow}>
+                      <View style={[styles.inProgressBadge, { backgroundColor: '#F59E0B20' }]}>
+                        <Clock size={10} color="#F59E0B" />
+                        <Text style={styles.inProgressText}>In Progress</Text>
+                      </View>
+                      {(task.formsCompleted || 0) > 0 && (
+                        <View style={[styles.inProgressBadge, { backgroundColor: '#10B98120' }]}>
+                          <FileText size={10} color="#10B981" />
+                          <Text style={[styles.formCountText, { color: '#10B981' }]}>{task.formsCompleted} form{task.formsCompleted !== 1 ? 's' : ''}</Text>
+                        </View>
+                      )}
+                    </View>
+                  )}
                   {task.post?.location_name && (
                     <View style={styles.locationRow}>
                       <MapPin size={12} color={colors.textSecondary} />
@@ -385,6 +538,17 @@ export default function TaskFeedInbox({
                 </View>
 
                 <View style={styles.taskActions}>
+                  {/* Not Involved button — only for pending tasks */}
+                  {!isMaintenanceDept && task.status === 'pending' && (
+                    <TouchableOpacity
+                      style={[styles.actionButton, { backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border }]}
+                      onPress={() => handleNotInvolvedPress(task)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.actionButtonText, { color: colors.textSecondary, fontSize: 11 }]}>Not{'\n'}Involved</Text>
+                    </TouchableOpacity>
+                  )}
+
                   <TouchableOpacity
                     style={[styles.actionButton, styles.completeButton, { backgroundColor: accentColor }]}
                     onPress={() => handleStartComplete(task)}
@@ -395,10 +559,15 @@ export default function TaskFeedInbox({
                         <Wrench size={16} color="#fff" />
                         <Text style={[styles.actionButtonText, { color: '#fff' }]}>Complete WO</Text>
                       </>
+                    ) : task.status === 'in_progress' ? (
+                      <>
+                        <ClipboardList size={16} color="#fff" />
+                        <Text style={[styles.actionButtonText, { color: '#fff' }]}>Continue</Text>
+                      </>
                     ) : (
                       <>
                         <CheckCircle2 size={16} color="#fff" />
-                        <Text style={[styles.actionButtonText, { color: '#fff' }]}>Complete</Text>
+                        <Text style={[styles.actionButtonText, { color: '#fff' }]}>Start</Text>
                       </>
                     )}
                   </TouchableOpacity>
@@ -724,6 +893,41 @@ export default function TaskFeedInbox({
         taskPostNumber={selectedTask?.postNumber}
         templateName={selectedTask?.post?.template_name}
         onFormSelected={handleFormSelected}
+        completedForms={(selectedTask?.formCompletions || []).map(f => ({
+          formId: f.formId,
+          formType: f.formType,
+          completedAt: f.completedAt,
+          completedByName: f.completedByName,
+        }))}
+      />
+
+      {/* Post-Form Decision Modal */}
+      <PostFormDecisionModal
+        visible={showDecisionModal}
+        onClose={() => setShowDecisionModal(false)}
+        task={selectedTask}
+        departmentCode={departmentCode}
+        departmentName={getDepartmentName(departmentCode)}
+        onAnotherForm={handleDecisionAnotherForm}
+        onEscalate={handleDecisionEscalate}
+        onMarkResolved={handleDecisionResolve}
+        onNotInvolved={handleNotInvolvedConfirm}
+        isSubmitting={isCompleting}
+      />
+
+      {/* Not Involved Modal */}
+      <PostFormDecisionModal
+        visible={showNotInvolved}
+        onClose={() => setShowNotInvolved(false)}
+        task={selectedTask}
+        departmentCode={departmentCode}
+        departmentName={getDepartmentName(departmentCode)}
+        onAnotherForm={() => {}}
+        onEscalate={() => {}}
+        onMarkResolved={() => {}}
+        onNotInvolved={handleNotInvolvedConfirm}
+        notInvolvedMode={true}
+        isSubmitting={isCompleting}
       />
     </View>
   );
@@ -826,6 +1030,29 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500' as const,
     marginBottom: 4,
+  },
+  inProgressRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 6,
+    marginBottom: 4,
+  },
+  inProgressBadge: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  inProgressText: {
+    fontSize: 10,
+    fontWeight: '700' as const,
+    color: '#F59E0B',
+  },
+  formCountText: {
+    fontSize: 10,
+    fontWeight: '700' as const,
   },
   locationRow: {
     flexDirection: 'row',
