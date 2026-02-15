@@ -76,6 +76,12 @@ const mapPostFromDb = (row: any): TaskFeedPost => ({
   finalSignoffAt: row.final_signoff_at,
   finalSignoffNotes: row.final_signoff_notes,
   isProductionHold: row.is_production_hold ?? false,
+  holdStatus: row.hold_status || 'none',
+  holdClearedAt: row.hold_cleared_at,
+  holdClearedById: row.hold_cleared_by_id,
+  holdClearedByName: row.hold_cleared_by_name,
+  holdClearedDepartment: row.hold_cleared_department,
+  holdClearedNotes: row.hold_cleared_notes,
   productionLine: row.production_line,
   roomId: row.room_id,
   roomName: row.room_name,
@@ -553,7 +559,8 @@ export function useDepartmentTasksQuery(options?: {
             created_at,
             created_by_name,
             location_name,
-            is_production_hold
+            is_production_hold,
+            hold_status
           )
         `)
         .eq('organization_id', organizationId)
@@ -1024,6 +1031,7 @@ export function useCreateTaskFeedPost(callbacks?: MutationCallbacks<TaskFeedPost
         completion_rate: assignedDepartments.length === 0 ? 100 : 0,
         completed_at: assignedDepartments.length === 0 ? new Date().toISOString() : null,
         is_production_hold: isProductionHold,
+        hold_status: isProductionHold ? 'active' : 'none',
       };
 
       console.log('[useCreateTaskFeedPost] Insert data:', JSON.stringify(insertData, null, 2));
@@ -1044,6 +1052,28 @@ export function useCreateTaskFeedPost(callbacks?: MutationCallbacks<TaskFeedPost
       }
 
       console.log('[useCreateTaskFeedPost] Post created:', postData.id, postNumber);
+
+      // Step 4b: Log initial production hold if applicable
+      if (isProductionHold) {
+        try {
+          await supabase
+            .from('production_hold_log')
+            .insert({
+              organization_id: organizationId,
+              post_id: postData.id,
+              post_number: postNumber,
+              action: 'hold_set',
+              action_by_id: user.id,
+              action_by_name: `${user.first_name} ${user.last_name}`,
+              department_code: template.triggering_department,
+              reason: `Production hold triggered by ${template.name} template`,
+              production_line: null,
+            });
+          console.log('[useCreateTaskFeedPost] Production hold logged');
+        } catch (holdErr) {
+          console.error('[useCreateTaskFeedPost] Error logging hold:', holdErr);
+        }
+      }
 
       // Step 5: Create task_feed_department_tasks records for each assigned department
       if (assignedDepartments.length > 0) {
@@ -1685,6 +1715,129 @@ export function useStartDepartmentTask(callbacks?: MutationCallbacks<TaskFeedDep
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['task_feed_department_tasks'] });
       queryClient.invalidateQueries({ queryKey: ['task_feed_posts'] });
+      callbacks?.onSuccess?.(data);
+    },
+    onError: (error: Error) => callbacks?.onError?.(error),
+  });
+}
+
+// ── PRODUCTION HOLD MANAGEMENT ────────────────────────────────
+
+export interface ClearHoldInput {
+  postId: string;
+  clearedByName: string;
+  clearedById?: string;
+  departmentCode: string;
+  departmentName: string;
+  notes?: string;
+  signatureStamp?: string;
+}
+
+export function useClearProductionHold(callbacks?: MutationCallbacks<TaskFeedPost>) {
+  const queryClient = useQueryClient();
+  const { organizationId } = useOrganization();
+
+  return useMutation({
+    mutationFn: async (input: ClearHoldInput) => {
+      const now = new Date().toISOString();
+
+      // Update the post hold status
+      const { data, error } = await supabase
+        .from('task_feed_posts')
+        .update({
+          hold_status: 'cleared',
+          hold_cleared_at: now,
+          hold_cleared_by_id: input.clearedById,
+          hold_cleared_by_name: input.clearedByName,
+          hold_cleared_department: input.departmentCode,
+          hold_cleared_notes: input.notes || null,
+        })
+        .eq('id', input.postId)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Log to hold history
+      await supabase
+        .from('production_hold_log')
+        .insert({
+          organization_id: organizationId,
+          post_id: input.postId,
+          post_number: data.post_number,
+          action: 'hold_cleared',
+          action_by_id: input.clearedById,
+          action_by_name: input.clearedByName,
+          department_code: input.departmentCode,
+          department_name: input.departmentName,
+          reason: input.notes,
+          production_line: data.production_line,
+          signature_stamp: input.signatureStamp,
+        });
+
+      return mapPostFromDb(data);
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['task_feed_posts'] });
+      queryClient.invalidateQueries({ queryKey: ['task_feed_department_tasks'] });
+      callbacks?.onSuccess?.(data);
+    },
+    onError: (error: Error) => callbacks?.onError?.(error),
+  });
+}
+
+export function useReinstateProductionHold(callbacks?: MutationCallbacks<TaskFeedPost>) {
+  const queryClient = useQueryClient();
+  const { organizationId } = useOrganization();
+
+  return useMutation({
+    mutationFn: async (input: {
+      postId: string;
+      reinstatedByName: string;
+      reinstatedById?: string;
+      departmentCode: string;
+      departmentName: string;
+      reason: string;
+      signatureStamp?: string;
+    }) => {
+      const { data, error } = await supabase
+        .from('task_feed_posts')
+        .update({
+          hold_status: 'active',
+          hold_cleared_at: null,
+          hold_cleared_by_id: null,
+          hold_cleared_by_name: null,
+          hold_cleared_department: null,
+          hold_cleared_notes: null,
+        })
+        .eq('id', input.postId)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Log reinstatement
+      await supabase
+        .from('production_hold_log')
+        .insert({
+          organization_id: organizationId,
+          post_id: input.postId,
+          post_number: data.post_number,
+          action: 'hold_reinstated',
+          action_by_id: input.reinstatedById,
+          action_by_name: input.reinstatedByName,
+          department_code: input.departmentCode,
+          department_name: input.departmentName,
+          reason: input.reason,
+          production_line: data.production_line,
+          signature_stamp: input.signatureStamp,
+        });
+
+      return mapPostFromDb(data);
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['task_feed_posts'] });
+      queryClient.invalidateQueries({ queryKey: ['task_feed_department_tasks'] });
       callbacks?.onSuccess?.(data);
     },
     onError: (error: Error) => callbacks?.onError?.(error),
