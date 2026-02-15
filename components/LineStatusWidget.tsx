@@ -308,6 +308,7 @@ export default function LineStatusWidget() {
       {/* ── Header Row ── */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
+          <Activity size={16} color={colors.warning || '#F59E0B'} />
           <View>
             <Text style={styles.headerTitle}>Production Line Status</Text>
             <Text style={styles.headerSub}>Real-time uptime · 30-day rolling</Text>
@@ -423,6 +424,7 @@ const createStyles = (colors: any) => StyleSheet.create({
   headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 6,
   },
   headerTitle: {
     fontSize: 15,
