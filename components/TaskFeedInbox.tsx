@@ -32,10 +32,11 @@ import {
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useUser } from '@/contexts/UserContext';
-import { useDepartmentTasksQuery, useCompleteDepartmentTask } from '@/hooks/useTaskFeedTemplates';
+import { useDepartmentTasksQuery, useCompleteDepartmentTask, useStartDepartmentTask } from '@/hooks/useTaskFeedTemplates';
 import { TaskFeedDepartmentTask } from '@/types/taskFeedTemplates';
 import { getDepartmentColor, getDepartmentName } from '@/constants/organizationCodes';
 import WorkOrderCompletionForm from './WorkOrderCompletionForm';
+import FormPickerModal from './FormPickerModal';
 
 interface WorkOrderCompletionData {
   workPerformed: string;
@@ -94,6 +95,7 @@ export default function TaskFeedInbox({
   const [showPostDetailModal, setShowPostDetailModal] = useState(false);
   const [showCompleteModal, setShowCompleteModal] = useState(false);
   const [showWorkOrderModal, setShowWorkOrderModal] = useState(false);
+  const [showFormPicker, setShowFormPicker] = useState(false);
   const [completionNotes, setCompletionNotes] = useState('');
   const [isCompleting, setIsCompleting] = useState(false);
 
@@ -105,7 +107,7 @@ export default function TaskFeedInbox({
 
   const { data: rawTasks = [], isLoading, refetch } = useDepartmentTasksQuery({
     departmentCode,
-    status: 'pending',
+    statusIn: ['pending', 'in_progress'],
   });
 
   const pendingTasks = useMemo(() => {
@@ -138,6 +140,16 @@ export default function TaskFeedInbox({
     },
   });
 
+  const startTaskMutation = useStartDepartmentTask({
+    onSuccess: (data) => {
+      console.log('[TaskFeedInbox] Task started:', data.id);
+      refetch();
+    },
+    onError: (error) => {
+      console.error('[TaskFeedInbox] Error starting task:', error);
+    },
+  });
+
   const visibleTasks = showAllTasks ? pendingTasks : pendingTasks.slice(0, maxVisible);
   const hasMoreTasks = pendingTasks.length > maxVisible;
 
@@ -161,10 +173,33 @@ export default function TaskFeedInbox({
         setShowCompleteModal(true);
       }
     } else {
-      setShowCompleteModal(true);
+      // Show form picker for non-maintenance departments
+      setShowFormPicker(true);
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   }, [isMaintenanceDept, createFullWorkOrder, workOrders, router]);
+
+  const handleFormSelected = useCallback((form: { id: string; label: string; route: string }) => {
+    if (!selectedTask) return;
+    
+    // Start the task with form info
+    startTaskMutation.mutate({
+      taskId: selectedTask.id,
+      formType: form.label,
+      formRoute: form.route,
+    });
+
+    setShowFormPicker(false);
+    
+    // Navigate to the form
+    router.push(form.route as any);
+  }, [selectedTask, startTaskMutation, router]);
+
+  const handleFormPickerClose = useCallback(() => {
+    // User chose "Complete without form" — open regular complete modal
+    setShowFormPicker(false);
+    setShowCompleteModal(true);
+  }, []);
 
   const handleConfirmComplete = useCallback(async () => {
     if (!selectedTask) return;
@@ -679,6 +714,17 @@ export default function TaskFeedInbox({
           )}
         </View>
       </Modal>
+
+      {/* Form Picker Modal */}
+      <FormPickerModal
+        visible={showFormPicker}
+        onClose={handleFormPickerClose}
+        departmentCode={departmentCode}
+        departmentName={getDepartmentName(departmentCode)}
+        taskPostNumber={selectedTask?.postNumber}
+        templateName={selectedTask?.post?.template_name}
+        onFormSelected={handleFormSelected}
+      />
     </View>
   );
 }
