@@ -94,6 +94,12 @@ export interface TaskFeedPost {
   finalSignoffAt?: string;
   finalSignoffNotes?: string;
   isProductionHold?: boolean;
+  holdStatus?: 'none' | 'active' | 'cleared' | 'reinstated';
+  holdClearedAt?: string;
+  holdClearedById?: string;
+  holdClearedByName?: string;
+  holdClearedDepartment?: string;
+  holdClearedNotes?: string;
   productionLine?: string;
   roomId?: string;
   roomName?: string;
