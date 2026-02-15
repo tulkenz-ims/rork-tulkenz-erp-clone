@@ -625,6 +625,7 @@ export function useCompleteDepartmentTask(callbacks?: MutationCallbacks<TaskFeed
       queryClient.invalidateQueries({ queryKey: ['task_feed_department_tasks'] });
       queryClient.invalidateQueries({ queryKey: ['task_feed_posts'] });
       queryClient.invalidateQueries({ queryKey: ['task_feed_posts_with_tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['task_feed_post_detail'] });
       callbacks?.onSuccess?.(data);
     },
     onError: (error: Error) => {
@@ -1085,7 +1086,7 @@ export function useCreateTaskFeedPost(callbacks?: MutationCallbacks<TaskFeedPost
 
       // Step 5: Create task_feed_department_tasks records for each assigned department
       if (assignedDepartments.length > 0) {
-        const deptFormSuggestions = template.department_form_suggestions || {};
+        const deptFormSuggestions = template.departmentFormSuggestions || {};
 
         const departmentTasks = assignedDepartments.map((deptCode: string) => {
           const suggestedForms = deptFormSuggestions[deptCode] || [];
@@ -1488,6 +1489,8 @@ export interface CreateManualPostInput {
   additionalPhotos?: string[];
   notes?: string;
   formData?: Record<string, any>;
+  productionStopped?: boolean;
+  roomLine?: string;
 }
 
 export function useCreateManualTaskFeedPost(callbacks?: MutationCallbacks<TaskFeedPost & { totalDepartments: number }>) {
@@ -1522,6 +1525,10 @@ export function useCreateManualTaskFeedPost(callbacks?: MutationCallbacks<TaskFe
         additionalPhotos = await uploadMultiplePhotos(input.additionalPhotos, organizationId, postNumber);
       }
 
+      // Determine production hold from user input
+      const isProductionHold = input.productionStopped || false;
+      const productionLine = input.roomLine || null;
+
       const insertData = {
         organization_id: organizationId,
         post_number: postNumber,
@@ -1542,6 +1549,9 @@ export function useCreateManualTaskFeedPost(callbacks?: MutationCallbacks<TaskFe
         completed_departments: 0,
         completion_rate: assignedDepartments.length === 0 ? 100 : 0,
         completed_at: assignedDepartments.length === 0 ? new Date().toISOString() : null,
+        is_production_hold: isProductionHold,
+        hold_status: isProductionHold ? 'active' : 'none',
+        production_line: productionLine,
       };
 
       console.log('[useCreateManualTaskFeedPost] Insert data:', JSON.stringify(insertData, null, 2));
@@ -1559,6 +1569,28 @@ export function useCreateManualTaskFeedPost(callbacks?: MutationCallbacks<TaskFe
       }
 
       console.log('[useCreateManualTaskFeedPost] Post created:', postData.id, postNumber);
+
+      // Log production hold if applicable
+      if (isProductionHold) {
+        try {
+          await supabase
+            .from('production_hold_log')
+            .insert({
+              organization_id: organizationId,
+              post_id: postData.id,
+              post_number: postNumber,
+              action: 'hold_set',
+              action_by_id: user.id,
+              action_by_name: `${user.first_name} ${user.last_name}`,
+              department_code: input.departmentCode,
+              reason: `Production hold triggered by manual issue report: ${input.title}`,
+              production_line: productionLine,
+            });
+          console.log('[useCreateManualTaskFeedPost] Production hold logged');
+        } catch (holdErr) {
+          console.error('[useCreateManualTaskFeedPost] Error logging hold:', holdErr);
+        }
+      }
 
       if (assignedDepartments.length > 0) {
         const departmentTasks = assignedDepartments.map((deptCode: string) => ({
@@ -1763,6 +1795,7 @@ export function useClearProductionHold(callbacks?: MutationCallbacks<TaskFeedPos
           hold_cleared_notes: input.notes || null,
         })
         .eq('id', input.postId)
+        .eq('organization_id', organizationId)
         .select()
         .single();
 
@@ -1791,6 +1824,8 @@ export function useClearProductionHold(callbacks?: MutationCallbacks<TaskFeedPos
       queryClient.invalidateQueries({ queryKey: ['task_feed_posts'] });
       queryClient.invalidateQueries({ queryKey: ['task_feed_posts_with_tasks'] });
       queryClient.invalidateQueries({ queryKey: ['task_feed_department_tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['task_feed_post_detail'] });
+      queryClient.invalidateQueries({ queryKey: ['task_verifications'] });
       callbacks?.onSuccess?.(data);
     },
     onError: (error: Error) => callbacks?.onError?.(error),
@@ -1822,6 +1857,7 @@ export function useReinstateProductionHold(callbacks?: MutationCallbacks<TaskFee
           hold_cleared_notes: null,
         })
         .eq('id', input.postId)
+        .eq('organization_id', organizationId)
         .select()
         .single();
 
@@ -1850,6 +1886,7 @@ export function useReinstateProductionHold(callbacks?: MutationCallbacks<TaskFee
       queryClient.invalidateQueries({ queryKey: ['task_feed_posts'] });
       queryClient.invalidateQueries({ queryKey: ['task_feed_posts_with_tasks'] });
       queryClient.invalidateQueries({ queryKey: ['task_feed_department_tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['task_feed_post_detail'] });
       callbacks?.onSuccess?.(data);
     },
     onError: (error: Error) => callbacks?.onError?.(error),
