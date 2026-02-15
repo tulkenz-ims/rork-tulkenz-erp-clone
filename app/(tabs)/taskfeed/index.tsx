@@ -1855,24 +1855,13 @@ export default function TaskFeedScreen() {
                   </View>
                 )}
 
-                {/* Production Stopped Banner with Timer */}
-                {verification.notes && verification.notes.includes('PRODUCTION STOPPED') && (
-                  <ProductionStoppedBanner
-                    notes={verification.notes}
-                    status={verification.status}
-                    createdAt={verification.createdAt}
-                    resolvedAt={verification.reviewedAt}
-                  />
-                )}
-
-                {/* Template-based Production Hold Banner */}
+                {/* Production Hold Banner - uses actual hold status from post data */}
                 {verification.sourceId && 
-                 postHoldDataMap.has(verification.sourceId) && 
-                 !(verification.notes && verification.notes.includes('PRODUCTION STOPPED')) && (() => {
+                 postHoldDataMap.has(verification.sourceId) && (() => {
                   const holdData = postHoldDataMap.get(verification.sourceId!);
                   if (!holdData) return null;
                   const roomLine = holdData.productionLine || holdData.locationName || '';
-                  const holdNotes = roomLine ? `Room/Line: ${roomLine}` : '';
+                  const holdNotes = roomLine ? `Room/Line: ${roomLine}` : (verification.notes && verification.notes.includes('PRODUCTION STOPPED') ? verification.notes : '');
                   const holdBannerStatus = (holdData.holdStatus === 'active' || holdData.holdStatus === 'reinstated') ? 'flagged' : 'verified';
                   return (
                     <ProductionStoppedBanner
