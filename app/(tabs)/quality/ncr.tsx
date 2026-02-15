@@ -29,6 +29,8 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useUser } from '@/contexts/UserContext';
 import { useSupabaseQuality, NCRRecord, NCRStatus, NCRSeverity, NCRSource, NCRType } from '@/hooks/useSupabaseQuality';
 import * as Haptics from 'expo-haptics';
+import TaskFeedPostLinker from '@/components/TaskFeedPostLinker';
+import { useLinkFormToPost } from '@/hooks/useTaskFeedFormLinks';
 
 const SEVERITY_CONFIG: Record<NCRSeverity, { label: string; color: string; bgColor: string }> = {
   minor: { label: 'Minor', color: '#F59E0B', bgColor: 'rgba(245, 158, 11, 0.15)' },
@@ -101,6 +103,11 @@ export default function NCRScreen() {
     lot_number: '',
   });
 
+  // Task Feed linking
+  const [linkedPostId, setLinkedPostId] = useState<string | null>(null);
+  const [linkedPostNumber, setLinkedPostNumber] = useState<string | null>(null);
+  const linkFormMutation = useLinkFormToPost();
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await refetch();
@@ -137,7 +144,7 @@ export default function NCRScreen() {
       const ncrNumber = generateNCRNumber();
       const today = new Date().toISOString().split('T')[0];
       
-      await createNCR({
+      const createdNCR = await createNCR({
         ncr_number: ncrNumber,
         title: newNCR.title,
         description: newNCR.description,
@@ -184,7 +191,28 @@ export default function NCRScreen() {
         notes: null,
       });
 
+      // Link to task feed post if selected
+      if (linkedPostId && linkedPostNumber && createdNCR?.id) {
+        try {
+          await linkFormMutation.mutateAsync({
+            postId: linkedPostId,
+            postNumber: linkedPostNumber,
+            formType: 'ncr',
+            formId: createdNCR.id,
+            formNumber: ncrNumber,
+            formTitle: newNCR.title,
+            departmentCode: '1004',
+            departmentName: 'Quality',
+          });
+          console.log('[NCR] Linked NCR to task feed post:', linkedPostNumber);
+        } catch (linkErr) {
+          console.error('[NCR] Error linking to task feed:', linkErr);
+        }
+      }
+
       setShowAddModal(false);
+      setLinkedPostId(null);
+      setLinkedPostNumber(null);
       setNewNCR({
         title: '',
         description: '',
@@ -204,7 +232,7 @@ export default function NCRScreen() {
     } finally {
       setIsSubmitting(false);
     }
-  }, [newNCR, createNCR, generateNCRNumber, user]);
+  }, [newNCR, createNCR, generateNCRNumber, user, linkedPostId, linkedPostNumber, linkFormMutation]);
 
   const handleStatusChange = useCallback(async (ncr: NCRRecord, newStatus: NCRStatus) => {
     try {
@@ -439,6 +467,20 @@ export default function NCRScreen() {
           </View>
 
           <ScrollView style={styles.modalContent}>
+            {/* Task Feed Linking */}
+            <TaskFeedPostLinker
+              selectedPostId={linkedPostId}
+              selectedPostNumber={linkedPostNumber}
+              onSelect={(postId, postNumber) => {
+                setLinkedPostId(postId);
+                setLinkedPostNumber(postNumber);
+              }}
+              onClear={() => {
+                setLinkedPostId(null);
+                setLinkedPostNumber(null);
+              }}
+            />
+
             <Text style={[styles.inputLabel, { color: colors.text }]}>Title *</Text>
             <TextInput
               style={[styles.textInput, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
