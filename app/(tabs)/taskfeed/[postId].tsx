@@ -556,6 +556,28 @@ export default function TaskFeedPostDetailScreen() {
             />
           )}
 
+          {/* Reporting & Root Cause Department */}
+          {post.isProductionHold && (post.reportingDepartment || post.rootCauseDepartment) && (
+            <View style={styles.deptCauseRow}>
+              {post.reportingDepartment && (
+                <View style={[styles.deptCauseTag, { backgroundColor: getDepartmentColor(post.reportingDepartment) + '15', borderColor: getDepartmentColor(post.reportingDepartment) + '40' }]}>
+                  <Text style={[styles.deptCauseLabel, { color: colors.textSecondary }]}>Reported by</Text>
+                  <Text style={[styles.deptCauseName, { color: getDepartmentColor(post.reportingDepartment) }]}>
+                    {post.reportingDepartmentName || getDepartmentName(post.reportingDepartment)}
+                  </Text>
+                </View>
+              )}
+              {post.rootCauseDepartment && (
+                <View style={[styles.deptCauseTag, { backgroundColor: getDepartmentColor(post.rootCauseDepartment) + '15', borderColor: getDepartmentColor(post.rootCauseDepartment) + '40' }]}>
+                  <Text style={[styles.deptCauseLabel, { color: colors.textSecondary }]}>Root Cause</Text>
+                  <Text style={[styles.deptCauseName, { color: getDepartmentColor(post.rootCauseDepartment) }]}>
+                    {post.rootCauseDepartmentName || getDepartmentName(post.rootCauseDepartment)}
+                  </Text>
+                </View>
+              )}
+            </View>
+          )}
+
           {totalCount > 0 && (
             <View style={styles.progressSection}>
               <View style={styles.progressHeader}>
@@ -667,6 +689,10 @@ export default function TaskFeedPostDetailScreen() {
               showEscalateButton={post.status !== 'completed' && post.status !== 'cancelled'}
               isProductionHold={post.isProductionHold}
               holdStatus={post.holdStatus}
+              linkedWorkOrders={linkedWorkOrders}
+              linkedForms={linkedForms || []}
+              onWorkOrderPress={handleWorkOrderPress}
+              onFormPress={handleFormLinkPress}
               onEscalatePress={() => setShowEscalation(true)}
               onSignoffPress={(task) => {
                 Alert.alert(
@@ -980,6 +1006,30 @@ const createStyles = (colors: any) =>
     },
     metaText: {
       fontSize: 13,
+    },
+    deptCauseRow: {
+      flexDirection: 'row',
+      gap: 10,
+      marginTop: 10,
+    },
+    deptCauseTag: {
+      flex: 1,
+      paddingVertical: 6,
+      paddingHorizontal: 10,
+      borderRadius: 8,
+      borderWidth: 1,
+      alignItems: 'center',
+    },
+    deptCauseLabel: {
+      fontSize: 9,
+      fontWeight: '600',
+      letterSpacing: 0.5,
+      textTransform: 'uppercase',
+    },
+    deptCauseName: {
+      fontSize: 12,
+      fontWeight: '700',
+      marginTop: 2,
     },
     progressSection: {
       marginTop: 12,
