@@ -31,7 +31,6 @@ import {
   MapPin,
   ChevronDown,
   ShoppingCart,
-  DollarSign,
   Droplets,
   Microscope,
   HardHat,
@@ -46,6 +45,7 @@ import LineStatusWidget from '@/components/LineStatusWidget';
 import ComplianceCountdown from '@/components/ComplianceCountdown';
 import MetricCardsSection from '@/components/MetricCardsSection';
 import ScoreCardSection from '@/components/ScoreCardSection';
+import BudgetCardsRow from '@/components/BudgetCardsRow';
 import { useMaterialsQuery } from '@/hooks/useSupabaseMaterials';
 import { useWorkOrdersQuery } from '@/hooks/useSupabaseWorkOrders';
 import { useEmployees } from '@/hooks/useSupabaseEmployees';
@@ -443,6 +443,7 @@ export default function ExecutiveDashboard() {
               title="Procurement Scorecard"
               subtitle="This month"
               icon={<ShoppingCart size={16} color={Colors.success} />}
+              cardStyle={{ minHeight: 150 }}
               gauges={[
                 {
                   label: 'Pending Requests',
@@ -506,6 +507,7 @@ export default function ExecutiveDashboard() {
             <ScoreCardSection
               title="Inventory Scorecard"
               icon={<Package size={16} color={Colors.info} />}
+              cardStyle={{ minHeight: 150 }}
               gauges={[
                 {
                   label: 'Stock Health',
@@ -552,23 +554,7 @@ export default function ExecutiveDashboard() {
 
         {/* ── Department Budgets (full width) ── */}
         {budgets.length > 0 && (
-          <MetricCardsSection
-            title="Department Budgets"
-            subtitle={`FY${budgets[0]?.fiscalYear || new Date().getFullYear()}`}
-            icon={<DollarSign size={16} color="#10B981" />}
-            compact
-            cards={budgets.map(b => {
-              const usedPct = b.amount > 0 ? Math.round((b.spent / b.amount) * 100) : 0;
-              return {
-                label: b.departmentName || b.departmentCode,
-                value: `${usedPct}`,
-                unit: '%',
-                trend: usedPct > 100 ? -(usedPct - 100) : 0,
-                trendLabel: `$${(b.remaining / 1000).toFixed(0)}K`,
-                color: usedPct > 100 ? '#EF4444' : usedPct > 80 ? '#F59E0B' : '#10B981',
-              };
-            })}
-          />
+          <BudgetCardsRow budgets={budgets} />
         )}
 
         {/* Row: CMMS + Sanitation */}
