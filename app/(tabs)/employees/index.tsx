@@ -11,6 +11,7 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import {
   Users,
   Search,
@@ -26,6 +27,7 @@ import {
   TrendingUp,
   AlertCircle,
   Building2,
+  Key,
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { usePermissions } from '@/contexts/PermissionsContext';
@@ -92,6 +94,7 @@ const DEFAULT_AVAILABILITY: EmployeeAvailability = {
 
 export default function EmployeesScreen() {
   const { colors } = useTheme();
+  const router = useRouter();
   
   const { 
     data: employees = [], 
@@ -541,12 +544,20 @@ export default function EmployeesScreen() {
               ))}
             </ScrollView>
 {canCreate && (
-            <Pressable 
-              style={[styles.addButton, { backgroundColor: colors.primary }]}
-              onPress={openAddModal}
-            >
-              <UserPlus size={18} color="#FFFFFF" />
-            </Pressable>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <Pressable 
+                style={[styles.addButton, { backgroundColor: '#8B5CF6' }]}
+                onPress={() => router.push('/employees/signaturepin')}
+              >
+                <Key size={18} color="#FFFFFF" />
+              </Pressable>
+              <Pressable 
+                style={[styles.addButton, { backgroundColor: colors.primary }]}
+                onPress={openAddModal}
+              >
+                <UserPlus size={18} color="#FFFFFF" />
+              </Pressable>
+            </View>
             )}
           </View>
         </View>
