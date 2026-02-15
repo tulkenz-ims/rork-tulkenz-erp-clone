@@ -37,6 +37,7 @@ import { useUser } from '@/contexts/UserContext';
 import { useDepartmentTasksQuery, useCompleteDepartmentTask, useStartDepartmentTask, useClearProductionHold } from '@/hooks/useTaskFeedTemplates';
 import { TaskFeedDepartmentTask } from '@/types/taskFeedTemplates';
 import { getDepartmentColor, getDepartmentName } from '@/constants/organizationCodes';
+import { supabase } from '@/lib/supabase';
 import WorkOrderCompletionForm from './WorkOrderCompletionForm';
 import FormPickerModal from './FormPickerModal';
 import PostFormDecisionModal from './PostFormDecisionModal';
@@ -421,6 +422,22 @@ export default function TaskFeedInbox({
         taskId: selectedTask.id,
         completionNotes: notesForTaskFeed,
       });
+
+      // Link work order to department task so post detail can find it
+      if (workOrderId) {
+        try {
+          await supabase
+            .from('task_feed_department_tasks')
+            .update({
+              module_history_type: 'work_order',
+              module_history_id: workOrderId,
+            })
+            .eq('id', selectedTask.id);
+          console.log('[TaskFeedInbox] Linked work order to department task');
+        } catch (linkErr) {
+          console.error('[TaskFeedInbox] Failed to link WO to task:', linkErr);
+        }
+      }
 
       // Clear production hold if applicable (maintenance completing WO means line is back)
       if (selectedTask.post?.is_production_hold) {
