@@ -994,6 +994,9 @@ export function useCreateTaskFeedPost(callbacks?: MutationCallbacks<TaskFeedPost
         input.formData?.where;
 
       // Step 4: Create the main task_feed_posts record
+      const isProductionHold = template.is_production_hold || 
+        template.buttonType === 'report_issue' || false;
+
       const insertData = {
         organization_id: organizationId,
         post_number: postNumber,
@@ -1014,6 +1017,7 @@ export function useCreateTaskFeedPost(callbacks?: MutationCallbacks<TaskFeedPost
         completed_departments: 0,
         completion_rate: assignedDepartments.length === 0 ? 100 : 0,
         completed_at: assignedDepartments.length === 0 ? new Date().toISOString() : null,
+        is_production_hold: isProductionHold,
       };
 
       console.log('[useCreateTaskFeedPost] Insert data:', JSON.stringify(insertData, null, 2));
@@ -1037,14 +1041,22 @@ export function useCreateTaskFeedPost(callbacks?: MutationCallbacks<TaskFeedPost
 
       // Step 5: Create task_feed_department_tasks records for each assigned department
       if (assignedDepartments.length > 0) {
-        const departmentTasks = assignedDepartments.map((deptCode: string) => ({
-          organization_id: organizationId,
-          post_id: postData.id,
-          post_number: postNumber,
-          department_code: deptCode,
-          department_name: getDepartmentNameFromCode(deptCode),
-          status: 'pending',
-        }));
+        const deptFormSuggestions = template.department_form_suggestions || {};
+
+        const departmentTasks = assignedDepartments.map((deptCode: string) => {
+          const suggestedForms = deptFormSuggestions[deptCode] || [];
+          return {
+            organization_id: organizationId,
+            post_id: postData.id,
+            post_number: postNumber,
+            department_code: deptCode,
+            department_name: getDepartmentNameFromCode(deptCode),
+            status: 'pending',
+            suggested_forms: suggestedForms,
+            forms_suggested: suggestedForms.length,
+            is_original: true,
+          };
+        });
 
         const { error: tasksError } = await supabase
           .from('task_feed_department_tasks')
