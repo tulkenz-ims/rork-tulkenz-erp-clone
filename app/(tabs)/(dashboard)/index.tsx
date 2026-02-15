@@ -557,90 +557,86 @@ export default function ExecutiveDashboard() {
           <BudgetCardsRow budgets={budgets} />
         )}
 
-        {/* Row: CMMS + Sanitation */}
-        <View style={isWide ? styles.wideRow : undefined}>
-          <View style={isWide ? styles.wideHalf : undefined}>
-            {/* ── CMMS Performance Cards ── */}
-            <MetricCardsSection
-              title="CMMS Performance"
-              subtitle="30-day"
-              icon={<Wrench size={16} color={Colors.warning} />}
-              compact
-              cards={(() => {
-                const open = stats.openWorkOrders;
-                const planned = workOrders.filter(wo => wo.type === 'preventive' || wo.type === 'pm' || wo.priority === 'low' || wo.priority === 'medium').length;
-                const unplanned = workOrders.filter(wo => wo.type === 'reactive' || wo.type === 'emergency' || wo.type === 'corrective' || wo.priority === 'critical' || wo.priority === 'emergency').length;
-                const pmWOs = workOrders.filter(wo => wo.type === 'preventive' || wo.type === 'pm');
-                const pmCompleted = pmWOs.filter(wo => wo.status === 'completed').length;
-                const pmCompliance = pmWOs.length > 0 ? Math.round((pmCompleted / pmWOs.length) * 100) : 100;
+        {/* ── CMMS Performance ── */}
+        <MetricCardsSection
+          title="CMMS Performance"
+          subtitle="30-day"
+          icon={<Wrench size={16} color={Colors.warning} />}
+          cards={(() => {
+            const open = stats.openWorkOrders;
+            const inProg = stats.inProgressWorkOrders;
+            const completed = stats.completedWorkOrders;
+            const total = workOrders.length;
+            const planned = workOrders.filter(wo => wo.type === 'preventive' || wo.type === 'pm' || wo.priority === 'low' || wo.priority === 'medium').length;
+            const unplanned = workOrders.filter(wo => wo.type === 'reactive' || wo.type === 'emergency' || wo.type === 'corrective' || wo.priority === 'critical' || wo.priority === 'emergency').length;
+            const pmWOs = workOrders.filter(wo => wo.type === 'preventive' || wo.type === 'pm');
+            const pmCompleted = pmWOs.filter(wo => wo.status === 'completed').length;
+            const pmCompliance = pmWOs.length > 0 ? Math.round((pmCompleted / pmWOs.length) * 100) : 100;
+            const overdue = stats.overdueWorkOrders;
 
-                return [
-                  { label: 'MTTR', value: '0', unit: 'hrs', trend: 0 },
-                  { label: 'MTBF', value: '0', unit: 'hrs', trend: 0 },
-                  { label: 'PM Compliance', value: pmCompliance.toString(), unit: '%', trend: 0, color: pmCompliance >= 90 ? '#10B981' : pmCompliance >= 70 ? '#F59E0B' : '#EF4444' },
-                  { label: 'Backlog', value: open.toString(), unit: 'WOs', trend: 0, color: open > 5 ? '#F59E0B' : '#10B981' },
-                  { label: 'Planned', value: planned.toString(), unit: 'WOs', trend: 0, color: '#3B82F6' },
-                  { label: 'Unplanned', value: unplanned.toString(), unit: 'WOs', trend: 0, color: unplanned > 0 ? '#EF4444' : '#10B981' },
-                ];
-              })()}
-            />
-          </View>
-          <View style={isWide ? styles.wideHalf : undefined}>
-            {/* ── Sanitation ── */}
-            <MetricCardsSection
-              title="Sanitation"
-              subtitle="This week"
-              icon={<Droplets size={16} color="#06B6D4" />}
-              compact
-              cards={[
-                { label: 'Pre-Op Done', value: '0', unit: '/ 5', trend: 0, color: '#06B6D4' },
-                { label: 'CIP Cycles', value: '0', unit: '/ 3', trend: 0, color: '#06B6D4' },
-                { label: 'Swab Tests', value: '0', unit: 'pass', trend: 0, color: '#10B981' },
-                { label: 'Open CARs', value: '0', trend: 0, color: '#10B981' },
-                { label: 'Zone 1 Clean', value: '100', unit: '%', trend: 0, color: '#10B981' },
-                { label: 'Overdue Tasks', value: '0', trend: 0, color: '#10B981' },
-              ]}
-            />
-          </View>
-        </View>
+            return [
+              { label: 'MTTR', value: '0', unit: 'hrs', trend: 0, trendLabel: 'Avg Repair' },
+              { label: 'MTBF', value: '0', unit: 'hrs', trend: 0, trendLabel: 'Avg Between' },
+              { label: 'PM Compliance', value: pmCompliance.toString(), unit: '%', trend: 0, trendLabel: `${pmCompleted}/${pmWOs.length} PMs`, color: pmCompliance >= 90 ? '#10B981' : pmCompliance >= 70 ? '#F59E0B' : '#EF4444' },
+              { label: 'Backlog', value: open.toString(), unit: 'WOs', trend: 0, trendLabel: `${overdue} overdue`, color: open > 5 ? '#F59E0B' : '#10B981' },
+              { label: 'In Progress', value: inProg.toString(), unit: 'WOs', trend: 0, trendLabel: 'Active now', color: '#3B82F6' },
+              { label: 'Completed', value: completed.toString(), unit: 'WOs', trend: 0, trendLabel: 'This period', color: '#10B981' },
+              { label: 'Planned', value: planned.toString(), unit: 'WOs', trend: 0, trendLabel: 'Scheduled', color: '#3B82F6' },
+              { label: 'Unplanned', value: unplanned.toString(), unit: 'WOs', trend: 0, trendLabel: 'Reactive', color: unplanned > 0 ? '#EF4444' : '#10B981' },
+            ];
+          })()}
+        />
 
-        {/* Row: Quality + Safety */}
-        <View style={isWide ? styles.wideRow : undefined}>
-          <View style={isWide ? styles.wideHalf : undefined}>
-            {/* ── Quality ── */}
-            <MetricCardsSection
-              title="Quality"
-              subtitle="This month"
-              icon={<Microscope size={16} color="#8B5CF6" />}
-              compact
-              cards={[
-                { label: 'Hold Lots', value: '0', trend: 0, color: '#10B981' },
-                { label: 'Rejections', value: '0', trend: 0, color: '#10B981' },
-                { label: 'NCRs Open', value: '0', trend: 0, color: '#10B981' },
-                { label: 'CCP Deviations', value: '0', trend: 0, color: '#10B981' },
-                { label: 'COA Pending', value: '0', trend: 0, color: '#10B981' },
-                { label: 'Spec Compliance', value: '100', unit: '%', trend: 0, color: '#10B981' },
-              ]}
-            />
-          </View>
-          <View style={isWide ? styles.wideHalf : undefined}>
-            {/* ── Safety ── */}
-            <MetricCardsSection
-              title="Safety"
-              subtitle="YTD"
-              icon={<HardHat size={16} color="#F59E0B" />}
-              compact
-              cards={[
-                { label: 'Days No Incident', value: '0', trend: 0, color: '#10B981' },
-                { label: 'Near Misses', value: '0', trend: 0, color: '#10B981' },
-                { label: 'Open Actions', value: '0', trend: 0, color: '#10B981' },
-                { label: 'Training Due', value: '0', trend: 0, color: '#10B981' },
-                { label: 'PPE Compliance', value: '100', unit: '%', trend: 0, color: '#10B981' },
-                { label: 'Permits Active', value: '0', trend: 0, color: '#3B82F6' },
-              ]}
-            />
-          </View>
-        </View>
+        {/* ── Sanitation ── */}
+        <MetricCardsSection
+          title="Sanitation"
+          subtitle="This week"
+          icon={<Droplets size={16} color="#06B6D4" />}
+          cards={[
+            { label: 'Pre-Op Inspections', value: '0', unit: '/ 5', trend: 0, trendLabel: 'Completed', color: '#06B6D4' },
+            { label: 'CIP Cycles', value: '0', unit: '/ 3', trend: 0, trendLabel: 'Completed', color: '#06B6D4' },
+            { label: 'Swab Tests', value: '0', unit: 'pass', trend: 0, trendLabel: 'All passed', color: '#10B981' },
+            { label: 'Open CARs', value: '0', trend: 0, trendLabel: 'Corrective actions', color: '#10B981' },
+            { label: 'Zone 1 Clean', value: '100', unit: '%', trend: 0, trendLabel: 'Product contact', color: '#10B981' },
+            { label: 'Zone 2 Clean', value: '100', unit: '%', trend: 0, trendLabel: 'Non-contact', color: '#10B981' },
+            { label: 'Chemical Logs', value: '0', unit: '/ 5', trend: 0, trendLabel: 'Verified', color: '#06B6D4' },
+            { label: 'Overdue Tasks', value: '0', trend: 0, trendLabel: 'Past due', color: '#10B981' },
+          ]}
+        />
+
+        {/* ── Quality ── */}
+        <MetricCardsSection
+          title="Quality"
+          subtitle="This month"
+          icon={<Microscope size={16} color="#8B5CF6" />}
+          cards={[
+            { label: 'Hold Lots', value: '0', trend: 0, trendLabel: 'On hold', color: '#10B981' },
+            { label: 'Rejections', value: '0', trend: 0, trendLabel: 'This period', color: '#10B981' },
+            { label: 'NCRs Open', value: '0', trend: 0, trendLabel: 'Non-conformance', color: '#10B981' },
+            { label: 'CCP Deviations', value: '0', trend: 0, trendLabel: 'Critical control', color: '#10B981' },
+            { label: 'COA Pending', value: '0', trend: 0, trendLabel: 'Certificates', color: '#10B981' },
+            { label: 'Spec Compliance', value: '100', unit: '%', trend: 0, trendLabel: 'In spec', color: '#10B981' },
+            { label: 'Foreign Material', value: '0', trend: 0, trendLabel: 'Incidents', color: '#10B981' },
+            { label: 'Customer Complaints', value: '0', trend: 0, trendLabel: 'Open items', color: '#10B981' },
+          ]}
+        />
+
+        {/* ── Safety ── */}
+        <MetricCardsSection
+          title="Safety"
+          subtitle="YTD"
+          icon={<HardHat size={16} color="#F59E0B" />}
+          cards={[
+            { label: 'Days No Incident', value: '0', trend: 0, trendLabel: 'Recordable', color: '#10B981' },
+            { label: 'Near Misses', value: '0', trend: 0, trendLabel: 'Reported', color: '#10B981' },
+            { label: 'Open Actions', value: '0', trend: 0, trendLabel: 'Corrective', color: '#10B981' },
+            { label: 'Training Due', value: '0', trend: 0, trendLabel: 'Employees', color: '#10B981' },
+            { label: 'PPE Compliance', value: '100', unit: '%', trend: 0, trendLabel: 'Audited', color: '#10B981' },
+            { label: 'Permits Active', value: '0', trend: 0, trendLabel: 'Hot work / confined', color: '#3B82F6' },
+            { label: 'OSHA Recordable', value: '0', trend: 0, trendLabel: 'YTD injuries', color: '#10B981' },
+            { label: 'JSA Reviews', value: '0', trend: 0, trendLabel: 'Job safety analysis', color: '#10B981' },
+          ]}
+        />
 
         <View style={styles.bottomPadding} />
       </ScrollView>
