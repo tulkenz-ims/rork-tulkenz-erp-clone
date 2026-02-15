@@ -127,6 +127,7 @@ const QUALITY_FORM_CATEGORIES: FormCategory[] = [
     icon: Wrench,
     color: '#F97316',
     forms: [
+      { id: 'roomhygienelog', title: 'Room Hygiene Log', route: '/quality/roomhygienelog' },
       { id: 'equipmenthygiene', title: 'Equipment Hygiene Sign-off', route: '/quality/equipmenthygiene' },
       { id: 'envswablog', title: 'Environmental Swab Log', route: '/quality/envswablog' },
     ],
