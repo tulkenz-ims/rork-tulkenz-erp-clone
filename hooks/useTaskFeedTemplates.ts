@@ -1427,6 +1427,28 @@ export function useDeleteTaskFeedPost(callbacks?: MutationCallbacks<string>) {
         // Continue anyway
       }
 
+      // Delete related production hold log entries
+      const { error: holdLogDeleteError } = await supabase
+        .from('production_hold_log')
+        .delete()
+        .eq('post_id', postId);
+
+      if (holdLogDeleteError) {
+        console.error('[useDeleteTaskFeedPost] Error deleting hold log:', holdLogDeleteError);
+        // Continue anyway
+      }
+
+      // Delete related form links
+      const { error: formLinksDeleteError } = await supabase
+        .from('task_feed_form_links')
+        .delete()
+        .eq('post_id', postId);
+
+      if (formLinksDeleteError) {
+        console.error('[useDeleteTaskFeedPost] Error deleting form links:', formLinksDeleteError);
+        // Continue anyway
+      }
+
       // Finally delete the post
       const { error: deleteError } = await supabase
         .from('task_feed_posts')
