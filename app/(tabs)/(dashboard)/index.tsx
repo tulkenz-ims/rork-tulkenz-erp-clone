@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Pressable,
   Dimensions,
+  useWindowDimensions,
   Alert,
   Modal,
 } from 'react-native';
@@ -64,6 +65,8 @@ export default function ExecutiveDashboard() {
   const queryClient = useQueryClient();
   const { colors: Colors } = useTheme();
   const styles = useMemo(() => createStyles(Colors), [Colors]);
+  const { width: windowWidth } = useWindowDimensions();
+  const isWide = windowWidth >= 768;
 
   const { data: materials = [], isLoading: materialsLoading } = useMaterialsQuery();
   const { data: workOrders = [], isLoading: workOrdersLoading } = useWorkOrdersQuery();
@@ -376,59 +379,67 @@ export default function ExecutiveDashboard() {
           </View>
         </View>
 
-        {/* Quick Actions */}
-        <Text style={styles.quickActionTitle}>Quick Actions</Text>
-        <View style={styles.quickActionBar}>
-          <Pressable
-            style={({ pressed }) => [styles.quickActionBtn, pressed && { opacity: 0.7 }]}
-            onPress={() => router.push('/taskfeed')}
-          >
-            <View style={[styles.quickActionIcon, { backgroundColor: '#F59E0B20' }]}>
-              <ClipboardList size={18} color="#F59E0B" />
-            </View>
-            <Text style={[styles.quickActionStat, { color: taskFeedPendingCount > 0 ? '#F59E0B' : '#10B981' }]}>
-              {taskFeedPendingCount}
-            </Text>
-            <Text style={styles.quickActionLabel}>Task Feed</Text>
-            <Text style={styles.quickActionDesc}>Pending Items</Text>
-          </Pressable>
+        {/* Row 1: Quick Actions + Compliance */}
+        <View style={isWide ? styles.wideRow : undefined}>
+          <View style={isWide ? styles.wideHalf : undefined}>
+            <Text style={styles.quickActionTitle}>Quick Actions</Text>
+            <View style={styles.quickActionBar}>
+              <Pressable
+                style={({ pressed }) => [styles.quickActionBtn, pressed && { opacity: 0.7 }]}
+                onPress={() => router.push('/taskfeed')}
+              >
+                <View style={[styles.quickActionIcon, { backgroundColor: '#F59E0B20' }]}>
+                  <ClipboardList size={18} color="#F59E0B" />
+                </View>
+                <Text style={[styles.quickActionStat, { color: taskFeedPendingCount > 0 ? '#F59E0B' : '#10B981' }]}>
+                  {taskFeedPendingCount}
+                </Text>
+                <Text style={styles.quickActionLabel}>Task Feed</Text>
+                <Text style={styles.quickActionDesc}>Pending Items</Text>
+              </Pressable>
 
-          <Pressable
-            style={({ pressed }) => [styles.quickActionBtn, pressed && { opacity: 0.7 }]}
-            onPress={() => router.push('/timeclock')}
-          >
-            <View style={[styles.quickActionIcon, { backgroundColor: '#10B98120' }]}>
-              <Users size={18} color="#10B981" />
-            </View>
-            <Text style={[styles.quickActionStat, { color: checkedInCount > 0 ? '#10B981' : Colors.textTertiary }]}>
-              {checkedInCount}/{stats.activeEmployees}
-            </Text>
-            <Text style={styles.quickActionLabel}>Facility Headcount</Text>
-            <Text style={styles.quickActionDesc}>Checked In Now</Text>
-          </Pressable>
+              <Pressable
+                style={({ pressed }) => [styles.quickActionBtn, pressed && { opacity: 0.7 }]}
+                onPress={() => router.push('/timeclock')}
+              >
+                <View style={[styles.quickActionIcon, { backgroundColor: '#10B98120' }]}>
+                  <Users size={18} color="#10B981" />
+                </View>
+                <Text style={[styles.quickActionStat, { color: checkedInCount > 0 ? '#10B981' : Colors.textTertiary }]}>
+                  {checkedInCount}/{stats.activeEmployees}
+                </Text>
+                <Text style={styles.quickActionLabel}>Facility Headcount</Text>
+                <Text style={styles.quickActionDesc}>Checked In Now</Text>
+              </Pressable>
 
-          <Pressable
-            style={({ pressed }) => [styles.quickActionBtn, pressed && { opacity: 0.7 }]}
-            onPress={() => {
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-              setShowEmergencyModal(true);
-            }}
-          >
-            <View style={[styles.quickActionIcon, { backgroundColor: '#DC262620' }]}>
-              <Siren size={18} color="#DC2626" />
+              <Pressable
+                style={({ pressed }) => [styles.quickActionBtn, pressed && { opacity: 0.7 }]}
+                onPress={() => {
+                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+                  setShowEmergencyModal(true);
+                }}
+              >
+                <View style={[styles.quickActionIcon, { backgroundColor: '#DC262620' }]}>
+                  <Siren size={18} color="#DC2626" />
+                </View>
+                <Text style={[styles.quickActionStat, { color: '#DC2626' }]}>SOS</Text>
+                <Text style={styles.quickActionLabel}>Emergency</Text>
+                <Text style={styles.quickActionDesc}>Initiate Protocol</Text>
+              </Pressable>
             </View>
-            <Text style={[styles.quickActionStat, { color: '#DC2626' }]}>SOS</Text>
-            <Text style={styles.quickActionLabel}>Emergency</Text>
-            <Text style={styles.quickActionDesc}>Initiate Protocol</Text>
-          </Pressable>
+          </View>
+          <View style={isWide ? styles.wideHalf : undefined}>
+            <ComplianceCountdown />
+          </View>
         </View>
-
-        <ComplianceCountdown />
 
         <LineStatusWidget />
 
-        {/* ── Procurement Scorecard ── */}
-        <ScoreCardSection
+        {/* Row: Procurement + Budgets */}
+        <View style={isWide ? styles.wideRow : undefined}>
+          <View style={isWide ? styles.wideHalf : undefined}>
+            {/* ── Procurement Scorecard ── */}
+            <ScoreCardSection
           title="Procurement Scorecard"
           subtitle="This month"
           icon={<ShoppingCart size={16} color={Colors.success} />}
@@ -490,8 +501,10 @@ export default function ExecutiveDashboard() {
           ]}
         />
 
-        {/* ── Department Budgets ── */}
-        {budgets.length > 0 && (
+          </View>
+          <View style={isWide ? styles.wideHalf : undefined}>
+            {/* ── Department Budgets ── */}
+            {budgets.length > 0 && (
           <MetricCardsSection
             title="Department Budgets"
             subtitle={`FY${budgets[0]?.fiscalYear || new Date().getFullYear()}`}
@@ -509,7 +522,9 @@ export default function ExecutiveDashboard() {
               };
             })}
           />
-        )}
+            )}
+          </View>
+        </View>
 
         {/* ── Inventory Scorecard ── */}
         <ScoreCardSection
@@ -557,78 +572,90 @@ export default function ExecutiveDashboard() {
           ]}
         />
 
-        {/* ── CMMS Performance Cards ── */}
-        <MetricCardsSection
-          title="CMMS Performance"
-          subtitle="30-day"
-          icon={<Wrench size={16} color={Colors.warning} />}
-          compact
-          cards={(() => {
-            const open = stats.openWorkOrders;
-            const planned = workOrders.filter(wo => wo.type === 'preventive' || wo.type === 'pm' || wo.priority === 'low' || wo.priority === 'medium').length;
-            const unplanned = workOrders.filter(wo => wo.type === 'reactive' || wo.type === 'emergency' || wo.type === 'corrective' || wo.priority === 'critical' || wo.priority === 'emergency').length;
-            const pmWOs = workOrders.filter(wo => wo.type === 'preventive' || wo.type === 'pm');
-            const pmCompleted = pmWOs.filter(wo => wo.status === 'completed').length;
-            const pmCompliance = pmWOs.length > 0 ? Math.round((pmCompleted / pmWOs.length) * 100) : 100;
+        {/* Row: CMMS + Sanitation */}
+        <View style={isWide ? styles.wideRow : undefined}>
+          <View style={isWide ? styles.wideHalf : undefined}>
+            {/* ── CMMS Performance Cards ── */}
+            <MetricCardsSection
+              title="CMMS Performance"
+              subtitle="30-day"
+              icon={<Wrench size={16} color={Colors.warning} />}
+              compact
+              cards={(() => {
+                const open = stats.openWorkOrders;
+                const planned = workOrders.filter(wo => wo.type === 'preventive' || wo.type === 'pm' || wo.priority === 'low' || wo.priority === 'medium').length;
+                const unplanned = workOrders.filter(wo => wo.type === 'reactive' || wo.type === 'emergency' || wo.type === 'corrective' || wo.priority === 'critical' || wo.priority === 'emergency').length;
+                const pmWOs = workOrders.filter(wo => wo.type === 'preventive' || wo.type === 'pm');
+                const pmCompleted = pmWOs.filter(wo => wo.status === 'completed').length;
+                const pmCompliance = pmWOs.length > 0 ? Math.round((pmCompleted / pmWOs.length) * 100) : 100;
 
-            return [
-              { label: 'MTTR', value: '0', unit: 'hrs', trend: 0 },
-              { label: 'MTBF', value: '0', unit: 'hrs', trend: 0 },
-              { label: 'PM Compliance', value: pmCompliance.toString(), unit: '%', trend: 0, color: pmCompliance >= 90 ? '#10B981' : pmCompliance >= 70 ? '#F59E0B' : '#EF4444' },
-              { label: 'Backlog', value: open.toString(), unit: 'WOs', trend: 0, color: open > 5 ? '#F59E0B' : '#10B981' },
-              { label: 'Planned', value: planned.toString(), unit: 'WOs', trend: 0, color: '#3B82F6' },
-              { label: 'Unplanned', value: unplanned.toString(), unit: 'WOs', trend: 0, color: unplanned > 0 ? '#EF4444' : '#10B981' },
-            ];
-          })()}
-        />
+                return [
+                  { label: 'MTTR', value: '0', unit: 'hrs', trend: 0 },
+                  { label: 'MTBF', value: '0', unit: 'hrs', trend: 0 },
+                  { label: 'PM Compliance', value: pmCompliance.toString(), unit: '%', trend: 0, color: pmCompliance >= 90 ? '#10B981' : pmCompliance >= 70 ? '#F59E0B' : '#EF4444' },
+                  { label: 'Backlog', value: open.toString(), unit: 'WOs', trend: 0, color: open > 5 ? '#F59E0B' : '#10B981' },
+                  { label: 'Planned', value: planned.toString(), unit: 'WOs', trend: 0, color: '#3B82F6' },
+                  { label: 'Unplanned', value: unplanned.toString(), unit: 'WOs', trend: 0, color: unplanned > 0 ? '#EF4444' : '#10B981' },
+                ];
+              })()}
+            />
+          </View>
+          <View style={isWide ? styles.wideHalf : undefined}>
+            {/* ── Sanitation ── */}
+            <MetricCardsSection
+              title="Sanitation"
+              subtitle="This week"
+              icon={<Droplets size={16} color="#06B6D4" />}
+              compact
+              cards={[
+                { label: 'Pre-Op Done', value: '0', unit: '/ 5', trend: 0, color: '#06B6D4' },
+                { label: 'CIP Cycles', value: '0', unit: '/ 3', trend: 0, color: '#06B6D4' },
+                { label: 'Swab Tests', value: '0', unit: 'pass', trend: 0, color: '#10B981' },
+                { label: 'Open CARs', value: '0', trend: 0, color: '#10B981' },
+                { label: 'Zone 1 Clean', value: '100', unit: '%', trend: 0, color: '#10B981' },
+                { label: 'Overdue Tasks', value: '0', trend: 0, color: '#10B981' },
+              ]}
+            />
+          </View>
+        </View>
 
-        {/* ── Sanitation ── */}
-        <MetricCardsSection
-          title="Sanitation"
-          subtitle="This week"
-          icon={<Droplets size={16} color="#06B6D4" />}
-          compact
-          cards={[
-            { label: 'Pre-Op Done', value: '0', unit: '/ 5', trend: 0, color: '#06B6D4' },
-            { label: 'CIP Cycles', value: '0', unit: '/ 3', trend: 0, color: '#06B6D4' },
-            { label: 'Swab Tests', value: '0', unit: 'pass', trend: 0, color: '#10B981' },
-            { label: 'Open CARs', value: '0', trend: 0, color: '#10B981' },
-            { label: 'Zone 1 Clean', value: '100', unit: '%', trend: 0, color: '#10B981' },
-            { label: 'Overdue Tasks', value: '0', trend: 0, color: '#10B981' },
-          ]}
-        />
-
-        {/* ── Quality ── */}
-        <MetricCardsSection
-          title="Quality"
-          subtitle="This month"
-          icon={<Microscope size={16} color="#8B5CF6" />}
-          compact
-          cards={[
-            { label: 'Hold Lots', value: '0', trend: 0, color: '#10B981' },
-            { label: 'Rejections', value: '0', trend: 0, color: '#10B981' },
-            { label: 'NCRs Open', value: '0', trend: 0, color: '#10B981' },
-            { label: 'CCP Deviations', value: '0', trend: 0, color: '#10B981' },
-            { label: 'COA Pending', value: '0', trend: 0, color: '#10B981' },
-            { label: 'Spec Compliance', value: '100', unit: '%', trend: 0, color: '#10B981' },
-          ]}
-        />
-
-        {/* ── Safety ── */}
-        <MetricCardsSection
-          title="Safety"
-          subtitle="YTD"
-          icon={<HardHat size={16} color="#F59E0B" />}
-          compact
-          cards={[
-            { label: 'Days No Incident', value: '0', trend: 0, color: '#10B981' },
-            { label: 'Near Misses', value: '0', trend: 0, color: '#10B981' },
-            { label: 'Open Actions', value: '0', trend: 0, color: '#10B981' },
-            { label: 'Training Due', value: '0', trend: 0, color: '#10B981' },
-            { label: 'PPE Compliance', value: '100', unit: '%', trend: 0, color: '#10B981' },
-            { label: 'Permits Active', value: '0', trend: 0, color: '#3B82F6' },
-          ]}
-        />
+        {/* Row: Quality + Safety */}
+        <View style={isWide ? styles.wideRow : undefined}>
+          <View style={isWide ? styles.wideHalf : undefined}>
+            {/* ── Quality ── */}
+            <MetricCardsSection
+              title="Quality"
+              subtitle="This month"
+              icon={<Microscope size={16} color="#8B5CF6" />}
+              compact
+              cards={[
+                { label: 'Hold Lots', value: '0', trend: 0, color: '#10B981' },
+                { label: 'Rejections', value: '0', trend: 0, color: '#10B981' },
+                { label: 'NCRs Open', value: '0', trend: 0, color: '#10B981' },
+                { label: 'CCP Deviations', value: '0', trend: 0, color: '#10B981' },
+                { label: 'COA Pending', value: '0', trend: 0, color: '#10B981' },
+                { label: 'Spec Compliance', value: '100', unit: '%', trend: 0, color: '#10B981' },
+              ]}
+            />
+          </View>
+          <View style={isWide ? styles.wideHalf : undefined}>
+            {/* ── Safety ── */}
+            <MetricCardsSection
+              title="Safety"
+              subtitle="YTD"
+              icon={<HardHat size={16} color="#F59E0B" />}
+              compact
+              cards={[
+                { label: 'Days No Incident', value: '0', trend: 0, color: '#10B981' },
+                { label: 'Near Misses', value: '0', trend: 0, color: '#10B981' },
+                { label: 'Open Actions', value: '0', trend: 0, color: '#10B981' },
+                { label: 'Training Due', value: '0', trend: 0, color: '#10B981' },
+                { label: 'PPE Compliance', value: '100', unit: '%', trend: 0, color: '#10B981' },
+                { label: 'Permits Active', value: '0', trend: 0, color: '#3B82F6' },
+              ]}
+            />
+          </View>
+        </View>
 
         <View style={styles.bottomPadding} />
       </ScrollView>
@@ -896,6 +923,13 @@ const createStyles = (Colors: any) => StyleSheet.create({
   },
   bottomPadding: {
     height: 40,
+  },
+  wideRow: {
+    flexDirection: 'row' as const,
+    gap: 16,
+  },
+  wideHalf: {
+    flex: 1,
   },
   quickActionTitle: {
     fontSize: 15,
