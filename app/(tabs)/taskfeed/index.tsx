@@ -1364,6 +1364,7 @@ export default function TaskFeedScreen() {
         notes: finalNotes,
         productionStopped: templateProductionStopped,
         roomLine: templateProductionStopped ? templateRoomLine : undefined,
+        reportingDepartment: selectedDepartment || issueDepartment || undefined,
       });
     } catch (error) {
       console.error('[TaskFeed] Error submitting template post:', error);
