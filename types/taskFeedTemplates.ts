@@ -101,6 +101,10 @@ export interface TaskFeedPost {
   holdClearedDepartment?: string;
   holdClearedNotes?: string;
   productionLine?: string;
+  reportingDepartment?: string;
+  reportingDepartmentName?: string;
+  rootCauseDepartment?: string;
+  rootCauseDepartmentName?: string;
   roomId?: string;
   roomName?: string;
   createdAt: string;
@@ -204,6 +208,7 @@ export interface CreatePostInput {
   notes?: string;
   productionStopped?: boolean;
   roomLine?: string;
+  reportingDepartment?: string;
 }
 
 export interface CompleteTaskInput {
