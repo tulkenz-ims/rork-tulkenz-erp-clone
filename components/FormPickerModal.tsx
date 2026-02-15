@@ -24,6 +24,7 @@ import {
   FlaskConical,
   Eye,
   Star,
+  CheckCircle,
 } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -125,6 +126,11 @@ interface FormPickerModalProps {
   taskPostNumber?: string;
   templateName?: string;
   onFormSelected: (form: { id: string; label: string; route: string }) => void;
+  // Multi-form support
+  completedForms?: { formId: string; formType: string; completedAt: string; completedByName: string }[];
+  suggestedForms?: { formId: string; formType: string; formRoute: string; required: boolean }[];
+  onMarkComplete?: () => void;
+  showCompleteButton?: boolean;
 }
 
 export default function FormPickerModal({
@@ -135,12 +141,18 @@ export default function FormPickerModal({
   taskPostNumber,
   templateName,
   onFormSelected,
+  completedForms = [],
+  suggestedForms = [],
+  onMarkComplete,
+  showCompleteButton = false,
 }: FormPickerModalProps) {
   const { colors } = useTheme();
   const [search, setSearch] = useState('');
   const deptColor = getDepartmentColor(departmentCode) || '#6B7280';
 
   const forms = useMemo(() => DEPARTMENT_FORM_MAP[departmentCode] || QUALITY_FORMS, [departmentCode]);
+
+  const completedFormIds = useMemo(() => new Set(completedForms.map(f => f.formId)), [completedForms]);
 
   const filtered = useMemo(() => {
     if (!search.trim()) return forms;
@@ -165,28 +177,43 @@ export default function FormPickerModal({
   }, [filtered]);
 
   // Smart suggestion based on template name
-  const suggestedForms = useMemo(() => {
+  const autoSuggestedForms = useMemo(() => {
     if (!templateName) return [];
     const t = templateName.toLowerCase();
     return forms.filter(f => {
       if (t.includes('glove') || t.includes('foreign')) {
-        return ['foreignmaterial', 'ncr', 'deviation', 'holdrelease'].includes(f.id);
+        return ['foreignmaterial', 'ncr', 'deviation', 'holdrelease', 'roomhygienelog'].includes(f.id);
       }
       if (t.includes('cut') || t.includes('injury') || t.includes('blood')) {
-        return ['accidentinvestigation', 'firstaid', 'incidentreport'].includes(f.id);
+        return ['accidentinvestigation', 'firstaid', 'incidentreport', 'roomhygienelog'].includes(f.id);
       }
       if (t.includes('metal') || t.includes('detector')) {
         return ['metaldetectorlog', 'foreignmaterial', 'ncr'].includes(f.id);
       }
       if (t.includes('spill') || t.includes('chemical')) {
-        return ['spillcleanup', 'chemicals', 'hazardid'].includes(f.id);
+        return ['spillcleanup', 'chemicals', 'hazardid', 'roomhygienelog'].includes(f.id);
       }
       if (t.includes('temperature') || t.includes('temp')) {
         return ['temperaturelog', 'ccplog', 'deviation'].includes(f.id);
       }
       return false;
-    }).slice(0, 3);
+    }).slice(0, 5);
   }, [templateName, forms]);
+
+  // Merge: prop-suggested forms first, then auto-suggested that aren't already listed
+  const mergedSuggestions = useMemo(() => {
+    const propSuggestedIds = new Set(suggestedForms.map(f => f.formId));
+    const fromProps = suggestedForms.map(sf => {
+      const full = forms.find(f => f.id === sf.formId);
+      return full ? { ...full, required: sf.required } : null;
+    }).filter(Boolean) as (FormDef & { required: boolean })[];
+
+    const fromAuto = autoSuggestedForms
+      .filter(f => !propSuggestedIds.has(f.id))
+      .map(f => ({ ...f, required: false }));
+
+    return [...fromProps, ...fromAuto];
+  }, [suggestedForms, autoSuggestedForms, forms]);
 
   const handleSelect = (form: FormDef) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -244,15 +271,44 @@ export default function FormPickerModal({
             )}
           </View>
 
+          {/* Completed forms */}
+          {completedForms.length > 0 && !search && (
+            <View style={styles.suggestedSection}>
+              <View style={styles.suggestedHeader}>
+                <CheckCircle size={14} color="#10B981" />
+                <Text style={[styles.suggestedTitle, { color: '#10B981' }]}>Completed ({completedForms.length})</Text>
+              </View>
+              {completedForms.map((cf, i) => (
+                <View
+                  key={`completed-${i}`}
+                  style={[styles.suggestedItem, { backgroundColor: '#10B98110', borderColor: '#10B98140', opacity: 0.7 }]}
+                >
+                  <View style={[styles.formIcon, { backgroundColor: '#10B98125' }]}>
+                    <CheckCircle size={14} color="#10B981" />
+                  </View>
+                  <View style={styles.formInfo}>
+                    <Text style={[styles.formLabel, { color: colors.text }]}>{cf.formType}</Text>
+                    <Text style={[styles.formDesc, { color: colors.textSecondary }]} numberOfLines={1}>
+                      {cf.completedByName}
+                    </Text>
+                  </View>
+                  <CheckCircle size={16} color="#10B981" />
+                </View>
+              ))}
+            </View>
+          )}
+
           {/* Suggested forms */}
-          {suggestedForms.length > 0 && !search && (
+          {mergedSuggestions.length > 0 && !search && (
             <View style={styles.suggestedSection}>
               <View style={styles.suggestedHeader}>
                 <Star size={14} color="#F59E0B" />
                 <Text style={[styles.suggestedTitle, { color: '#F59E0B' }]}>Suggested for this issue</Text>
               </View>
-              {suggestedForms.map(form => {
+              {mergedSuggestions.map(form => {
                 const Icon = form.icon || FileText;
+                const isAlreadyDone = completedFormIds.has(form.id);
+                if (isAlreadyDone) return null;
                 return (
                   <TouchableOpacity
                     key={`suggested-${form.id}`}
@@ -260,8 +316,8 @@ export default function FormPickerModal({
                     onPress={() => handleSelect(form)}
                     activeOpacity={0.7}
                   >
-                    <View style={[styles.formIcon, { backgroundColor: '#F59E0B' + '25' }]}>
-                      <Icon size={14} color="#F59E0B" />
+                    <View style={[styles.formIcon, { backgroundColor: form.required ? '#EF444425' : '#F59E0B25' }]}>
+                      <Icon size={14} color={form.required ? '#EF4444' : '#F59E0B'} />
                     </View>
                     <View style={styles.formInfo}>
                       <Text style={[styles.formLabel, { color: colors.text }]}>{form.label}</Text>
@@ -271,6 +327,11 @@ export default function FormPickerModal({
                         </Text>
                       )}
                     </View>
+                    {form.required && (
+                      <View style={{ backgroundColor: '#EF444420', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginRight: 4 }}>
+                        <Text style={{ fontSize: 9, fontWeight: '800', color: '#EF4444' }}>REQ</Text>
+                      </View>
+                    )}
                     <ChevronRight size={16} color="#F59E0B" />
                   </TouchableOpacity>
                 );
