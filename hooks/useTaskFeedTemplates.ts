@@ -83,6 +83,10 @@ const mapPostFromDb = (row: any): TaskFeedPost => ({
   holdClearedDepartment: row.hold_cleared_department,
   holdClearedNotes: row.hold_cleared_notes,
   productionLine: row.production_line,
+  reportingDepartment: row.reporting_department,
+  reportingDepartmentName: row.reporting_department_name,
+  rootCauseDepartment: row.root_cause_department,
+  rootCauseDepartmentName: row.root_cause_department_name,
   roomId: row.room_id,
   roomName: row.room_name,
   createdAt: row.created_at,
@@ -1041,6 +1045,8 @@ export function useCreateTaskFeedPost(callbacks?: MutationCallbacks<TaskFeedPost
         is_production_hold: isProductionHold,
         hold_status: isProductionHold ? 'active' : 'none',
         production_line: productionLine,
+        reporting_department: input.reportingDepartment || triggeringDepartment || null,
+        reporting_department_name: input.reportingDepartment ? getDepartmentNameFromCode(input.reportingDepartment) : (triggeringDepartment ? getDepartmentNameFromCode(triggeringDepartment) : null),
       };
 
       console.log('[useCreateTaskFeedPost] Insert data:', JSON.stringify(insertData, null, 2));
@@ -1074,8 +1080,8 @@ export function useCreateTaskFeedPost(callbacks?: MutationCallbacks<TaskFeedPost
               action: 'hold_set',
               action_by_id: user.id,
               action_by_name: `${user.first_name} ${user.last_name}`,
-              department_code: template.triggering_department,
-              reason: `Production hold triggered by ${template.name} template`,
+              department_code: input.reportingDepartment || template.triggering_department,
+              reason: `Production hold triggered by ${template.name} template. Reported by ${input.reportingDepartment ? getDepartmentNameFromCode(input.reportingDepartment) : 'any'}.`,
               production_line: productionLine,
             });
           console.log('[useCreateTaskFeedPost] Production hold logged');
@@ -1574,6 +1580,8 @@ export function useCreateManualTaskFeedPost(callbacks?: MutationCallbacks<TaskFe
         is_production_hold: isProductionHold,
         hold_status: isProductionHold ? 'active' : 'none',
         production_line: productionLine,
+        reporting_department: input.departmentCode,
+        reporting_department_name: getDepartmentNameFromCode(input.departmentCode),
       };
 
       console.log('[useCreateManualTaskFeedPost] Insert data:', JSON.stringify(insertData, null, 2));
@@ -1795,6 +1803,8 @@ export interface ClearHoldInput {
   departmentName: string;
   notes?: string;
   signatureStamp?: string;
+  rootCauseDepartment?: string;
+  rootCauseDepartmentName?: string;
 }
 
 export function useClearProductionHold(callbacks?: MutationCallbacks<TaskFeedPost>) {
@@ -1815,6 +1825,8 @@ export function useClearProductionHold(callbacks?: MutationCallbacks<TaskFeedPos
           hold_cleared_by_name: input.clearedByName,
           hold_cleared_department: input.departmentCode,
           hold_cleared_notes: input.notes || null,
+          root_cause_department: input.rootCauseDepartment || null,
+          root_cause_department_name: input.rootCauseDepartmentName || null,
         })
         .eq('id', input.postId)
         .eq('organization_id', organizationId)
@@ -1838,6 +1850,8 @@ export function useClearProductionHold(callbacks?: MutationCallbacks<TaskFeedPos
           reason: input.notes,
           production_line: data.production_line,
           signature_stamp: input.signatureStamp,
+          root_cause_department: input.rootCauseDepartment || null,
+          root_cause_department_name: input.rootCauseDepartmentName || null,
         });
 
       return mapPostFromDb(data);
