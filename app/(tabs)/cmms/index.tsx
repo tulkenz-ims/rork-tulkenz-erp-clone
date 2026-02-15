@@ -543,6 +543,7 @@ ${completionData.additionalNotes}` : ''}
           priority: 'medium',
           type: 'corrective',
           source: 'task_feed',
+          source_id: task.postId,
           facility_id: facilityId || null,
           assigned_to: user?.id || null,
           started_at: new Date().toISOString(),
@@ -567,6 +568,8 @@ ${completionData.additionalNotes}` : ''}
             description: fullDescription,
             status: 'completed',
             priority: 'medium',
+            source: 'task_feed',
+            source_id: task.postId,
             facility_id: facilityId || null,
             completed_at: new Date().toISOString(),
           })
