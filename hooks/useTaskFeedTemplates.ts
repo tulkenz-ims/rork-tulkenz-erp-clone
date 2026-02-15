@@ -66,6 +66,17 @@ const mapPostFromDb = (row: any): TaskFeedPost => ({
   completedDepartments: row.completed_departments,
   completionRate: row.completion_rate,
   completedAt: row.completed_at,
+  originatingDepartmentCode: row.originating_department_code,
+  originatingDepartmentName: row.originating_department_name,
+  requiresAllSignoff: row.requires_all_signoff ?? true,
+  finalSignoffById: row.final_signoff_by_id,
+  finalSignoffByName: row.final_signoff_by_name,
+  finalSignoffAt: row.final_signoff_at,
+  finalSignoffNotes: row.final_signoff_notes,
+  isProductionHold: row.is_production_hold ?? false,
+  productionLine: row.production_line,
+  roomId: row.room_id,
+  roomName: row.room_name,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });
@@ -84,6 +95,25 @@ const mapDepartmentTaskFromDb = (row: any): TaskFeedDepartmentTask & { task_feed
   completionNotes: row.completion_notes,
   moduleHistoryType: row.module_history_type,
   moduleHistoryId: row.module_history_id,
+  formType: row.form_type,
+  formRoute: row.form_route,
+  formResponse: row.form_response || {},
+  formPhotos: row.form_photos || [],
+  isOriginal: row.is_original ?? false,
+  escalatedFromDepartment: row.escalated_from_department,
+  escalatedFromTaskId: row.escalated_from_task_id,
+  escalationReason: row.escalation_reason,
+  escalatedAt: row.escalated_at,
+  requiresSignoff: row.requires_signoff ?? false,
+  signoffDepartmentCode: row.signoff_department_code,
+  signoffById: row.signoff_by_id,
+  signoffByName: row.signoff_by_name,
+  signoffAt: row.signoff_at,
+  signoffNotes: row.signoff_notes,
+  priority: row.priority || 'medium',
+  startedAt: row.started_at,
+  startedById: row.started_by_id,
+  startedByName: row.started_by_name,
   assignedAt: row.assigned_at,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
@@ -1589,6 +1619,290 @@ export function useCreateManualTaskFeedPost(callbacks?: MutationCallbacks<TaskFe
       console.error('[useCreateManualTaskFeedPost] Mutation error:', errorMessage);
       callbacks?.onError?.(error);
     },
+  });
+}
+
+// ── START DEPARTMENT TASK ─────────────────────────────────────
+export function useStartDepartmentTask(callbacks?: MutationCallbacks<TaskFeedDepartmentTask>) {
+  const queryClient = useQueryClient();
+  const { user } = useUser();
+
+  return useMutation({
+    mutationFn: async (input: { taskId: string; formType?: string; formRoute?: string }) => {
+      const updateData: any = {
+        status: 'in_progress',
+        started_at: new Date().toISOString(),
+        started_by_id: user?.id,
+        started_by_name: user ? `${user.first_name} ${user.last_name}` : 'System',
+      };
+      if (input.formType) updateData.form_type = input.formType;
+      if (input.formRoute) updateData.form_route = input.formRoute;
+
+      const { data, error } = await supabase
+        .from('task_feed_department_tasks')
+        .update(updateData)
+        .eq('id', input.taskId)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Also update parent post to in_progress if it was pending
+      await supabase
+        .from('task_feed_posts')
+        .update({ status: 'in_progress' })
+        .eq('id', data.post_id)
+        .eq('status', 'pending');
+
+      return mapDepartmentTaskFromDb(data);
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['task_feed_department_tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['task_feed_posts'] });
+      callbacks?.onSuccess?.(data);
+    },
+    onError: (error: Error) => callbacks?.onError?.(error),
+  });
+}
+
+// ── ESCALATE TO DEPARTMENT ────────────────────────────────────
+export interface EscalateInput {
+  postId: string;
+  postNumber: string;
+  organizationId: string;
+  targetDepartments: { code: string; name: string }[];
+  reason: string;
+  fromDepartmentCode: string;
+  fromTaskId: string;
+  priority?: 'low' | 'medium' | 'high' | 'critical' | 'emergency';
+  requiresSignoff?: boolean;
+  signoffDepartmentCode?: string;
+}
+
+export function useEscalateToDepartment(callbacks?: MutationCallbacks<TaskFeedDepartmentTask[]>) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (input: EscalateInput) => {
+      const newTasks: any[] = [];
+
+      for (const dept of input.targetDepartments) {
+        // Check if department already exists on this post
+        const { data: existing } = await supabase
+          .from('task_feed_department_tasks')
+          .select('id')
+          .eq('post_id', input.postId)
+          .eq('department_code', dept.code)
+          .maybeSingle();
+
+        if (existing) continue; // Already assigned
+
+        const { data, error } = await supabase
+          .from('task_feed_department_tasks')
+          .insert({
+            organization_id: input.organizationId,
+            post_id: input.postId,
+            post_number: input.postNumber,
+            department_code: dept.code,
+            department_name: dept.name,
+            status: 'pending',
+            is_original: false,
+            escalated_from_department: input.fromDepartmentCode,
+            escalated_from_task_id: input.fromTaskId,
+            escalation_reason: input.reason,
+            escalated_at: new Date().toISOString(),
+            priority: input.priority || 'high',
+            requires_signoff: input.requiresSignoff ?? true,
+            signoff_department_code: input.signoffDepartmentCode || input.fromDepartmentCode,
+          })
+          .select()
+          .single();
+
+        if (error) throw error;
+        newTasks.push(mapDepartmentTaskFromDb(data));
+      }
+
+      // Update total_departments on the post
+      const { data: allTasks } = await supabase
+        .from('task_feed_department_tasks')
+        .select('id, status')
+        .eq('post_id', input.postId);
+
+      const total = allTasks?.length || 0;
+      const completed = allTasks?.filter(t => t.status === 'completed' || t.status === 'signed_off').length || 0;
+
+      await supabase
+        .from('task_feed_posts')
+        .update({
+          total_departments: total,
+          completed_departments: completed,
+          completion_rate: total > 0 ? Math.round((completed / total) * 100) : 0,
+          status: 'in_progress',
+        })
+        .eq('id', input.postId);
+
+      return newTasks;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['task_feed_department_tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['task_feed_posts'] });
+      callbacks?.onSuccess?.(data);
+    },
+    onError: (error: Error) => callbacks?.onError?.(error),
+  });
+}
+
+// ── COMPLETE WITH FORM RESPONSE ───────────────────────────────
+export interface CompleteWithFormInput {
+  taskId: string;
+  formType: string;
+  formRoute: string;
+  formResponse: Record<string, any>;
+  formPhotos?: string[];
+  completionNotes?: string;
+}
+
+export function useCompleteWithFormResponse(callbacks?: MutationCallbacks<TaskFeedDepartmentTask>) {
+  const queryClient = useQueryClient();
+  const { user } = useUser();
+
+  return useMutation({
+    mutationFn: async (input: CompleteWithFormInput) => {
+      const { data, error } = await supabase
+        .from('task_feed_department_tasks')
+        .update({
+          status: 'completed',
+          form_type: input.formType,
+          form_route: input.formRoute,
+          form_response: input.formResponse,
+          form_photos: input.formPhotos || [],
+          completed_by_id: user?.id,
+          completed_by_name: user ? `${user.first_name} ${user.last_name}` : 'System',
+          completed_at: new Date().toISOString(),
+          completion_notes: input.completionNotes,
+        })
+        .eq('id', input.taskId)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Update post completion counts
+      const postId = data.post_id;
+      const { data: allTasks } = await supabase
+        .from('task_feed_department_tasks')
+        .select('id, status')
+        .eq('post_id', postId);
+
+      const total = allTasks?.length || 0;
+      const completed = allTasks?.filter(t => t.status === 'completed' || t.status === 'signed_off').length || 0;
+      const allDone = completed === total;
+
+      await supabase
+        .from('task_feed_posts')
+        .update({
+          completed_departments: completed,
+          completion_rate: total > 0 ? Math.round((completed / total) * 100) : 0,
+          ...(allDone ? { status: 'completed', completed_at: new Date().toISOString() } : {}),
+        })
+        .eq('id', postId);
+
+      return mapDepartmentTaskFromDb(data);
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['task_feed_department_tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['task_feed_posts'] });
+      callbacks?.onSuccess?.(data);
+    },
+    onError: (error: Error) => callbacks?.onError?.(error),
+  });
+}
+
+// ── SIGNOFF DEPARTMENT TASK ───────────────────────────────────
+export function useSignoffDepartmentTask(callbacks?: MutationCallbacks<TaskFeedDepartmentTask>) {
+  const queryClient = useQueryClient();
+  const { user } = useUser();
+
+  return useMutation({
+    mutationFn: async (input: { taskId: string; notes?: string }) => {
+      const { data, error } = await supabase
+        .from('task_feed_department_tasks')
+        .update({
+          status: 'signed_off',
+          signoff_by_id: user?.id,
+          signoff_by_name: user ? `${user.first_name} ${user.last_name}` : 'System',
+          signoff_at: new Date().toISOString(),
+          signoff_notes: input.notes,
+        })
+        .eq('id', input.taskId)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Update post completion counts
+      const postId = data.post_id;
+      const { data: allTasks } = await supabase
+        .from('task_feed_department_tasks')
+        .select('id, status')
+        .eq('post_id', postId);
+
+      const total = allTasks?.length || 0;
+      const signedOff = allTasks?.filter(t => t.status === 'signed_off').length || 0;
+      const completedOrSigned = allTasks?.filter(t => t.status === 'completed' || t.status === 'signed_off').length || 0;
+      const allDone = completedOrSigned === total;
+
+      await supabase
+        .from('task_feed_posts')
+        .update({
+          completed_departments: completedOrSigned,
+          completion_rate: total > 0 ? Math.round((completedOrSigned / total) * 100) : 0,
+          ...(allDone ? { status: 'completed', completed_at: new Date().toISOString() } : {}),
+        })
+        .eq('id', postId);
+
+      return mapDepartmentTaskFromDb(data);
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['task_feed_department_tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['task_feed_posts'] });
+      callbacks?.onSuccess?.(data);
+    },
+    onError: (error: Error) => callbacks?.onError?.(error),
+  });
+}
+
+// ── FINAL POST SIGNOFF ────────────────────────────────────────
+export function useFinalPostSignoff(callbacks?: MutationCallbacks<TaskFeedPost>) {
+  const queryClient = useQueryClient();
+  const { user } = useUser();
+
+  return useMutation({
+    mutationFn: async (input: { postId: string; notes?: string }) => {
+      const { data, error } = await supabase
+        .from('task_feed_posts')
+        .update({
+          status: 'completed',
+          final_signoff_by_id: user?.id,
+          final_signoff_by_name: user ? `${user.first_name} ${user.last_name}` : 'System',
+          final_signoff_at: new Date().toISOString(),
+          final_signoff_notes: input.notes,
+          completed_at: new Date().toISOString(),
+          is_production_hold: false,
+        })
+        .eq('id', input.postId)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return mapPostFromDb(data);
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['task_feed_posts'] });
+      queryClient.invalidateQueries({ queryKey: ['task_feed_department_tasks'] });
+      callbacks?.onSuccess?.(data);
+    },
+    onError: (error: Error) => callbacks?.onError?.(error),
   });
 }
 
