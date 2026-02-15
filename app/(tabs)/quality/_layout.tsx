@@ -1,17 +1,12 @@
 import { Stack } from 'expo-router';
-import { useTheme } from '@/contexts/ThemeContext';
+import { useThemedScreenOptions } from '@/hooks/useThemedScreenOptions';
 
 export default function QualityLayout() {
-  const { colors } = useTheme();
+  const screenOptions = useThemedScreenOptions();
 
   return (
     <Stack
-      screenOptions={{
-        headerStyle: { backgroundColor: colors.surface },
-        headerTintColor: colors.text,
-        headerTitleStyle: { fontWeight: '600' as const },
-        contentStyle: { backgroundColor: colors.background },
-      }}
+      screenOptions={screenOptions}
     >
       <Stack.Screen 
         name="index" 
@@ -43,6 +38,7 @@ export default function QualityLayout() {
       <Stack.Screen name="firstarticle" options={{ title: 'First Article Inspection' }} />
       <Stack.Screen name="hourlylinechecks" options={{ title: 'Hourly Line Checks' }} />
       <Stack.Screen name="tasksetup" options={{ title: 'Task Schedule Setup' }} />
+      <Stack.Screen name="roomhygienelog" options={{ title: 'Room Hygiene Log' }} />
       <Stack.Screen name="equipmenthygiene" options={{ title: 'Equipment Hygiene Sign-off' }} />
       <Stack.Screen name="labelverification" options={{ title: 'Label Verification' }} />
       <Stack.Screen name="datecodeverification" options={{ title: 'Date Code Verification' }} />
