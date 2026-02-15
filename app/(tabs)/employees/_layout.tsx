@@ -1,9 +1,11 @@
 import { Stack, useRouter } from 'expo-router';
 import { TouchableOpacity, Text, StyleSheet } from 'react-native';
 import { ChevronLeft } from 'lucide-react-native';
+import { useThemedScreenOptions } from '@/hooks/useThemedScreenOptions';
 import { useTheme } from '@/contexts/ThemeContext';
 
 export default function EmployeesLayout() {
+  const screenOptions = useThemedScreenOptions();
   const { colors } = useTheme();
   const router = useRouter();
 
@@ -19,18 +21,19 @@ export default function EmployeesLayout() {
   
   return (
     <Stack
-      screenOptions={{
-        headerStyle: { backgroundColor: colors.surface },
-        headerTintColor: colors.text,
-        headerTitleStyle: { fontWeight: '600' },
-        contentStyle: { backgroundColor: colors.background },
-      }}
+      screenOptions={screenOptions}
     >
       <Stack.Screen 
         name="index" 
         options={{ 
           title: 'Employees',
           headerLeft: () => <BackToHR />,
+        }} 
+      />
+      <Stack.Screen 
+        name="signaturepin" 
+        options={{ 
+          title: 'Signature PIN Setup',
         }} 
       />
     </Stack>
