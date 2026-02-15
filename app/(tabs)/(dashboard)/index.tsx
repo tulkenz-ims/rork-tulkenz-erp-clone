@@ -435,76 +435,123 @@ export default function ExecutiveDashboard() {
 
         <LineStatusWidget />
 
-        {/* Row: Procurement + Budgets */}
+        {/* Row: Procurement + Inventory */}
         <View style={isWide ? styles.wideRow : undefined}>
           <View style={isWide ? styles.wideHalf : undefined}>
             {/* ── Procurement Scorecard ── */}
             <ScoreCardSection
-          title="Procurement Scorecard"
-          subtitle="This month"
-          icon={<ShoppingCart size={16} color={Colors.success} />}
-          gauges={[
-            {
-              label: 'Pending Requests',
-              value: Math.max(0, 100 - (purchaseRequests.filter(r => r.status === 'pending' || r.status === 'submitted').length * 20)),
-              displayValue: `${purchaseRequests.filter(r => r.status === 'pending' || r.status === 'submitted').length}`,
-              color: purchaseRequests.filter(r => r.status === 'pending' || r.status === 'submitted').length > 0 ? '#F59E0B' : '#10B981',
-            },
-            {
-              label: 'Pending Approvals',
-              value: Math.max(0, 100 - (purchaseOrders.filter(po => po.status === 'pending_approval').length * 25)),
-              displayValue: `${purchaseOrders.filter(po => po.status === 'pending_approval').length}`,
-              color: purchaseOrders.filter(po => po.status === 'pending_approval').length > 0 ? '#F59E0B' : '#10B981',
-            },
-            {
-              label: 'Pending Reqs',
-              value: Math.max(0, 100 - (purchaseRequisitions.filter(r => r.status === 'pending' || r.status === 'pending_approval').length * 20)),
-              displayValue: `${purchaseRequisitions.filter(r => r.status === 'pending' || r.status === 'pending_approval').length}`,
-              color: purchaseRequisitions.filter(r => r.status === 'pending' || r.status === 'pending_approval').length > 0 ? '#F59E0B' : '#10B981',
-            },
-            {
-              label: 'Pending Receipt',
-              value: Math.max(0, 100 - (purchaseOrders.filter(po => po.status === 'approved' || po.status === 'ordered' || po.status === 'shipped').length * 15)),
-              displayValue: `${purchaseOrders.filter(po => po.status === 'approved' || po.status === 'ordered' || po.status === 'shipped').length}`,
-              color: purchaseOrders.filter(po => po.status === 'approved' || po.status === 'ordered' || po.status === 'shipped').length > 0 ? '#3B82F6' : '#10B981',
-            },
-            {
-              label: 'Active POs',
-              value: purchaseOrders.length > 0 ? 65 : 0,
-              displayValue: `${purchaseOrders.filter(po => po.status !== 'cancelled' && po.status !== 'closed').length}`,
-              color: '#3B82F6',
-            },
-            {
-              label: 'Avg Days',
-              value: (() => {
-                const completed = purchaseOrders.filter(po => po.status === 'received' && po.created_at);
-                if (completed.length === 0) return 100;
-                const avgDays = completed.reduce((sum, po) => {
-                  const created = new Date(po.created_at);
-                  const updated = new Date(po.updated_at || po.created_at);
-                  return sum + Math.max(1, Math.round((updated.getTime() - created.getTime()) / (1000 * 60 * 60 * 24)));
-                }, 0) / completed.length;
-                return Math.max(0, 100 - (avgDays * 5));
-              })(),
-              displayValue: (() => {
-                const completed = purchaseOrders.filter(po => po.status === 'received' && po.created_at);
-                if (completed.length === 0) return 'N/A';
-                const avgDays = completed.reduce((sum, po) => {
-                  const created = new Date(po.created_at);
-                  const updated = new Date(po.updated_at || po.created_at);
-                  return sum + Math.max(1, Math.round((updated.getTime() - created.getTime()) / (1000 * 60 * 60 * 24)));
-                }, 0) / completed.length;
-                return `${Math.round(avgDays)}d`;
-              })(),
-              color: '#8B5CF6',
-            },
-          ]}
-        />
-
+              title="Procurement Scorecard"
+              subtitle="This month"
+              icon={<ShoppingCart size={16} color={Colors.success} />}
+              gauges={[
+                {
+                  label: 'Pending Requests',
+                  value: Math.max(0, 100 - (purchaseRequests.filter(r => r.status === 'pending' || r.status === 'submitted').length * 20)),
+                  displayValue: `${purchaseRequests.filter(r => r.status === 'pending' || r.status === 'submitted').length}`,
+                  color: purchaseRequests.filter(r => r.status === 'pending' || r.status === 'submitted').length > 0 ? '#F59E0B' : '#10B981',
+                },
+                {
+                  label: 'Pending Approvals',
+                  value: Math.max(0, 100 - (purchaseOrders.filter(po => po.status === 'pending_approval').length * 25)),
+                  displayValue: `${purchaseOrders.filter(po => po.status === 'pending_approval').length}`,
+                  color: purchaseOrders.filter(po => po.status === 'pending_approval').length > 0 ? '#F59E0B' : '#10B981',
+                },
+                {
+                  label: 'Pending Reqs',
+                  value: Math.max(0, 100 - (purchaseRequisitions.filter(r => r.status === 'pending' || r.status === 'pending_approval').length * 20)),
+                  displayValue: `${purchaseRequisitions.filter(r => r.status === 'pending' || r.status === 'pending_approval').length}`,
+                  color: purchaseRequisitions.filter(r => r.status === 'pending' || r.status === 'pending_approval').length > 0 ? '#F59E0B' : '#10B981',
+                },
+                {
+                  label: 'Pending Receipt',
+                  value: Math.max(0, 100 - (purchaseOrders.filter(po => po.status === 'approved' || po.status === 'ordered' || po.status === 'shipped').length * 15)),
+                  displayValue: `${purchaseOrders.filter(po => po.status === 'approved' || po.status === 'ordered' || po.status === 'shipped').length}`,
+                  color: purchaseOrders.filter(po => po.status === 'approved' || po.status === 'ordered' || po.status === 'shipped').length > 0 ? '#3B82F6' : '#10B981',
+                },
+                {
+                  label: 'Active POs',
+                  value: purchaseOrders.length > 0 ? 65 : 0,
+                  displayValue: `${purchaseOrders.filter(po => po.status !== 'cancelled' && po.status !== 'closed').length}`,
+                  color: '#3B82F6',
+                },
+                {
+                  label: 'Avg Days',
+                  value: (() => {
+                    const completed = purchaseOrders.filter(po => po.status === 'received' && po.created_at);
+                    if (completed.length === 0) return 100;
+                    const avgDays = completed.reduce((sum, po) => {
+                      const created = new Date(po.created_at);
+                      const updated = new Date(po.updated_at || po.created_at);
+                      return sum + Math.max(1, Math.round((updated.getTime() - created.getTime()) / (1000 * 60 * 60 * 24)));
+                    }, 0) / completed.length;
+                    return Math.max(0, 100 - (avgDays * 5));
+                  })(),
+                  displayValue: (() => {
+                    const completed = purchaseOrders.filter(po => po.status === 'received' && po.created_at);
+                    if (completed.length === 0) return 'N/A';
+                    const avgDays = completed.reduce((sum, po) => {
+                      const created = new Date(po.created_at);
+                      const updated = new Date(po.updated_at || po.created_at);
+                      return sum + Math.max(1, Math.round((updated.getTime() - created.getTime()) / (1000 * 60 * 60 * 24)));
+                    }, 0) / completed.length;
+                    return `${Math.round(avgDays)}d`;
+                  })(),
+                  color: '#8B5CF6',
+                },
+              ]}
+            />
           </View>
           <View style={isWide ? styles.wideHalf : undefined}>
-            {/* ── Department Budgets ── */}
-            {budgets.length > 0 && (
+            {/* ── Inventory Scorecard ── */}
+            <ScoreCardSection
+              title="Inventory Scorecard"
+              icon={<Package size={16} color={Colors.info} />}
+              gauges={[
+                {
+                  label: 'Stock Health',
+                  value: performanceMetrics.stockHealth,
+                  displayValue: `${performanceMetrics.stockHealth}%`,
+                },
+                {
+                  label: 'Fill Rate',
+                  value: stats.totalMaterials > 0
+                    ? Math.round(((stats.totalMaterials - stats.outOfStockCount) / stats.totalMaterials) * 100)
+                    : 100,
+                  displayValue: `${stats.totalMaterials > 0
+                    ? Math.round(((stats.totalMaterials - stats.outOfStockCount) / stats.totalMaterials) * 100)
+                    : 100}%`,
+                },
+                {
+                  label: 'Low Stock',
+                  value: Math.max(0, 100 - (stats.lowStockCount / Math.max(stats.totalMaterials, 1)) * 100),
+                  displayValue: `${stats.lowStockCount}`,
+                  color: stats.lowStockCount > 0 ? '#F59E0B' : '#10B981',
+                },
+                {
+                  label: 'Out of Stock',
+                  value: Math.max(0, 100 - (stats.outOfStockCount / Math.max(stats.totalMaterials, 1)) * 100),
+                  displayValue: `${stats.outOfStockCount}`,
+                  color: stats.outOfStockCount > 0 ? '#EF4444' : '#10B981',
+                },
+                {
+                  label: 'Total SKUs',
+                  value: Math.min(100, stats.totalMaterials * 10),
+                  displayValue: `${stats.totalMaterials}`,
+                  color: '#3B82F6',
+                },
+                {
+                  label: 'Value',
+                  value: 75,
+                  displayValue: `$${(inventoryValue / 1000).toFixed(0)}K`,
+                  color: '#10B981',
+                },
+              ]}
+            />
+          </View>
+        </View>
+
+        {/* ── Department Budgets (full width) ── */}
+        {budgets.length > 0 && (
           <MetricCardsSection
             title="Department Budgets"
             subtitle={`FY${budgets[0]?.fiscalYear || new Date().getFullYear()}`}
@@ -522,55 +569,7 @@ export default function ExecutiveDashboard() {
               };
             })}
           />
-            )}
-          </View>
-        </View>
-
-        {/* ── Inventory Scorecard ── */}
-        <ScoreCardSection
-          title="Inventory Scorecard"
-          icon={<Package size={16} color={Colors.info} />}
-          gauges={[
-            {
-              label: 'Stock Health',
-              value: performanceMetrics.stockHealth,
-              displayValue: `${performanceMetrics.stockHealth}%`,
-            },
-            {
-              label: 'Fill Rate',
-              value: stats.totalMaterials > 0
-                ? Math.round(((stats.totalMaterials - stats.outOfStockCount) / stats.totalMaterials) * 100)
-                : 100,
-              displayValue: `${stats.totalMaterials > 0
-                ? Math.round(((stats.totalMaterials - stats.outOfStockCount) / stats.totalMaterials) * 100)
-                : 100}%`,
-            },
-            {
-              label: 'Low Stock',
-              value: Math.max(0, 100 - (stats.lowStockCount / Math.max(stats.totalMaterials, 1)) * 100),
-              displayValue: `${stats.lowStockCount}`,
-              color: stats.lowStockCount > 0 ? '#F59E0B' : '#10B981',
-            },
-            {
-              label: 'Out of Stock',
-              value: Math.max(0, 100 - (stats.outOfStockCount / Math.max(stats.totalMaterials, 1)) * 100),
-              displayValue: `${stats.outOfStockCount}`,
-              color: stats.outOfStockCount > 0 ? '#EF4444' : '#10B981',
-            },
-            {
-              label: 'Total SKUs',
-              value: Math.min(100, stats.totalMaterials * 10),
-              displayValue: `${stats.totalMaterials}`,
-              color: '#3B82F6',
-            },
-            {
-              label: 'Value',
-              value: 75,
-              displayValue: `$${(inventoryValue / 1000).toFixed(0)}K`,
-              color: '#10B981',
-            },
-          ]}
-        />
+        )}
 
         {/* Row: CMMS + Sanitation */}
         <View style={isWide ? styles.wideRow : undefined}>
@@ -947,13 +946,15 @@ const createStyles = (Colors: any) => StyleSheet.create({
   quickActionBtn: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: 10,
+    justifyContent: 'center',
+    paddingVertical: 14,
     paddingHorizontal: 4,
     borderRadius: 12,
     backgroundColor: Colors.surface,
     borderWidth: 1,
     borderColor: Colors.border,
     gap: 4,
+    minHeight: 140,
   },
   quickActionIcon: {
     width: 36,
