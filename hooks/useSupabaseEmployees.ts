@@ -24,6 +24,9 @@ export interface SupabaseEmployee {
   profile: Record<string, unknown> | null;
   availability: Record<string, unknown> | null;
   time_off_balances: Record<string, unknown> | null;
+  signature_pin?: string;
+  signature_initials?: string;
+  signature_pin_set?: boolean;
   created_at: string;
   updated_at: string;
 }
