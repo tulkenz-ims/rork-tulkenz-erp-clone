@@ -624,6 +624,7 @@ export function useCompleteDepartmentTask(callbacks?: MutationCallbacks<TaskFeed
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['task_feed_department_tasks'] });
       queryClient.invalidateQueries({ queryKey: ['task_feed_posts'] });
+      queryClient.invalidateQueries({ queryKey: ['task_feed_posts_with_tasks'] });
       callbacks?.onSuccess?.(data);
     },
     onError: (error: Error) => {
@@ -1231,6 +1232,7 @@ export function useCreateTaskFeedPost(callbacks?: MutationCallbacks<TaskFeedPost
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['task_feed_posts'] });
+      queryClient.invalidateQueries({ queryKey: ['task_feed_posts_with_tasks'] });
       queryClient.invalidateQueries({ queryKey: ['task_feed_department_tasks'] });
       queryClient.invalidateQueries({ queryKey: ['task_feed_templates'] });
       queryClient.invalidateQueries({ queryKey: ['task_verifications'] });
@@ -1722,6 +1724,7 @@ export function useStartDepartmentTask(callbacks?: MutationCallbacks<TaskFeedDep
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['task_feed_department_tasks'] });
       queryClient.invalidateQueries({ queryKey: ['task_feed_posts'] });
+      queryClient.invalidateQueries({ queryKey: ['task_feed_posts_with_tasks'] });
       callbacks?.onSuccess?.(data);
     },
     onError: (error: Error) => callbacks?.onError?.(error),
@@ -1786,6 +1789,7 @@ export function useClearProductionHold(callbacks?: MutationCallbacks<TaskFeedPos
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['task_feed_posts'] });
+      queryClient.invalidateQueries({ queryKey: ['task_feed_posts_with_tasks'] });
       queryClient.invalidateQueries({ queryKey: ['task_feed_department_tasks'] });
       callbacks?.onSuccess?.(data);
     },
@@ -1844,6 +1848,7 @@ export function useReinstateProductionHold(callbacks?: MutationCallbacks<TaskFee
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['task_feed_posts'] });
+      queryClient.invalidateQueries({ queryKey: ['task_feed_posts_with_tasks'] });
       queryClient.invalidateQueries({ queryKey: ['task_feed_department_tasks'] });
       callbacks?.onSuccess?.(data);
     },
@@ -1932,6 +1937,7 @@ export function useEscalateToDepartment(callbacks?: MutationCallbacks<TaskFeedDe
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['task_feed_department_tasks'] });
       queryClient.invalidateQueries({ queryKey: ['task_feed_posts'] });
+      queryClient.invalidateQueries({ queryKey: ['task_feed_posts_with_tasks'] });
       callbacks?.onSuccess?.(data);
     },
     onError: (error: Error) => callbacks?.onError?.(error),
@@ -2016,6 +2022,7 @@ export function useAddFormCompletion(callbacks?: MutationCallbacks<TaskFeedDepar
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['task_feed_department_tasks'] });
       queryClient.invalidateQueries({ queryKey: ['task_feed_posts'] });
+      queryClient.invalidateQueries({ queryKey: ['task_feed_posts_with_tasks'] });
       callbacks?.onSuccess?.(data);
     },
     onError: (error: Error) => callbacks?.onError?.(error),
@@ -2109,6 +2116,7 @@ export function useCompleteWithFormResponse(callbacks?: MutationCallbacks<TaskFe
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['task_feed_department_tasks'] });
       queryClient.invalidateQueries({ queryKey: ['task_feed_posts'] });
+      queryClient.invalidateQueries({ queryKey: ['task_feed_posts_with_tasks'] });
       callbacks?.onSuccess?.(data);
     },
     onError: (error: Error) => callbacks?.onError?.(error),
@@ -2163,6 +2171,7 @@ export function useSignoffDepartmentTask(callbacks?: MutationCallbacks<TaskFeedD
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['task_feed_department_tasks'] });
       queryClient.invalidateQueries({ queryKey: ['task_feed_posts'] });
+      queryClient.invalidateQueries({ queryKey: ['task_feed_posts_with_tasks'] });
       callbacks?.onSuccess?.(data);
     },
     onError: (error: Error) => callbacks?.onError?.(error),
@@ -2196,6 +2205,7 @@ export function useFinalPostSignoff(callbacks?: MutationCallbacks<TaskFeedPost>)
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['task_feed_posts'] });
+      queryClient.invalidateQueries({ queryKey: ['task_feed_posts_with_tasks'] });
       queryClient.invalidateQueries({ queryKey: ['task_feed_department_tasks'] });
       callbacks?.onSuccess?.(data);
     },
