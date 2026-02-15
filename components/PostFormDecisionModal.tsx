@@ -122,7 +122,8 @@ export default function PostFormDecisionModal({
       Alert.alert('Signature Required', 'Verify your identity with PIN to complete this task.');
       return;
     }
-    if (lineOperational === null) {
+    // Only require line operational answer if this is a production hold post
+    if (isProductionHold && lineOperational === null) {
       Alert.alert('Required', 'Indicate whether the production line is operational.');
       return;
     }
@@ -132,7 +133,7 @@ export default function PostFormDecisionModal({
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     onMarkResolved({
-      lineOperational: lineOperational!,
+      lineOperational: isProductionHold ? lineOperational! : true,
       completionNotes: completionNotes.trim(),
       signature,
     });
