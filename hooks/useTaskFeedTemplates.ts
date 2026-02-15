@@ -1006,9 +1006,13 @@ export function useCreateTaskFeedPost(callbacks?: MutationCallbacks<TaskFeedPost
         input.formData?.room || 
         input.formData?.where;
 
+      // Extract production line from form data
+      const productionLineFromForm = input.formData?.production_line || 
+        input.formData?.productionLine || 
+        input.formData?.line || null;
+
       // Step 4: Create the main task_feed_posts record
-      const isProductionHold = template.is_production_hold || 
-        template.buttonType === 'report_issue' || false;
+      const isProductionHold = template.is_production_hold || false;
 
       const insertData = {
         organization_id: organizationId,
@@ -1032,6 +1036,7 @@ export function useCreateTaskFeedPost(callbacks?: MutationCallbacks<TaskFeedPost
         completed_at: assignedDepartments.length === 0 ? new Date().toISOString() : null,
         is_production_hold: isProductionHold,
         hold_status: isProductionHold ? 'active' : 'none',
+        production_line: productionLineFromForm,
       };
 
       console.log('[useCreateTaskFeedPost] Insert data:', JSON.stringify(insertData, null, 2));
@@ -1067,7 +1072,7 @@ export function useCreateTaskFeedPost(callbacks?: MutationCallbacks<TaskFeedPost
               action_by_name: `${user.first_name} ${user.last_name}`,
               department_code: template.triggering_department,
               reason: `Production hold triggered by ${template.name} template`,
-              production_line: null,
+              production_line: productionLineFromForm,
             });
           console.log('[useCreateTaskFeedPost] Production hold logged');
         } catch (holdErr) {
