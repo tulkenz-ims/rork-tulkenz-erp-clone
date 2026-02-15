@@ -15,6 +15,7 @@ interface ScoreCardSectionProps {
   subtitle?: string;
   gauges: ScoreCardGauge[];
   icon?: React.ReactNode;
+  cardStyle?: any;
 }
 
 // ── Circular Gauge (View-based, no SVG) ────────────────────────
@@ -104,7 +105,7 @@ function CircularGauge({
 }
 
 // ── Main Component ─────────────────────────────────────────────
-export default function ScoreCardSection({ title, subtitle, gauges, icon }: ScoreCardSectionProps) {
+export default function ScoreCardSection({ title, subtitle, gauges, icon, cardStyle }: ScoreCardSectionProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
@@ -121,7 +122,7 @@ export default function ScoreCardSection({ title, subtitle, gauges, icon }: Scor
         {subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
       </View>
 
-      <View style={styles.card}>
+      <View style={[styles.card, cardStyle]}>
         <View style={styles.gaugesRow}>
           {gauges.map((gauge, i) => (
             <CircularGauge
@@ -169,6 +170,7 @@ const createStyles = (colors: any) => StyleSheet.create({
     padding: 20,
     borderWidth: 1,
     borderColor: colors.border,
+    justifyContent: 'center',
   },
   gaugesRow: {
     flexDirection: 'row',
