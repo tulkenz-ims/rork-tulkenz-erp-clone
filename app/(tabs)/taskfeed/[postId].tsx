@@ -423,6 +423,21 @@ export default function TaskFeedPostDetailScreen() {
     router.push(`/cmms/work-orders/${workOrderId}`);
   }, [router]);
 
+  // Navigate to the form's module page
+  const handleFormLinkPress = useCallback((link: { formType: string; departmentCode?: string | null; formId?: string }) => {
+    // Map department code to module tab
+    const deptToModule: Record<string, string> = {
+      '1001': 'cmms',
+      '1002': 'sanitation',
+      '1003': 'production',
+      '1004': 'quality',
+      '1005': 'safety',
+    };
+    const module = deptToModule[link.departmentCode || ''] || 'quality';
+    const formRoute = link.formType.toLowerCase().replace(/[\s-]/g, '');
+    router.push(`/${module}/${formRoute}` as any);
+  }, [router]);
+
   const styles = createStyles(colors);
 
   if (isLoading) {
@@ -651,6 +666,7 @@ export default function TaskFeedPostDetailScreen() {
               departmentTasks={post.departmentTasks}
               showEscalateButton={post.status !== 'completed' && post.status !== 'cancelled'}
               isProductionHold={post.isProductionHold}
+              holdStatus={post.holdStatus}
               onEscalatePress={() => setShowEscalation(true)}
               onSignoffPress={(task) => {
                 Alert.alert(
@@ -785,9 +801,11 @@ export default function TaskFeedPostDetailScreen() {
               </Text>
             </View>
             {linkedForms.map((link) => (
-              <View
+              <TouchableOpacity
                 key={link.id}
                 style={[styles.workOrderCard, { backgroundColor: colors.background }]}
+                onPress={() => handleFormLinkPress(link)}
+                activeOpacity={0.7}
               >
                 <View style={styles.woHeader}>
                   <View style={styles.woHeaderLeft}>
@@ -829,7 +847,11 @@ export default function TaskFeedPostDetailScreen() {
                     </View>
                   )}
                 </View>
-              </View>
+                <View style={styles.woFooter}>
+                  <Text style={[styles.woViewText, { color: '#8B5CF6' }]}>View Form</Text>
+                  <ExternalLink size={14} color={'#8B5CF6'} />
+                </View>
+              </TouchableOpacity>
             ))}
           </View>
         )}
