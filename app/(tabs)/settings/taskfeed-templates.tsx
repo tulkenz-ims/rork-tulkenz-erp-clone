@@ -34,6 +34,7 @@ import {
 } from '@/hooks/useTaskFeedTemplates';
 import { TaskFeedTemplate, ButtonType, BUTTON_TYPE_LABELS, BUTTON_TYPE_COLORS } from '@/types/taskFeedTemplates';
 import { INITIAL_TASK_FEED_TEMPLATES } from '@/constants/taskFeedTemplates';
+import { ALL_PREBUILT_TEMPLATES } from '@/constants/prebuiltTemplates';
 import { getDepartmentName, getDepartmentColor } from '@/constants/organizationCodes';
 
 export default function TaskFeedTemplatesScreen() {
@@ -106,6 +107,37 @@ export default function TaskFeedTemplatesScreen() {
             } catch (error) {
               console.error('[TaskFeedTemplates] Error seeding templates:', error);
               Alert.alert('Error', 'Failed to create some templates. Please try again.');
+            } finally {
+              setSeedingTemplates(false);
+            }
+          },
+        },
+      ]
+    );
+  }, [createTemplateMutation]);
+
+  const handleSeedPrebuiltTemplates = useCallback(async () => {
+    Alert.alert(
+      'Seed Pre-Built Templates',
+      'This will create 10 food safety templates:\n\n• Foreign Material\n• Broken Glove\n• Employee Injury\n• Chemical Spill\n• Metal Detector Reject\n• Temperature Deviation\n• Pest Sighting\n• Allergen Changeover\n• Equipment Breakdown\n• Customer Complaint\n\nEach includes department assignments, form suggestions, and production hold settings.\n\nContinue?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Create All 10',
+          onPress: async () => {
+            setSeedingTemplates(true);
+            let created = 0;
+            try {
+              for (const template of ALL_PREBUILT_TEMPLATES) {
+                console.log('[TaskFeedTemplates] Creating pre-built template:', template.name);
+                await createTemplateMutation.mutateAsync(template);
+                created++;
+              }
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              Alert.alert('Success', `${created} pre-built templates have been created!`);
+            } catch (error) {
+              console.error('[TaskFeedTemplates] Error seeding pre-built templates:', error);
+              Alert.alert('Partial Success', `Created ${created} of 10 templates. Some may have failed — check for duplicates.`);
             } finally {
               setSeedingTemplates(false);
             }
@@ -201,7 +233,17 @@ export default function TaskFeedTemplatesScreen() {
             >
               <Plus size={20} color="#fff" />
               <Text style={styles.seedButtonText}>
-                {seedingTemplates ? 'Creating...' : 'Create Initial Templates'}
+                {seedingTemplates ? 'Creating...' : 'Create 3 Basic Templates'}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.seedButton, { backgroundColor: '#F59E0B', marginTop: 10 }]}
+              onPress={handleSeedPrebuiltTemplates}
+              disabled={seedingTemplates}
+            >
+              <Sparkles size={20} color="#fff" />
+              <Text style={styles.seedButtonText}>
+                {seedingTemplates ? 'Creating...' : 'Create 10 Food Safety Templates'}
               </Text>
             </TouchableOpacity>
           </View>
@@ -359,6 +401,17 @@ export default function TaskFeedTemplatesScreen() {
             >
               <Plus size={20} color="#fff" />
               <Text style={styles.addButtonText}>Create New Template</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.seedLinkButton, { borderColor: '#F59E0B' }]}
+              onPress={handleSeedPrebuiltTemplates}
+              disabled={seedingTemplates}
+            >
+              <Sparkles size={18} color="#F59E0B" />
+              <Text style={[styles.seedLinkText, { color: '#F59E0B' }]}>
+                {seedingTemplates ? 'Creating...' : 'Add 10 Food Safety Templates'}
+              </Text>
             </TouchableOpacity>
 
             {templates.length === 0 && (
