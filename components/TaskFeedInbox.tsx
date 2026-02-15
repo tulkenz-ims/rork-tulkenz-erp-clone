@@ -257,6 +257,8 @@ export default function TaskFeedInbox({
     lineOperational: boolean;
     completionNotes: string;
     signature: SignatureVerification;
+    rootCauseDepartment?: string;
+    rootCauseDepartmentName?: string;
   }) => {
     if (!selectedTask) return;
 
@@ -290,6 +292,8 @@ export default function TaskFeedInbox({
               departmentName: getDepartmentName(departmentCode),
               notes: data.completionNotes,
               signatureStamp: data.signature.signatureStamp,
+              rootCauseDepartment: data.rootCauseDepartment,
+              rootCauseDepartmentName: data.rootCauseDepartmentName,
             });
             console.log('[TaskFeedInbox] Production hold cleared successfully');
           } catch (holdErr) {
