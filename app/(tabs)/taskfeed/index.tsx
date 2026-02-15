@@ -110,6 +110,9 @@ const ROOM_LINE_OPTIONS = [
   'Other',
 ];
 
+// All 5 operational departments — manual issues alert everyone, same as templates
+const ALL_OPERATIONAL_DEPTS = ['1004', '1005', '1002', '1001', '1003']; // Quality, Safety, Sanitation, Maintenance, Production
+
 export default function TaskFeedScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
@@ -733,7 +736,7 @@ export default function TaskFeedScreen() {
         title: issueTypeLabel,
         description: issueDescription,
         departmentCode: targetDepartment,
-        assignedDepartments: [targetDepartment],
+        assignedDepartments: ALL_OPERATIONAL_DEPTS,
         locationId: issueLocation.id,
         locationName: issueLocation.name,
         facilityId: issueLocation.facilityCode || undefined,
@@ -746,6 +749,8 @@ export default function TaskFeedScreen() {
           productionStopped: issueStoppedProduction ? 'Yes' : 'No',
           roomLine: issueRoomLine || undefined,
         },
+        productionStopped: issueStoppedProduction,
+        roomLine: issueStoppedProduction ? issueRoomLine : undefined,
       });
       
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
