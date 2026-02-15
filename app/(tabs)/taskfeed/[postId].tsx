@@ -35,6 +35,7 @@ import DepartmentCompletionBadges from '@/components/DepartmentCompletionBadges'
 import ProductionStoppedBanner from '@/components/ProductionStoppedBanner';
 import EscalationModal from '@/components/EscalationModal';
 import { useSignoffDepartmentTask, useDeleteTaskFeedPost } from '@/hooks/useTaskFeedTemplates';
+import { usePostFormLinks } from '@/hooks/useTaskFeedFormLinks';
 import { useUser } from '@/contexts/UserContext';
 
 const PRIORITY_COLORS: Record<string, { bg: string; text: string }> = {
@@ -98,6 +99,9 @@ export default function TaskFeedPostDetailScreen() {
       ]
     );
   }, [post, deletePostMutation]);
+
+  // Linked forms query
+  const { data: linkedForms } = usePostFormLinks(postId);
 
   useEffect(() => {
     if (Platform.OS === 'web') {
@@ -766,6 +770,65 @@ export default function TaskFeedPostDetailScreen() {
                   <ExternalLink size={14} color={colors.primary} />
                 </View>
               </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
+        {/* Linked Forms Section */}
+        {linkedForms && linkedForms.length > 0 && (
+          <View style={[styles.card, { backgroundColor: colors.surface }]}>
+            <View style={styles.sectionHeader}>
+              <FileText size={18} color="#8B5CF6" />
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>
+                Linked Forms ({linkedForms.length})
+              </Text>
+            </View>
+            {linkedForms.map((link) => (
+              <View
+                key={link.id}
+                style={[styles.workOrderCard, { backgroundColor: colors.background }]}
+              >
+                <View style={styles.woHeader}>
+                  <View style={styles.woHeaderLeft}>
+                    <Text style={[styles.woNumber, { color: '#8B5CF6' }]}>
+                      {link.formNumber || link.formType.toUpperCase()}
+                    </Text>
+                    <View style={[styles.woPriorityBadge, { backgroundColor: '#8B5CF620' }]}>
+                      <Text style={[styles.woPriorityText, { color: '#8B5CF6' }]}>
+                        {link.formType.toUpperCase()}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+                {link.formTitle && (
+                  <Text style={[styles.woTitle, { color: colors.text }]} numberOfLines={2}>
+                    {link.formTitle}
+                  </Text>
+                )}
+                <View style={styles.woMeta}>
+                  {link.linkedByName && (
+                    <View style={styles.woMetaItem}>
+                      <User size={12} color={colors.textTertiary} />
+                      <Text style={[styles.woMetaText, { color: colors.textSecondary }]}>
+                        {link.linkedByName}
+                      </Text>
+                    </View>
+                  )}
+                  <View style={styles.woMetaItem}>
+                    <Calendar size={12} color={colors.textTertiary} />
+                    <Text style={[styles.woMetaText, { color: colors.textSecondary }]}>
+                      {new Date(link.linkedAt).toLocaleDateString()}
+                    </Text>
+                  </View>
+                  {link.departmentName && (
+                    <View style={[styles.woDeptBadge, { backgroundColor: getDepartmentColor(link.departmentCode || '') + '20' }]}>
+                      <Text style={[styles.woDeptText, { color: getDepartmentColor(link.departmentCode || '') }]}>
+                        {link.departmentName}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              </View>
             ))}
           </View>
         )}
