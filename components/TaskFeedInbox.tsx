@@ -280,15 +280,21 @@ export default function TaskFeedInbox({
       if (data.lineOperational && selectedTask.post?.is_production_hold) {
         const holdStatus = selectedTask.post?.hold_status || 'active';
         if (holdStatus === 'active' || holdStatus === 'reinstated') {
-          clearHoldMutation.mutate({
-            postId: selectedTask.postId,
-            clearedByName: data.signature.employeeName,
-            clearedById: data.signature.employeeId,
-            departmentCode,
-            departmentName: getDepartmentName(departmentCode),
-            notes: data.completionNotes,
-            signatureStamp: data.signature.signatureStamp,
-          });
+          try {
+            await clearHoldMutation.mutateAsync({
+              postId: selectedTask.postId,
+              clearedByName: data.signature.employeeName,
+              clearedById: data.signature.employeeId,
+              departmentCode,
+              departmentName: getDepartmentName(departmentCode),
+              notes: data.completionNotes,
+              signatureStamp: data.signature.signatureStamp,
+            });
+            console.log('[TaskFeedInbox] Production hold cleared successfully');
+          } catch (holdErr) {
+            console.error('[TaskFeedInbox] Failed to clear hold:', holdErr);
+            Alert.alert('Warning', 'Task completed but production hold could not be cleared. Please try clearing it manually.');
+          }
         }
       }
 
@@ -298,7 +304,7 @@ export default function TaskFeedInbox({
 
       Alert.alert(
         'Task Resolved',
-        `${getDepartmentName(departmentCode)} has completed their task for ${selectedTask.postNumber}.`,
+        `${getDepartmentName(departmentCode)} has completed their task for ${selectedTask.postNumber}.${data.lineOperational && selectedTask.post?.is_production_hold ? '\n\nProduction hold has been cleared.' : ''}`,
         [{ text: 'OK' }]
       );
     } catch (error) {
@@ -307,7 +313,7 @@ export default function TaskFeedInbox({
     } finally {
       setIsCompleting(false);
     }
-  }, [selectedTask, completeMutation, logSignature, onTaskCompleted, departmentCode]);
+  }, [selectedTask, completeMutation, clearHoldMutation, logSignature, onTaskCompleted, departmentCode]);
 
   const handleNotInvolvedConfirm = useCallback(async (data: {
     reason: string;
@@ -416,6 +422,27 @@ export default function TaskFeedInbox({
         completionNotes: notesForTaskFeed,
       });
 
+      // Clear production hold if applicable (maintenance completing WO means line is back)
+      if (selectedTask.post?.is_production_hold) {
+        const holdStatus = selectedTask.post?.hold_status || 'active';
+        if (holdStatus === 'active' || holdStatus === 'reinstated') {
+          try {
+            const userName = user ? `${user.first_name} ${user.last_name}` : 'System';
+            await clearHoldMutation.mutateAsync({
+              postId: selectedTask.postId,
+              clearedByName: userName,
+              clearedById: user?.id || '',
+              departmentCode,
+              departmentName: getDepartmentName(departmentCode),
+              notes: `Production restored after work order completion. ${data.workPerformed}`,
+            });
+            console.log('[TaskFeedInbox] Production hold cleared via WO completion');
+          } catch (holdErr) {
+            console.error('[TaskFeedInbox] Failed to clear hold from WO:', holdErr);
+          }
+        }
+      }
+
       onTaskCompleted?.(selectedTask, workOrderId || undefined);
 
       setShowWorkOrderModal(false);
@@ -424,7 +451,7 @@ export default function TaskFeedInbox({
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert(
         'Work Order Completed',
-        `Work order for ${selectedTask.postNumber} has been completed and recorded in CMMS history. Task Feed has been updated.`,
+        `Work order for ${selectedTask.postNumber} has been completed and recorded in CMMS history.${selectedTask.post?.is_production_hold ? '\n\nProduction hold has been cleared.' : ''}`,
         [{ text: 'OK' }]
       );
     } catch (error) {
@@ -433,7 +460,7 @@ export default function TaskFeedInbox({
     } finally {
       setIsCompleting(false);
     }
-  }, [selectedTask, createFullWorkOrder, completeMutation, onTaskCompleted]);
+  }, [selectedTask, createFullWorkOrder, completeMutation, clearHoldMutation, onTaskCompleted, departmentCode, user]);
 
   const formatDate = useCallback((dateStr: string) => {
     const date = new Date(dateStr);
