@@ -61,7 +61,7 @@ export default function MetricCardsSection({ title, subtitle, icon, cards, compa
                 ) : null}
               </View>
               <View style={styles.compactTrendRow}>
-                {getTrendIcon(card.trend, 8)}
+                {getTrendIcon(card.trend, 10)}
                 <Text style={[styles.compactTrendText, { color: getTrendColor(card.trend) }]}>
                   {card.trendLabel || `${Math.abs(card.trend ?? 0)}%`}
                 </Text>
@@ -138,21 +138,21 @@ const createStyles = (colors: any) => StyleSheet.create({
   trendText: { fontSize: 11, fontWeight: '500' },
 
   // ── Compact scrollable row ──
-  compactScroll: { gap: 6, paddingRight: 8 },
+  compactScroll: { gap: 8, paddingRight: 8 },
   compactCard: {
     backgroundColor: colors.surface,
-    borderRadius: 8,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: colors.border,
-    paddingVertical: 8,
-    paddingHorizontal: 8,
-    minWidth: 72,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    minWidth: 95,
     alignItems: 'center',
   },
-  compactLabel: { fontSize: 9, fontWeight: '600', color: colors.textSecondary, marginBottom: 3, textAlign: 'center' },
-  compactValueRow: { flexDirection: 'row', alignItems: 'baseline', gap: 1, marginBottom: 2 },
-  compactValue: { fontSize: 16, fontWeight: '800', color: colors.text },
-  compactUnit: { fontSize: 9, fontWeight: '500', color: colors.text },
-  compactTrendRow: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  compactTrendText: { fontSize: 9, fontWeight: '500' },
+  compactLabel: { fontSize: 11, fontWeight: '600', color: colors.textSecondary, marginBottom: 4, textAlign: 'center' },
+  compactValueRow: { flexDirection: 'row', alignItems: 'baseline', gap: 2, marginBottom: 3 },
+  compactValue: { fontSize: 22, fontWeight: '800', color: colors.text },
+  compactUnit: { fontSize: 11, fontWeight: '500', color: colors.text },
+  compactTrendRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  compactTrendText: { fontSize: 11, fontWeight: '500' },
 });
