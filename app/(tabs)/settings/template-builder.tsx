@@ -36,6 +36,8 @@ import {
   HelpCircle,
   Save,
   Eye,
+  Zap,
+  Factory,
 } from 'lucide-react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Stack } from 'expo-router';
@@ -58,6 +60,8 @@ import {
   FIELD_TYPE_LABELS,
 } from '@/types/taskFeedTemplates';
 import { DEPARTMENT_CODES, getDepartmentName, getDepartmentColor } from '@/constants/organizationCodes';
+import { PREBUILT_TEMPLATES, getPrebuiltTemplateList } from '@/constants/prebuiltTemplates';
+import { SuggestedForm } from '@/types/taskFeedTemplates';
 
 const BUTTON_TYPE_ICONS: Record<ButtonType, typeof ClipboardList> = {
   add_task: ClipboardList,
@@ -107,6 +111,10 @@ export default function TemplateBuilderScreen() {
   const [formFields, setFormFields] = useState<FormField[]>([]);
   const [photoRequired, setPhotoRequired] = useState(true);
   const [workflowRules, setWorkflowRules] = useState<WorkflowRule[]>([]);
+  const [isProductionHold, setIsProductionHold] = useState(false);
+  const [departmentFormSuggestions, setDepartmentFormSuggestions] = useState<Record<string, SuggestedForm[]>>({});
+  const [showPrebuiltPicker, setShowPrebuiltPicker] = useState(!isEditing);
+  const [selectedPrebuilt, setSelectedPrebuilt] = useState<string | null>(null);
 
   const [fieldLabel, setFieldLabel] = useState('');
   const [fieldType, setFieldType] = useState<FieldType>('text_input');
@@ -125,8 +133,27 @@ export default function TemplateBuilderScreen() {
       setFormFields(existingTemplate.formFields);
       setPhotoRequired(existingTemplate.photoRequired);
       setWorkflowRules(existingTemplate.workflowRules);
+      setIsProductionHold(existingTemplate.isProductionHold || false);
+      setDepartmentFormSuggestions(existingTemplate.departmentFormSuggestions || {});
     }
   }, [existingTemplate, isEditing]);
+
+  const handleLoadPrebuilt = useCallback((prebuiltName: string) => {
+    const config = PREBUILT_TEMPLATES[prebuiltName];
+    if (!config) return;
+
+    setName(config.name);
+    setDescription(config.description);
+    setButtonType(config.buttonType);
+    setAssignedDepartments([...config.assignedDepartments]);
+    setPhotoRequired(config.photoRequired);
+    setIsProductionHold(config.isProductionHold);
+    setDepartmentFormSuggestions({ ...config.departmentFormSuggestions });
+    setSelectedPrebuilt(prebuiltName);
+    setShowPrebuiltPicker(false);
+
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  }, []);
 
   const createMutation = useCreateTaskFeedTemplate({
     onSuccess: () => {
@@ -216,6 +243,8 @@ export default function TemplateBuilderScreen() {
       formFields,
       photoRequired,
       workflowRules,
+      isProductionHold,
+      departmentFormSuggestions,
     };
 
     if (isEditing && id) {
@@ -394,8 +423,74 @@ export default function TemplateBuilderScreen() {
     </View>
   );
 
+  const prebuiltList = useMemo(() => getPrebuiltTemplateList(), []);
+
   const renderBasicStep = () => (
     <View style={styles.stepContent}>
+      {/* Pre-built template picker */}
+      {!isEditing && (
+        <View style={styles.inputGroup}>
+          {showPrebuiltPicker ? (
+            <>
+              <View style={styles.prebuiltHeader}>
+                <Zap size={16} color="#F59E0B" />
+                <Text style={[styles.inputLabel, { color: colors.text, marginBottom: 0 }]}>Start from Pre-Built Template</Text>
+              </View>
+              <Text style={[styles.inputHint, { color: colors.textSecondary }]}>
+                These come pre-loaded with department assignments, form checklists, and production hold settings.
+              </Text>
+              <View style={styles.prebuiltGrid}>
+                {prebuiltList.map((pb) => (
+                  <TouchableOpacity
+                    key={pb.name}
+                    style={[styles.prebuiltCard, {
+                      backgroundColor: colors.surface,
+                      borderColor: selectedPrebuilt === pb.name ? '#F59E0B' : colors.border,
+                    }]}
+                    onPress={() => handleLoadPrebuilt(pb.name)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.prebuiltCardTop}>
+                      <Text style={[styles.prebuiltName, { color: colors.text }]}>{pb.name}</Text>
+                      {pb.isProductionHold && (
+                        <View style={[styles.holdBadge, { backgroundColor: '#EF444420' }]}>
+                          <Factory size={8} color="#EF4444" />
+                          <Text style={styles.holdBadgeText}>HOLD</Text>
+                        </View>
+                      )}
+                    </View>
+                    <Text style={[styles.prebuiltDesc, { color: colors.textSecondary }]} numberOfLines={2}>
+                      {pb.description}
+                    </Text>
+                    <Text style={[styles.prebuiltMeta, { color: colors.textTertiary }]}>
+                      {pb.departmentCount} depts — {pb.buttonType === 'report_issue' ? 'Issue' : 'Task'}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <TouchableOpacity
+                style={[styles.skipPrebuiltBtn, { borderColor: colors.border }]}
+                onPress={() => setShowPrebuiltPicker(false)}
+              >
+                <Text style={[styles.skipPrebuiltText, { color: colors.textSecondary }]}>
+                  or start from scratch
+                </Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <TouchableOpacity
+              style={[styles.loadPrebuiltBtn, { backgroundColor: '#F59E0B15', borderColor: '#F59E0B60' }]}
+              onPress={() => setShowPrebuiltPicker(true)}
+            >
+              <Zap size={14} color="#F59E0B" />
+              <Text style={[styles.loadPrebuiltText, { color: '#F59E0B' }]}>
+                {selectedPrebuilt ? `Loaded: ${selectedPrebuilt}` : 'Load from pre-built template'}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+
       <Text style={[styles.stepTitle, { color: colors.text }]}>Basic Information</Text>
       <Text style={[styles.stepSubtitle, { color: colors.textSecondary }]}>
         Set up the template name and button type
@@ -452,6 +547,25 @@ export default function TemplateBuilderScreen() {
         </View>
       </View>
 
+      {/* Production Hold Toggle */}
+      <View style={[styles.inputGroup, styles.toggleRow]}>
+        <View style={styles.toggleInfo}>
+          <View style={styles.toggleLabelRow}>
+            <Factory size={14} color={isProductionHold ? '#EF4444' : colors.textSecondary} />
+            <Text style={[styles.inputLabel, { color: colors.text, marginBottom: 0 }]}>Production Hold</Text>
+          </View>
+          <Text style={[styles.inputHint, { color: colors.textSecondary }]}>
+            Line stops until departments clear the issue
+          </Text>
+        </View>
+        <Switch
+          value={isProductionHold}
+          onValueChange={setIsProductionHold}
+          trackColor={{ false: colors.border, true: '#EF444480' }}
+          thumbColor={isProductionHold ? '#EF4444' : '#f4f3f4'}
+        />
+      </View>
+
       <View style={styles.inputGroup}>
         <Text style={[styles.inputLabel, { color: colors.text }]}>Triggering Department *</Text>
         <Text style={[styles.inputHint, { color: colors.textSecondary }]}>
@@ -503,6 +617,13 @@ export default function TemplateBuilderScreen() {
               <View style={[styles.deptCardDot, { backgroundColor: dept.color }]} />
               <Text style={[styles.deptCardName, { color: colors.text }]}>{dept.name}</Text>
               <Text style={[styles.deptCardCode, { color: colors.textSecondary }]}>{dept.code}</Text>
+              {departmentFormSuggestions[dept.code]?.length > 0 && isSelected && (
+                <View style={[styles.formCountBadge, { backgroundColor: dept.color + '25' }]}>
+                  <Text style={[styles.formCountBadgeText, { color: dept.color }]}>
+                    {departmentFormSuggestions[dept.code].length} forms
+                  </Text>
+                </View>
+              )}
               {isSelected && (
                 <View style={[styles.deptCardCheck, { backgroundColor: dept.color }]}>
                   <Check size={12} color="#fff" />
@@ -1369,5 +1490,96 @@ const createStyles = (colors: any) =>
       borderRadius: 10,
       alignItems: 'center',
       justifyContent: 'center',
+    },
+    prebuiltHeader: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: 8,
+      marginBottom: 4,
+    },
+    prebuiltGrid: {
+      gap: 8,
+      marginTop: 8,
+    },
+    prebuiltCard: {
+      borderWidth: 1,
+      borderRadius: 12,
+      padding: 12,
+      gap: 4,
+    },
+    prebuiltCardTop: {
+      flexDirection: 'row' as const,
+      justifyContent: 'space-between' as const,
+      alignItems: 'center' as const,
+    },
+    prebuiltName: {
+      fontSize: 14,
+      fontWeight: '700' as const,
+    },
+    prebuiltDesc: {
+      fontSize: 12,
+    },
+    prebuiltMeta: {
+      fontSize: 11,
+      marginTop: 2,
+    },
+    holdBadge: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: 3,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 4,
+    },
+    holdBadgeText: {
+      fontSize: 8,
+      fontWeight: '800' as const,
+      color: '#EF4444',
+    },
+    skipPrebuiltBtn: {
+      alignItems: 'center' as const,
+      paddingVertical: 10,
+      borderTopWidth: 1,
+      marginTop: 8,
+    },
+    skipPrebuiltText: {
+      fontSize: 13,
+    },
+    loadPrebuiltBtn: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: 8,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      borderRadius: 10,
+      borderWidth: 1,
+    },
+    loadPrebuiltText: {
+      fontSize: 13,
+      fontWeight: '600' as const,
+    },
+    toggleRow: {
+      flexDirection: 'row' as const,
+      justifyContent: 'space-between' as const,
+      alignItems: 'center' as const,
+    },
+    toggleInfo: {
+      flex: 1,
+      gap: 2,
+    },
+    toggleLabelRow: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: 6,
+    },
+    formCountBadge: {
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 6,
+      marginTop: 4,
+    },
+    formCountBadgeText: {
+      fontSize: 10,
+      fontWeight: '700' as const,
     },
   });
