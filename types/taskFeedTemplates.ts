@@ -98,6 +98,23 @@ export interface TaskFeedPost {
   departmentTasks?: TaskFeedDepartmentTask[];
 }
 
+export interface FormCompletion {
+  formId: string;
+  formType: string;
+  formRoute: string;
+  formResponse: Record<string, any>;
+  formPhotos?: string[];
+  completedAt: string;
+  completedByName: string;
+}
+
+export interface SuggestedForm {
+  formId: string;
+  formType: string;
+  formRoute: string;
+  required: boolean;
+}
+
 export interface TaskFeedDepartmentTask {
   id: string;
   organizationId: string;
@@ -112,11 +129,16 @@ export interface TaskFeedDepartmentTask {
   completionNotes?: string;
   moduleHistoryType?: string;
   moduleHistoryId?: string;
-  // Form response
+  // Form response (legacy single form)
   formType?: string;
   formRoute?: string;
   formResponse?: Record<string, any>;
   formPhotos?: string[];
+  // Multi-form completions
+  formCompletions?: FormCompletion[];
+  suggestedForms?: SuggestedForm[];
+  formsCompleted?: number;
+  formsSuggested?: number;
   // Escalation
   isOriginal?: boolean;
   escalatedFromDepartment?: string;
