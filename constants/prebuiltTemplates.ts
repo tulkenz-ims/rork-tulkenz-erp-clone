@@ -36,9 +36,27 @@ const sf = (id: string, type: string, route: string, required = false): Suggeste
 const LOCATION_FIELD: FormField = {
   id: 'location',
   label: 'Location (Room/Area)',
-  fieldType: 'text_input',
+  fieldType: 'dropdown',
   required: true,
-  placeholder: 'e.g., Production Room 1, Cooler 3',
+  options: [
+    { value: 'production_room_1', label: 'Production Room 1' },
+    { value: 'production_room_2', label: 'Production Room 2' },
+    { value: 'production_room_3', label: 'Production Room 3' },
+    { value: 'cooler_1', label: 'Cooler 1' },
+    { value: 'cooler_2', label: 'Cooler 2' },
+    { value: 'freezer', label: 'Freezer' },
+    { value: 'warehouse', label: 'Warehouse' },
+    { value: 'shipping', label: 'Shipping / Receiving' },
+    { value: 'dry_storage', label: 'Dry Storage' },
+    { value: 'chemical_room', label: 'Chemical Room' },
+    { value: 'breakroom', label: 'Break Room' },
+    { value: 'hallway', label: 'Hallway / Corridor' },
+    { value: 'exterior', label: 'Exterior / Loading Dock' },
+    { value: 'restroom', label: 'Restroom' },
+    { value: 'office', label: 'Office' },
+    { value: 'lab', label: 'Lab / QA Room' },
+    { value: 'other', label: 'Other' },
+  ],
 };
 
 const DESCRIPTION_FIELD: FormField = {
@@ -65,16 +83,25 @@ const SEVERITY_FIELD: FormField = {
 const PRODUCT_LINE_FIELD: FormField = {
   id: 'production_line',
   label: 'Production Line',
-  fieldType: 'text_input',
-  required: false,
-  placeholder: 'e.g., Line 1, Line 3',
+  fieldType: 'dropdown',
+  required: true,
+  options: [
+    { value: 'line_1', label: 'Line 1' },
+    { value: 'line_2', label: 'Line 2' },
+    { value: 'line_3', label: 'Line 3' },
+    { value: 'line_4', label: 'Line 4' },
+    { value: 'line_5', label: 'Line 5' },
+    { value: 'packaging_1', label: 'Packaging Line 1' },
+    { value: 'packaging_2', label: 'Packaging Line 2' },
+    { value: 'not_applicable', label: 'N/A — Not a line issue' },
+  ],
 };
 
 const IMMEDIATE_ACTION_FIELD: FormField = {
   id: 'immediate_action',
   label: 'Immediate Action Taken',
   fieldType: 'text_area',
-  required: false,
+  required: true,
   placeholder: 'What was done immediately?',
 };
 
@@ -277,7 +304,7 @@ export const CHEMICAL_SPILL_TEMPLATE: CreateTemplateInput = {
       label: 'Chemical Name / Product',
       fieldType: 'text_input',
       required: true,
-      placeholder: 'Name from SDS or label',
+      placeholder: 'Exact name from SDS or label',
     },
     {
       id: 'spill_size',
@@ -329,11 +356,10 @@ export const METAL_DETECTOR_REJECT_TEMPLATE: CreateTemplateInput = {
     LOCATION_FIELD,
     PRODUCT_LINE_FIELD,
     {
-      id: 'detector_id',
-      label: 'Metal Detector ID / Name',
-      fieldType: 'text_input',
+      id: 'equipment',
+      label: 'Metal Detector',
+      fieldType: 'dropdown',
       required: true,
-      placeholder: 'e.g., MD-01, Line 3 Detector',
     },
     {
       id: 'reject_count',
@@ -531,11 +557,10 @@ export const EQUIPMENT_BREAKDOWN_TEMPLATE: CreateTemplateInput = {
   formFields: [
     LOCATION_FIELD,
     {
-      id: 'equipment_name',
-      label: 'Equipment Name / Asset ID',
-      fieldType: 'text_input',
+      id: 'equipment',
+      label: 'Equipment',
+      fieldType: 'dropdown',
       required: true,
-      placeholder: 'e.g., Mixer #3, Conveyor Belt Line 2',
     },
     {
       id: 'failure_type',
@@ -611,7 +636,7 @@ export const CUSTOMER_COMPLAINT_TEMPLATE: CreateTemplateInput = {
       id: 'lot_number',
       label: 'Lot / Batch Number (if known)',
       fieldType: 'text_input',
-      required: false,
+      required: true,
     },
   ],
   departmentFormSuggestions: {
