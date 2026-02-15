@@ -143,12 +143,13 @@ export default function TemplateBuilderScreen() {
     if (!config) return;
 
     setName(config.name);
-    setDescription(config.description);
+    setDescription(config.description || '');
     setButtonType(config.buttonType);
     setAssignedDepartments([...config.assignedDepartments]);
+    setFormFields([...(config.formFields || [])]);
     setPhotoRequired(config.photoRequired);
-    setIsProductionHold(config.isProductionHold);
-    setDepartmentFormSuggestions({ ...config.departmentFormSuggestions });
+    setIsProductionHold(config.isProductionHold || false);
+    setDepartmentFormSuggestions({ ...(config.departmentFormSuggestions || {}) });
     setSelectedPrebuilt(prebuiltName);
     setShowPrebuiltPicker(false);
 
