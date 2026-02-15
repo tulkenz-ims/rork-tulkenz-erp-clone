@@ -57,6 +57,10 @@ export interface TaskFeedTemplate {
   updatedById?: string;
   createdAt: string;
   updatedAt: string;
+  /** Per-department form suggestions: { "QUAL": [{ formId, formType, formRoute, required }], ... } */
+  departmentFormSuggestions?: Record<string, SuggestedForm[]>;
+  /** If true, this template triggers a production hold when posted */
+  isProductionHold?: boolean;
 }
 
 export interface TaskFeedPost {
@@ -174,6 +178,8 @@ export interface CreateTemplateInput {
   workflowRules?: WorkflowRule[];
   isActive?: boolean;
   sortOrder?: number;
+  departmentFormSuggestions?: Record<string, SuggestedForm[]>;
+  isProductionHold?: boolean;
 }
 
 export interface UpdateTemplateInput extends Partial<CreateTemplateInput> {
