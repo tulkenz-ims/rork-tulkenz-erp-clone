@@ -546,7 +546,8 @@ export function useDepartmentTasksQuery(options?: {
             status,
             created_at,
             created_by_name,
-            location_name
+            location_name,
+            is_production_hold
           )
         `)
         .eq('organization_id', organizationId)
