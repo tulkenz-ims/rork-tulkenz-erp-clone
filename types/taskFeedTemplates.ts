@@ -81,6 +81,18 @@ export interface TaskFeedPost {
   completedDepartments: number;
   completionRate: number;
   completedAt?: string;
+  // Multi-department routing
+  originatingDepartmentCode?: string;
+  originatingDepartmentName?: string;
+  requiresAllSignoff?: boolean;
+  finalSignoffById?: string;
+  finalSignoffByName?: string;
+  finalSignoffAt?: string;
+  finalSignoffNotes?: string;
+  isProductionHold?: boolean;
+  productionLine?: string;
+  roomId?: string;
+  roomName?: string;
   createdAt: string;
   updatedAt: string;
   departmentTasks?: TaskFeedDepartmentTask[];
@@ -93,13 +105,37 @@ export interface TaskFeedDepartmentTask {
   postNumber: string;
   departmentCode: string;
   departmentName: string;
-  status: 'pending' | 'completed';
+  status: 'pending' | 'in_progress' | 'completed' | 'signed_off';
   completedById?: string;
   completedByName?: string;
   completedAt?: string;
   completionNotes?: string;
   moduleHistoryType?: string;
   moduleHistoryId?: string;
+  // Form response
+  formType?: string;
+  formRoute?: string;
+  formResponse?: Record<string, any>;
+  formPhotos?: string[];
+  // Escalation
+  isOriginal?: boolean;
+  escalatedFromDepartment?: string;
+  escalatedFromTaskId?: string;
+  escalationReason?: string;
+  escalatedAt?: string;
+  // Sign-off
+  requiresSignoff?: boolean;
+  signoffDepartmentCode?: string;
+  signoffById?: string;
+  signoffByName?: string;
+  signoffAt?: string;
+  signoffNotes?: string;
+  // Priority
+  priority?: 'low' | 'medium' | 'high' | 'critical' | 'emergency';
+  // Started
+  startedAt?: string;
+  startedById?: string;
+  startedByName?: string;
   assignedAt: string;
   createdAt: string;
   updatedAt: string;
