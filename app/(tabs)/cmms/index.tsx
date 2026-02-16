@@ -1,51 +1,48 @@
 import React, { useState, useCallback, useMemo } from 'react';
+import { useRouter } from 'expo-router';
+import { useWorkOrdersQuery } from '@/hooks/useSupabaseWorkOrders';
 import {
   View,
   Text,
   StyleSheet,
+  TouchableOpacity,
+  Modal,
   ScrollView,
-  Pressable,
-  RefreshControl,
+  TextInput,
+  Image,
+  Alert,
   ActivityIndicator,
 } from 'react-native';
-import { useRouter } from 'expo-router';
 import {
-  Clock,
-  AlertTriangle,
-  ChevronRight,
+  Inbox,
   ChevronDown,
   ChevronUp,
-  Cog,
-  Calendar,
-  Package,
-  ClipboardList,
-  ShieldCheck,
-  BarChart3,
-  Truck,
-  CalendarClock,
-  AlertCircle,
-  TrendingUp,
-  TrendingDown,
-  Activity,
   CheckCircle2,
-  PlayCircle,
-  Zap,
-  Plus,
-  AlertOctagon,
+  X,
+  User,
+  MapPin,
+  Calendar,
+  FileText,
+  Camera,
+  MessageSquare,
+  AlertTriangle,
+  ClipboardList,
+  Wrench,
+  Clock,
+  Factory,
 } from 'lucide-react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useTheme } from '@/contexts/ThemeContext';
-import { useQueryClient } from '@tanstack/react-query';
-import { useWorkOrdersQuery, useWorkOrderMetrics } from '@/hooks/useSupabaseWorkOrders';
-import { useEquipmentQuery, useEquipmentMetrics } from '@/hooks/useSupabaseEquipment';
-import { usePMSchedulesQuery, usePMScheduleMetrics } from '@/hooks/useSupabasePMSchedules';
-import { usePMWorkOrdersQuery, usePMWorkOrderMetrics } from '@/hooks/useSupabasePMWorkOrders';
 import * as Haptics from 'expo-haptics';
-import TaskFeedInbox from '@/components/TaskFeedInbox';
-import { supabase } from '@/lib/supabase';
-import { TaskFeedDepartmentTask } from '@/types/taskFeedTemplates';
-import { useOrganization } from '@/contexts/OrganizationContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { useUser } from '@/contexts/UserContext';
+import { useDepartmentTasksQuery, useCompleteDepartmentTask, useStartDepartmentTask, useClearProductionHold } from '@/hooks/useTaskFeedTemplates';
+import { TaskFeedDepartmentTask } from '@/types/taskFeedTemplates';
+import { getDepartmentColor, getDepartmentName } from '@/constants/organizationCodes';
+import { supabase } from '@/lib/supabase';
+import { useOrganization } from '@/contexts/OrganizationContext';
+import WorkOrderCompletionForm from './WorkOrderCompletionForm';
+import FormPickerModal from './FormPickerModal';
+import PostFormDecisionModal from './PostFormDecisionModal';
+import { SignatureVerification, useLogSignature } from '@/hooks/usePinSignature';
 
 interface WorkOrderCompletionData {
   workPerformed: string;
@@ -58,1318 +55,1327 @@ interface WorkOrderCompletionData {
   preventiveAction?: string;
 }
 
-interface FormItem {
-  id: string;
-  title: string;
-  route: string;
+interface TaskFeedInboxProps {
+  departmentCode: string;
+  moduleColor?: string;
+  onTaskCompleted?: (task: TaskFeedDepartmentTask, moduleHistoryId?: string) => void;
+  createModuleHistoryRecord?: (task: TaskFeedDepartmentTask, notes: string) => Promise<string | null>;
+  createFullWorkOrder?: (task: TaskFeedDepartmentTask, data: WorkOrderCompletionData) => Promise<string | null>;
+  maxVisible?: number;
+  showHeader?: boolean;
+  requiresFullWorkOrder?: boolean;
 }
 
-interface FormCategory {
+interface PostDetails {
   id: string;
-  title: string;
-  icon: React.ComponentType<{ size: number; color: string }>;
-  color: string;
-  forms: FormItem[];
+  post_number: string;
+  template_name: string;
+  form_data: Record<string, any>;
+  photo_url?: string;
+  notes?: string;
+  status: string;
+  created_at: string;
+  created_by_name: string;
+  location_name?: string;
 }
 
-const CMMS_CATEGORIES: FormCategory[] = [
-  {
-    id: 'workorders',
-    title: 'Work Order Management',
-    icon: ClipboardList,
-    color: '#3B82F6',
-    forms: [
-      { id: 'workorders', title: 'All Work Orders', route: '/cmms/workorders' },
-      { id: 'newworkorder', title: 'Create New Work Order', route: '/cmms/newworkorder' },
-      { id: 'correctivemo', title: 'Corrective Maintenance', route: '/cmms/correctivemo' },
-      { id: 'wohistory', title: 'Work Order History', route: '/cmms/wohistory' },
-    ],
-  },
-  {
-    id: 'preventive',
-    title: 'Preventive Maintenance',
-    icon: CalendarClock,
-    color: '#10B981',
-    forms: [
-      { id: 'pmschedule', title: 'PM Schedule', route: '/cmms/pmschedule' },
-      { id: 'pmcalendar', title: 'PM Calendar', route: '/cmms/pmcalendar' },
-      { id: 'pmtasks', title: 'PM Task Library', route: '/cmms/pmtasks' },
-      { id: 'pmtemplates', title: 'PM Templates', route: '/cmms/pmtemplates' },
-    ],
-  },
-  {
-    id: 'equipment',
-    title: 'Equipment Management',
-    icon: Cog,
-    color: '#8B5CF6',
-    forms: [
-      { id: 'equipmentlist', title: 'Equipment List', route: '/cmms/equipmentlist' },
-      { id: 'equipmentregistry', title: 'Equipment Registry', route: '/cmms/equipmentregistry' },
-      { id: 'equipmenthierarchy', title: 'Equipment Hierarchy', route: '/cmms/equipmenthierarchy' },
-      { id: 'equipmenthistory', title: 'Equipment History', route: '/cmms/equipmenthistory' },
-      { id: 'equipmentdowntime', title: 'Equipment Downtime', route: '/cmms/equipmentdowntime' },
-    ],
-  },
-  {
-    id: 'mroinventory',
-    title: 'MRO Parts',
-    icon: Package,
-    color: '#EC4899',
-    forms: [
-      { id: 'partslist', title: 'MRO Parts & Supplies', route: '/cmms/partslist' },
-      { id: 'whereused', title: 'Where-Used Analysis', route: '/cmms/whereused' },
-      { id: 'stocklevels', title: 'MRO Stock Levels', route: '/cmms/stocklevels' },
-    ],
-  },
-  {
-    id: 'vendors',
-    title: 'Vendors',
-    icon: Truck,
-    color: '#0891B2',
-    forms: [
-      { id: 'vendorlist', title: 'Vendor List', route: '/cmms/vendorlist' },
-    ],
-  },
-  {
-    id: 'failure',
-    title: 'Failure Analysis',
-    icon: AlertCircle,
-    color: '#EF4444',
-    forms: [
-      { id: 'failurecodes', title: 'Failure Codes', route: '/cmms/failurecodes' },
-      { id: 'failureanalysis', title: 'Failure Analysis', route: '/cmms/failureanalysis' },
-      { id: 'rootcauseanalysis', title: 'Root Cause Analysis', route: '/cmms/rootcauseanalysis' },
-      { id: 'mtbfanalysis', title: 'MTBF Analysis', route: '/cmms/mtbfanalysis' },
-      { id: 'mttranalysis', title: 'MTTR Analysis', route: '/cmms/mttranalysis' },
-    ],
-  },
-  {
-    id: 'safety',
-    title: 'Safety & Compliance',
-    icon: ShieldCheck,
-    color: '#DC2626',
-    forms: [
-      { id: 'lotoprocedures', title: 'LOTO Procedures', route: '/cmms/lotoprocedures' },
-      { id: 'safetypermits', title: 'Safety Permits', route: '/cmms/safetypermits' },
-      { id: 'pperequirements', title: 'PPE Requirements', route: '/cmms/pperequirements' },
-      { id: 'safetychecklist', title: 'Safety Checklist', route: '/cmms/safetychecklist' },
-      { id: 'hazardassessment', title: 'Hazard Assessment', route: '/cmms/hazardassessment' },
-      { id: 'regulatorycompliance', title: 'Regulatory Compliance', route: '/cmms/regulatorycompliance' },
-    ],
-  },
-  {
-    id: 'reports',
-    title: 'Reports & Analytics',
-    icon: BarChart3,
-    color: '#7C3AED',
-    forms: [
-      { id: 'kpidashboard', title: 'KPI Dashboard', route: '/cmms/kpidashboard' },
-      { id: 'downtimereport', title: 'Downtime Report', route: '/cmms/downtimereport' },
-    ],
-  },
-];
+const MAINTENANCE_DEPT_CODES = ['1001', '3000', 'MAINT', 'MNT'];
 
-interface RecentActivity {
-  id: string;
-  type: 'wo_created' | 'wo_completed' | 'wo_started' | 'pm_completed' | 'equipment_down' | 'equipment_up';
-  title: string;
-  description: string;
-  time: string;
-  priority?: 'low' | 'medium' | 'high' | 'critical';
-}
-
-interface UpcomingPM {
-  id: string;
-  name: string;
-  equipment: string;
-  dueDate: string;
-  daysUntil: number;
-  priority: 'low' | 'medium' | 'high' | 'critical';
-}
-
-export default function CMMSScreen() {
+export default function TaskFeedInbox({
+  departmentCode,
+  moduleColor,
+  onTaskCompleted,
+  createModuleHistoryRecord,
+  createFullWorkOrder,
+  maxVisible = 5,
+  showHeader = true,
+  requiresFullWorkOrder,
+}: TaskFeedInboxProps) {
   const { colors } = useTheme();
+  const { user } = useUser();
+  const { organizationId } = useOrganization();
   const router = useRouter();
-  const queryClient = useQueryClient();
-  const [refreshing, setRefreshing] = useState(false);
-  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
-  const [showAllActivity, setShowAllActivity] = useState(false);
+  const { data: workOrders = [] } = useWorkOrdersQuery();
+  const [isExpanded, setIsExpanded] = useState(true);
+  const [showAllTasks, setShowAllTasks] = useState(false);
+  const [selectedTask, setSelectedTask] = useState<(TaskFeedDepartmentTask & { post?: PostDetails }) | null>(null);
+  const [showPostDetailModal, setShowPostDetailModal] = useState(false);
+  const [showCompleteModal, setShowCompleteModal] = useState(false);
+  const [showWorkOrderModal, setShowWorkOrderModal] = useState(false);
+  const [showFormPicker, setShowFormPicker] = useState(false);
+  const [showDecisionModal, setShowDecisionModal] = useState(false);
+  const [showNotInvolved, setShowNotInvolved] = useState(false);
+  const [completionNotes, setCompletionNotes] = useState('');
+  const [isCompleting, setIsCompleting] = useState(false);
 
-  const { data: workOrders = [], isLoading: woLoading, error: woError, refetch: refetchWO } = useWorkOrdersQuery();
-  const { data: equipment = [], isLoading: eqLoading, error: eqError, refetch: refetchEq } = useEquipmentQuery();
-  const { data: pmSchedules = [], isLoading: pmLoading, error: pmError, refetch: refetchPM } = usePMSchedulesQuery({ active: true });
-  const { data: pmWorkOrders = [], refetch: refetchPMWO } = usePMWorkOrdersQuery();
-  const { data: woMetrics, refetch: refetchWOMetrics } = useWorkOrderMetrics();
-  const { data: eqMetrics, refetch: refetchEqMetrics } = useEquipmentMetrics();
-  const { data: pmMetrics, refetch: refetchPMMetrics } = usePMScheduleMetrics();
+  const isMaintenanceDept = requiresFullWorkOrder !== undefined 
+    ? requiresFullWorkOrder 
+    : MAINTENANCE_DEPT_CODES.includes(departmentCode);
 
-  // Log any errors for debugging
-  React.useEffect(() => {
-    if (woError) console.error('[CMMSScreen] Work Order Error:', woError);
-    if (eqError) console.error('[CMMSScreen] Equipment Error:', eqError);
-    if (pmError) console.error('[CMMSScreen] PM Schedule Error:', pmError);
-  }, [woError, eqError, pmError]);
+  const accentColor = moduleColor || getDepartmentColor(departmentCode) || colors.primary;
 
-  const isLoading = woLoading || eqLoading || pmLoading;
+  const { data: rawTasks = [], isLoading, refetch } = useDepartmentTasksQuery({
+    departmentCode,
+    statusIn: ['pending', 'in_progress'],
+  });
 
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    console.log('[CMMSScreen] Refreshing data...');
-    await Promise.all([
-      refetchWO(),
-      refetchEq(),
-      refetchPM(),
-      refetchPMWO(),
-      refetchWOMetrics(),
-      refetchEqMetrics(),
-      refetchPMMetrics(),
-    ]);
-    setRefreshing(false);
-    console.log('[CMMSScreen] Refresh complete');
-  }, [refetchWO, refetchEq, refetchPM, refetchPMWO, refetchWOMetrics, refetchEqMetrics, refetchPMMetrics]);
+  const pendingTasks = useMemo(() => {
+    return rawTasks.map((task: any) => ({
+      ...task,
+      // Map snake_case DB fields to camelCase for component use
+      formCompletions: task.form_completions || [],
+      suggestedForms: task.suggested_forms || [],
+      formsCompleted: task.forms_completed || 0,
+      formsSuggested: task.forms_suggested || 0,
+      formType: task.form_type || '',
+      formRoute: task.form_route || '',
+      isProductionHold: task.task_feed_posts?.is_production_hold || false,
+      post: task.task_feed_posts ? {
+        id: task.task_feed_posts.id,
+        post_number: task.task_feed_posts.post_number,
+        template_name: task.task_feed_posts.template_name,
+        form_data: task.task_feed_posts.form_data || {},
+        photo_url: task.task_feed_posts.photo_url,
+        notes: task.task_feed_posts.notes,
+        status: task.task_feed_posts.status,
+        created_at: task.task_feed_posts.created_at,
+        created_by_name: task.task_feed_posts.created_by_name,
+        location_name: task.task_feed_posts.location_name,
+        is_production_hold: task.task_feed_posts.is_production_hold || false,
+        isProductionHold: task.task_feed_posts.is_production_hold || false,
+        hold_status: task.task_feed_posts.hold_status || 'none',
+        holdStatus: task.task_feed_posts.hold_status || 'none',
+      } : undefined,
+    }));
+  }, [rawTasks]);
 
-  const handleFormPress = useCallback((route: string) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    router.push(route as any);
-  }, [router]);
+  const completeMutation = useCompleteDepartmentTask({
+    onSuccess: (data) => {
+      console.log('[TaskFeedInbox] Task completed successfully:', data.id);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      refetch();
+    },
+    onError: (error) => {
+      console.error('[TaskFeedInbox] Error completing task:', error);
+      Alert.alert('Error', 'Failed to complete task. Please try again.');
+    },
+  });
 
-  const toggleCategory = useCallback((categoryId: string) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setExpandedCategories(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(categoryId)) {
-        newSet.delete(categoryId);
-      } else {
-        newSet.add(categoryId);
+  const startTaskMutation = useStartDepartmentTask({
+    onSuccess: (data) => {
+      console.log('[TaskFeedInbox] Task started:', data.id);
+      refetch();
+    },
+    onError: (error) => {
+      console.error('[TaskFeedInbox] Error starting task:', error);
+    },
+  });
+
+  const logSignature = useLogSignature({
+    onSuccess: (data) => {
+      console.log('[TaskFeedInbox] Signature logged:', data.id);
+    },
+    onError: (error) => {
+      console.error('[TaskFeedInbox] Error logging signature:', error);
+    },
+  });
+
+  const clearHoldMutation = useClearProductionHold({
+    onSuccess: (data) => {
+      console.log('[TaskFeedInbox] Production hold cleared for post:', data.postNumber);
+    },
+    onError: (error) => {
+      console.error('[TaskFeedInbox] Error clearing hold:', error);
+    },
+  });
+
+  const visibleTasks = showAllTasks ? pendingTasks : pendingTasks.slice(0, maxVisible);
+  const hasMoreTasks = pendingTasks.length > maxVisible;
+
+  const handleStartComplete = useCallback((task: TaskFeedDepartmentTask & { post?: PostDetails }) => {
+    setSelectedTask(task);
+    setCompletionNotes('');
+    
+    if (isMaintenanceDept) {
+      const linkedWO = workOrders.find(wo =>
+        (wo.description || '').includes(task.postNumber) ||
+        (wo.title || '').includes(task.postNumber)
+      );
+      if (linkedWO) {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        router.push(`/(tabs)/cmms/work-orders/${linkedWO.id}`);
+        return;
       }
-      return newSet;
+      if (createFullWorkOrder) {
+        setShowWorkOrderModal(true);
+      } else {
+        setShowCompleteModal(true);
+      }
+    } else if (task.status === 'in_progress') {
+      // Task already started — show decision modal
+      setShowDecisionModal(true);
+    } else {
+      // Pending task — show form picker to start
+      setShowFormPicker(true);
+    }
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }, [isMaintenanceDept, createFullWorkOrder, workOrders, router]);
+
+  const handleNotInvolvedPress = useCallback((task: TaskFeedDepartmentTask & { post?: PostDetails }) => {
+    setSelectedTask(task);
+    setShowNotInvolved(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }, []);
+
+  const handleFormSelected = useCallback((form: { id: string; label: string; route: string }) => {
+    if (!selectedTask) return;
+    
+    // Start the task with form info
+    startTaskMutation.mutate({
+      taskId: selectedTask.id,
+      formType: form.label,
+      formRoute: form.route,
+    });
+
+    setShowFormPicker(false);
+    setShowDecisionModal(false);
+    
+    // Navigate to the form
+    router.push(form.route as any);
+  }, [selectedTask, startTaskMutation, router]);
+
+  const handleFormPickerClose = useCallback(() => {
+    setShowFormPicker(false);
+    // If task is in_progress (came from decision → another form → cancelled), go back to decision
+    if (selectedTask?.status === 'in_progress') {
+      setShowDecisionModal(true);
+    } else {
+      // Pending task — open regular complete modal as fallback
+      setShowCompleteModal(true);
+    }
+  }, [selectedTask]);
+
+  const handleDecisionResolve = useCallback(async (data: {
+    lineOperational: boolean;
+    completionNotes: string;
+    signature: SignatureVerification;
+    rootCauseDepartment?: string;
+    rootCauseDepartmentName?: string;
+  }) => {
+    if (!selectedTask) return;
+
+    setIsCompleting(true);
+    try {
+      // Complete the department task
+      await completeMutation.mutateAsync({
+        taskId: selectedTask.id,
+        completionNotes: data.completionNotes,
+      });
+
+      // Log the signature
+      logSignature.mutate({
+        verification: data.signature,
+        formType: 'Task Completion',
+        referenceType: 'task_feed_post',
+        referenceId: selectedTask.postId,
+        referenceNumber: selectedTask.postNumber,
+      });
+
+      // Clear production hold — ONLY Quality (1004) can release the line
+      if (data.lineOperational && selectedTask.post?.is_production_hold && departmentCode === '1004') {
+        const holdStatus = selectedTask.post?.hold_status || 'active';
+        if (holdStatus === 'active' || holdStatus === 'reinstated') {
+          try {
+            await clearHoldMutation.mutateAsync({
+              postId: selectedTask.postId,
+              clearedByName: data.signature.employeeName,
+              clearedById: data.signature.employeeId,
+              departmentCode,
+              departmentName: getDepartmentName(departmentCode),
+              notes: data.completionNotes,
+              signatureStamp: data.signature.signatureStamp,
+              rootCauseDepartment: data.rootCauseDepartment,
+              rootCauseDepartmentName: data.rootCauseDepartmentName,
+            });
+            console.log('[TaskFeedInbox] Production hold cleared successfully');
+          } catch (holdErr) {
+            console.error('[TaskFeedInbox] Failed to clear hold:', holdErr);
+            Alert.alert('Warning', 'Task completed but production hold could not be cleared. Please try clearing it manually.');
+          }
+        }
+      }
+
+      onTaskCompleted?.(selectedTask);
+      setShowDecisionModal(false);
+      setSelectedTask(null);
+
+      Alert.alert(
+        'Task Resolved',
+        `${getDepartmentName(departmentCode)} has completed their task for ${selectedTask.postNumber}.${data.lineOperational && selectedTask.post?.is_production_hold && departmentCode === '1004' ? '\n\nProduction hold has been cleared.' : ''}`,
+        [{ text: 'OK' }]
+      );
+    } catch (error) {
+      console.error('[TaskFeedInbox] Error resolving task:', error);
+      Alert.alert('Error', 'Failed to resolve task.');
+    } finally {
+      setIsCompleting(false);
+    }
+  }, [selectedTask, completeMutation, clearHoldMutation, logSignature, onTaskCompleted, departmentCode]);
+
+  const handleNotInvolvedConfirm = useCallback(async (data: {
+    reason: string;
+    signature: SignatureVerification;
+  }) => {
+    if (!selectedTask) return;
+
+    setIsCompleting(true);
+    try {
+      // Complete with "not involved" notes
+      await completeMutation.mutateAsync({
+        taskId: selectedTask.id,
+        completionNotes: `NOT INVOLVED: ${data.reason}\n\nVerified by: ${data.signature.signatureStamp}`,
+      });
+
+      // Log the signature
+      logSignature.mutate({
+        verification: data.signature,
+        formType: 'Not Involved Verification',
+        referenceType: 'task_feed_post',
+        referenceId: selectedTask.postId,
+        referenceNumber: selectedTask.postNumber,
+      });
+
+      onTaskCompleted?.(selectedTask);
+      setShowNotInvolved(false);
+      setSelectedTask(null);
+
+      Alert.alert(
+        'Verified',
+        `${getDepartmentName(departmentCode)} confirmed not involved in ${selectedTask.postNumber}.`,
+        [{ text: 'OK' }]
+      );
+    } catch (error) {
+      console.error('[TaskFeedInbox] Error confirming not involved:', error);
+      Alert.alert('Error', 'Failed to confirm.');
+    } finally {
+      setIsCompleting(false);
+    }
+  }, [selectedTask, completeMutation, logSignature, onTaskCompleted, departmentCode]);
+
+  const handleDecisionEscalate = useCallback(() => {
+    // Close decision, the parent page handles escalation
+    setShowDecisionModal(false);
+    // Navigate to post detail where escalation modal lives
+    if (selectedTask?.postId) {
+      router.push(`/(tabs)/taskfeed/${selectedTask.postId}`);
+    }
+  }, [selectedTask, router]);
+
+  const handleDecisionAnotherForm = useCallback(() => {
+    // Close decision, open form picker
+    setShowDecisionModal(false);
+    setShowFormPicker(true);
+  }, []);
+
+  const handleConfirmComplete = useCallback(async () => {
+    if (!selectedTask) return;
+
+    setIsCompleting(true);
+    try {
+      let moduleHistoryId: string | null = null;
+
+      if (createModuleHistoryRecord) {
+        moduleHistoryId = await createModuleHistoryRecord(selectedTask, completionNotes);
+        console.log('[TaskFeedInbox] Module history record created:', moduleHistoryId);
+      }
+
+      await completeMutation.mutateAsync({
+        taskId: selectedTask.id,
+        completionNotes: completionNotes.trim() || undefined,
+      });
+
+      onTaskCompleted?.(selectedTask, moduleHistoryId || undefined);
+
+      setShowCompleteModal(false);
+      setSelectedTask(null);
+      setCompletionNotes('');
+
+      Alert.alert(
+        'Task Completed',
+        `Task ${selectedTask.postNumber} has been marked as complete for ${getDepartmentName(departmentCode)}.`,
+        [{ text: 'OK' }]
+      );
+    } catch (error) {
+      console.error('[TaskFeedInbox] Error in complete flow:', error);
+    } finally {
+      setIsCompleting(false);
+    }
+  }, [selectedTask, completionNotes, completeMutation, createModuleHistoryRecord, onTaskCompleted, departmentCode]);
+
+  const handleWorkOrderComplete = useCallback(async (data: WorkOrderCompletionData) => {
+    if (!selectedTask || !createFullWorkOrder) return;
+
+    setIsCompleting(true);
+    try {
+      console.log('[TaskFeedInbox] Creating full work order for task:', selectedTask.postNumber);
+      
+      const workOrderId = await createFullWorkOrder(selectedTask, data);
+      console.log('[TaskFeedInbox] Work order created:', workOrderId);
+
+      const notesForTaskFeed = `Work Order Completed\n\nWork Performed: ${data.workPerformed}\nAction Taken: ${data.actionTaken}${data.partsUsed ? `\nParts Used: ${data.partsUsed}` : ''}${data.laborHours ? `\nLabor Hours: ${data.laborHours}` : ''}${data.rootCause ? `\nRoot Cause: ${data.rootCause}` : ''}${data.additionalNotes ? `\nNotes: ${data.additionalNotes}` : ''}`;
+
+      await completeMutation.mutateAsync({
+        taskId: selectedTask.id,
+        completionNotes: notesForTaskFeed,
+      });
+
+      // Link work order to department task so post detail can find it
+      if (workOrderId) {
+        try {
+          const { error: linkError } = await supabase
+            .from('task_feed_department_tasks')
+            .update({
+              module_history_type: 'work_order',
+              module_history_id: workOrderId,
+            })
+            .eq('id', selectedTask.id)
+            .eq('organization_id', organizationId);
+          
+          if (linkError) {
+            console.error('[TaskFeedInbox] Error linking WO to task:', linkError);
+          } else {
+            console.log('[TaskFeedInbox] Linked work order', workOrderId, 'to department task', selectedTask.id);
+          }
+        } catch (linkErr) {
+          console.error('[TaskFeedInbox] Failed to link WO to task:', linkErr);
+        }
+      }
+
+      // Note: Production hold is NOT auto-cleared by maintenance WO completion.
+      // Only Quality (1004) can release the line via the decision modal.
+
+      onTaskCompleted?.(selectedTask, workOrderId || undefined);
+
+      setShowWorkOrderModal(false);
+      setSelectedTask(null);
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert(
+        'Work Order Completed',
+        `Work order for ${selectedTask.postNumber} has been completed and recorded in CMMS history.${selectedTask.post?.is_production_hold ? '\n\nProduction hold has been cleared.' : ''}`,
+        [{ text: 'OK' }]
+      );
+    } catch (error) {
+      console.error('[TaskFeedInbox] Error creating work order:', error);
+      Alert.alert('Error', 'Failed to complete work order. Please try again.');
+    } finally {
+      setIsCompleting(false);
+    }
+  }, [selectedTask, createFullWorkOrder, completeMutation, clearHoldMutation, onTaskCompleted, departmentCode, user]);
+
+  const formatDate = useCallback((dateStr: string) => {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
     });
   }, []);
 
-  // Work Order Statistics from Supabase
-  const woStats = useMemo(() => {
-    if (woMetrics) {
-      const critical = workOrders.filter(wo => wo.priority === 'critical' && wo.status !== 'completed').length;
-      return {
-        open: woMetrics.open,
-        inProgress: woMetrics.inProgress,
-        completed: woMetrics.completed,
-        overdue: woMetrics.overdue,
-        critical,
-        total: woMetrics.total,
-      };
-    }
-    const open = workOrders.filter(wo => wo.status === 'open').length;
-    const inProgress = workOrders.filter(wo => wo.status === 'in_progress').length;
-    const completed = workOrders.filter(wo => wo.status === 'completed').length;
-    const today = new Date().toISOString().split('T')[0];
-    const overdue = workOrders.filter(wo => 
-      ['open', 'in_progress'].includes(wo.status || '') && 
-      wo.due_date && wo.due_date < today
-    ).length;
-    const critical = workOrders.filter(wo => wo.priority === 'critical' && wo.status !== 'completed').length;
-    const total = workOrders.length;
-    return { open, inProgress, completed, overdue, critical, total };
-  }, [workOrders, woMetrics]);
-
-  // PM Statistics from Supabase
-  const pmStats = useMemo(() => {
-    if (pmMetrics) {
-      const rate = typeof pmMetrics.complianceRate === 'number' && !isNaN(pmMetrics.complianceRate) 
-        ? pmMetrics.complianceRate 
-        : 100;
-      return {
-        scheduled: pmMetrics.active || 0,
-        overdue: pmMetrics.overdue || 0,
-        completed: pmMetrics.completedThisMonth || 0,
-        total: pmMetrics.total || 0,
-        complianceRate: rate,
-      };
-    }
-    const today = new Date().toISOString().split('T')[0];
-    const scheduled = pmSchedules.filter(pm => pm.active).length;
-    const overdue = pmSchedules.filter(pm => pm.active && pm.next_due < today).length;
-    const completed = pmSchedules.filter(pm => pm.last_completed).length;
-    const total = pmSchedules.length;
-    const complianceRate = total > 0 ? Math.round(((total - overdue) / total) * 100) : 100;
-    return { scheduled, overdue, completed, total, complianceRate };
-  }, [pmSchedules, pmMetrics]);
-
-  // Equipment Statistics from Supabase
-  const equipmentStats = useMemo(() => {
-    if (eqMetrics) {
-      const total = eqMetrics.total || 1;
-      const uptimeRate = total > 0 ? Math.round((eqMetrics.operational / total) * 100) : 100;
-      return {
-        operational: eqMetrics.operational,
-        down: eqMetrics.down,
-        maintenance: eqMetrics.needsMaintenance,
-        total: eqMetrics.total,
-        uptimeRate,
-      };
-    }
-    const operational = equipment.filter(e => e.status === 'operational').length;
-    const down = equipment.filter(e => e.status === 'down').length;
-    const maintenance = equipment.filter(e => e.status === 'needs_maintenance').length;
-    const total = equipment.length;
-    const uptimeRate = total > 0 ? Math.round((operational / total) * 100) : 100;
-    return { operational, down, maintenance, total, uptimeRate };
-  }, [equipment, eqMetrics]);
-
-  // KPIs calculated from actual Supabase data
-  const kpis = useMemo(() => ({
-    mttr: { value: 0, unit: 'hrs', trend: 0, label: 'MTTR' },
-    mtbf: { value: 0, unit: 'hrs', trend: 0, label: 'MTBF' },
-    wrenchTime: { value: 0, unit: '%', trend: 0, label: 'Wrench Time' },
-    pmCompliance: { value: pmStats.complianceRate, unit: '%', trend: 0, label: 'PM Compliance' },
-    backlog: { value: woStats.open + woStats.inProgress, unit: 'WOs', trend: 0, label: 'Backlog' },
-    firstTimeFixRate: { value: 0, unit: '%', trend: 0, label: 'First Time Fix' },
-  }), [pmStats.complianceRate, woStats.open, woStats.inProgress]);
-
-  // Recent Activity Feed - derived from Supabase data
-  const recentActivity: RecentActivity[] = useMemo(() => {
-    const activities: RecentActivity[] = [];
+  const formatTimeAgo = useCallback((dateStr: string) => {
     const now = new Date();
-    
-    const formatTimeAgo = (dateStr: string | null | undefined) => {
-      if (!dateStr) return 'Unknown';
-      const date = new Date(dateStr);
-      const diffMs = now.getTime() - date.getTime();
-      const diffMins = Math.floor(diffMs / (1000 * 60));
-      const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-      const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-      
-      if (diffMins < 1) return 'Just now';
-      if (diffMins < 60) return `${diffMins} min ago`;
-      if (diffHours < 24) return `${diffHours} hr${diffHours > 1 ? 's' : ''} ago`;
-      return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
-    };
+    const date = new Date(dateStr);
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / (1000 * 60));
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
 
-    // Add work order activities from Supabase
-    workOrders.slice(0, 20).forEach(wo => {
-      if (wo.status === 'completed' && wo.completed_at) {
-        activities.push({
-          id: `wo-comp-${wo.id}`,
-          type: 'wo_completed',
-          title: `WO Completed`,
-          description: wo.title || 'Work Order',
-          time: formatTimeAgo(wo.completed_at),
-          priority: wo.priority as 'low' | 'medium' | 'high' | 'critical',
-          _sortDate: new Date(wo.completed_at).getTime(),
-        } as RecentActivity & { _sortDate: number });
-      } else if (wo.status === 'in_progress' && wo.started_at) {
-        activities.push({
-          id: `wo-start-${wo.id}`,
-          type: 'wo_started',
-          title: `WO Started`,
-          description: wo.title || 'Work Order',
-          time: formatTimeAgo(wo.started_at),
-          priority: wo.priority as 'low' | 'medium' | 'high' | 'critical',
-          _sortDate: new Date(wo.started_at).getTime(),
-        } as RecentActivity & { _sortDate: number });
-      } else if (wo.status === 'open' && wo.created_at) {
-        activities.push({
-          id: `wo-create-${wo.id}`,
-          type: 'wo_created',
-          title: `WO Created`,
-          description: wo.title || 'Work Order',
-          time: formatTimeAgo(wo.created_at),
-          priority: wo.priority as 'low' | 'medium' | 'high' | 'critical',
-          _sortDate: new Date(wo.created_at).getTime(),
-        } as RecentActivity & { _sortDate: number });
-      }
-    });
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    return `${diffDays}d ago`;
+  }, []);
 
-    // Add PM work order activities from Supabase
-    pmWorkOrders.slice(0, 10).forEach(pm => {
-      if (pm.status === 'completed' && pm.completed_at) {
-        activities.push({
-          id: `pm-comp-${pm.id}`,
-          type: 'pm_completed',
-          title: 'PM Completed',
-          description: `${pm.title || 'PM'} - ${pm.equipment || 'Equipment'}`,
-          time: formatTimeAgo(pm.completed_at),
-          _sortDate: new Date(pm.completed_at).getTime(),
-        } as RecentActivity & { _sortDate: number });
-      }
-    });
-
-    // Add equipment down events from Supabase
-    equipment.forEach(eq => {
-      if (eq.status === 'down') {
-        activities.push({
-          id: `eq-down-${eq.id}`,
-          type: 'equipment_down',
-          title: 'Equipment Down',
-          description: `${eq.name} - ${eq.location || 'Unknown location'}`,
-          time: 'Current',
-          priority: 'high',
-          _sortDate: now.getTime(),
-        } as RecentActivity & { _sortDate: number });
-      }
-    });
-
-    // Sort by date and return top 10
-    return activities
-      .sort((a, b) => ((b as any)._sortDate || 0) - ((a as any)._sortDate || 0))
-      .slice(0, 10)
-      .map(({ _sortDate, ...rest }: any) => rest as RecentActivity);
-  }, [workOrders, pmWorkOrders, equipment]);
-
-  // Upcoming PMs - derived from Supabase PM schedules
-  const upcomingPMs: UpcomingPM[] = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
-    return pmSchedules
-      .filter(pm => pm.active && pm.next_due)
-      .map(pm => {
-        const dueDate = new Date(pm.next_due);
-        dueDate.setHours(0, 0, 0, 0);
-        const diffTime = dueDate.getTime() - today.getTime();
-        const daysUntil = isNaN(diffTime) ? 999 : Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        
-        return {
-          id: pm.id,
-          name: pm.name,
-          equipment: pm.equipment_name || 'Unknown Equipment',
-          dueDate: pm.next_due,
-          daysUntil,
-          priority: (pm.priority || 'medium') as 'low' | 'medium' | 'high' | 'critical',
-        };
-      })
-      .filter(pm => !isNaN(pm.daysUntil) && pm.daysUntil >= -7 && pm.daysUntil <= 14)
-      .sort((a, b) => a.daysUntil - b.daysUntil)
-      .slice(0, 6);
-  }, [pmSchedules]);
-
-  const getActivityIcon = (type: string) => {
-    switch (type) {
-      case 'wo_completed': return CheckCircle2;
-      case 'wo_created': return Plus;
-      case 'wo_started': return PlayCircle;
-      case 'pm_completed': return Calendar;
-      case 'equipment_down': return AlertOctagon;
-      case 'equipment_up': return Zap;
-      default: return Activity;
-    }
-  };
-
-  const getActivityColor = (type: string, priority?: string) => {
-    if (type === 'equipment_down') return '#EF4444';
-    if (type === 'equipment_up') return '#10B981';
-    if (type === 'wo_completed' || type === 'pm_completed') return '#10B981';
-    if (priority === 'critical') return '#DC2626';
-    if (priority === 'high') return '#F59E0B';
-    return '#3B82F6';
-  };
-
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'critical': return '#DC2626';
-      case 'high': return '#F59E0B';
-      case 'medium': return '#3B82F6';
-      case 'low': return '#10B981';
-      default: return '#6B7280';
-    }
-  };
-
-  const quickActions = [
-    { label: 'New Work Order', icon: Plus, color: '#3B82F6', route: '/cmms/newworkorder' },
-    { label: 'PM Schedule', icon: Calendar, color: '#10B981', route: '/cmms/pmschedule' },
-    { label: 'Equipment', icon: Cog, color: '#8B5CF6', route: '/cmms/equipmentlist' },
-    { label: 'MRO Parts', icon: Package, color: '#EC4899', route: '/cmms/partslist' },
-  ];
-
-  const orgContext = useOrganization();
-  const organizationId = orgContext?.organizationId || '';
-  const facilityId = orgContext?.facilityId || '';
-  const { user } = useUser();
-
-  const handleCreateFullWorkOrder = useCallback(async (
-    task: TaskFeedDepartmentTask,
-    completionData: WorkOrderCompletionData
-  ): Promise<string | null> => {
-    try {
-      if (!organizationId) {
-        console.warn('[CMMS] No organization ID available, skipping work order creation');
-        return null;
-      }
-      
-      console.log('[CMMS] Creating full work order for task:', task.postNumber);
-      
-      const workOrderNumber = `WO-${Date.now().toString(36).toUpperCase()}`;
-      const completedByName = user ? `${user.first_name} ${user.last_name}` : 'System';
-      
-      const fullDescription = `**Source:** Task Feed - ${task.postNumber}
-**Original Request:** ${task.departmentName} Task
-
----
-
-**WORK PERFORMED:**
-${completionData.workPerformed}
-
-**ACTION TAKEN:**
-${completionData.actionTaken}
-${completionData.rootCause ? `
-**ROOT CAUSE:**
-${completionData.rootCause}` : ''}
-${completionData.preventiveAction ? `
-**PREVENTIVE ACTION:**
-${completionData.preventiveAction}` : ''}
-${completionData.partsUsed ? `
-**PARTS USED:**
-${completionData.partsUsed}` : ''}
-${completionData.laborHours ? `
-**LABOR HOURS:** ${completionData.laborHours}` : ''}
-${completionData.additionalNotes ? `
-**ADDITIONAL NOTES:**
-${completionData.additionalNotes}` : ''}
-
----
-**Completed By:** ${completedByName}
-**Completed At:** ${new Date().toLocaleString()}`;
-
-      const laborHoursNum = completionData.laborHours ? parseFloat(completionData.laborHours) : null;
-      
-      const { data, error } = await supabase
-        .from('work_orders')
-        .insert({
-          organization_id: organizationId,
-          work_order_number: workOrderNumber,
-          title: `Task Feed WO: ${task.postNumber}`,
-          description: fullDescription,
-          status: 'completed',
-          priority: 'medium',
-          type: 'corrective',
-          source: 'task_feed',
-          source_id: task.postId,
-          facility_id: facilityId || null,
-          assigned_to: user?.id || null,
-          started_at: new Date().toISOString(),
-          completed_at: new Date().toISOString(),
-          actual_hours: laborHoursNum,
-          completion_notes: `Work Performed: ${completionData.workPerformed}\n\nAction Taken: ${completionData.actionTaken}${completionData.rootCause ? `\n\nRoot Cause: ${completionData.rootCause}` : ''}${completionData.partsUsed && completionData.partsUsed.length > 0 ? `\n\nParts Used: ${JSON.stringify(completionData.partsUsed)}` : ''}`,
-          attachments: completionData.completionPhotos.length > 0 ? completionData.completionPhotos : [],
-        })
-        .select('id, work_order_number')
-        .single();
-
-      if (error) {
-        console.error('[CMMS] Error creating work order:', error.message || error.code || 'Unknown error');
-        console.error('[CMMS] Error details:', error.details || 'No details');
-        
-        const { data: fallbackData, error: fallbackError } = await supabase
-          .from('work_orders')
-          .insert({
-            organization_id: organizationId,
-            work_order_number: workOrderNumber,
-            title: `Task Feed WO: ${task.postNumber}`,
-            description: fullDescription,
-            status: 'completed',
-            priority: 'medium',
-            source: 'task_feed',
-            source_id: task.postId,
-            facility_id: facilityId || null,
-            completed_at: new Date().toISOString(),
-          })
-          .select('id, work_order_number')
-          .single();
-
-        if (fallbackError) {
-          console.error('[CMMS] Fallback also failed:', fallbackError.message);
-          return null;
-        }
-
-        console.log('[CMMS] Work order created (fallback):', fallbackData.work_order_number);
-        return fallbackData.id;
-      }
-
-      console.log('[CMMS] Full work order created:', data.work_order_number);
-      return data.id;
-    } catch (err: any) {
-      console.error('[CMMS] Exception creating work order:', err?.message || 'Unknown exception');
-      return null;
-    }
-  }, [organizationId, facilityId, user]);
-
-  const handleTaskCompleted = useCallback((task: TaskFeedDepartmentTask, moduleHistoryId?: string) => {
-    console.log('[CMMS] Task completed:', task.postNumber, 'History ID:', moduleHistoryId);
-    refetchWO();
-  }, [refetchWO]);
-
-  const hasError = woError || eqError || pmError;
-  const errorMessage = woError?.message || eqError?.message || pmError?.message || 'Unknown error';
-
-  if (isLoading && workOrders.length === 0 && !hasError) {
+  if (isLoading) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['left', 'right']}>
+      <View style={[styles.container, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Loading CMMS data...</Text>
+          <ActivityIndicator size="small" color={accentColor} />
+          <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Loading tasks...</Text>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
-  if (hasError && workOrders.length === 0 && equipment.length === 0 && pmSchedules.length === 0) {
-    return (
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['left', 'right']}>
-        <View style={styles.loadingContainer}>
-          <AlertTriangle size={48} color="#EF4444" />
-          <Text style={[styles.errorTitle, { color: colors.text }]}>Unable to Load Data</Text>
-          <Text style={[styles.errorMessage, { color: colors.textSecondary }]}>{errorMessage}</Text>
-          <Pressable
-            style={[styles.retryButton, { backgroundColor: colors.primary }]}
-            onPress={onRefresh}
-          >
-            <Text style={styles.retryButtonText}>Retry</Text>
-          </Pressable>
-        </View>
-      </SafeAreaView>
-    );
+  if (pendingTasks.length === 0) {
+    return null;
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['left', 'right']}>
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.content}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
-        }
-      >
-        {/* Critical Alerts Banner */}
-        {(woStats.critical > 0 || equipmentStats.down > 0) && (
-          <Pressable
-            style={[styles.alertBanner, { backgroundColor: '#DC262615', borderColor: '#DC2626' }]}
-            onPress={() => handleFormPress('/cmms/workorders')}
-          >
-            <View style={styles.alertBannerContent}>
-              <AlertOctagon size={20} color="#DC2626" />
-              <View style={styles.alertBannerText}>
-                <Text style={[styles.alertBannerTitle, { color: '#DC2626' }]}>Attention Required</Text>
-                <Text style={[styles.alertBannerDesc, { color: colors.textSecondary }]}>
-                  {woStats.critical > 0 && `${woStats.critical} critical WO${woStats.critical > 1 ? 's' : ''}`}
-                  {woStats.critical > 0 && equipmentStats.down > 0 && ' • '}
-                  {equipmentStats.down > 0 && `${equipmentStats.down} equipment down`}
-                </Text>
-              </View>
+    <View style={[styles.container, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+      {showHeader && (
+        <TouchableOpacity
+          style={styles.header}
+          onPress={() => setIsExpanded(!isExpanded)}
+          activeOpacity={0.7}
+        >
+          <View style={styles.headerLeft}>
+            <View style={[styles.headerIcon, { backgroundColor: accentColor + '20' }]}>
+              <Inbox size={18} color={accentColor} />
             </View>
-            <ChevronRight size={18} color="#DC2626" />
-          </Pressable>
-        )}
-
-        {/* KPI Dashboard */}
-        <View style={styles.kpiSection}>
-          <View style={styles.sectionHeaderRow}>
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>Key Metrics</Text>
-            <Pressable onPress={() => handleFormPress('/cmms/kpidashboard')}>
-              <Text style={[styles.seeAllText, { color: colors.primary }]}>View All</Text>
-            </Pressable>
+            <View style={styles.headerText}>
+              <Text style={[styles.headerTitle, { color: colors.text }]}>Task Feed Inbox</Text>
+              <Text style={[styles.headerCount, { color: colors.textSecondary }]}>
+                {pendingTasks.length} pending task{pendingTasks.length !== 1 ? 's' : ''}
+              </Text>
+            </View>
           </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.kpiScroll}>
-            <View style={styles.kpiRow}>
-              {Object.entries(kpis).map(([key, kpi]) => (
-                <View key={key} style={[styles.kpiCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                  <Text style={[styles.kpiLabel, { color: colors.textSecondary }]}>{kpi.label}</Text>
-                  <View style={styles.kpiValueRow}>
-                    <Text style={[styles.kpiValue, { color: colors.text }]}>{kpi.value}</Text>
-                    <Text style={[styles.kpiUnit, { color: colors.textSecondary }]}>{kpi.unit}</Text>
-                  </View>
-                  <View style={styles.kpiTrendRow}>
-                    {kpi.trend > 0 ? (
-                      <TrendingUp size={12} color="#10B981" />
-                    ) : (
-                      <TrendingDown size={12} color="#EF4444" />
+          <View style={styles.headerRight}>
+            <View style={[styles.countBadge, { backgroundColor: accentColor }]}>
+              <Text style={styles.countBadgeText}>{pendingTasks.length}</Text>
+            </View>
+            {isExpanded ? (
+              <ChevronUp size={20} color={colors.textSecondary} />
+            ) : (
+              <ChevronDown size={20} color={colors.textSecondary} />
+            )}
+          </View>
+        </TouchableOpacity>
+      )}
+
+      {isExpanded && (
+        <View style={styles.taskList}>
+          {visibleTasks.map((task, index) => (
+            <View
+              key={task.id}
+              style={[
+                styles.taskItem,
+                index < visibleTasks.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border },
+              ]}
+            >
+              <View style={styles.taskMain}>
+                <View style={styles.taskInfo}>
+                  <View style={styles.taskHeader}>
+                    <Text style={[styles.postNumber, { color: accentColor }]}>
+                      {task.postNumber}
+                    </Text>
+                    {task.post?.is_production_hold && (
+                      <View style={[styles.holdIndicator, {
+                        backgroundColor: task.post?.hold_status === 'cleared' ? '#10B98120' : '#EF444420',
+                      }]}>
+                        <Factory size={9} color={task.post?.hold_status === 'cleared' ? '#10B981' : '#EF4444'} />
+                        <Text style={[styles.holdIndicatorText, {
+                          color: task.post?.hold_status === 'cleared' ? '#10B981' : '#EF4444',
+                        }]}>
+                          {task.post?.hold_status === 'cleared' ? 'RELEASED' : 'HOLD'}
+                        </Text>
+                      </View>
                     )}
-                    <Text style={[styles.kpiTrend, { color: kpi.trend > 0 ? '#10B981' : '#EF4444' }]}>
-                      {kpi.trend > 0 ? '+' : ''}{kpi.trend}%
+                    <Text style={[styles.timeAgo, { color: colors.textSecondary }]}>
+                      {formatTimeAgo(task.assignedAt)}
                     </Text>
                   </View>
+                  <Text style={[styles.templateName, { color: colors.text }]} numberOfLines={1}>
+                    {task.post?.template_name || 'Task'}
+                  </Text>
+                  {/* Status indicator for in-progress tasks */}
+                  {task.status === 'in_progress' && (
+                    <View style={styles.inProgressRow}>
+                      <View style={[styles.inProgressBadge, { backgroundColor: '#F59E0B20' }]}>
+                        <Clock size={10} color="#F59E0B" />
+                        <Text style={styles.inProgressText}>In Progress</Text>
+                      </View>
+                      {(task.formsCompleted || 0) > 0 && (
+                        <View style={[styles.inProgressBadge, { backgroundColor: '#10B98120' }]}>
+                          <FileText size={10} color="#10B981" />
+                          <Text style={[styles.formCountText, { color: '#10B981' }]}>{task.formsCompleted} form{task.formsCompleted !== 1 ? 's' : ''}</Text>
+                        </View>
+                      )}
+                    </View>
+                  )}
+                  {task.post?.location_name && (
+                    <View style={styles.locationRow}>
+                      <MapPin size={12} color={colors.textSecondary} />
+                      <Text style={[styles.locationText, { color: colors.textSecondary }]} numberOfLines={1}>
+                        {task.post.location_name}
+                      </Text>
+                    </View>
+                  )}
+                  {task.post?.created_by_name && (
+                    <View style={styles.createdByRow}>
+                      <User size={12} color={colors.textTertiary} />
+                      <Text style={[styles.createdByText, { color: colors.textTertiary }]}>
+                        {task.post.created_by_name}
+                      </Text>
+                    </View>
+                  )}
                 </View>
-              ))}
-            </View>
-          </ScrollView>
-        </View>
 
-        {/* Work Order Status Overview */}
-        <View style={[styles.statusOverview, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <View style={styles.statusHeader}>
-            <Text style={[styles.statusTitle, { color: colors.text }]}>Work Order Status</Text>
-            <Pressable onPress={() => handleFormPress('/cmms/workorders')}>
-              <Text style={[styles.seeAllText, { color: colors.primary }]}>View All</Text>
-            </Pressable>
-          </View>
-          <View style={styles.statusGrid}>
-            <Pressable 
-              style={[styles.statusItem, { backgroundColor: '#3B82F615' }]}
-              onPress={() => handleFormPress('/cmms/workorders')}
-            >
-              <Clock size={18} color="#3B82F6" />
-              <Text style={[styles.statusValue, { color: colors.text }]}>{woStats.open}</Text>
-              <Text style={[styles.statusLabel, { color: colors.textSecondary }]}>Open</Text>
-            </Pressable>
-            <Pressable 
-              style={[styles.statusItem, { backgroundColor: '#F59E0B15' }]}
-              onPress={() => handleFormPress('/cmms/workorders')}
-            >
-              <PlayCircle size={18} color="#F59E0B" />
-              <Text style={[styles.statusValue, { color: colors.text }]}>{woStats.inProgress}</Text>
-              <Text style={[styles.statusLabel, { color: colors.textSecondary }]}>In Progress</Text>
-            </Pressable>
-            <Pressable 
-              style={[styles.statusItem, { backgroundColor: '#EF444415' }]}
-              onPress={() => handleFormPress('/cmms/workorders')}
-            >
-              <AlertTriangle size={18} color="#EF4444" />
-              <Text style={[styles.statusValue, { color: colors.text }]}>{woStats.overdue}</Text>
-              <Text style={[styles.statusLabel, { color: colors.textSecondary }]}>Overdue</Text>
-            </Pressable>
-            <Pressable 
-              style={[styles.statusItem, { backgroundColor: '#10B98115' }]}
-              onPress={() => handleFormPress('/cmms/wohistory')}
-            >
-              <CheckCircle2 size={18} color="#10B981" />
-              <Text style={[styles.statusValue, { color: colors.text }]}>{woStats.completed}</Text>
-              <Text style={[styles.statusLabel, { color: colors.textSecondary }]}>Completed</Text>
-            </Pressable>
-          </View>
-        </View>
+                <View style={styles.taskActions}>
+                  {/* Not Involved button — only for pending tasks */}
+                  {task.status === 'pending' && (
+                    <TouchableOpacity
+                      style={[styles.actionButton, { backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border }]}
+                      onPress={() => handleNotInvolvedPress(task)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.actionButtonText, { color: colors.textSecondary, fontSize: 11 }]}>Not{'\n'}Involved</Text>
+                    </TouchableOpacity>
+                  )}
 
-        {/* Equipment Health & PM Status Row */}
-        <View style={styles.dualCardRow}>
-          <View style={[styles.halfCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <View style={styles.halfCardHeader}>
-              <Cog size={16} color="#8B5CF6" />
-              <Text style={[styles.halfCardTitle, { color: colors.text }]}>Equipment</Text>
+                  <TouchableOpacity
+                    style={[styles.actionButton, styles.completeButton, { backgroundColor: accentColor }]}
+                    onPress={() => handleStartComplete(task)}
+                    activeOpacity={0.7}
+                  >
+                    {isMaintenanceDept ? (
+                      <>
+                        <Wrench size={16} color="#fff" />
+                        <Text style={[styles.actionButtonText, { color: '#fff' }]}>Complete WO</Text>
+                      </>
+                    ) : task.status === 'in_progress' ? (
+                      <>
+                        <ClipboardList size={16} color="#fff" />
+                        <Text style={[styles.actionButtonText, { color: '#fff' }]}>Continue</Text>
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 size={16} color="#fff" />
+                        <Text style={[styles.actionButtonText, { color: '#fff' }]}>Start</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
             </View>
-            <View style={styles.halfCardContent}>
-              <View style={styles.healthBar}>
-                <View style={[styles.healthSegment, { backgroundColor: '#10B981', flex: equipmentStats.operational }]} />
-                <View style={[styles.healthSegment, { backgroundColor: '#F59E0B', flex: equipmentStats.maintenance }]} />
-                <View style={[styles.healthSegment, { backgroundColor: '#EF4444', flex: equipmentStats.down || 0.01 }]} />
-              </View>
-              <View style={styles.healthLegend}>
-                <View style={styles.legendItem}>
-                  <View style={[styles.legendDot, { backgroundColor: '#10B981' }]} />
-                  <Text style={[styles.legendText, { color: colors.textSecondary }]}>{equipmentStats.operational} Up</Text>
-                </View>
-                <View style={styles.legendItem}>
-                  <View style={[styles.legendDot, { backgroundColor: '#EF4444' }]} />
-                  <Text style={[styles.legendText, { color: colors.textSecondary }]}>{equipmentStats.down} Down</Text>
-                </View>
-              </View>
-              <Text style={[styles.uptimeText, { color: colors.text }]}>
-                <Text style={styles.uptimeValue}>{equipmentStats.uptimeRate}%</Text> Uptime
+          ))}
+
+          {hasMoreTasks && (
+            <TouchableOpacity
+              style={styles.showMoreButton}
+              onPress={() => setShowAllTasks(!showAllTasks)}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.showMoreText, { color: accentColor }]}>
+                {showAllTasks ? 'Show Less' : `Show ${pendingTasks.length - maxVisible} More`}
               </Text>
-            </View>
-          </View>
-
-          <View style={[styles.halfCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <View style={styles.halfCardHeader}>
-              <CalendarClock size={16} color="#10B981" />
-              <Text style={[styles.halfCardTitle, { color: colors.text }]}>PM Status</Text>
-            </View>
-            <View style={styles.halfCardContent}>
-              <View style={styles.pmCircle}>
-                <Text style={[styles.pmCircleValue, { color: '#10B981' }]}>{pmStats.complianceRate}%</Text>
-                <Text style={[styles.pmCircleLabel, { color: colors.textSecondary }]}>Compliance</Text>
-              </View>
-              <View style={styles.pmStats}>
-                <View style={styles.pmStatRow}>
-                  <Text style={[styles.pmStatValue, { color: colors.text }]}>{pmStats.scheduled}</Text>
-                  <Text style={[styles.pmStatLabel, { color: colors.textSecondary }]}>Scheduled</Text>
-                </View>
-                <View style={styles.pmStatRow}>
-                  <Text style={[styles.pmStatValue, { color: pmStats.overdue > 0 ? '#EF4444' : colors.text }]}>{pmStats.overdue}</Text>
-                  <Text style={[styles.pmStatLabel, { color: colors.textSecondary }]}>Overdue</Text>
-                </View>
-              </View>
-            </View>
-          </View>
+              {showAllTasks ? (
+                <ChevronUp size={16} color={accentColor} />
+              ) : (
+                <ChevronDown size={16} color={accentColor} />
+              )}
+            </TouchableOpacity>
+          )}
         </View>
+      )}
 
-        {/* Quick Actions */}
-        <View style={styles.quickActionsSection}>
-          <TaskFeedInbox
-          departmentCode="1001"
-          moduleColor="#3B82F6"
-          onTaskCompleted={handleTaskCompleted}
-          createFullWorkOrder={handleCreateFullWorkOrder}
-          requiresFullWorkOrder={true}
-          maxVisible={3}
-        />
+      {/* Post Detail Modal */}
+      <Modal visible={showPostDetailModal} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContainer, { backgroundColor: colors.surface }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+              <View style={styles.modalHeaderLeft}>
+                <Text style={[styles.modalTitle, { color: colors.text }]}>Original Post</Text>
+                {selectedTask && (
+                  <Text style={[styles.modalPostNumber, { color: accentColor }]}>
+                    {selectedTask.postNumber}
+                  </Text>
+                )}
+              </View>
+              <TouchableOpacity onPress={() => setShowPostDetailModal(false)}>
+                <X size={24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
 
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>Quick Actions</Text>
-          <View style={styles.quickActionsGrid}>
-            {quickActions.map((action, index) => {
-              const IconComponent = action.icon;
-              return (
-                <Pressable
-                  key={index}
-                  style={({ pressed }) => [
-                    styles.quickActionCard,
-                    { 
-                      backgroundColor: colors.surface, 
-                      borderColor: colors.border,
-                      opacity: pressed ? 0.8 : 1,
-                      transform: [{ scale: pressed ? 0.98 : 1 }],
-                    },
-                  ]}
-                  onPress={() => handleFormPress(action.route)}
-                >
-                  <View style={[styles.quickActionIcon, { backgroundColor: action.color + '15' }]}>
-                    <IconComponent size={22} color={action.color} />
+            <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
+              {selectedTask?.post && (
+                <>
+                  <View style={[styles.detailSection, { backgroundColor: colors.background }]}>
+                    <View style={styles.detailRow}>
+                      <ClipboardList size={16} color={colors.textSecondary} />
+                      <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Template</Text>
+                    </View>
+                    <Text style={[styles.detailValue, { color: colors.text }]}>
+                      {selectedTask.post.template_name}
+                    </Text>
                   </View>
-                  <Text style={[styles.quickActionLabel, { color: colors.text }]}>{action.label}</Text>
-                </Pressable>
-              );
-            })}
+
+                  <View style={[styles.detailSection, { backgroundColor: colors.background }]}>
+                    <View style={styles.detailRow}>
+                      <User size={16} color={colors.textSecondary} />
+                      <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Created By</Text>
+                    </View>
+                    <Text style={[styles.detailValue, { color: colors.text }]}>
+                      {selectedTask.post.created_by_name}
+                    </Text>
+                  </View>
+
+                  <View style={[styles.detailSection, { backgroundColor: colors.background }]}>
+                    <View style={styles.detailRow}>
+                      <Calendar size={16} color={colors.textSecondary} />
+                      <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Created At</Text>
+                    </View>
+                    <Text style={[styles.detailValue, { color: colors.text }]}>
+                      {formatDate(selectedTask.post.created_at)}
+                    </Text>
+                  </View>
+
+                  {selectedTask.post.location_name && (
+                    <View style={[styles.detailSection, { backgroundColor: colors.background }]}>
+                      <View style={styles.detailRow}>
+                        <MapPin size={16} color={colors.textSecondary} />
+                        <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Location</Text>
+                      </View>
+                      <Text style={[styles.detailValue, { color: colors.text }]}>
+                        {selectedTask.post.location_name}
+                      </Text>
+                    </View>
+                  )}
+
+                  {selectedTask.post.photo_url && (
+                    <View style={[styles.detailSection, { backgroundColor: colors.background }]}>
+                      <View style={styles.detailRow}>
+                        <Camera size={16} color={colors.textSecondary} />
+                        <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Photo</Text>
+                      </View>
+                      <Image
+                        source={{ uri: selectedTask.post.photo_url }}
+                        style={styles.postImage}
+                        resizeMode="cover"
+                      />
+                    </View>
+                  )}
+
+                  {Object.keys(selectedTask.post.form_data).length > 0 && (
+                    <View style={[styles.detailSection, { backgroundColor: colors.background }]}>
+                      <View style={styles.detailRow}>
+                        <FileText size={16} color={colors.textSecondary} />
+                        <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Form Data</Text>
+                      </View>
+                      {Object.entries(selectedTask.post.form_data).map(([key, value]) => {
+                        const formatLabel = (str: string) => {
+                          return str
+                            .replace(/_/g, ' ')
+                            .replace(/([A-Z])/g, ' $1')
+                            .replace(/^./, (s) => s.toUpperCase())
+                            .trim();
+                        };
+
+                        const formatValue = (val: any): string => {
+                          if (val === null || val === undefined) return '-';
+                          if (typeof val === 'boolean') return val ? 'Yes' : 'No';
+                          if (typeof val === 'number') return val.toString();
+                          if (typeof val === 'string') return val || '-';
+                          if (Array.isArray(val)) return val.join(', ') || '-';
+                          if (typeof val === 'object') {
+                            return Object.entries(val)
+                              .map(([k, v]) => `${formatLabel(k)}: ${formatValue(v)}`)
+                              .join(', ');
+                          }
+                          return String(val);
+                        };
+
+                        const displayValue = formatValue(value);
+                        const isLongValue = displayValue.length > 50;
+
+                        return (
+                          <View key={key} style={isLongValue ? styles.formDataRowStacked : styles.formDataRow}>
+                            <Text style={[styles.formDataKey, { color: colors.textSecondary }]}>
+                              {formatLabel(key)}:
+                            </Text>
+                            <Text style={[styles.formDataValue, { color: colors.text }]} numberOfLines={isLongValue ? 3 : 1}>
+                              {displayValue}
+                            </Text>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  )}
+
+                  {selectedTask.post.notes && (
+                    <View style={[styles.detailSection, { backgroundColor: colors.background }]}>
+                      <View style={styles.detailRow}>
+                        <MessageSquare size={16} color={colors.textSecondary} />
+                        <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Notes</Text>
+                      </View>
+                      <Text style={[styles.detailValue, { color: colors.text }]}>
+                        {selectedTask.post.notes}
+                      </Text>
+                    </View>
+                  )}
+
+                  <View style={[styles.assignedDeptBanner, { backgroundColor: accentColor + '15' }]}>
+                    <AlertTriangle size={16} color={accentColor} />
+                    <Text style={[styles.assignedDeptText, { color: accentColor }]}>
+                      Assigned to {getDepartmentName(departmentCode)} for action
+                    </Text>
+                  </View>
+                </>
+              )}
+            </ScrollView>
+
+            <View style={[styles.modalFooter, { backgroundColor: colors.background }]}>
+              <TouchableOpacity
+                style={[styles.modalButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                onPress={() => setShowPostDetailModal(false)}
+              >
+                <Text style={[styles.modalButtonText, { color: colors.text }]}>Close</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.completeModalButton, { backgroundColor: accentColor }]}
+                onPress={() => {
+                  setShowPostDetailModal(false);
+                  if (selectedTask) handleStartComplete(selectedTask);
+                }}
+              >
+                {isMaintenanceDept ? (
+                  <>
+                    <Wrench size={18} color="#fff" />
+                    <Text style={[styles.modalButtonText, { color: '#fff' }]}>Complete Work Order</Text>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 size={18} color="#fff" />
+                    <Text style={[styles.modalButtonText, { color: '#fff' }]}>Mark Complete</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
+      </Modal>
 
-        {/* Upcoming PMs */}
-        <View style={[styles.upcomingSection, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <View style={styles.sectionHeaderRow}>
-            <View style={styles.sectionTitleRow}>
-              <Calendar size={18} color="#10B981" />
-              <Text style={[styles.sectionTitleInline, { color: colors.text }]}>Upcoming PMs</Text>
+      {/* Complete Task Modal */}
+      <Modal visible={showCompleteModal} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.completeModalContainer, { backgroundColor: colors.surface }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+              <View style={styles.modalHeaderLeft}>
+                <Text style={[styles.modalTitle, { color: colors.text }]}>Complete Task</Text>
+                {selectedTask && (
+                  <Text style={[styles.modalPostNumber, { color: accentColor }]}>
+                    {selectedTask.postNumber}
+                  </Text>
+                )}
+              </View>
+              <TouchableOpacity onPress={() => setShowCompleteModal(false)}>
+                <X size={24} color={colors.text} />
+              </TouchableOpacity>
             </View>
-            <Pressable onPress={() => handleFormPress('/cmms/pmcalendar')}>
-              <Text style={[styles.seeAllText, { color: colors.primary }]}>Calendar</Text>
-            </Pressable>
-          </View>
-          {upcomingPMs.map((pm, index) => (
-            <Pressable
-              key={pm.id}
-              style={[styles.upcomingItem, index < upcomingPMs.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border }]}
-              onPress={() => handleFormPress('/cmms/pmschedule')}
-            >
-              <View style={[styles.dueBadge, { backgroundColor: getPriorityColor(pm.priority) + '20' }]}>
-                <Text style={[styles.dueBadgeText, { color: getPriorityColor(pm.priority) }]}>
-                  {pm.daysUntil === 0 ? 'Today' : pm.daysUntil === 1 ? 'Tomorrow' : pm.daysUntil < 0 ? `${Math.abs(pm.daysUntil)} days ago` : `${pm.daysUntil} days`}
+
+            <View style={styles.completeModalContent}>
+              <View style={[styles.taskSummary, { backgroundColor: colors.background }]}>
+                <Text style={[styles.taskSummaryTitle, { color: colors.text }]}>
+                  {selectedTask?.post?.template_name || 'Task'}
+                </Text>
+                {selectedTask?.post?.location_name && (
+                  <Text style={[styles.taskSummaryLocation, { color: colors.textSecondary }]}>
+                    {selectedTask.post.location_name}
+                  </Text>
+                )}
+              </View>
+
+              <Text style={[styles.inputLabel, { color: colors.text }]}>Completion Notes (Optional)</Text>
+              <TextInput
+                style={[styles.notesInput, { backgroundColor: colors.background, color: colors.text, borderColor: colors.border }]}
+                placeholder="Add notes about how you completed this task..."
+                placeholderTextColor={colors.textTertiary}
+                value={completionNotes}
+                onChangeText={setCompletionNotes}
+                multiline
+                numberOfLines={4}
+                textAlignVertical="top"
+              />
+
+              <View style={[styles.completionInfo, { backgroundColor: accentColor + '10' }]}>
+                <CheckCircle2 size={16} color={accentColor} />
+                <Text style={[styles.completionInfoText, { color: accentColor }]}>
+                  This will mark the task complete for {getDepartmentName(departmentCode)}
+                  {createModuleHistoryRecord && ' and create a record in module history'}
                 </Text>
               </View>
-              <View style={styles.upcomingInfo}>
-                <Text style={[styles.upcomingName, { color: colors.text }]}>{pm.name}</Text>
-                <Text style={[styles.upcomingEquipment, { color: colors.textSecondary }]}>{pm.equipment}</Text>
-              </View>
-              <ChevronRight size={16} color={colors.textSecondary} />
-            </Pressable>
-          ))}
-        </View>
-
-        {/* Recent Activity */}
-        <View style={[styles.activitySection, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <View style={styles.sectionHeaderRow}>
-            <View style={styles.sectionTitleRow}>
-              <Activity size={18} color="#3B82F6" />
-              <Text style={[styles.sectionTitleInline, { color: colors.text }]}>Recent Activity</Text>
             </View>
-            <Pressable onPress={() => setShowAllActivity(!showAllActivity)}>
-              <Text style={[styles.seeAllText, { color: colors.primary }]}>
-                {showAllActivity ? 'Show Less' : 'Show All'}
-              </Text>
-            </Pressable>
-          </View>
-          {(showAllActivity ? recentActivity : recentActivity.slice(0, 4)).map((activity, index) => {
-            const IconComponent = getActivityIcon(activity.type);
-            const iconColor = getActivityColor(activity.type, activity.priority);
-            return (
-              <View
-                key={activity.id}
-                style={[styles.activityItem, index < (showAllActivity ? recentActivity.length : 4) - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border }]}
-              >
-                <View style={[styles.activityIcon, { backgroundColor: iconColor + '15' }]}>
-                  <IconComponent size={16} color={iconColor} />
-                </View>
-                <View style={styles.activityContent}>
-                  <Text style={[styles.activityTitle, { color: colors.text }]}>{activity.title}</Text>
-                  <Text style={[styles.activityDesc, { color: colors.textSecondary }]}>{activity.description}</Text>
-                </View>
-                <Text style={[styles.activityTime, { color: colors.textSecondary }]}>{activity.time}</Text>
-              </View>
-            );
-          })}
-        </View>
 
-        {/* CMMS Modules */}
-        <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 24 }]}>CMMS Modules</Text>
-
-        {CMMS_CATEGORIES.map((category) => {
-          const IconComponent = category.icon;
-          const isExpanded = expandedCategories.has(category.id);
-          
-          return (
-            <View key={category.id} style={styles.categoryContainer}>
-              <Pressable
-                style={({ pressed }) => [
-                  styles.categoryHeader,
-                  { 
-                    backgroundColor: colors.surface, 
-                    borderColor: colors.border,
-                    opacity: pressed ? 0.9 : 1,
-                  },
-                ]}
-                onPress={() => toggleCategory(category.id)}
+            <View style={[styles.modalFooter, { backgroundColor: colors.background }]}>
+              <TouchableOpacity
+                style={[styles.modalButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                onPress={() => setShowCompleteModal(false)}
+                disabled={isCompleting}
               >
-                <View style={styles.categoryHeaderLeft}>
-                  <View style={[styles.categoryIcon, { backgroundColor: category.color + '15' }]}>
-                    <IconComponent size={20} color={category.color} />
-                  </View>
-                  <View style={styles.categoryTitleContainer}>
-                    <Text style={[styles.categoryTitle, { color: colors.text }]}>{category.title}</Text>
-                    <Text style={[styles.categoryCount, { color: colors.textSecondary }]}>
-                      {category.forms.length} modules
-                    </Text>
-                  </View>
-                </View>
-                {isExpanded ? (
-                  <ChevronUp size={20} color={colors.textSecondary} />
+                <Text style={[styles.modalButtonText, { color: colors.text }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.completeModalButton, { backgroundColor: isCompleting ? colors.border : accentColor }]}
+                onPress={handleConfirmComplete}
+                disabled={isCompleting}
+              >
+                {isCompleting ? (
+                  <ActivityIndicator size="small" color="#fff" />
                 ) : (
-                  <ChevronDown size={20} color={colors.textSecondary} />
+                  <>
+                    <CheckCircle2 size={18} color="#fff" />
+                    <Text style={[styles.modalButtonText, { color: '#fff' }]}>Complete Task</Text>
+                  </>
                 )}
-              </Pressable>
-              
-              {isExpanded && (
-                <View style={[styles.formsContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                  {category.forms.map((form, index) => (
-                    <Pressable
-                      key={form.id}
-                      style={({ pressed }) => [
-                        styles.formItem,
-                        index < category.forms.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border },
-                        { opacity: pressed ? 0.7 : 1 },
-                      ]}
-                      onPress={() => handleFormPress(form.route)}
-                    >
-                      <Text style={[styles.formTitle, { color: colors.text }]}>{form.title}</Text>
-                      <ChevronRight size={18} color={colors.textSecondary} />
-                    </Pressable>
-                  ))}
-                </View>
-              )}
+              </TouchableOpacity>
             </View>
-          );
-        })}
+          </View>
+        </View>
+      </Modal>
 
-        <View style={styles.bottomPadding} />
-      </ScrollView>
-    </SafeAreaView>
+      {/* Full Work Order Completion Modal for Maintenance */}
+      <Modal visible={showWorkOrderModal} animationType="slide" presentationStyle="pageSheet">
+        <View style={[styles.workOrderModalContainer, { backgroundColor: colors.background }]}>
+          <View style={[styles.workOrderModalHeader, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
+            <TouchableOpacity 
+              onPress={() => {
+                setShowWorkOrderModal(false);
+                setSelectedTask(null);
+              }}
+              disabled={isCompleting}
+            >
+              <X size={24} color={colors.text} />
+            </TouchableOpacity>
+            <View style={styles.workOrderModalTitleContainer}>
+              <Wrench size={20} color={accentColor} />
+              <Text style={[styles.workOrderModalTitle, { color: colors.text }]}>Complete Work Order</Text>
+            </View>
+            <View style={{ width: 24 }} />
+          </View>
+
+          {selectedTask && (
+            <WorkOrderCompletionForm
+              task={selectedTask}
+              onComplete={handleWorkOrderComplete}
+              onCancel={() => {
+                setShowWorkOrderModal(false);
+                setSelectedTask(null);
+              }}
+              isSubmitting={isCompleting}
+              accentColor={accentColor}
+            />
+          )}
+        </View>
+      </Modal>
+
+      {/* Form Picker Modal */}
+      <FormPickerModal
+        visible={showFormPicker}
+        onClose={handleFormPickerClose}
+        departmentCode={departmentCode}
+        departmentName={getDepartmentName(departmentCode)}
+        taskPostNumber={selectedTask?.postNumber}
+        templateName={selectedTask?.post?.template_name}
+        onFormSelected={handleFormSelected}
+        completedForms={(selectedTask?.formCompletions || []).map(f => ({
+          formId: f.formId,
+          formType: f.formType,
+          completedAt: f.completedAt,
+          completedByName: f.completedByName,
+        }))}
+      />
+
+      {/* Post-Form Decision Modal */}
+      <PostFormDecisionModal
+        visible={showDecisionModal}
+        onClose={() => setShowDecisionModal(false)}
+        task={selectedTask}
+        departmentCode={departmentCode}
+        departmentName={getDepartmentName(departmentCode)}
+        onAnotherForm={handleDecisionAnotherForm}
+        onEscalate={handleDecisionEscalate}
+        onMarkResolved={handleDecisionResolve}
+        onNotInvolved={handleNotInvolvedConfirm}
+        isSubmitting={isCompleting}
+      />
+
+      {/* Not Involved Modal */}
+      <PostFormDecisionModal
+        visible={showNotInvolved}
+        onClose={() => setShowNotInvolved(false)}
+        task={selectedTask}
+        departmentCode={departmentCode}
+        departmentName={getDepartmentName(departmentCode)}
+        onAnotherForm={() => {}}
+        onEscalate={() => {}}
+        onMarkResolved={() => {}}
+        onNotInvolved={handleNotInvolvedConfirm}
+        notInvolvedMode={true}
+        isSubmitting={isCompleting}
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  content: {
-    padding: 16,
-  },
-  alertBanner: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'space-between' as const,
-    padding: 14,
     borderRadius: 12,
     borderWidth: 1,
     marginBottom: 16,
-  },
-  alertBannerContent: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    flex: 1,
-    gap: 12,
-  },
-  alertBannerText: {
-    flex: 1,
-  },
-  alertBannerTitle: {
-    fontSize: 14,
-    fontWeight: '600' as const,
-  },
-  alertBannerDesc: {
-    fontSize: 12,
-    marginTop: 2,
-  },
-  kpiSection: {
-    marginBottom: 16,
-  },
-  kpiScroll: {
-    marginHorizontal: -16,
-    paddingHorizontal: 16,
-  },
-  kpiRow: {
-    flexDirection: 'row' as const,
-    gap: 10,
-    paddingRight: 16,
-  },
-  kpiCard: {
-    width: 110,
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-  },
-  kpiLabel: {
-    fontSize: 11,
-    fontWeight: '500' as const,
-    marginBottom: 6,
-  },
-  kpiValueRow: {
-    flexDirection: 'row' as const,
-    alignItems: 'baseline' as const,
-    gap: 2,
-  },
-  kpiValue: {
-    fontSize: 20,
-    fontWeight: '700' as const,
-  },
-  kpiUnit: {
-    fontSize: 11,
-    fontWeight: '500' as const,
-  },
-  kpiTrendRow: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: 4,
-    marginTop: 6,
-  },
-  kpiTrend: {
-    fontSize: 11,
-    fontWeight: '600' as const,
-  },
-  sectionHeaderRow: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'space-between' as const,
-    marginBottom: 12,
-  },
-  sectionTitleRow: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: 8,
-  },
-  sectionTitleInline: {
-    fontSize: 16,
-    fontWeight: '600' as const,
-  },
-  seeAllText: {
-    fontSize: 13,
-    fontWeight: '500' as const,
-  },
-  statusOverview: {
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    marginBottom: 12,
-  },
-  statusHeader: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'space-between' as const,
-    marginBottom: 14,
-  },
-  statusTitle: {
-    fontSize: 16,
-    fontWeight: '600' as const,
-  },
-  statusGrid: {
-    flexDirection: 'row' as const,
-    gap: 8,
-  },
-  statusItem: {
-    flex: 1,
-    alignItems: 'center' as const,
-    padding: 12,
-    borderRadius: 10,
-  },
-  statusValue: {
-    fontSize: 20,
-    fontWeight: '700' as const,
-    marginTop: 6,
-  },
-  statusLabel: {
-    fontSize: 10,
-    fontWeight: '500' as const,
-    marginTop: 2,
-  },
-  dualCardRow: {
-    flexDirection: 'row' as const,
-    gap: 12,
-    marginBottom: 16,
-  },
-  halfCard: {
-    flex: 1,
-    borderRadius: 12,
-    padding: 14,
-    borderWidth: 1,
-  },
-  halfCardHeader: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: 8,
-    marginBottom: 12,
-  },
-  halfCardTitle: {
-    fontSize: 14,
-    fontWeight: '600' as const,
-  },
-  halfCardContent: {
-    alignItems: 'center' as const,
-  },
-  healthBar: {
-    width: '100%',
-    height: 8,
-    borderRadius: 4,
-    flexDirection: 'row' as const,
-    overflow: 'hidden' as const,
-  },
-  healthSegment: {
-    height: '100%',
-  },
-  healthLegend: {
-    flexDirection: 'row' as const,
-    justifyContent: 'center' as const,
-    gap: 16,
-    marginTop: 10,
-  },
-  legendItem: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: 4,
-  },
-  legendDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  legendText: {
-    fontSize: 11,
-  },
-  uptimeText: {
-    fontSize: 12,
-    marginTop: 8,
-  },
-  uptimeValue: {
-    fontWeight: '700' as const,
-    fontSize: 16,
-  },
-  pmCircle: {
-    alignItems: 'center' as const,
-    marginBottom: 8,
-  },
-  pmCircleValue: {
-    fontSize: 24,
-    fontWeight: '700' as const,
-  },
-  pmCircleLabel: {
-    fontSize: 11,
-  },
-  pmStats: {
-    flexDirection: 'row' as const,
-    gap: 16,
-  },
-  pmStatRow: {
-    alignItems: 'center' as const,
-  },
-  pmStatValue: {
-    fontSize: 16,
-    fontWeight: '600' as const,
-  },
-  pmStatLabel: {
-    fontSize: 10,
-  },
-  quickActionsSection: {
-    marginBottom: 16,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600' as const,
-    marginBottom: 12,
-  },
-  quickActionsGrid: {
-    flexDirection: 'row' as const,
-    flexWrap: 'wrap' as const,
-    gap: 10,
-  },
-  quickActionCard: {
-    width: '48%',
-    flexGrow: 1,
-    borderRadius: 12,
-    padding: 14,
-    borderWidth: 1,
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: 12,
-  },
-  quickActionIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-  },
-  quickActionLabel: {
-    fontSize: 13,
-    fontWeight: '600' as const,
-    flex: 1,
-  },
-  upcomingSection: {
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    marginBottom: 16,
-  },
-  upcomingItem: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    paddingVertical: 12,
-    gap: 12,
-  },
-  dueBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 6,
-    minWidth: 70,
-    alignItems: 'center' as const,
-  },
-  dueBadgeText: {
-    fontSize: 11,
-    fontWeight: '600' as const,
-  },
-  upcomingInfo: {
-    flex: 1,
-  },
-  upcomingName: {
-    fontSize: 14,
-    fontWeight: '500' as const,
-  },
-  upcomingEquipment: {
-    fontSize: 12,
-    marginTop: 2,
-  },
-  activitySection: {
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    marginBottom: 8,
-  },
-  activityItem: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    paddingVertical: 10,
-    gap: 12,
-  },
-  activityIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-  },
-  activityContent: {
-    flex: 1,
-  },
-  activityTitle: {
-    fontSize: 13,
-    fontWeight: '500' as const,
-  },
-  activityDesc: {
-    fontSize: 11,
-    marginTop: 2,
-  },
-  activityTime: {
-    fontSize: 10,
-  },
-  categoryContainer: {
-    marginBottom: 10,
-  },
-  categoryHeader: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'space-between' as const,
-    padding: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-  },
-  categoryHeaderLeft: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    flex: 1,
-  },
-  categoryIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 8,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    marginRight: 10,
-  },
-  categoryTitleContainer: {
-    flex: 1,
-  },
-  categoryTitle: {
-    fontSize: 14,
-    fontWeight: '600' as const,
-    marginBottom: 2,
-  },
-  categoryCount: {
-    fontSize: 11,
-  },
-  formsContainer: {
-    marginTop: 4,
-    borderRadius: 10,
-    borderWidth: 1,
-    overflow: 'hidden' as const,
-  },
-  formItem: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'space-between' as const,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-  },
-  formTitle: {
-    fontSize: 13,
-    fontWeight: '500' as const,
-  },
-  bottomPadding: {
-    height: 32,
+    overflow: 'hidden',
   },
   loadingContainer: {
-    flex: 1,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-    gap: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+    gap: 10,
   },
   loadingText: {
     fontSize: 14,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 14,
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  headerIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerText: {
+    flex: 1,
+  },
+  headerTitle: {
+    fontSize: 15,
+    fontWeight: '600' as const,
+  },
+  headerCount: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  countBadge: {
+    minWidth: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  countBadgeText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700' as const,
+  },
+  taskList: {
+    paddingHorizontal: 14,
+    paddingBottom: 8,
+  },
+  taskItem: {
+    paddingVertical: 12,
+  },
+  taskMain: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  taskInfo: {
+    flex: 1,
+  },
+  taskHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  postNumber: {
+    fontSize: 13,
+    fontWeight: '700' as const,
+  },
+  timeAgo: {
+    fontSize: 11,
+  },
+  templateName: {
+    fontSize: 14,
+    fontWeight: '500' as const,
+    marginBottom: 4,
+  },
+  inProgressRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 6,
+    marginBottom: 4,
+  },
+  inProgressBadge: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  inProgressText: {
+    fontSize: 10,
+    fontWeight: '700' as const,
+    color: '#F59E0B',
+  },
+  formCountText: {
+    fontSize: 10,
+    fontWeight: '700' as const,
+  },
+  holdIndicator: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 3,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  holdIndicatorText: {
+    fontSize: 8,
+    fontWeight: '800' as const,
+    letterSpacing: 0.5,
+  },
+  locationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 2,
+  },
+  locationText: {
+    fontSize: 12,
+    flex: 1,
+  },
+  createdByRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  createdByText: {
+    fontSize: 11,
+  },
+  taskActions: {
+    flexDirection: 'column',
+    gap: 6,
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+    gap: 4,
+  },
+  completeButton: {},
+  actionButtonText: {
+    fontSize: 12,
+    fontWeight: '600' as const,
+  },
+  showMoreButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    gap: 4,
+  },
+  showMoreText: {
+    fontSize: 13,
     fontWeight: '500' as const,
   },
-  errorTitle: {
-    fontSize: 18,
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContainer: {
+    maxHeight: '85%',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+  },
+  completeModalContainer: {
+    maxHeight: '60%',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+  },
+  modalHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  modalTitle: {
+    fontSize: 17,
     fontWeight: '600' as const,
-    marginTop: 16,
   },
-  errorMessage: {
+  modalPostNumber: {
+    fontSize: 13,
+    fontWeight: '700' as const,
+  },
+  modalContent: {
+    padding: 16,
+    maxHeight: 400,
+  },
+  completeModalContent: {
+    padding: 16,
+  },
+  detailSection: {
+    padding: 14,
+    borderRadius: 10,
+    marginBottom: 10,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 6,
+  },
+  detailLabel: {
+    fontSize: 12,
+    fontWeight: '500' as const,
+  },
+  detailValue: {
     fontSize: 14,
-    textAlign: 'center' as const,
+    fontWeight: '500' as const,
+  },
+  postImage: {
+    width: '100%',
+    height: 200,
+    borderRadius: 10,
     marginTop: 8,
-    paddingHorizontal: 32,
   },
-  retryButton: {
-    marginTop: 20,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
+  formDataRow: {
+    flexDirection: 'row',
+    marginTop: 8,
+    alignItems: 'flex-start',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    backgroundColor: 'rgba(0,0,0,0.03)',
+    borderRadius: 6,
   },
-  retryButtonText: {
-    color: '#FFFFFF',
+  formDataRowStacked: {
+    flexDirection: 'column',
+    marginTop: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    backgroundColor: 'rgba(0,0,0,0.03)',
+    borderRadius: 6,
+    gap: 4,
+  },
+  formDataKey: {
+    fontSize: 12,
+    fontWeight: '600' as const,
+    marginRight: 6,
+    minWidth: 80,
+  },
+  formDataValue: {
+    fontSize: 13,
+    fontWeight: '500' as const,
+    flex: 1,
+  },
+  assignedDeptBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 10,
+    marginTop: 6,
+    gap: 10,
+  },
+  assignedDeptText: {
+    fontSize: 13,
+    fontWeight: '500' as const,
+    flex: 1,
+  },
+  taskSummary: {
+    padding: 14,
+    borderRadius: 10,
+    marginBottom: 16,
+  },
+  taskSummaryTitle: {
+    fontSize: 16,
+    fontWeight: '600' as const,
+  },
+  taskSummaryLocation: {
+    fontSize: 13,
+    marginTop: 4,
+  },
+  inputLabel: {
     fontSize: 14,
+    fontWeight: '600' as const,
+    marginBottom: 8,
+  },
+  notesInput: {
+    borderRadius: 10,
+    padding: 14,
+    fontSize: 15,
+    minHeight: 100,
+    borderWidth: 1,
+    marginBottom: 16,
+  },
+  completionInfo: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    padding: 12,
+    borderRadius: 10,
+    gap: 10,
+  },
+  completionInfoText: {
+    fontSize: 13,
+    flex: 1,
+    lineHeight: 18,
+  },
+  modalFooter: {
+    flexDirection: 'row',
+    padding: 16,
+    gap: 12,
+  },
+  modalButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+    gap: 8,
+  },
+  completeModalButton: {
+    borderWidth: 0,
+  },
+  modalButtonText: {
+    fontSize: 15,
+    fontWeight: '600' as const,
+  },
+  workOrderModalContainer: {
+    flex: 1,
+  },
+  workOrderModalHeader: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+  },
+  workOrderModalTitleContainer: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 8,
+  },
+  workOrderModalTitle: {
+    fontSize: 17,
     fontWeight: '600' as const,
   },
 });
