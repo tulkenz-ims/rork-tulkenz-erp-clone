@@ -74,8 +74,8 @@ const mapDepartmentTaskFromDb = (row: any): TaskFeedDepartmentTask => ({
   completedByName: row.completed_by_name,
   completedAt: row.completed_at,
   completionNotes: row.completion_notes,
-  moduleHistoryType: row.module_reference_type,
-  moduleHistoryId: row.module_reference_id,
+  moduleHistoryType: row.module_reference_type || row.module_history_type,
+  moduleHistoryId: row.module_reference_id || row.module_history_id,
   assignedAt: row.assigned_at,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
@@ -98,22 +98,7 @@ export function useTaskFeedPostDetail(postId: string | undefined, options?: { en
         .select(`
           *,
           task_feed_department_tasks (
-            id,
-            organization_id,
-            post_id,
-            post_number,
-            department_code,
-            department_name,
-            status,
-            completed_by_id,
-            completed_by_name,
-            completed_at,
-            completion_notes,
-            module_reference_type,
-            module_reference_id,
-            assigned_at,
-            created_at,
-            updated_at
+            *
           )
         `)
         .eq('id', postId)
