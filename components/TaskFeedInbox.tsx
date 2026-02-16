@@ -35,6 +35,7 @@ import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useUser } from '@/contexts/UserContext';
 import { useDepartmentTasksQuery, useCompleteDepartmentTask, useStartDepartmentTask, useClearProductionHold } from '@/hooks/useTaskFeedTemplates';
+import { useQueryClient } from '@tanstack/react-query';
 import { TaskFeedDepartmentTask } from '@/types/taskFeedTemplates';
 import { getDepartmentColor, getDepartmentName } from '@/constants/organizationCodes';
 import { supabase } from '@/lib/supabase';
@@ -94,6 +95,7 @@ export default function TaskFeedInbox({
   const { colors } = useTheme();
   const { user } = useUser();
   const { organizationId } = useOrganization();
+  const queryClient = useQueryClient();
   const router = useRouter();
   const { data: workOrders = [] } = useWorkOrdersQuery();
   const [isExpanded, setIsExpanded] = useState(true);
@@ -309,6 +311,9 @@ export default function TaskFeedInbox({
       setShowDecisionModal(false);
       setSelectedTask(null);
 
+      // Force refresh post detail
+      queryClient.invalidateQueries({ queryKey: ['task_feed_post_detail'] });
+
       Alert.alert(
         'Task Resolved',
         `${getDepartmentName(departmentCode)} has completed their task for ${selectedTask.postNumber}.${data.lineOperational && selectedTask.post?.is_production_hold && departmentCode === '1004' ? '\n\nProduction hold has been cleared.' : ''}`,
@@ -320,7 +325,7 @@ export default function TaskFeedInbox({
     } finally {
       setIsCompleting(false);
     }
-  }, [selectedTask, completeMutation, clearHoldMutation, logSignature, onTaskCompleted, departmentCode]);
+  }, [selectedTask, completeMutation, clearHoldMutation, logSignature, onTaskCompleted, departmentCode, queryClient]);
 
   const handleNotInvolvedConfirm = useCallback(async (data: {
     reason: string;
@@ -419,17 +424,11 @@ export default function TaskFeedInbox({
     try {
       console.log('[TaskFeedInbox] Creating full work order for task:', selectedTask.postNumber);
       
+      // Step 1: Create the work order (sets source_id = postId, department = '1001')
       const workOrderId = await createFullWorkOrder(selectedTask, data);
       console.log('[TaskFeedInbox] Work order created:', workOrderId);
 
-      const notesForTaskFeed = `Work Order Completed\n\nWork Performed: ${data.workPerformed}\nAction Taken: ${data.actionTaken}${data.partsUsed ? `\nParts Used: ${data.partsUsed}` : ''}${data.laborHours ? `\nLabor Hours: ${data.laborHours}` : ''}${data.rootCause ? `\nRoot Cause: ${data.rootCause}` : ''}${data.additionalNotes ? `\nNotes: ${data.additionalNotes}` : ''}`;
-
-      await completeMutation.mutateAsync({
-        taskId: selectedTask.id,
-        completionNotes: notesForTaskFeed,
-      });
-
-      // Link work order to department task so post detail can find it
+      // Step 2: Link WO to department task BEFORE completing (so cache invalidation picks it up)
       if (workOrderId) {
         try {
           const { error: linkError } = await supabase
@@ -442,17 +441,29 @@ export default function TaskFeedInbox({
             .eq('organization_id', organizationId);
           
           if (linkError) {
-            console.error('[TaskFeedInbox] Error linking WO to task:', linkError);
+            console.error('[TaskFeedInbox] Error linking WO to dept task:', linkError.message);
           } else {
-            console.log('[TaskFeedInbox] Linked work order', workOrderId, 'to department task', selectedTask.id);
+            console.log('[TaskFeedInbox] Linked WO', workOrderId, 'to dept task', selectedTask.id);
           }
         } catch (linkErr) {
-          console.error('[TaskFeedInbox] Failed to link WO to task:', linkErr);
+          console.error('[TaskFeedInbox] Failed to link WO:', linkErr);
         }
       }
 
+      // Step 3: Complete the department task (triggers cache invalidation)
+      const notesForTaskFeed = `Work Order Completed\n\nWork Performed: ${data.workPerformed}\nAction Taken: ${data.actionTaken}${data.partsUsed ? `\nParts Used: ${data.partsUsed}` : ''}${data.laborHours ? `\nLabor Hours: ${data.laborHours}` : ''}${data.rootCause ? `\nRoot Cause: ${data.rootCause}` : ''}${data.additionalNotes ? `\nNotes: ${data.additionalNotes}` : ''}`;
+
+      await completeMutation.mutateAsync({
+        taskId: selectedTask.id,
+        completionNotes: notesForTaskFeed,
+      });
+
       // Note: Production hold is NOT auto-cleared by maintenance WO completion.
       // Only Quality (1004) can release the line via the decision modal.
+
+      // Step 4: Force re-invalidate post detail so linked WO shows up
+      queryClient.invalidateQueries({ queryKey: ['task_feed_post_detail'] });
+      queryClient.invalidateQueries({ queryKey: ['task_feed_posts_with_tasks'] });
 
       onTaskCompleted?.(selectedTask, workOrderId || undefined);
 
@@ -462,7 +473,7 @@ export default function TaskFeedInbox({
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert(
         'Work Order Completed',
-        `Work order for ${selectedTask.postNumber} has been completed and recorded in CMMS history.${selectedTask.post?.is_production_hold ? '\n\nProduction hold has been cleared.' : ''}`,
+        `Work order for ${selectedTask.postNumber} has been completed and recorded in CMMS history.`,
         [{ text: 'OK' }]
       );
     } catch (error) {
@@ -471,7 +482,7 @@ export default function TaskFeedInbox({
     } finally {
       setIsCompleting(false);
     }
-  }, [selectedTask, createFullWorkOrder, completeMutation, clearHoldMutation, onTaskCompleted, departmentCode, user]);
+  }, [selectedTask, createFullWorkOrder, completeMutation, onTaskCompleted, departmentCode, user, organizationId, queryClient]);
 
   const formatDate = useCallback((dateStr: string) => {
     const date = new Date(dateStr);
