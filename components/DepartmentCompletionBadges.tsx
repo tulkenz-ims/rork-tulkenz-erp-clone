@@ -158,7 +158,15 @@ export default function DepartmentCompletionBadges({
                 )}
 
                 {/* Linked Work Orders for this department */}
-                {linkedWorkOrders.filter(wo => wo.department === deptCode || (task?.moduleHistoryType === 'work_order' && task?.moduleHistoryId === wo.id)).map(wo => (
+                {linkedWorkOrders.filter(wo => {
+                  // Match 1: WO has department field matching this dept
+                  if (wo.department === deptCode) return true;
+                  // Match 2: Department task links to this WO via module_reference
+                  if (task?.moduleHistoryType === 'work_order' && task?.moduleHistoryId === wo.id) return true;
+                  // Match 3: WO source is task_feed and this is Maintenance (default WO dept)
+                  if (deptCode === '1001' && wo.source === 'task_feed' && !wo.department) return true;
+                  return false;
+                }).map(wo => (
                   <TouchableOpacity
                     key={wo.id}
                     style={styles.linkedItemRow}
