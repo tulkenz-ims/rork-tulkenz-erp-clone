@@ -435,8 +435,8 @@ export default function TaskFeedInbox({
           const { error: linkError } = await supabase
             .from('task_feed_department_tasks')
             .update({
-              module_history_type: 'work_order',
-              module_history_id: workOrderId,
+              module_reference_type: 'work_order',
+              module_reference_id: workOrderId,
             })
             .eq('id', selectedTask.id)
             .eq('organization_id', organizationId);
