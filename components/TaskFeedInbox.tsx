@@ -38,6 +38,7 @@ import { useDepartmentTasksQuery, useCompleteDepartmentTask, useStartDepartmentT
 import { TaskFeedDepartmentTask } from '@/types/taskFeedTemplates';
 import { getDepartmentColor, getDepartmentName } from '@/constants/organizationCodes';
 import { supabase } from '@/lib/supabase';
+import { useOrganization } from '@/contexts/OrganizationContext';
 import WorkOrderCompletionForm from './WorkOrderCompletionForm';
 import FormPickerModal from './FormPickerModal';
 import PostFormDecisionModal from './PostFormDecisionModal';
@@ -92,6 +93,7 @@ export default function TaskFeedInbox({
 }: TaskFeedInboxProps) {
   const { colors } = useTheme();
   const { user } = useUser();
+  const { organizationId } = useOrganization();
   const router = useRouter();
   const { data: workOrders = [] } = useWorkOrdersQuery();
   const [isExpanded, setIsExpanded] = useState(true);
@@ -279,8 +281,8 @@ export default function TaskFeedInbox({
         referenceNumber: selectedTask.postNumber,
       });
 
-      // Clear production hold if line is operational
-      if (data.lineOperational && selectedTask.post?.is_production_hold) {
+      // Clear production hold — ONLY Quality (1004) can release the line
+      if (data.lineOperational && selectedTask.post?.is_production_hold && departmentCode === '1004') {
         const holdStatus = selectedTask.post?.hold_status || 'active';
         if (holdStatus === 'active' || holdStatus === 'reinstated') {
           try {
@@ -309,7 +311,7 @@ export default function TaskFeedInbox({
 
       Alert.alert(
         'Task Resolved',
-        `${getDepartmentName(departmentCode)} has completed their task for ${selectedTask.postNumber}.${data.lineOperational && selectedTask.post?.is_production_hold ? '\n\nProduction hold has been cleared.' : ''}`,
+        `${getDepartmentName(departmentCode)} has completed their task for ${selectedTask.postNumber}.${data.lineOperational && selectedTask.post?.is_production_hold && departmentCode === '1004' ? '\n\nProduction hold has been cleared.' : ''}`,
         [{ text: 'OK' }]
       );
     } catch (error) {
@@ -430,39 +432,27 @@ export default function TaskFeedInbox({
       // Link work order to department task so post detail can find it
       if (workOrderId) {
         try {
-          await supabase
+          const { error: linkError } = await supabase
             .from('task_feed_department_tasks')
             .update({
               module_history_type: 'work_order',
               module_history_id: workOrderId,
             })
-            .eq('id', selectedTask.id);
-          console.log('[TaskFeedInbox] Linked work order to department task');
+            .eq('id', selectedTask.id)
+            .eq('organization_id', organizationId);
+          
+          if (linkError) {
+            console.error('[TaskFeedInbox] Error linking WO to task:', linkError);
+          } else {
+            console.log('[TaskFeedInbox] Linked work order', workOrderId, 'to department task', selectedTask.id);
+          }
         } catch (linkErr) {
           console.error('[TaskFeedInbox] Failed to link WO to task:', linkErr);
         }
       }
 
-      // Clear production hold if applicable (maintenance completing WO means line is back)
-      if (selectedTask.post?.is_production_hold) {
-        const holdStatus = selectedTask.post?.hold_status || 'active';
-        if (holdStatus === 'active' || holdStatus === 'reinstated') {
-          try {
-            const userName = user ? `${user.first_name} ${user.last_name}` : 'System';
-            await clearHoldMutation.mutateAsync({
-              postId: selectedTask.postId,
-              clearedByName: userName,
-              clearedById: user?.id || '',
-              departmentCode,
-              departmentName: getDepartmentName(departmentCode),
-              notes: `Production restored after work order completion. ${data.workPerformed}`,
-            });
-            console.log('[TaskFeedInbox] Production hold cleared via WO completion');
-          } catch (holdErr) {
-            console.error('[TaskFeedInbox] Failed to clear hold from WO:', holdErr);
-          }
-        }
-      }
+      // Note: Production hold is NOT auto-cleared by maintenance WO completion.
+      // Only Quality (1004) can release the line via the decision modal.
 
       onTaskCompleted?.(selectedTask, workOrderId || undefined);
 
