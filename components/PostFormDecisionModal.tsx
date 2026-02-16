@@ -94,6 +94,8 @@ export default function PostFormDecisionModal({
   const completedForms: FormCompletion[] = task?.formCompletions || [];
   const formType = task?.formType || '';
   const isProductionHold = task?.post?.is_production_hold || task?.post?.isProductionHold;
+  // Only Quality (1004) can release the line — other depts just complete their task
+  const isQualityHoldRelease = isProductionHold && departmentCode === '1004';
 
   const resetState = () => {
     setLineOperational(null);
@@ -126,13 +128,13 @@ export default function PostFormDecisionModal({
       Alert.alert('Signature Required', 'Verify your identity with PIN to complete this task.');
       return;
     }
-    // Only require line operational answer if this is a production hold post
-    if (isProductionHold && lineOperational === null) {
+    // Only Quality (1004) can answer whether line is operational
+    if (isQualityHoldRelease && lineOperational === null) {
       Alert.alert('Required', 'Indicate whether the production line is operational.');
       return;
     }
-    // Require root cause when clearing a production hold
-    if (isProductionHold && lineOperational === true && !rootCauseDepartment) {
+    // Require root cause when Quality is clearing a production hold
+    if (isQualityHoldRelease && lineOperational === true && !rootCauseDepartment) {
       Alert.alert('Required', 'Select the root cause department before clearing the hold.');
       return;
     }
@@ -142,7 +144,7 @@ export default function PostFormDecisionModal({
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     onMarkResolved({
-      lineOperational: isProductionHold ? lineOperational! : true,
+      lineOperational: isQualityHoldRelease ? lineOperational! : true,
       completionNotes: completionNotes.trim(),
       signature,
       rootCauseDepartment: rootCauseDepartment || undefined,
@@ -311,8 +313,8 @@ export default function PostFormDecisionModal({
             {/* Divider */}
             <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
-            {/* Q1: Line Operational? */}
-            {isProductionHold && (
+            {/* Q1: Line Operational? — Only Quality can release the line */}
+            {isQualityHoldRelease && (
               <>
                 <Text style={[styles.questionLabel, { color: colors.text }]}>
                   <Factory size={14} color={colors.text} /> Is the production line operational?
@@ -347,7 +349,7 @@ export default function PostFormDecisionModal({
             )}
 
             {/* Root Cause Department — only when clearing a hold */}
-            {isProductionHold && lineOperational === true && (
+            {isQualityHoldRelease && lineOperational === true && (
               <>
                 <Text style={[styles.questionLabel, { color: colors.text }]}>
                   What department is the root cause?
@@ -386,8 +388,8 @@ export default function PostFormDecisionModal({
               </>
             )}
 
-            {/* If not a production hold, skip line question — default operational */}
-            {!isProductionHold && lineOperational === null && (() => { /* auto-set */ return null; })()}
+            {/* If not Quality on a hold, or not a hold at all, skip line question */}
+            {!isQualityHoldRelease && lineOperational === null && (() => { /* auto-set */ return null; })()}
 
             {/* Q2: Task Resolved? */}
             <Text style={[styles.questionLabel, { color: colors.text }]}>
