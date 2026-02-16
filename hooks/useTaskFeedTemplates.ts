@@ -105,8 +105,8 @@ const mapDepartmentTaskFromDb = (row: any): TaskFeedDepartmentTask & { task_feed
   completedByName: row.completed_by_name,
   completedAt: row.completed_at,
   completionNotes: row.completion_notes,
-  moduleHistoryType: row.module_reference_type,
-  moduleHistoryId: row.module_reference_id,
+  moduleHistoryType: row.module_reference_type || row.module_history_type,
+  moduleHistoryId: row.module_reference_id || row.module_history_id,
   formType: row.form_type,
   formRoute: row.form_route,
   formResponse: row.form_response || {},
@@ -447,17 +447,7 @@ export function useTaskFeedPostsWithTasksQuery(options?: {
         .select(`
           *,
           task_feed_department_tasks (
-            id,
-            department_code,
-            department_name,
-            status,
-            completed_by_id,
-            completed_by_name,
-            completed_at,
-            completion_notes,
-            assigned_at,
-            module_reference_type,
-            module_reference_id
+            *
           )
         `)
         .eq('organization_id', organizationId)
@@ -498,8 +488,8 @@ export function useTaskFeedPostsWithTasksQuery(options?: {
           completedAt: t.completed_at,
           completionNotes: t.completion_notes,
           assignedAt: t.assigned_at,
-          moduleHistoryType: t.module_reference_type,
-          moduleHistoryId: t.module_reference_id,
+          moduleHistoryType: t.module_reference_type || t.module_history_type,
+          moduleHistoryId: t.module_reference_id || t.module_history_id,
         })),
       }));
     },
