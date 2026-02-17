@@ -29,6 +29,8 @@ import {
   Wrench,
   Eye,
   Thermometer,
+  FileText,
+  Lock,
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useUser } from '@/contexts/UserContext';
@@ -38,25 +40,18 @@ import {
   useCreateRoomHygieneEntry,
   useCompleteRoomHygieneEntry,
   useFlagRoomHygieneEntry,
+  useDailyRoomReportsQuery,
+  useSignOffDailyReport,
   RoomHygieneEntry,
+  DailyRoomHygieneReport,
 } from '@/hooks/useRoomHygieneLog';
+import { useLocations } from '@/hooks/useLocations';
 import { getDepartmentColor, getDepartmentName } from '@/constants/organizationCodes';
+import PinSignatureCapture from '@/components/PinSignatureCapture';
+import { SignatureVerification } from '@/hooks/usePinSignature';
 import * as Haptics from 'expo-haptics';
 
 // ── Constants ──────────────────────────────────────────────────
-
-const ROOMS = [
-  { id: 'PROD-A', name: 'Production Hall A', line: 'Line 1, Line 2' },
-  { id: 'PROD-B', name: 'Production Hall B', line: 'Line 3, Line 4' },
-  { id: 'PACK-1', name: 'Packaging Area', line: 'Line 5' },
-  { id: 'MIX-1', name: 'Mixing Room', line: 'Batching' },
-  { id: 'RAW-1', name: 'Raw Materials Storage', line: 'N/A' },
-  { id: 'COOL-1', name: 'Cooler / Cold Storage', line: 'N/A' },
-  { id: 'QC-LAB', name: 'QC Lab', line: 'N/A' },
-  { id: 'SANI-1', name: 'Sanitation Chemical Room', line: 'N/A' },
-  { id: 'MAINT-SHOP', name: 'Maintenance Shop', line: 'N/A' },
-  { id: 'LOAD-1', name: 'Loading Dock', line: 'N/A' },
-];
 
 const PURPOSES = [
   { value: 'temperature_check', label: 'Temperature Check', icon: Thermometer },
@@ -75,6 +70,8 @@ const PURPOSES = [
   { value: 'delivery', label: 'Delivery / Material Drop', icon: DoorOpen },
   { value: 'audit', label: 'Audit / Tour', icon: Eye },
   { value: 'emergency', label: 'Emergency Response', icon: AlertTriangle },
+  { value: 'work_order', label: 'Work Order (Auto)', icon: Wrench },
+  { value: 'task_feed', label: 'Task Feed (Auto)', icon: FileText },
   { value: 'other', label: 'Other', icon: DoorOpen },
 ];
 
@@ -105,9 +102,28 @@ export default function RoomHygieneLogScreen() {
   const { organizationId } = useOrganization();
   const todayStr = new Date().toISOString().split('T')[0];
 
+  // Pull real locations from DB
+  const { data: locations = [] } = useLocations();
+
+  // Map locations to room options
+  const roomOptions = useMemo(() => {
+    return locations
+      .filter(loc => loc.status === 'active')
+      .map(loc => ({
+        id: loc.id,
+        code: loc.location_code,
+        name: loc.name,
+        building: loc.building || '',
+        type: loc.location_type,
+      }));
+  }, [locations]);
+
+  // Tabs
+  const [activeTab, setActiveTab] = useState<'log' | 'reports'>('log');
+
   // Form state
   const [showAddModal, setShowAddModal] = useState(false);
-  const [selectedRoom, setSelectedRoom] = useState<typeof ROOMS[0] | null>(null);
+  const [selectedRoom, setSelectedRoom] = useState<typeof roomOptions[0] | null>(null);
   const [showRoomPicker, setShowRoomPicker] = useState(false);
   const [selectedPurpose, setSelectedPurpose] = useState('');
   const [showPurposePicker, setShowPurposePicker] = useState(false);
@@ -123,13 +139,25 @@ export default function RoomHygieneLogScreen() {
   const [notes, setNotes] = useState('');
   const [filterRoom, setFilterRoom] = useState<string | undefined>(undefined);
 
-  // Data
+  // Sign-off state
+  const [showSignOffModal, setShowSignOffModal] = useState(false);
+  const [signOffReport, setSignOffReport] = useState<DailyRoomHygieneReport | null>(null);
+  const [signOffVerification, setSignOffVerification] = useState<SignatureVerification | null>(null);
+  const [signOffNotes, setSignOffNotes] = useState('');
+
+  // Data - entries
   const { data: entries = [], isLoading, refetch } = useRoomHygieneLogQuery({
     date: todayStr,
     roomId: filterRoom,
-    limit: 50,
+    limit: 100,
   });
 
+  // Data - daily reports
+  const { data: dailyReports = [], isLoading: reportsLoading, refetch: refetchReports } = useDailyRoomReportsQuery({
+    date: todayStr,
+  });
+
+  // Mutations
   const createEntry = useCreateRoomHygieneEntry({
     onSuccess: () => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -152,6 +180,18 @@ export default function RoomHygieneLogScreen() {
     onSuccess: () => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
       Alert.alert('Entry Flagged', 'This entry has been flagged for review.');
+    },
+    onError: (err) => Alert.alert('Error', err.message),
+  });
+
+  const signOffMutation = useSignOffDailyReport({
+    onSuccess: () => {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setShowSignOffModal(false);
+      setSignOffReport(null);
+      setSignOffVerification(null);
+      setSignOffNotes('');
+      Alert.alert('Signed Off', 'Daily room hygiene report has been signed off.');
     },
     onError: (err) => Alert.alert('Error', err.message),
   });
@@ -194,7 +234,6 @@ export default function RoomHygieneLogScreen() {
     createEntry.mutate({
       roomId: selectedRoom.id,
       roomName: selectedRoom.name,
-      productionLine: selectedRoom.line,
       purpose: selectedPurpose,
       purposeDetail: purposeDetail.trim(),
       actionsPerformed: actionsPerformed.trim(),
@@ -229,6 +268,31 @@ export default function RoomHygieneLogScreen() {
     ]);
   };
 
+  const handleSignOff = (report: DailyRoomHygieneReport) => {
+    if (report.activeEntries > 0) {
+      Alert.alert('Cannot Sign Off', `There are still ${report.activeEntries} active entries (people in room). All entries must be completed before sign-off.`);
+      return;
+    }
+    setSignOffReport(report);
+    setSignOffVerification(null);
+    setSignOffNotes('');
+    setShowSignOffModal(true);
+  };
+
+  const submitSignOff = () => {
+    if (!signOffReport || !signOffVerification) {
+      Alert.alert('Required', 'PPIN signature is required to sign off.');
+      return;
+    }
+    signOffMutation.mutate({
+      reportId: signOffReport.id,
+      signedOffById: signOffVerification.employeeId,
+      signedOffByName: signOffVerification.employeeName,
+      signatureStamp: signOffVerification.signatureStamp,
+      notes: signOffNotes.trim() || undefined,
+    });
+  };
+
   const formatTime = (dateStr: string) => {
     const d = new Date(dateStr);
     return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
@@ -237,6 +301,17 @@ export default function RoomHygieneLogScreen() {
   const activeEntries = entries.filter(e => e.status === 'active');
   const completedEntries = entries.filter(e => e.status !== 'active');
   const purposeLabel = PURPOSES.find(p => p.value === selectedPurpose)?.label || '';
+  const openReports = dailyReports.filter(r => r.status === 'open');
+  const signedOffReports = dailyReports.filter(r => r.status === 'signed_off');
+
+  const getRiskColor = (risk: string) => {
+    switch (risk) {
+      case 'high': return '#DC2626';
+      case 'medium': return '#EF4444';
+      case 'low': return '#F59E0B';
+      default: return '#10B981';
+    }
+  };
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['bottom']}>
@@ -261,126 +336,352 @@ export default function RoomHygieneLogScreen() {
           </Pressable>
         </View>
 
-        {/* Room filter */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterRow}>
+        {/* Tab bar */}
+        <View style={styles.tabRow}>
           <Pressable
-            style={[styles.filterChip, { backgroundColor: !filterRoom ? '#8B5CF620' : colors.background, borderColor: !filterRoom ? '#8B5CF6' : colors.border }]}
-            onPress={() => setFilterRoom(undefined)}
+            style={[styles.tabBtn, activeTab === 'log' && { borderBottomColor: '#8B5CF6', borderBottomWidth: 2 }]}
+            onPress={() => setActiveTab('log')}
           >
-            <Text style={[styles.filterChipText, { color: !filterRoom ? '#8B5CF6' : colors.textSecondary }]}>All Rooms</Text>
+            <Text style={[styles.tabText, { color: activeTab === 'log' ? '#8B5CF6' : colors.textSecondary }]}>
+              Entries ({entries.length})
+            </Text>
           </Pressable>
-          {ROOMS.slice(0, 6).map(room => (
+          <Pressable
+            style={[styles.tabBtn, activeTab === 'reports' && { borderBottomColor: '#8B5CF6', borderBottomWidth: 2 }]}
+            onPress={() => setActiveTab('reports')}
+          >
+            <Text style={[styles.tabText, { color: activeTab === 'reports' ? '#8B5CF6' : colors.textSecondary }]}>
+              Daily Reports ({dailyReports.length})
+            </Text>
+            {openReports.length > 0 && (
+              <View style={styles.badgeCount}>
+                <Text style={styles.badgeCountText}>{openReports.length}</Text>
+              </View>
+            )}
+          </Pressable>
+        </View>
+
+        {/* Room filter (only on entries tab) */}
+        {activeTab === 'log' && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterRow}>
             <Pressable
-              key={room.id}
-              style={[styles.filterChip, { backgroundColor: filterRoom === room.id ? '#8B5CF620' : colors.background, borderColor: filterRoom === room.id ? '#8B5CF6' : colors.border }]}
-              onPress={() => setFilterRoom(filterRoom === room.id ? undefined : room.id)}
+              style={[styles.filterChip, { backgroundColor: !filterRoom ? '#8B5CF620' : colors.background, borderColor: !filterRoom ? '#8B5CF6' : colors.border }]}
+              onPress={() => setFilterRoom(undefined)}
             >
-              <Text style={[styles.filterChipText, { color: filterRoom === room.id ? '#8B5CF6' : colors.textSecondary }]}>
-                {room.name.split(' ').slice(0, 2).join(' ')}
-              </Text>
+              <Text style={[styles.filterChipText, { color: !filterRoom ? '#8B5CF6' : colors.textSecondary }]}>All Rooms</Text>
             </Pressable>
-          ))}
-        </ScrollView>
+            {roomOptions.map(room => (
+              <Pressable
+                key={room.id}
+                style={[styles.filterChip, { backgroundColor: filterRoom === room.id ? '#8B5CF620' : colors.background, borderColor: filterRoom === room.id ? '#8B5CF6' : colors.border }]}
+                onPress={() => setFilterRoom(filterRoom === room.id ? undefined : room.id)}
+              >
+                <Text style={[styles.filterChipText, { color: filterRoom === room.id ? '#8B5CF6' : colors.textSecondary }]}>
+                  {room.name}
+                </Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        )}
       </View>
 
-      {/* Entries list */}
-      <ScrollView
-        style={styles.list}
-        refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} />}
-      >
-        {/* Active entries (currently in room) */}
-        {activeEntries.length > 0 && (
-          <View style={styles.section}>
-            <Text style={[styles.sectionLabel, { color: '#F59E0B' }]}>CURRENTLY IN ROOM ({activeEntries.length})</Text>
-            {activeEntries.map(entry => (
-              <View key={entry.id} style={[styles.entryCard, { backgroundColor: colors.surface, borderLeftColor: '#F59E0B' }]}>
-                <View style={styles.entryHeader}>
-                  <View style={styles.entryHeaderLeft}>
-                    <View style={[styles.statusDot, { backgroundColor: '#F59E0B' }]} />
-                    <Text style={[styles.entryRoom, { color: colors.text }]}>{entry.roomName}</Text>
+      {/* ═══════ TAB: Entries ═══════ */}
+      {activeTab === 'log' && (
+        <ScrollView
+          style={styles.list}
+          refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} />}
+        >
+          {activeEntries.length > 0 && (
+            <View style={styles.section}>
+              <Text style={[styles.sectionLabel, { color: '#F59E0B' }]}>CURRENTLY IN ROOM ({activeEntries.length})</Text>
+              {activeEntries.map(entry => (
+                <View key={entry.id} style={[styles.entryCard, { backgroundColor: colors.surface, borderLeftColor: '#F59E0B' }]}>
+                  <View style={styles.entryHeader}>
+                    <View style={styles.entryHeaderLeft}>
+                      <View style={[styles.statusDot, { backgroundColor: '#F59E0B' }]} />
+                      <Text style={[styles.entryRoom, { color: colors.text }]}>{entry.roomName}</Text>
+                    </View>
+                    <Text style={[styles.entryTime, { color: '#F59E0B' }]}>{formatTime(entry.entryTime)}</Text>
                   </View>
-                  <Text style={[styles.entryTime, { color: '#F59E0B' }]}>{formatTime(entry.entryTime)}</Text>
-                </View>
-                <View style={styles.entryDetails}>
-                  <View style={[styles.deptBadge, { backgroundColor: getDepartmentColor(entry.departmentCode) + '20' }]}>
-                    <Text style={[styles.deptBadgeText, { color: getDepartmentColor(entry.departmentCode) }]}>
-                      {getDepartmentName(entry.departmentCode)}
-                    </Text>
+                  <View style={styles.entryDetails}>
+                    <View style={[styles.deptBadge, { backgroundColor: getDepartmentColor(entry.departmentCode) + '20' }]}>
+                      <Text style={[styles.deptBadgeText, { color: getDepartmentColor(entry.departmentCode) }]}>
+                        {getDepartmentName(entry.departmentCode)}
+                      </Text>
+                    </View>
+                    <Text style={[styles.entryPerson, { color: colors.textSecondary }]}>{entry.enteredByName}</Text>
                   </View>
-                  <Text style={[styles.entryPerson, { color: colors.textSecondary }]}>{entry.enteredByName}</Text>
+                  <Text style={[styles.entryPurpose, { color: colors.text }]}>
+                    {PURPOSES.find(p => p.value === entry.purpose)?.label || entry.purpose}
+                  </Text>
+                  <Text style={[styles.entryActions, { color: colors.textSecondary }]}>{entry.actionsPerformed}</Text>
+                  <View style={styles.entryActions2}>
+                    <Pressable style={[styles.exitBtn, { backgroundColor: '#10B98120', borderColor: '#10B981' }]} onPress={() => handleExit(entry)}>
+                      <LogOut size={14} color="#10B981" />
+                      <Text style={[styles.exitBtnText, { color: '#10B981' }]}>Log Exit</Text>
+                    </Pressable>
+                    <Pressable style={[styles.flagBtn, { backgroundColor: '#EF444420', borderColor: '#EF4444' }]} onPress={() => handleFlag(entry)}>
+                      <Flag size={14} color="#EF4444" />
+                      <Text style={[styles.flagBtnText, { color: '#EF4444' }]}>Flag</Text>
+                    </Pressable>
+                  </View>
                 </View>
-                <Text style={[styles.entryPurpose, { color: colors.text }]}>
-                  {PURPOSES.find(p => p.value === entry.purpose)?.label || entry.purpose}
-                </Text>
-                <Text style={[styles.entryActions, { color: colors.textSecondary }]}>{entry.actionsPerformed}</Text>
-                <View style={styles.entryActions2}>
-                  <Pressable style={[styles.exitBtn, { backgroundColor: '#10B98120', borderColor: '#10B981' }]} onPress={() => handleExit(entry)}>
-                    <LogOut size={14} color="#10B981" />
-                    <Text style={[styles.exitBtnText, { color: '#10B981' }]}>Log Exit</Text>
-                  </Pressable>
-                  <Pressable style={[styles.flagBtn, { backgroundColor: '#EF444420', borderColor: '#EF4444' }]} onPress={() => handleFlag(entry)}>
-                    <Flag size={14} color="#EF4444" />
-                    <Text style={[styles.flagBtnText, { color: '#EF4444' }]}>Flag</Text>
-                  </Pressable>
-                </View>
-              </View>
-            ))}
-          </View>
-        )}
-
-        {/* Completed entries */}
-        <View style={styles.section}>
-          <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>
-            LOG HISTORY ({completedEntries.length})
-          </Text>
-          {completedEntries.length === 0 && !isLoading && (
-            <View style={[styles.emptyState, { backgroundColor: colors.surface }]}>
-              <DoorOpen size={32} color={colors.textTertiary} />
-              <Text style={[styles.emptyText, { color: colors.textTertiary }]}>No entries logged today</Text>
+              ))}
             </View>
           )}
-          {completedEntries.map(entry => {
-            const isFlagged = entry.status === 'flagged';
-            return (
-              <View key={entry.id} style={[styles.entryCard, { backgroundColor: colors.surface, borderLeftColor: isFlagged ? '#EF4444' : '#10B981' }]}>
-                <View style={styles.entryHeader}>
-                  <View style={styles.entryHeaderLeft}>
-                    <View style={[styles.statusDot, { backgroundColor: isFlagged ? '#EF4444' : '#10B981' }]} />
-                    <Text style={[styles.entryRoom, { color: colors.text }]}>{entry.roomName}</Text>
-                    {isFlagged && (
-                      <View style={styles.flaggedBadge}>
-                        <Flag size={10} color="#EF4444" />
-                        <Text style={styles.flaggedText}>FLAGGED</Text>
-                      </View>
-                    )}
-                  </View>
-                  <Text style={[styles.entryTime, { color: colors.textSecondary }]}>
-                    {formatTime(entry.entryTime)}{entry.exitTime ? ` — ${formatTime(entry.exitTime)}` : ''}
-                  </Text>
-                </View>
-                <View style={styles.entryDetails}>
-                  <View style={[styles.deptBadge, { backgroundColor: getDepartmentColor(entry.departmentCode) + '20' }]}>
-                    <Text style={[styles.deptBadgeText, { color: getDepartmentColor(entry.departmentCode) }]}>
-                      {getDepartmentName(entry.departmentCode)}
+
+          <View style={styles.section}>
+            <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>LOG HISTORY ({completedEntries.length})</Text>
+            {completedEntries.length === 0 && !isLoading && (
+              <View style={[styles.emptyState, { backgroundColor: colors.surface }]}>
+                <DoorOpen size={32} color={colors.textTertiary} />
+                <Text style={[styles.emptyText, { color: colors.textTertiary }]}>No entries logged today</Text>
+              </View>
+            )}
+            {completedEntries.map(entry => {
+              const isFlagged = entry.status === 'flagged';
+              return (
+                <View key={entry.id} style={[styles.entryCard, { backgroundColor: colors.surface, borderLeftColor: isFlagged ? '#EF4444' : '#10B981' }]}>
+                  <View style={styles.entryHeader}>
+                    <View style={styles.entryHeaderLeft}>
+                      <View style={[styles.statusDot, { backgroundColor: isFlagged ? '#EF4444' : '#10B981' }]} />
+                      <Text style={[styles.entryRoom, { color: colors.text }]}>{entry.roomName}</Text>
+                      {isFlagged && (
+                        <View style={styles.flaggedBadge}>
+                          <Flag size={10} color="#EF4444" />
+                          <Text style={styles.flaggedText}>FLAGGED</Text>
+                        </View>
+                      )}
+                    </View>
+                    <Text style={[styles.entryTime, { color: colors.textSecondary }]}>
+                      {formatTime(entry.entryTime)}{entry.exitTime ? ` — ${formatTime(entry.exitTime)}` : ''}
                     </Text>
                   </View>
-                  <Text style={[styles.entryPerson, { color: colors.textSecondary }]}>{entry.enteredByName}</Text>
-                  {entry.durationMinutes != null && (
-                    <Text style={[styles.entryDuration, { color: colors.textTertiary }]}>{entry.durationMinutes}min</Text>
+                  <View style={styles.entryDetails}>
+                    <View style={[styles.deptBadge, { backgroundColor: getDepartmentColor(entry.departmentCode) + '20' }]}>
+                      <Text style={[styles.deptBadgeText, { color: getDepartmentColor(entry.departmentCode) }]}>
+                        {getDepartmentName(entry.departmentCode)}
+                      </Text>
+                    </View>
+                    <Text style={[styles.entryPerson, { color: colors.textSecondary }]}>{entry.enteredByName}</Text>
+                    {entry.durationMinutes != null && (
+                      <Text style={[styles.entryDuration, { color: colors.textTertiary }]}>{entry.durationMinutes}min</Text>
+                    )}
+                  </View>
+                  <Text style={[styles.entryPurpose, { color: colors.text }]}>
+                    {PURPOSES.find(p => p.value === entry.purpose)?.label || entry.purpose}
+                  </Text>
+                  <Text style={[styles.entryActions, { color: colors.textSecondary }]} numberOfLines={2}>{entry.actionsPerformed}</Text>
+                  {entry.workOrderId && (
+                    <Text style={[styles.woLink, { color: '#3B82F6' }]}>WO: {entry.workOrderId.slice(0, 8)}</Text>
                   )}
                 </View>
-                <Text style={[styles.entryPurpose, { color: colors.text }]}>
-                  {PURPOSES.find(p => p.value === entry.purpose)?.label || entry.purpose}
-                </Text>
-                <Text style={[styles.entryActions, { color: colors.textSecondary }]} numberOfLines={2}>{entry.actionsPerformed}</Text>
-              </View>
-            );
-          })}
-        </View>
-        <View style={{ height: 40 }} />
-      </ScrollView>
+              );
+            })}
+          </View>
+          <View style={{ height: 40 }} />
+        </ScrollView>
+      )}
 
-      {/* ── Add Entry Modal ────────────────────────────────── */}
+      {/* ═══════ TAB: Daily Reports ═══════ */}
+      {activeTab === 'reports' && (
+        <ScrollView
+          style={styles.list}
+          refreshControl={<RefreshControl refreshing={reportsLoading} onRefresh={refetchReports} />}
+        >
+          {dailyReports.length === 0 && !reportsLoading && (
+            <View style={[styles.emptyState, { backgroundColor: colors.surface, marginTop: 20 }]}>
+              <FileText size={32} color={colors.textTertiary} />
+              <Text style={[styles.emptyText, { color: colors.textTertiary }]}>No room activity logged today</Text>
+              <Text style={[styles.emptyTextSub, { color: colors.textTertiary }]}>
+                Daily reports auto-create when entries are logged
+              </Text>
+            </View>
+          )}
+
+          {openReports.length > 0 && (
+            <View style={styles.section}>
+              <Text style={[styles.sectionLabel, { color: '#F59E0B' }]}>AWAITING SIGN-OFF ({openReports.length})</Text>
+              {openReports.map(report => (
+                <View key={report.id} style={[styles.reportCard, { backgroundColor: colors.surface, borderLeftColor: '#F59E0B' }]}>
+                  <View style={styles.reportHeader}>
+                    <View style={styles.reportHeaderLeft}>
+                      <DoorOpen size={18} color="#F59E0B" />
+                      <Text style={[styles.reportRoom, { color: colors.text }]}>{report.roomName}</Text>
+                    </View>
+                    <View style={[styles.reportStatusBadge, { backgroundColor: '#F59E0B20' }]}>
+                      <Text style={[styles.reportStatusText, { color: '#F59E0B' }]}>OPEN</Text>
+                    </View>
+                  </View>
+                  <View style={styles.reportStats}>
+                    <View style={styles.reportStat}>
+                      <Text style={[styles.reportStatNum, { color: colors.text }]}>{report.totalEntries}</Text>
+                      <Text style={[styles.reportStatLabel, { color: colors.textSecondary }]}>Entries</Text>
+                    </View>
+                    <View style={styles.reportStat}>
+                      <Text style={[styles.reportStatNum, { color: '#10B981' }]}>{report.completedEntries}</Text>
+                      <Text style={[styles.reportStatLabel, { color: colors.textSecondary }]}>Done</Text>
+                    </View>
+                    <View style={styles.reportStat}>
+                      <Text style={[styles.reportStatNum, { color: '#F59E0B' }]}>{report.activeEntries}</Text>
+                      <Text style={[styles.reportStatLabel, { color: colors.textSecondary }]}>Active</Text>
+                    </View>
+                    <View style={styles.reportStat}>
+                      <Text style={[styles.reportStatNum, { color: '#EF4444' }]}>{report.flaggedEntries}</Text>
+                      <Text style={[styles.reportStatLabel, { color: colors.textSecondary }]}>Flagged</Text>
+                    </View>
+                    <View style={styles.reportStat}>
+                      <Text style={[styles.reportStatNum, { color: getRiskColor(report.highestContaminationRisk) }]}>
+                        {report.highestContaminationRisk.toUpperCase()}
+                      </Text>
+                      <Text style={[styles.reportStatLabel, { color: colors.textSecondary }]}>Risk</Text>
+                    </View>
+                  </View>
+                  {Object.keys(report.departmentCounts).length > 0 && (
+                    <View style={styles.deptBreakdown}>
+                      {Object.entries(report.departmentCounts).map(([deptCode, count]) => (
+                        <View key={deptCode} style={[styles.deptCountBadge, { backgroundColor: getDepartmentColor(deptCode) + '15' }]}>
+                          <Text style={[styles.deptCountText, { color: getDepartmentColor(deptCode) }]}>
+                            {getDepartmentName(deptCode)}: {count}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                  <Pressable
+                    style={[styles.signOffBtn, { backgroundColor: '#8B5CF6' }]}
+                    onPress={() => handleSignOff(report)}
+                  >
+                    <Lock size={14} color="#fff" />
+                    <Text style={styles.signOffBtnText}>Sign Off — End of Day</Text>
+                  </Pressable>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {signedOffReports.length > 0 && (
+            <View style={styles.section}>
+              <Text style={[styles.sectionLabel, { color: '#10B981' }]}>SIGNED OFF ({signedOffReports.length})</Text>
+              {signedOffReports.map(report => (
+                <View key={report.id} style={[styles.reportCard, { backgroundColor: colors.surface, borderLeftColor: '#10B981' }]}>
+                  <View style={styles.reportHeader}>
+                    <View style={styles.reportHeaderLeft}>
+                      <CheckCircle size={18} color="#10B981" />
+                      <Text style={[styles.reportRoom, { color: colors.text }]}>{report.roomName}</Text>
+                    </View>
+                    <View style={[styles.reportStatusBadge, { backgroundColor: '#10B98120' }]}>
+                      <Text style={[styles.reportStatusText, { color: '#10B981' }]}>SIGNED OFF</Text>
+                    </View>
+                  </View>
+                  <View style={styles.reportStats}>
+                    <View style={styles.reportStat}>
+                      <Text style={[styles.reportStatNum, { color: colors.text }]}>{report.totalEntries}</Text>
+                      <Text style={[styles.reportStatLabel, { color: colors.textSecondary }]}>Entries</Text>
+                    </View>
+                    <View style={styles.reportStat}>
+                      <Text style={[styles.reportStatNum, { color: '#EF4444' }]}>{report.flaggedEntries}</Text>
+                      <Text style={[styles.reportStatLabel, { color: colors.textSecondary }]}>Flagged</Text>
+                    </View>
+                  </View>
+                  <View style={[styles.signedOffInfo, { backgroundColor: '#10B98110' }]}>
+                    <CheckCircle size={14} color="#10B981" />
+                    <Text style={[styles.signedOffText, { color: '#10B981' }]}>
+                      {report.signatureStamp}
+                    </Text>
+                  </View>
+                  {report.signoffNotes && (
+                    <Text style={[styles.signOffNotesText, { color: colors.textSecondary }]}>{report.signoffNotes}</Text>
+                  )}
+                </View>
+              ))}
+            </View>
+          )}
+          <View style={{ height: 40 }} />
+        </ScrollView>
+      )}
+
+      {/* ═══════ SIGN-OFF MODAL ═══════ */}
+      <Modal visible={showSignOffModal} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+              <View style={styles.modalHeaderLeft}>
+                <Lock size={20} color="#8B5CF6" />
+                <Text style={[styles.modalTitle, { color: colors.text }]}>Sign Off Daily Report</Text>
+              </View>
+              <Pressable onPress={() => { setShowSignOffModal(false); setSignOffReport(null); }}>
+                <X size={22} color={colors.textSecondary} />
+              </Pressable>
+            </View>
+
+            <ScrollView style={styles.modalBody}>
+              {signOffReport && (
+                <>
+                  <View style={[styles.signOffSummary, { backgroundColor: colors.background }]}>
+                    <Text style={[styles.signOffRoomName, { color: colors.text }]}>{signOffReport.roomName}</Text>
+                    <Text style={[styles.signOffDate, { color: colors.textSecondary }]}>Report Date: {signOffReport.reportDate}</Text>
+                    <View style={styles.signOffStatsRow}>
+                      <Text style={[styles.signOffStatItem, { color: colors.text }]}>{signOffReport.totalEntries} entries</Text>
+                      <Text style={[styles.signOffStatItem, { color: '#EF4444' }]}>{signOffReport.flaggedEntries} flagged</Text>
+                      <Text style={[styles.signOffStatItem, { color: getRiskColor(signOffReport.highestContaminationRisk) }]}>
+                        Risk: {signOffReport.highestContaminationRisk}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <Text style={[styles.fieldLabel, { color: colors.text }]}>Sign-off Notes (optional)</Text>
+                  <TextInput
+                    style={[styles.textInput, { color: colors.text, backgroundColor: colors.background, borderColor: colors.border }]}
+                    placeholder="Any observations or notes for this room today..."
+                    placeholderTextColor={colors.textTertiary}
+                    value={signOffNotes}
+                    onChangeText={setSignOffNotes}
+                    multiline
+                    numberOfLines={3}
+                    textAlignVertical="top"
+                  />
+
+                  <Text style={[styles.fieldLabel, { color: colors.text, marginTop: 16 }]}>Quality PPIN Signature *</Text>
+                  <PinSignatureCapture
+                    onVerified={(v) => setSignOffVerification(v)}
+                    onCleared={() => setSignOffVerification(null)}
+                    formLabel="Daily Room Hygiene Report Sign-Off"
+                    existingVerification={signOffVerification}
+                    required
+                    accentColor="#8B5CF6"
+                  />
+                </>
+              )}
+            </ScrollView>
+
+            <View style={[styles.modalFooter, { borderTopColor: colors.border }]}>
+              <Pressable
+                style={[styles.cancelBtn, { borderColor: colors.border }]}
+                onPress={() => { setShowSignOffModal(false); setSignOffReport(null); }}
+              >
+                <Text style={[styles.cancelBtnText, { color: colors.textSecondary }]}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.submitBtn, { backgroundColor: signOffVerification ? '#10B981' : colors.border }]}
+                onPress={submitSignOff}
+                disabled={!signOffVerification || signOffMutation.isPending}
+              >
+                {signOffMutation.isPending ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <>
+                    <CheckCircle size={16} color="#fff" />
+                    <Text style={styles.submitBtnText}>Sign Off Report</Text>
+                  </>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ═══════ ADD ENTRY MODAL ═══════ */}
       <Modal visible={showAddModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
@@ -395,7 +696,6 @@ export default function RoomHygieneLogScreen() {
             </View>
 
             <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
-              {/* Auto-filled info */}
               <View style={[styles.autoFillRow, { backgroundColor: colors.background }]}>
                 <User size={14} color={colors.textSecondary} />
                 <Text style={[styles.autoFillText, { color: colors.text }]}>
@@ -407,7 +707,6 @@ export default function RoomHygieneLogScreen() {
                 </Text>
               </View>
 
-              {/* Room selector */}
               <Text style={[styles.fieldLabel, { color: colors.text }]}>Room *</Text>
               <Pressable
                 style={[styles.pickerBtn, { backgroundColor: colors.background, borderColor: colors.border }]}
@@ -419,7 +718,6 @@ export default function RoomHygieneLogScreen() {
                 <ChevronDown size={16} color={colors.textTertiary} />
               </Pressable>
 
-              {/* Purpose selector */}
               <Text style={[styles.fieldLabel, { color: colors.text }]}>Purpose *</Text>
               <Pressable
                 style={[styles.pickerBtn, { backgroundColor: colors.background, borderColor: colors.border }]}
@@ -431,7 +729,6 @@ export default function RoomHygieneLogScreen() {
                 <ChevronDown size={16} color={colors.textTertiary} />
               </Pressable>
 
-              {/* Purpose detail */}
               <Text style={[styles.fieldLabel, { color: colors.text }]}>Purpose Details *</Text>
               <TextInput
                 style={[styles.textInput, { color: colors.text, backgroundColor: colors.background, borderColor: colors.border }]}
@@ -439,12 +736,9 @@ export default function RoomHygieneLogScreen() {
                 placeholderTextColor={colors.textTertiary}
                 value={purposeDetail}
                 onChangeText={setPurposeDetail}
-                multiline
-                numberOfLines={2}
-                textAlignVertical="top"
+                multiline numberOfLines={2} textAlignVertical="top"
               />
 
-              {/* Actions performed */}
               <Text style={[styles.fieldLabel, { color: colors.text }]}>Actions Performed *</Text>
               <TextInput
                 style={[styles.textInput, { color: colors.text, backgroundColor: colors.background, borderColor: colors.border }]}
@@ -452,42 +746,33 @@ export default function RoomHygieneLogScreen() {
                 placeholderTextColor={colors.textTertiary}
                 value={actionsPerformed}
                 onChangeText={setActionsPerformed}
-                multiline
-                numberOfLines={3}
-                textAlignVertical="top"
+                multiline numberOfLines={3} textAlignVertical="top"
               />
 
-              {/* Equipment touched */}
               <Text style={[styles.fieldLabel, { color: colors.text }]}>Equipment Touched *</Text>
               <TextInput
                 style={[styles.textInputSmall, { color: colors.text, backgroundColor: colors.background, borderColor: colors.border }]}
                 placeholder="Conveyor belt, mixer panel, etc. or N/A"
                 placeholderTextColor={colors.textTertiary}
-                value={equipmentTouched}
-                onChangeText={setEquipmentTouched}
+                value={equipmentTouched} onChangeText={setEquipmentTouched}
               />
 
-              {/* Chemicals used */}
               <Text style={[styles.fieldLabel, { color: colors.text }]}>Chemicals Used *</Text>
               <TextInput
                 style={[styles.textInputSmall, { color: colors.text, backgroundColor: colors.background, borderColor: colors.border }]}
                 placeholder="Sanitizer, degreaser, etc. or N/A"
                 placeholderTextColor={colors.textTertiary}
-                value={chemicalsUsed}
-                onChangeText={setChemicalsUsed}
+                value={chemicalsUsed} onChangeText={setChemicalsUsed}
               />
 
-              {/* Tools brought in */}
               <Text style={[styles.fieldLabel, { color: colors.text }]}>Tools Brought In *</Text>
               <TextInput
                 style={[styles.textInputSmall, { color: colors.text, backgroundColor: colors.background, borderColor: colors.border }]}
                 placeholder="Wrench, thermometer, swab kit, etc. or N/A"
                 placeholderTextColor={colors.textTertiary}
-                value={toolsBroughtIn}
-                onChangeText={setToolsBroughtIn}
+                value={toolsBroughtIn} onChangeText={setToolsBroughtIn}
               />
 
-              {/* Handwash */}
               <Text style={[styles.fieldLabel, { color: colors.text }]}>Handwash on Entry *</Text>
               <View style={styles.toggleRow}>
                 <Pressable
@@ -506,7 +791,6 @@ export default function RoomHygieneLogScreen() {
                 </Pressable>
               </View>
 
-              {/* PPE */}
               <Text style={[styles.fieldLabel, { color: colors.text }]}>PPE Worn *</Text>
               <View style={styles.ppeGrid}>
                 {PPE_OPTIONS.map(ppe => {
@@ -524,7 +808,6 @@ export default function RoomHygieneLogScreen() {
                 })}
               </View>
 
-              {/* Contamination risk */}
               <Text style={[styles.fieldLabel, { color: colors.text }]}>Contamination Risk *</Text>
               <View style={styles.riskRow}>
                 {CONTAMINATION_LEVELS.map(level => {
@@ -549,32 +832,23 @@ export default function RoomHygieneLogScreen() {
                     style={[styles.textInput, { color: colors.text, backgroundColor: '#EF444410', borderColor: '#EF444440' }]}
                     placeholder="Describe the contamination concern..."
                     placeholderTextColor={colors.textTertiary}
-                    value={contaminationNotes}
-                    onChangeText={setContaminationNotes}
-                    multiline
-                    numberOfLines={2}
-                    textAlignVertical="top"
+                    value={contaminationNotes} onChangeText={setContaminationNotes}
+                    multiline numberOfLines={2} textAlignVertical="top"
                   />
                 </>
               )}
 
-              {/* Notes */}
               <Text style={[styles.fieldLabel, { color: colors.text }]}>Notes *</Text>
               <TextInput
                 style={[styles.textInput, { color: colors.text, backgroundColor: colors.background, borderColor: colors.border }]}
                 placeholder="Additional observations or N/A..."
                 placeholderTextColor={colors.textTertiary}
-                value={notes}
-                onChangeText={setNotes}
-                multiline
-                numberOfLines={2}
-                textAlignVertical="top"
+                value={notes} onChangeText={setNotes}
+                multiline numberOfLines={2} textAlignVertical="top"
               />
-
               <View style={{ height: 20 }} />
             </ScrollView>
 
-            {/* Submit */}
             <View style={[styles.modalFooter, { borderTopColor: colors.border }]}>
               <Pressable
                 style={[styles.cancelBtn, { borderColor: colors.border }]}
@@ -607,7 +881,7 @@ export default function RoomHygieneLogScreen() {
           <View style={[styles.pickerList, { backgroundColor: colors.surface }]}>
             <Text style={[styles.pickerListTitle, { color: colors.text }]}>Select Room</Text>
             <ScrollView style={{ maxHeight: 400 }}>
-              {ROOMS.map(room => (
+              {roomOptions.map(room => (
                 <Pressable
                   key={room.id}
                   style={[styles.pickerItem, { borderBottomColor: colors.border }]}
@@ -615,11 +889,16 @@ export default function RoomHygieneLogScreen() {
                 >
                   <View>
                     <Text style={[styles.pickerItemLabel, { color: colors.text }]}>{room.name}</Text>
-                    <Text style={[styles.pickerItemSub, { color: colors.textSecondary }]}>{room.line}</Text>
+                    <Text style={[styles.pickerItemSub, { color: colors.textSecondary }]}>{room.code} — {room.building || room.type}</Text>
                   </View>
                   {selectedRoom?.id === room.id && <Check size={18} color="#8B5CF6" />}
                 </Pressable>
               ))}
+              {roomOptions.length === 0 && (
+                <View style={{ padding: 20, alignItems: 'center' }}>
+                  <Text style={[{ color: colors.textTertiary }]}>No locations found. Add locations in facility settings.</Text>
+                </View>
+              )}
             </ScrollView>
           </View>
         </Pressable>
@@ -631,7 +910,7 @@ export default function RoomHygieneLogScreen() {
           <View style={[styles.pickerList, { backgroundColor: colors.surface }]}>
             <Text style={[styles.pickerListTitle, { color: colors.text }]}>Select Purpose</Text>
             <ScrollView style={{ maxHeight: 400 }}>
-              {PURPOSES.map(purpose => {
+              {PURPOSES.filter(p => p.value !== 'work_order' && p.value !== 'task_feed').map(purpose => {
                 const Icon = purpose.icon;
                 return (
                   <Pressable
@@ -666,6 +945,11 @@ const styles = StyleSheet.create({
   headerSub: { fontSize: 12, marginTop: 1 },
   addBtn: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, gap: 6 },
   addBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  tabRow: { flexDirection: 'row', gap: 0, marginBottom: 6 },
+  tabBtn: { flex: 1, alignItems: 'center', paddingVertical: 8, flexDirection: 'row', justifyContent: 'center', gap: 6 },
+  tabText: { fontSize: 13, fontWeight: '600' },
+  badgeCount: { backgroundColor: '#F59E0B', borderRadius: 8, paddingHorizontal: 6, paddingVertical: 1, minWidth: 18, alignItems: 'center' },
+  badgeCountText: { color: '#fff', fontSize: 10, fontWeight: '800' },
   filterRow: { flexDirection: 'row', gap: 8, marginTop: 4 },
   filterChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, borderWidth: 1, marginRight: 8 },
   filterChipText: { fontSize: 12, fontWeight: '600' },
@@ -692,9 +976,33 @@ const styles = StyleSheet.create({
   flagBtnText: { fontSize: 12, fontWeight: '600' },
   flaggedBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: '#EF444420', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4 },
   flaggedText: { fontSize: 9, fontWeight: '800', color: '#EF4444', letterSpacing: 0.3 },
+  woLink: { fontSize: 11, fontWeight: '600' },
   emptyState: { alignItems: 'center', padding: 32, borderRadius: 12, gap: 8 },
   emptyText: { fontSize: 14 },
-  // Modal
+  emptyTextSub: { fontSize: 12 },
+  reportCard: { borderLeftWidth: 3, borderRadius: 12, padding: 16, marginBottom: 10, gap: 10 },
+  reportHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  reportHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  reportRoom: { fontSize: 15, fontWeight: '700' },
+  reportStatusBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  reportStatusText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
+  reportStats: { flexDirection: 'row', gap: 12 },
+  reportStat: { alignItems: 'center', gap: 2 },
+  reportStatNum: { fontSize: 16, fontWeight: '800' },
+  reportStatLabel: { fontSize: 10, fontWeight: '500' },
+  deptBreakdown: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  deptCountBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  deptCountText: { fontSize: 11, fontWeight: '600' },
+  signOffBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 10, borderRadius: 10 },
+  signOffBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  signedOffInfo: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderRadius: 8 },
+  signedOffText: { fontSize: 12, fontWeight: '600', fontStyle: 'italic' },
+  signOffNotesText: { fontSize: 12, fontStyle: 'italic' },
+  signOffSummary: { padding: 14, borderRadius: 12, gap: 6, marginBottom: 16 },
+  signOffRoomName: { fontSize: 17, fontWeight: '700' },
+  signOffDate: { fontSize: 13 },
+  signOffStatsRow: { flexDirection: 'row', gap: 16, marginTop: 4 },
+  signOffStatItem: { fontSize: 13, fontWeight: '600' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   modalContent: { borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '92%' },
   modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1 },
@@ -723,7 +1031,6 @@ const styles = StyleSheet.create({
   cancelBtnText: { fontSize: 15, fontWeight: '600' },
   submitBtn: { flex: 2, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12, borderRadius: 12, gap: 8 },
   submitBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
-  // Picker modals
   pickerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
   pickerList: { width: '85%', borderRadius: 16, padding: 16, maxHeight: '70%' },
   pickerListTitle: { fontSize: 16, fontWeight: '700', marginBottom: 12 },
