@@ -28,6 +28,7 @@ export default function SettingsLayout() {
       <Stack.Screen name="departments" options={{ title: 'Departments' }} />
       <Stack.Screen name="taskfeed-templates" options={{ title: 'Task Feed Templates' }} />
       <Stack.Screen name="template-builder" options={{ title: 'Template Builder', presentation: 'modal' }} />
+      <Stack.Screen name="system-overview" options={{ title: 'System Overview' }} />
     </Stack>
   );
 }
