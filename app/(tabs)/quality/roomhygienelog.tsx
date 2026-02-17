@@ -108,7 +108,7 @@ export default function RoomHygieneLogScreen() {
   // Map locations to room options
   const roomOptions = useMemo(() => {
     return locations
-      .filter(loc => loc.status === 'active')
+      .filter(loc => loc.status === 'active' && (loc as any).hygiene_log_required === true)
       .map(loc => ({
         id: loc.id,
         code: loc.location_code,
