@@ -602,3 +602,184 @@ export function useSignOffDailyReport(callbacks?: {
     onError: (error: Error) => callbacks?.onError?.(error),
   });
 }
+
+// ══════════════════════════════════════════════════════════════
+// AUTO-LOG UTILITY
+// Called from task feed completion and work order completion.
+// Checks if location requires hygiene logging, creates entry if so.
+// ══════════════════════════════════════════════════════════════
+
+export async function autoLogRoomHygieneEntry(params: {
+  organizationId: string;
+  facilityId?: string;
+  locationId?: string;       // UUID from locations table
+  locationName?: string;     // fallback display name
+  purpose: 'task_feed' | 'work_order';
+  referenceId: string;       // post_id or work_order_id
+  referenceNumber?: string;  // TF-XXXXX or WO-XXXXX
+  departmentCode: string;
+  departmentName: string;
+  performedById?: string;
+  performedByName: string;
+  description: string;       // what was done
+}) {
+  try {
+    if (!params.organizationId) return;
+
+    // Step 1: Check if this location requires hygiene logging
+    let locationId = params.locationId;
+    let roomName = params.locationName || 'Unknown';
+    let hygieneRequired = false;
+
+    if (locationId) {
+      const { data: loc } = await supabase
+        .from('locations')
+        .select('id, name, hygiene_log_required')
+        .eq('id', locationId)
+        .maybeSingle();
+
+      if (loc) {
+        hygieneRequired = loc.hygiene_log_required === true;
+        roomName = loc.name;
+      }
+    }
+
+    // If no locationId, try matching by name
+    if (!locationId && params.locationName) {
+      const { data: loc } = await supabase
+        .from('locations')
+        .select('id, name, hygiene_log_required')
+        .eq('organization_id', params.organizationId)
+        .ilike('name', `%${params.locationName}%`)
+        .maybeSingle();
+
+      if (loc) {
+        locationId = loc.id;
+        roomName = loc.name;
+        hygieneRequired = loc.hygiene_log_required === true;
+      }
+    }
+
+    if (!hygieneRequired || !locationId) {
+      console.log('[autoLogRoomHygiene] Location not hygiene-required, skipping');
+      return;
+    }
+
+    console.log('[autoLogRoomHygiene] Auto-logging for', roomName);
+
+    // Step 2: Find or create daily report
+    const today = new Date().toISOString().split('T')[0];
+
+    const { data: existingReport } = await supabase
+      .from('daily_room_hygiene_reports')
+      .select('id')
+      .eq('organization_id', params.organizationId)
+      .eq('room_id', locationId)
+      .eq('report_date', today)
+      .maybeSingle();
+
+    let reportId = existingReport?.id;
+
+    if (!reportId) {
+      const { data: newReport } = await supabase
+        .from('daily_room_hygiene_reports')
+        .insert({
+          organization_id: params.organizationId,
+          facility_id: params.facilityId || null,
+          room_id: locationId,
+          room_name: roomName,
+          report_date: today,
+          status: 'open',
+          total_entries: 0,
+        })
+        .select('id')
+        .single();
+
+      if (!newReport) {
+        // Race condition — try fetching again
+        const { data: retry } = await supabase
+          .from('daily_room_hygiene_reports')
+          .select('id')
+          .eq('organization_id', params.organizationId)
+          .eq('room_id', locationId)
+          .eq('report_date', today)
+          .maybeSingle();
+        reportId = retry?.id;
+      } else {
+        reportId = newReport.id;
+      }
+    }
+
+    // Step 3: Create room hygiene log entry
+    const now = new Date().toISOString();
+    const { error: insertErr } = await supabase
+      .from('room_hygiene_log')
+      .insert({
+        organization_id: params.organizationId,
+        facility_id: params.facilityId || null,
+        room_id: locationId,
+        room_name: roomName,
+        entry_time: now,
+        exit_time: now,
+        duration_minutes: 0,
+        entered_by_id: params.performedById || null,
+        entered_by_name: params.performedByName,
+        department_code: params.departmentCode,
+        department_name: params.departmentName,
+        purpose: params.purpose,
+        purpose_detail: `${params.referenceNumber || params.referenceId}: ${params.description}`,
+        actions_performed: params.description,
+        equipment_touched: [],
+        chemicals_used: [],
+        tools_brought_in: [],
+        handwash_on_entry: true,
+        ppe_worn: ['hairnet', 'gloves', 'smock'],
+        hairnet: true,
+        gloves: true,
+        smock: true,
+        boot_covers: false,
+        contamination_risk: 'none',
+        status: 'completed',
+        notes: `Auto-logged from ${params.purpose === 'task_feed' ? 'Task Feed' : 'Work Order'}: ${params.referenceNumber || params.referenceId}`,
+        task_feed_post_id: params.purpose === 'task_feed' ? params.referenceId : null,
+        work_order_id: params.purpose === 'work_order' ? params.referenceId : null,
+        daily_report_id: reportId || null,
+      });
+
+    if (insertErr) {
+      console.error('[autoLogRoomHygiene] Insert error:', insertErr.message);
+      return;
+    }
+
+    // Step 4: Update daily report counters
+    if (reportId) {
+      const { data: entries } = await supabase
+        .from('room_hygiene_log')
+        .select('status, department_code, contamination_risk')
+        .eq('daily_report_id', reportId);
+
+      if (entries) {
+        const deptCounts: Record<string, number> = {};
+        entries.forEach(e => {
+          deptCounts[e.department_code] = (deptCounts[e.department_code] || 0) + 1;
+        });
+
+        await supabase
+          .from('daily_room_hygiene_reports')
+          .update({
+            total_entries: entries.length,
+            completed_entries: entries.filter(e => e.status === 'completed').length,
+            active_entries: entries.filter(e => e.status === 'active').length,
+            flagged_entries: entries.filter(e => e.status === 'flagged').length,
+            department_counts: deptCounts,
+          })
+          .eq('id', reportId);
+      }
+    }
+
+    console.log('[autoLogRoomHygiene] Entry created for', roomName);
+  } catch (err) {
+    // Never block the parent operation
+    console.error('[autoLogRoomHygiene] Error (non-blocking):', err);
+  }
+}
