@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useOrganization } from '@/contexts/OrganizationContext';
+import { autoLogRoomHygieneEntry } from '@/hooks/useRoomHygieneLog';
 import { 
   supabase, 
   Tables, 
@@ -596,6 +597,28 @@ export function useCompleteWorkOrder(options?: {
         }
       }
       
+      // Auto-log to Room Hygiene Log if WO is in a hygiene-required location
+      try {
+        const deptCode = departmentCode || existingWO.department || '1001';
+        const woNumber = existingWO.work_order_number || `WO-${workOrderId.slice(0, 8)}`;
+        const completedName = completedByName || completedBy || 'System';
+        await autoLogRoomHygieneEntry({
+          organizationId,
+          locationId: existingWO.location_id || undefined,
+          locationName: existingWO.location || existingWO.equipment || undefined,
+          purpose: 'work_order',
+          referenceId: workOrderId,
+          referenceNumber: woNumber,
+          departmentCode: deptCode,
+          departmentName: getDepartmentNameForWO(deptCode),
+          performedById: (completedBy && /^[0-9a-f]{8}-/.test(completedBy)) ? completedBy : undefined,
+          performedByName: completedName,
+          description: `${existingWO.title}${completionNotes ? ': ' + completionNotes : ''}`,
+        });
+      } catch (hygieneErr) {
+        console.error('[useCompleteWorkOrder] Room hygiene auto-log error (non-blocking):', hygieneErr);
+      }
+      
       return data as ExtendedWorkOrder;
     },
     onSuccess: (data) => {
@@ -606,6 +629,8 @@ export function useCompleteWorkOrder(options?: {
       queryClient.invalidateQueries({ queryKey: ['task_feed_posts'] });
       queryClient.invalidateQueries({ queryKey: ['task_feed_posts_with_tasks'] });
       queryClient.invalidateQueries({ queryKey: ['task_feed_department_tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['room_hygiene_log'] });
+      queryClient.invalidateQueries({ queryKey: ['daily_room_hygiene_reports'] });
       options?.onSuccess?.(data);
     },
     onError: (error) => {
