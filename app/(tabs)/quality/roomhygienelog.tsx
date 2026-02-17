@@ -108,7 +108,7 @@ export default function RoomHygieneLogScreen() {
   // Map locations to room options
   const roomOptions = useMemo(() => {
     return locations
-      .filter(loc => loc.status === 'active' && (loc as any).hygiene_log_required === true)
+      .filter(loc => loc.status === 'active')
       .map(loc => ({
         id: loc.id,
         code: loc.location_code,
@@ -146,7 +146,7 @@ export default function RoomHygieneLogScreen() {
   const [signOffNotes, setSignOffNotes] = useState('');
 
   // Data - entries
-  const { data: entries = [], isLoading, isFetching, refetch } = useRoomHygieneLogQuery({
+  const { data: entries = [], isFetching, refetch } = useRoomHygieneLogQuery({
     date: todayStr,
     roomId: filterRoom,
     limit: 100,
@@ -432,7 +432,7 @@ export default function RoomHygieneLogScreen() {
 
           <View style={styles.section}>
             <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>LOG HISTORY ({completedEntries.length})</Text>
-            {completedEntries.length === 0 && !isLoading && (
+            {completedEntries.length === 0 && !isFetching && (
               <View style={[styles.emptyState, { backgroundColor: colors.surface }]}>
                 <DoorOpen size={32} color={colors.textTertiary} />
                 <Text style={[styles.emptyText, { color: colors.textTertiary }]}>No entries logged today</Text>
