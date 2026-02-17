@@ -714,20 +714,8 @@ export function useSupabaseQualityTasks() {
   const schedulesQuery = useQuery({
     queryKey: ['quality_task_schedules', organizationId],
     queryFn: async () => {
-      if (!organizationId) return MOCK_SCHEDULES;
-      console.log('[useSupabaseQualityTasks] Fetching schedules');
-
-      const { data, error } = await supabase
-        .from('quality_task_schedules')
-        .select('*')
-        .eq('organization_id', organizationId)
-        .order('schedule_name', { ascending: true });
-
-      if (error) {
-        console.log('[useSupabaseQualityTasks] Using mock schedules');
-        return MOCK_SCHEDULES;
-      }
-      return (data?.length ? data : MOCK_SCHEDULES) as QualityTaskSchedule[];
+      // Table not yet migrated — skip Supabase call
+      return MOCK_SCHEDULES as QualityTaskSchedule[];
     },
     enabled: true,
   });
@@ -735,21 +723,7 @@ export function useSupabaseQualityTasks() {
   const tasksQuery = useQuery({
     queryKey: ['quality_tasks', organizationId],
     queryFn: async () => {
-      if (!organizationId) return MOCK_TASKS;
-      console.log('[useSupabaseQualityTasks] Fetching tasks');
-
-      const { data, error } = await supabase
-        .from('quality_tasks')
-        .select('*')
-        .eq('organization_id', organizationId)
-        .order('scheduled_date', { ascending: true })
-        .order('scheduled_time', { ascending: true });
-
-      if (error) {
-        console.log('[useSupabaseQualityTasks] Using mock tasks');
-        return MOCK_TASKS;
-      }
-      return (data?.length ? data : MOCK_TASKS) as QualityTask[];
+      return MOCK_TASKS as QualityTask[];
     },
     enabled: true,
   });
@@ -758,21 +732,7 @@ export function useSupabaseQualityTasks() {
     queryKey: ['quality_tasks', 'today', organizationId],
     queryFn: async () => {
       const today = new Date().toISOString().split('T')[0];
-      if (!organizationId) return MOCK_TASKS.filter(t => t.scheduled_date === today);
-      console.log('[useSupabaseQualityTasks] Fetching today\'s tasks');
-
-      const { data, error } = await supabase
-        .from('quality_tasks')
-        .select('*')
-        .eq('organization_id', organizationId)
-        .eq('scheduled_date', today)
-        .order('scheduled_time', { ascending: true });
-
-      if (error) {
-        return MOCK_TASKS.filter(t => t.scheduled_date === today);
-      }
-      const result = data?.length ? data : MOCK_TASKS.filter(t => t.scheduled_date === today);
-      return result as QualityTask[];
+      return MOCK_TASKS.filter(t => t.scheduled_date === today) as QualityTask[];
     },
     enabled: true,
   });
@@ -780,20 +740,7 @@ export function useSupabaseQualityTasks() {
   const crossDeptDocsQuery = useQuery({
     queryKey: ['cross_department_docs', organizationId],
     queryFn: async () => {
-      if (!organizationId) return MOCK_CROSS_DEPT_DOCS;
-      console.log('[useSupabaseQualityTasks] Fetching cross-department docs');
-
-      const { data, error } = await supabase
-        .from('cross_department_docs')
-        .select('*')
-        .eq('organization_id', organizationId)
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.log('[useSupabaseQualityTasks] Using mock cross-dept docs');
-        return MOCK_CROSS_DEPT_DOCS;
-      }
-      return (data?.length ? data : MOCK_CROSS_DEPT_DOCS) as CrossDepartmentDoc[];
+      return MOCK_CROSS_DEPT_DOCS as CrossDepartmentDoc[];
     },
     enabled: true,
   });
@@ -801,21 +748,7 @@ export function useSupabaseQualityTasks() {
   const pendingSignOffsQuery = useQuery({
     queryKey: ['cross_department_docs', 'pending', organizationId],
     queryFn: async () => {
-      if (!organizationId) return MOCK_CROSS_DEPT_DOCS.filter(d => d.status === 'pending_quality');
-      console.log('[useSupabaseQualityTasks] Fetching pending sign-offs');
-
-      const { data, error } = await supabase
-        .from('cross_department_docs')
-        .select('*')
-        .eq('organization_id', organizationId)
-        .eq('status', 'pending_quality')
-        .order('created_at', { ascending: true });
-
-      if (error) {
-        return MOCK_CROSS_DEPT_DOCS.filter(d => d.status === 'pending_quality');
-      }
-      const result = data?.length ? data : MOCK_CROSS_DEPT_DOCS.filter(d => d.status === 'pending_quality');
-      return result as CrossDepartmentDoc[];
+      return MOCK_CROSS_DEPT_DOCS.filter(d => d.status === 'pending_quality') as CrossDepartmentDoc[];
     },
     enabled: true,
   });
@@ -823,20 +756,7 @@ export function useSupabaseQualityTasks() {
   const swabTestsQuery = useQuery({
     queryKey: ['swab_tests', organizationId],
     queryFn: async () => {
-      if (!organizationId) return MOCK_SWAB_TESTS;
-      console.log('[useSupabaseQualityTasks] Fetching swab tests');
-
-      const { data, error } = await supabase
-        .from('swab_tests')
-        .select('*')
-        .eq('organization_id', organizationId)
-        .order('sampled_at', { ascending: false });
-
-      if (error) {
-        console.log('[useSupabaseQualityTasks] Using mock swab tests');
-        return MOCK_SWAB_TESTS;
-      }
-      return (data?.length ? data : MOCK_SWAB_TESTS) as SwabTest[];
+      return MOCK_SWAB_TESTS as SwabTest[];
     },
     enabled: true,
   });
