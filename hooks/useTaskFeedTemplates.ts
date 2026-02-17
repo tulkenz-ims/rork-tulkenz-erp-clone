@@ -4,6 +4,7 @@ import { useUser } from '@/contexts/UserContext';
 import { supabase } from '@/lib/supabase';
 import { Platform } from 'react-native';
 import { decode } from 'base64-arraybuffer';
+import { autoLogRoomHygieneEntry } from '@/hooks/useRoomHygieneLog';
 import {
   TaskFeedTemplate,
   TaskFeedPost,
@@ -624,6 +625,39 @@ export function useCompleteDepartmentTask(callbacks?: MutationCallbacks<TaskFeed
       queryClient.invalidateQueries({ queryKey: ['task_feed_posts'] });
       queryClient.invalidateQueries({ queryKey: ['task_feed_posts_with_tasks'] });
       queryClient.invalidateQueries({ queryKey: ['task_feed_post_detail'] });
+
+      // Auto-log to Room Hygiene Log if post is in a hygiene-required room
+      (async () => {
+        try {
+          const { data: post } = await supabase
+            .from('task_feed_posts')
+            .select('id, organization_id, facility_id, location_id, location_name, room_id, room_name, post_number, notes, originating_department_code, originating_department_name')
+            .eq('id', data.postId)
+            .maybeSingle();
+
+          if (post) {
+            await autoLogRoomHygieneEntry({
+              organizationId: post.organization_id,
+              facilityId: post.facility_id || undefined,
+              locationId: post.room_id || post.location_id || undefined,
+              locationName: post.room_name || post.location_name || undefined,
+              purpose: 'task_feed',
+              referenceId: post.id,
+              referenceNumber: post.post_number,
+              departmentCode: data.departmentCode,
+              departmentName: data.departmentName || data.departmentCode,
+              performedById: user?.id,
+              performedByName: user ? `${user.first_name} ${user.last_name}` : 'System',
+              description: `Task completed: ${data.completionNotes || post.notes || 'Department task'}`,
+            });
+            queryClient.invalidateQueries({ queryKey: ['room_hygiene_log'] });
+            queryClient.invalidateQueries({ queryKey: ['daily_room_hygiene_reports'] });
+          }
+        } catch (e) {
+          console.error('[useCompleteDepartmentTask] Auto-log error (non-blocking):', e);
+        }
+      })();
+
       callbacks?.onSuccess?.(data);
     },
     onError: (error: Error) => {
@@ -2207,6 +2241,39 @@ export function useCompleteWithFormResponse(callbacks?: MutationCallbacks<TaskFe
       queryClient.invalidateQueries({ queryKey: ['task_feed_department_tasks'] });
       queryClient.invalidateQueries({ queryKey: ['task_feed_posts'] });
       queryClient.invalidateQueries({ queryKey: ['task_feed_posts_with_tasks'] });
+
+      // Auto-log to Room Hygiene Log
+      (async () => {
+        try {
+          const { data: post } = await supabase
+            .from('task_feed_posts')
+            .select('id, organization_id, facility_id, location_id, location_name, room_id, room_name, post_number, notes')
+            .eq('id', data.postId)
+            .maybeSingle();
+
+          if (post) {
+            await autoLogRoomHygieneEntry({
+              organizationId: post.organization_id,
+              facilityId: post.facility_id || undefined,
+              locationId: post.room_id || post.location_id || undefined,
+              locationName: post.room_name || post.location_name || undefined,
+              purpose: 'task_feed',
+              referenceId: post.id,
+              referenceNumber: post.post_number,
+              departmentCode: data.departmentCode,
+              departmentName: data.departmentName || data.departmentCode,
+              performedById: user?.id,
+              performedByName: user ? `${user.first_name} ${user.last_name}` : 'System',
+              description: `Form completed: ${data.completionNotes || post.notes || 'Department task with form'}`,
+            });
+            queryClient.invalidateQueries({ queryKey: ['room_hygiene_log'] });
+            queryClient.invalidateQueries({ queryKey: ['daily_room_hygiene_reports'] });
+          }
+        } catch (e) {
+          console.error('[useCompleteWithFormResponse] Auto-log error (non-blocking):', e);
+        }
+      })();
+
       callbacks?.onSuccess?.(data);
     },
     onError: (error: Error) => callbacks?.onError?.(error),
