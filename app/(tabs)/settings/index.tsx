@@ -327,8 +327,9 @@ export default function SettingsScreen() {
           <View style={[styles.sectionContent, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <SettingItem
               icon={HelpCircle}
-              label="Help Center"
-              onPress={() => {}}
+              label="System Overview"
+              value="Architecture, security, modules"
+              onPress={() => router.push('/settings/system-overview')}
               colors={colors}
             />
           </View>
