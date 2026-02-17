@@ -602,10 +602,27 @@ export function useCompleteWorkOrder(options?: {
         const deptCode = departmentCode || existingWO.department || '1001';
         const woNumber = existingWO.work_order_number || `WO-${workOrderId.slice(0, 8)}`;
         const completedName = completedByName || completedBy || 'System';
+        
+        // WO may not have location directly — check linked task feed post
+        let locId = existingWO.location_id || undefined;
+        let locName = existingWO.location || existingWO.equipment || undefined;
+        
+        if (!locId && !locName && existingWO.source_id) {
+          const { data: parentPost } = await supabase
+            .from('task_feed_posts')
+            .select('location_id, location_name, room_id, room_name')
+            .eq('id', existingWO.source_id)
+            .maybeSingle();
+          if (parentPost) {
+            locId = parentPost.room_id || parentPost.location_id || undefined;
+            locName = parentPost.room_name || parentPost.location_name || undefined;
+          }
+        }
+        
         await autoLogRoomHygieneEntry({
           organizationId,
-          locationId: existingWO.location_id || undefined,
-          locationName: existingWO.location || existingWO.equipment || undefined,
+          locationId: locId,
+          locationName: locName,
           purpose: 'work_order',
           referenceId: workOrderId,
           referenceNumber: woNumber,
