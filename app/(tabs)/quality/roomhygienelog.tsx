@@ -7,7 +7,6 @@ import {
   Pressable,
   TextInput,
   Modal,
-  RefreshControl,
   Alert,
   ActivityIndicator,
 } from 'react-native';
@@ -108,7 +107,7 @@ export default function RoomHygieneLogScreen() {
   // Map locations to room options
   const roomOptions = useMemo(() => {
     return locations
-      .filter(loc => loc.status === 'active')
+      .filter(loc => loc.status === 'active' && (loc as any).hygiene_log_required === true)
       .map(loc => ({
         id: loc.id,
         code: loc.location_code,
@@ -389,7 +388,6 @@ export default function RoomHygieneLogScreen() {
       {activeTab === 'log' && (
         <ScrollView
           style={styles.list}
-          refreshControl={<RefreshControl refreshing={isFetching} onRefresh={refetch} />}
         >
           {activeEntries.length > 0 && (
             <View style={styles.section}>
@@ -487,7 +485,6 @@ export default function RoomHygieneLogScreen() {
       {activeTab === 'reports' && (
         <ScrollView
           style={styles.list}
-          refreshControl={<RefreshControl refreshing={reportsLoading} onRefresh={refetchReports} />}
         >
           {dailyReports.length === 0 && !reportsLoading && (
             <View style={[styles.emptyState, { backgroundColor: colors.surface, marginTop: 20 }]}>
