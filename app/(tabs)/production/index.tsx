@@ -58,6 +58,14 @@ export default function ProductionScreen() {
 
   const modules = [
     {
+      id: 'productionruns',
+      title: 'Production Runs',
+      description: 'Real-time bag/unit counting, run tracking, yield, waste & rework',
+      icon: TrendingUp,
+      color: '#8B5CF6',
+      route: 'productionruns',
+    },
+    {
       id: 'materials',
       title: 'Production Materials (3XXXXXX)',
       description: 'Raw materials, consumables, packaging, and production supplies',
