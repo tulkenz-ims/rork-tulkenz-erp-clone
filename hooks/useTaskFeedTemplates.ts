@@ -1809,7 +1809,19 @@ export function useClearProductionHold(callbacks?: MutationCallbacks<TaskFeedPos
     mutationFn: async (input: ClearHoldInput) => {
       const now = new Date().toISOString();
 
-      // Update the post hold status
+      // Check if all department tasks are done BEFORE updating hold
+      const { data: allTasks } = await supabase
+        .from('task_feed_department_tasks')
+        .select('id, status')
+        .eq('post_id', input.postId);
+
+      const total = allTasks?.length || 0;
+      const done = allTasks?.filter(t => 
+        t.status === 'completed' || t.status === 'signed_off' || t.status === 'not_involved'
+      ).length || 0;
+      const allDone = done === total && total > 0;
+
+      // Update the post hold status AND post status in one shot
       const { data, error } = await supabase
         .from('task_feed_posts')
         .update({
@@ -1821,6 +1833,13 @@ export function useClearProductionHold(callbacks?: MutationCallbacks<TaskFeedPos
           hold_cleared_notes: input.notes || null,
           root_cause_department: input.rootCauseDepartment || null,
           root_cause_department_name: input.rootCauseDepartmentName || null,
+          // Now that hold is cleared, if all tasks are done, mark post completed
+          ...(allDone ? { 
+            status: 'completed', 
+            completed_at: now,
+            completed_departments: done,
+            completion_rate: 100,
+          } : {}),
         })
         .eq('id', input.postId)
         .eq('organization_id', organizationId)
@@ -1830,23 +1849,27 @@ export function useClearProductionHold(callbacks?: MutationCallbacks<TaskFeedPos
       if (error) throw error;
 
       // Log to hold history
-      await supabase
-        .from('production_hold_log')
-        .insert({
-          organization_id: organizationId,
-          post_id: input.postId,
-          post_number: data.post_number,
-          action: 'hold_cleared',
-          action_by_id: input.clearedById,
-          action_by_name: input.clearedByName,
-          department_code: input.departmentCode,
-          department_name: input.departmentName,
-          reason: input.notes,
-          production_line: data.production_line,
-          signature_stamp: input.signatureStamp,
-          root_cause_department: input.rootCauseDepartment || null,
-          root_cause_department_name: input.rootCauseDepartmentName || null,
-        });
+      try {
+        await supabase
+          .from('production_hold_log')
+          .insert({
+            organization_id: organizationId,
+            post_id: input.postId,
+            post_number: data.post_number,
+            action: 'hold_cleared',
+            action_by_id: input.clearedById,
+            action_by_name: input.clearedByName,
+            department_code: input.departmentCode,
+            department_name: input.departmentName,
+            reason: input.notes,
+            production_line: data.production_line,
+            signature_stamp: input.signatureStamp,
+            root_cause_department: input.rootCauseDepartment || null,
+            root_cause_department_name: input.rootCauseDepartmentName || null,
+          });
+      } catch (logErr) {
+        console.error('[useClearProductionHold] Hold log insert failed (non-fatal):', logErr);
+      }
 
       return mapPostFromDb(data);
     },
