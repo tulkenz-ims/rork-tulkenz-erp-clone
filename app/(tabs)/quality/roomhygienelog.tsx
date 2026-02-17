@@ -146,14 +146,14 @@ export default function RoomHygieneLogScreen() {
   const [signOffNotes, setSignOffNotes] = useState('');
 
   // Data - entries
-  const { data: entries = [], isLoading, refetch } = useRoomHygieneLogQuery({
+  const { data: entries = [], isLoading, isFetching, refetch } = useRoomHygieneLogQuery({
     date: todayStr,
     roomId: filterRoom,
     limit: 100,
   });
 
   // Data - daily reports
-  const { data: dailyReports = [], isLoading: reportsLoading, refetch: refetchReports } = useDailyRoomReportsQuery({
+  const { data: dailyReports = [], isFetching: reportsLoading, refetch: refetchReports } = useDailyRoomReportsQuery({
     date: todayStr,
   });
 
@@ -389,7 +389,7 @@ export default function RoomHygieneLogScreen() {
       {activeTab === 'log' && (
         <ScrollView
           style={styles.list}
-          refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} />}
+          refreshControl={<RefreshControl refreshing={isFetching} onRefresh={refetch} />}
         >
           {activeEntries.length > 0 && (
             <View style={styles.section}>
