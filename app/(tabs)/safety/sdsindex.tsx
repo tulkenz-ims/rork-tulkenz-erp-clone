@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   Alert,
   Modal,
   ActivityIndicator,
+  Linking,
 } from 'react-native';
 import { useRouter, Stack } from 'expo-router';
 import {
@@ -25,28 +26,44 @@ import {
   Building,
   Trash2,
   ExternalLink,
+  Edit3,
+  QrCode,
+  Printer,
+  Upload,
+  Eye,
+  Check,
+  Info,
+  Download,
+  Hash,
+  Phone,
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useOrganization } from '@/contexts/OrganizationContext';
 import * as Haptics from 'expo-haptics';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
+import { QR_PRINT_SIZES, QRPrintSize } from '@/types/documents';
 
-interface SDSEntry {
-  id: string;
-  chemical_name: string;
-  manufacturer: string;
-  product_code: string;
-  sds_revision_date: string;
-  locations: string[];
-  hazard_class: string[];
-  ghs_pictograms: string[];
-  signal_word: 'Danger' | 'Warning' | 'None';
-  status: 'current' | 'review_needed' | 'expired';
-  last_reviewed: string;
-  notes: string;
-  created_at?: string;
-  updated_at?: string;
-}
+// ============================================================================
+// Department Prefix Mapping for QR Labels
+// ============================================================================
+const DEPARTMENT_PREFIXES: Record<string, { prefix: string; label: string; color: string }> = {
+  maintenance: { prefix: 'MAINT', label: 'Maintenance', color: '#3B82F6' },
+  sanitation: { prefix: 'SANI', label: 'Sanitation', color: '#10B981' },
+  production: { prefix: 'PROD', label: 'Production', color: '#8B5CF6' },
+  quality: { prefix: 'QUAL', label: 'Quality', color: '#F59E0B' },
+  warehouse: { prefix: 'WHSE', label: 'Warehouse', color: '#6366F1' },
+  cold_storage: { prefix: 'COLD', label: 'Cold Storage', color: '#06B6D4' },
+  refrigeration: { prefix: 'REFRIG', label: 'Refrigeration', color: '#0EA5E9' },
+  receiving: { prefix: 'RECV', label: 'Receiving', color: '#14B8A6' },
+  safety: { prefix: 'SAFE', label: 'Safety', color: '#EF4444' },
+  general: { prefix: 'GEN', label: 'General', color: '#6B7280' },
+};
+
+const DEPARTMENTS = Object.entries(DEPARTMENT_PREFIXES).map(([key, val]) => ({
+  value: key,
+  ...val,
+}));
 
 const HAZARD_CLASSES = [
   'Flammable',
@@ -70,246 +87,541 @@ const LOCATIONS = [
   'Receiving',
 ];
 
-export default function SDSIndexScreen() {
+// ============================================================================
+// Helpers
+// ============================================================================
+const getQRLabel = (dept: string | null, masterNumber: number | null): string => {
+  const prefix = dept ? (DEPARTMENT_PREFIXES[dept]?.prefix || 'SDS') : 'SDS';
+  return `${prefix} SDS #${masterNumber || '?'}`;
+};
+
+const getStatusColor = (status: string): string => {
+  switch (status) {
+    case 'active': return '#10B981';
+    case 'expired': return '#EF4444';
+    case 'superseded': return '#F59E0B';
+    case 'archived': return '#6B7280';
+    default: return '#6B7280';
+  }
+};
+
+const getStatusLabel = (status: string): string => {
+  switch (status) {
+    case 'active': return 'Active';
+    case 'expired': return 'Expired';
+    case 'superseded': return 'Superseded';
+    case 'archived': return 'Archived';
+    default: return status;
+  }
+};
+
+const getSignalWordColor = (word: string): string => {
+  switch (word?.toLowerCase()) {
+    case 'danger': return '#EF4444';
+    case 'warning': return '#F59E0B';
+    default: return '#6B7280';
+  }
+};
+
+// Simple fuzzy match: checks if terms appear in target
+const fuzzyMatch = (target: string, search: string): number => {
+  if (!target || !search) return 0;
+  const t = target.toLowerCase().trim();
+  const s = search.toLowerCase().trim();
+  if (t === s) return 1.0;
+  if (t.includes(s) || s.includes(t)) return 0.8;
+  // Check individual words
+  const searchWords = s.split(/\s+/);
+  const matchedWords = searchWords.filter(w => t.includes(w));
+  if (matchedWords.length > 0) return (matchedWords.length / searchWords.length) * 0.6;
+  return 0;
+};
+
+// ============================================================================
+// Main Component
+// ============================================================================
+export default function SDSMasterIndexScreen() {
   const { colors } = useTheme();
   const router = useRouter();
+  const { organizationId } = useOrganization();
   const queryClient = useQueryClient();
+
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [showFilterModal, setShowFilterModal] = useState(false);
+  const [showPrintQRModal, setShowPrintQRModal] = useState(false);
+  const [showDetailModal, setShowDetailModal] = useState(false);
   const [filterStatus, setFilterStatus] = useState<string | null>(null);
-  const [filterLocation, setFilterLocation] = useState<string | null>(null);
-  const [editingEntry, setEditingEntry] = useState<SDSEntry | null>(null);
+  const [filterDepartment, setFilterDepartment] = useState<string | null>(null);
+  const [editingEntry, setEditingEntry] = useState<any>(null);
+  const [selectedEntry, setSelectedEntry] = useState<any>(null);
+  const [printSize, setPrintSize] = useState<QRPrintSize>('medium');
+  const [duplicateMatches, setDuplicateMatches] = useState<any[]>([]);
+  const [showDuplicateWarning, setShowDuplicateWarning] = useState(false);
 
+  // Form state
   const [formData, setFormData] = useState({
-    chemicalName: '',
+    product_name: '',
     manufacturer: '',
-    productCode: '',
-    sdsRevisionDate: '',
-    locations: [] as string[],
-    hazardClass: [] as string[],
-    signalWord: 'Warning' as 'Danger' | 'Warning' | 'None',
+    manufacturer_phone: '',
+    emergency_phone: '',
+    cas_number: '',
+    sds_number: '',
+    primary_department: '' as string,
+    physical_state: '' as string,
+    signal_word: 'warning' as string,
+    hazard_class: [] as string[],
+    hazard_statements: [] as string[],
+    precautionary_statements: [] as string[],
+    location_used: [] as string[],
+    department_codes: [] as string[],
+    first_aid_inhalation: '',
+    first_aid_skin: '',
+    first_aid_eye: '',
+    first_aid_ingestion: '',
+    spill_procedures: '',
+    storage_requirements: '',
+    handling_precautions: '',
+    fire_extinguishing_media: '',
+    disposal_methods: '',
+    issue_date: new Date().toISOString().split('T')[0],
+    expiration_date: '',
+    revision_date: '',
     notes: '',
+    file_url: '',
   });
 
-  const { data: entries = [], isLoading, refetch } = useQuery({
-    queryKey: ['sds-index'],
+  // ============================================================================
+  // Queries
+  // ============================================================================
+  const { data: entries = [], isLoading, refetch, isRefetching } = useQuery({
+    queryKey: ['sds_records', organizationId],
     queryFn: async () => {
-      console.log('Fetching SDS entries...');
-      try {
-        const { data, error } = await supabase
-          .from('sds_index')
-          .select('*')
-          .order('created_at', { ascending: false });
-
-        if (error) {
-          console.warn('SDS table may not exist, using empty data:', error.message);
-          return [];
-        }
-        console.log('Fetched SDS entries:', data?.length);
-        return data as SDSEntry[];
-      } catch (err) {
-        console.warn('SDS query failed, using empty data:', err);
+      if (!organizationId) return [];
+      const { data, error } = await supabase
+        .from('sds_records')
+        .select('*')
+        .eq('organization_id', organizationId)
+        .order('sds_master_number', { ascending: true });
+      if (error) {
+        console.warn('SDS query error:', error.message);
         return [];
       }
+      return data || [];
     },
+    enabled: !!organizationId,
   });
 
+  // ============================================================================
+  // Duplicate Detection
+  // ============================================================================
+  useEffect(() => {
+    if (!formData.product_name || formData.product_name.length < 3 || editingEntry) {
+      setDuplicateMatches([]);
+      setShowDuplicateWarning(false);
+      return;
+    }
+
+    const matches = entries
+      .filter(e => editingEntry ? e.id !== editingEntry.id : true)
+      .map(e => ({
+        ...e,
+        score: Math.max(
+          fuzzyMatch(e.product_name, formData.product_name),
+          fuzzyMatch(e.manufacturer, formData.manufacturer || ''),
+          formData.cas_number ? fuzzyMatch(e.cas_number || '', formData.cas_number) : 0,
+        ),
+      }))
+      .filter(e => e.score >= 0.5)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 5);
+
+    setDuplicateMatches(matches);
+    setShowDuplicateWarning(matches.length > 0);
+  }, [formData.product_name, formData.manufacturer, formData.cas_number, entries, editingEntry]);
+
+  // ============================================================================
+  // Mutations
+  // ============================================================================
   const createMutation = useMutation({
-    mutationFn: async (entry: Omit<SDSEntry, 'id' | 'created_at' | 'updated_at'>) => {
-      console.log('Creating SDS entry:', entry);
+    mutationFn: async (record: any) => {
+      if (!organizationId) throw new Error('No organization');
       const { data, error } = await supabase
-        .from('sds_index')
-        .insert([entry])
+        .from('sds_records')
+        .insert([{ ...record, organization_id: organizationId }])
         .select()
         .single();
-
-      if (error) {
-        console.error('Error creating entry:', error);
-        throw error;
-      }
+      if (error) throw error;
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['sds-index'] });
+      queryClient.invalidateQueries({ queryKey: ['sds_records'] });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     },
   });
 
   const updateMutation = useMutation({
-    mutationFn: async ({ id, ...entry }: Partial<SDSEntry> & { id: string }) => {
-      console.log('Updating SDS entry:', id);
+    mutationFn: async ({ id, ...updates }: any) => {
       const { data, error } = await supabase
-        .from('sds_index')
-        .update(entry)
+        .from('sds_records')
+        .update(updates)
         .eq('id', id)
         .select()
         .single();
-
-      if (error) {
-        console.error('Error updating entry:', error);
-        throw error;
-      }
+      if (error) throw error;
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['sds-index'] });
+      queryClient.invalidateQueries({ queryKey: ['sds_records'] });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     },
   });
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      console.log('Deleting SDS entry:', id);
       const { error } = await supabase
-        .from('sds_index')
+        .from('sds_records')
         .delete()
         .eq('id', id);
-
-      if (error) {
-        console.error('Error deleting entry:', error);
-        throw error;
-      }
+      if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['sds-index'] });
+      queryClient.invalidateQueries({ queryKey: ['sds_records'] });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     },
   });
 
-  const onRefresh = useCallback(() => {
-    refetch();
-  }, [refetch]);
-
+  // ============================================================================
+  // Handlers
+  // ============================================================================
   const resetForm = () => {
     setFormData({
-      chemicalName: '',
+      product_name: '',
       manufacturer: '',
-      productCode: '',
-      sdsRevisionDate: '',
-      locations: [],
-      hazardClass: [],
-      signalWord: 'Warning',
+      manufacturer_phone: '',
+      emergency_phone: '',
+      cas_number: '',
+      sds_number: '',
+      primary_department: '',
+      physical_state: '',
+      signal_word: 'warning',
+      hazard_class: [],
+      hazard_statements: [],
+      precautionary_statements: [],
+      location_used: [],
+      department_codes: [],
+      first_aid_inhalation: '',
+      first_aid_skin: '',
+      first_aid_eye: '',
+      first_aid_ingestion: '',
+      spill_procedures: '',
+      storage_requirements: '',
+      handling_precautions: '',
+      fire_extinguishing_media: '',
+      disposal_methods: '',
+      issue_date: new Date().toISOString().split('T')[0],
+      expiration_date: '',
+      revision_date: '',
       notes: '',
+      file_url: '',
     });
     setEditingEntry(null);
+    setDuplicateMatches([]);
+    setShowDuplicateWarning(false);
   };
 
-  const handleAddEntry = () => {
-    if (!formData.chemicalName.trim() || !formData.manufacturer.trim()) {
-      Alert.alert('Required Fields', 'Please enter chemical name and manufacturer.');
+  const handleSave = () => {
+    if (!formData.product_name.trim() || !formData.manufacturer.trim()) {
+      Alert.alert('Required Fields', 'Chemical name and manufacturer are required.');
+      return;
+    }
+    if (!formData.primary_department) {
+      Alert.alert('Required Fields', 'Please select a primary department for the QR label.');
       return;
     }
 
-    const entryData = {
-      chemical_name: formData.chemicalName,
-      manufacturer: formData.manufacturer,
-      product_code: formData.productCode,
-      sds_revision_date: formData.sdsRevisionDate || new Date().toISOString().split('T')[0],
-      locations: formData.locations,
-      hazard_class: formData.hazardClass,
-      ghs_pictograms: formData.hazardClass.map(h => h.toLowerCase().replace(' ', '_')),
-      signal_word: formData.signalWord,
-      status: 'current' as const,
-      last_reviewed: new Date().toISOString().split('T')[0],
-      notes: formData.notes,
+    const record: any = {
+      product_name: formData.product_name.trim(),
+      manufacturer: formData.manufacturer.trim(),
+      manufacturer_phone: formData.manufacturer_phone || null,
+      emergency_phone: formData.emergency_phone || null,
+      cas_number: formData.cas_number || null,
+      sds_number: formData.sds_number || null,
+      primary_department: formData.primary_department,
+      physical_state: formData.physical_state || null,
+      signal_word: formData.signal_word || 'none',
+      hazard_class: formData.hazard_class,
+      hazard_statements: formData.hazard_statements,
+      precautionary_statements: formData.precautionary_statements,
+      location_used: formData.location_used,
+      department_codes: formData.department_codes,
+      first_aid_inhalation: formData.first_aid_inhalation || null,
+      first_aid_skin: formData.first_aid_skin || null,
+      first_aid_eye: formData.first_aid_eye || null,
+      first_aid_ingestion: formData.first_aid_ingestion || null,
+      spill_procedures: formData.spill_procedures || null,
+      storage_requirements: formData.storage_requirements || null,
+      handling_precautions: formData.handling_precautions || null,
+      fire_extinguishing_media: formData.fire_extinguishing_media || null,
+      disposal_methods: formData.disposal_methods || null,
+      issue_date: formData.issue_date || new Date().toISOString().split('T')[0],
+      expiration_date: formData.expiration_date || null,
+      revision_date: formData.revision_date || null,
+      notes: formData.notes || null,
+      file_url: formData.file_url || null,
+      status: 'active',
+      version: '1.0',
+      approved_for_use: true,
     };
 
     if (editingEntry) {
-      updateMutation.mutate({ id: editingEntry.id, ...entryData });
+      updateMutation.mutate({ id: editingEntry.id, ...record });
     } else {
-      createMutation.mutate(entryData);
+      createMutation.mutate(record);
     }
 
     setShowAddModal(false);
     resetForm();
   };
 
-  const handleEditEntry = (entry: SDSEntry) => {
+  const handleEdit = (entry: any) => {
     setEditingEntry(entry);
     setFormData({
-      chemicalName: entry.chemical_name,
-      manufacturer: entry.manufacturer,
-      productCode: entry.product_code,
-      sdsRevisionDate: entry.sds_revision_date,
-      locations: entry.locations || [],
-      hazardClass: entry.hazard_class || [],
-      signalWord: entry.signal_word,
-      notes: entry.notes,
+      product_name: entry.product_name || '',
+      manufacturer: entry.manufacturer || '',
+      manufacturer_phone: entry.manufacturer_phone || '',
+      emergency_phone: entry.emergency_phone || '',
+      cas_number: entry.cas_number || '',
+      sds_number: entry.sds_number || '',
+      primary_department: entry.primary_department || '',
+      physical_state: entry.physical_state || '',
+      signal_word: entry.signal_word || 'warning',
+      hazard_class: entry.hazard_class || [],
+      hazard_statements: entry.hazard_statements || [],
+      precautionary_statements: entry.precautionary_statements || [],
+      location_used: entry.location_used || [],
+      department_codes: entry.department_codes || [],
+      first_aid_inhalation: entry.first_aid_inhalation || '',
+      first_aid_skin: entry.first_aid_skin || '',
+      first_aid_eye: entry.first_aid_eye || '',
+      first_aid_ingestion: entry.first_aid_ingestion || '',
+      spill_procedures: entry.spill_procedures || '',
+      storage_requirements: entry.storage_requirements || '',
+      handling_precautions: entry.handling_precautions || '',
+      fire_extinguishing_media: entry.fire_extinguishing_media || '',
+      disposal_methods: entry.disposal_methods || '',
+      issue_date: entry.issue_date || '',
+      expiration_date: entry.expiration_date || '',
+      revision_date: entry.revision_date || '',
+      notes: entry.notes || '',
+      file_url: entry.file_url || '',
     });
     setShowAddModal(true);
   };
 
-  const handleDeleteEntry = (id: string) => {
+  const handleDelete = (entry: any) => {
+    const label = getQRLabel(entry.primary_department, entry.sds_master_number);
     Alert.alert(
-      'Delete SDS Entry',
-      'Are you sure you want to remove this SDS from the index?',
+      'Delete SDS Record',
+      `Are you sure you want to delete "${entry.product_name}" (${label})? This cannot be undone.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Delete',
           style: 'destructive',
-          onPress: () => deleteMutation.mutate(id),
+          onPress: () => deleteMutation.mutate(entry.id),
         },
       ]
     );
   };
 
-  const toggleLocation = (location: string) => {
-    setFormData(prev => ({
-      ...prev,
-      locations: prev.locations.includes(location)
-        ? prev.locations.filter(l => l !== location)
-        : [...prev.locations, location],
-    }));
+  const handleViewDetail = (entry: any) => {
+    setSelectedEntry(entry);
+    setShowDetailModal(true);
   };
 
-  const toggleHazardClass = (hazard: string) => {
-    setFormData(prev => ({
-      ...prev,
-      hazardClass: prev.hazardClass.includes(hazard)
-        ? prev.hazardClass.filter(h => h !== hazard)
-        : [...prev.hazardClass, hazard],
-    }));
+  const handlePrintQR = (entry: any) => {
+    setSelectedEntry(entry);
+    setShowPrintQRModal(true);
   };
 
-  const filteredEntries = entries.filter(entry => {
-    const matchesSearch = entry.chemical_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      entry.manufacturer.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      entry.product_code.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStatus = !filterStatus || entry.status === filterStatus;
-    const matchesLocation = !filterLocation || (entry.locations || []).includes(filterLocation);
-    return matchesSearch && matchesStatus && matchesLocation;
-  });
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'current': return '#10B981';
-      case 'review_needed': return '#F59E0B';
-      case 'expired': return '#EF4444';
-      default: return colors.textSecondary;
+  const handleViewSDS = (entry: any) => {
+    if (entry.file_url) {
+      Linking.openURL(entry.file_url);
+    } else {
+      Alert.alert('No PDF', 'No SDS document has been uploaded for this chemical yet.');
     }
   };
 
-  const getStatusLabel = (status: string) => {
-    switch (status) {
-      case 'current': return 'Current';
-      case 'review_needed': return 'Review Needed';
-      case 'expired': return 'Expired';
-      default: return status;
-    }
+  const toggleArrayItem = (field: string, item: string) => {
+    setFormData(prev => {
+      const arr = (prev as any)[field] as string[];
+      return {
+        ...prev,
+        [field]: arr.includes(item) ? arr.filter(i => i !== item) : [...arr, item],
+      };
+    });
   };
 
-  const getSignalWordColor = (word: string) => {
-    switch (word) {
-      case 'Danger': return '#EF4444';
-      case 'Warning': return '#F59E0B';
-      default: return colors.textSecondary;
-    }
-  };
+  // ============================================================================
+  // Filtered entries
+  // ============================================================================
+  const filteredEntries = useMemo(() => {
+    return entries.filter((entry: any) => {
+      const matchesSearch = searchQuery === '' ||
+        entry.product_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        entry.manufacturer?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        entry.cas_number?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        entry.sds_number?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        String(entry.sds_master_number).includes(searchQuery);
+
+      const matchesStatus = !filterStatus || entry.status === filterStatus;
+      const matchesDept = !filterDepartment || entry.primary_department === filterDepartment;
+
+      return matchesSearch && matchesStatus && matchesDept;
+    });
+  }, [entries, searchQuery, filterStatus, filterDepartment]);
 
   const isMutating = createMutation.isPending || updateMutation.isPending || deleteMutation.isPending;
 
+  // ============================================================================
+  // Render Entry Card
+  // ============================================================================
+  const renderEntryCard = (entry: any) => {
+    const statusColor = getStatusColor(entry.status || 'active');
+    const deptInfo = DEPARTMENT_PREFIXES[entry.primary_department] || DEPARTMENT_PREFIXES.general;
+    const qrLabel = getQRLabel(entry.primary_department, entry.sds_master_number);
+
+    return (
+      <Pressable
+        key={entry.id}
+        style={[styles.entryCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
+        onPress={() => handleViewDetail(entry)}
+      >
+        {/* Header: Master # + Name + Status */}
+        <View style={styles.entryHeader}>
+          <View style={styles.entryTitleRow}>
+            <View style={[styles.masterNumberBadge, { backgroundColor: deptInfo.color + '20', borderColor: deptInfo.color + '40' }]}>
+              <Text style={[styles.masterNumberText, { color: deptInfo.color }]}>
+                #{entry.sds_master_number || '?'}
+              </Text>
+            </View>
+            <View style={styles.titleBlock}>
+              <Text style={[styles.entryTitle, { color: colors.text }]} numberOfLines={1}>
+                {entry.product_name}
+              </Text>
+              <Text style={[styles.qrLabelText, { color: deptInfo.color }]}>
+                {qrLabel}
+              </Text>
+            </View>
+          </View>
+          <View style={[styles.statusBadge, { backgroundColor: statusColor + '20' }]}>
+            <Text style={[styles.statusText, { color: statusColor }]}>
+              {getStatusLabel(entry.status || 'active')}
+            </Text>
+          </View>
+        </View>
+
+        {/* Details */}
+        <View style={styles.entryDetails}>
+          <View style={styles.detailRow}>
+            <Building size={14} color={colors.textSecondary} />
+            <Text style={[styles.detailText, { color: colors.textSecondary }]}>
+              {entry.manufacturer}
+            </Text>
+          </View>
+          {entry.cas_number && (
+            <View style={styles.detailRow}>
+              <Hash size={14} color={colors.textSecondary} />
+              <Text style={[styles.detailText, { color: colors.textSecondary }]}>
+                CAS: {entry.cas_number}
+              </Text>
+            </View>
+          )}
+          {entry.emergency_phone && (
+            <View style={styles.detailRow}>
+              <Phone size={14} color="#EF4444" />
+              <Text style={[styles.detailText, { color: '#EF4444' }]}>
+                Emergency: {entry.emergency_phone}
+              </Text>
+            </View>
+          )}
+        </View>
+
+        {/* Hazard badges */}
+        <View style={styles.hazardRow}>
+          {entry.signal_word && entry.signal_word !== 'none' && (
+            <View style={[styles.signalBadge, { backgroundColor: getSignalWordColor(entry.signal_word) + '20' }]}>
+              <AlertTriangle size={12} color={getSignalWordColor(entry.signal_word)} />
+              <Text style={[styles.signalText, { color: getSignalWordColor(entry.signal_word) }]}>
+                {entry.signal_word.toUpperCase()}
+              </Text>
+            </View>
+          )}
+          {(entry.hazard_class || []).slice(0, 3).map((hazard: string, idx: number) => (
+            <View key={idx} style={[styles.hazardBadge, { backgroundColor: colors.card }]}>
+              <Text style={[styles.hazardText, { color: colors.textSecondary }]}>{hazard}</Text>
+            </View>
+          ))}
+          {(entry.hazard_class || []).length > 3 && (
+            <Text style={[styles.moreHazards, { color: colors.textSecondary }]}>
+              +{entry.hazard_class.length - 3}
+            </Text>
+          )}
+        </View>
+
+        {/* Locations */}
+        {(entry.location_used || []).length > 0 && (
+          <View style={styles.locationRow}>
+            <MapPin size={14} color={colors.textSecondary} />
+            <Text style={[styles.locationText, { color: colors.textSecondary }]} numberOfLines={1}>
+              {entry.location_used.join(', ')}
+            </Text>
+          </View>
+        )}
+
+        {/* Footer: Actions */}
+        <View style={[styles.entryFooter, { borderTopColor: colors.border }]}>
+          <View style={styles.dateInfo}>
+            <Calendar size={12} color={colors.textSecondary} />
+            <Text style={[styles.dateText, { color: colors.textSecondary }]}>
+              {entry.issue_date || 'No date'}
+            </Text>
+          </View>
+          <View style={styles.entryActions}>
+            <Pressable
+              onPress={() => handleViewSDS(entry)}
+              style={[styles.actionButton, { backgroundColor: '#3B82F615' }]}
+            >
+              <Eye size={14} color="#3B82F6" />
+            </Pressable>
+            <Pressable
+              onPress={() => handlePrintQR(entry)}
+              style={[styles.actionButton, { backgroundColor: '#8B5CF615' }]}
+            >
+              <QrCode size={14} color="#8B5CF6" />
+            </Pressable>
+            <Pressable
+              onPress={() => handleEdit(entry)}
+              style={[styles.actionButton, { backgroundColor: '#F59E0B15' }]}
+            >
+              <Edit3 size={14} color="#F59E0B" />
+            </Pressable>
+            <Pressable
+              onPress={() => handleDelete(entry)}
+              style={[styles.actionButton, { backgroundColor: '#EF444415' }]}
+            >
+              <Trash2 size={14} color="#EF4444" />
+            </Pressable>
+          </View>
+        </View>
+      </Pressable>
+    );
+  };
+
+  // ============================================================================
+  // Render
+  // ============================================================================
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <Stack.Screen
@@ -329,23 +641,29 @@ export default function SDSIndexScreen() {
         }}
       />
 
+      {/* Search */}
       <View style={[styles.searchContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <Search size={20} color={colors.textSecondary} />
         <TextInput
           style={[styles.searchInput, { color: colors.text }]}
-          placeholder="Search chemicals, manufacturers..."
+          placeholder="Search chemicals, manufacturers, CAS #, SDS #..."
           placeholderTextColor={colors.textSecondary}
           value={searchQuery}
           onChangeText={setSearchQuery}
         />
+        {searchQuery.length > 0 && (
+          <Pressable onPress={() => setSearchQuery('')}>
+            <X size={18} color={colors.textSecondary} />
+          </Pressable>
+        )}
         <Pressable
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             setShowFilterModal(true);
           }}
-          style={[styles.filterButton, { backgroundColor: (filterStatus || filterLocation) ? '#EAB30820' : colors.card }]}
+          style={[styles.filterButton, { backgroundColor: (filterStatus || filterDepartment) ? '#EAB30820' : colors.card }]}
         >
-          <Filter size={18} color={(filterStatus || filterLocation) ? '#EAB308' : colors.textSecondary} />
+          <Filter size={18} color={(filterStatus || filterDepartment) ? '#EAB308' : colors.textSecondary} />
         </Pressable>
       </View>
 
@@ -353,17 +671,18 @@ export default function SDSIndexScreen() {
         style={styles.scrollView}
         contentContainerStyle={styles.content}
         refreshControl={
-          <RefreshControl refreshing={isLoading} onRefresh={onRefresh} tintColor={colors.primary} />
+          <RefreshControl refreshing={isRefetching} onRefresh={() => refetch()} tintColor={colors.primary} />
         }
       >
+        {/* Stats */}
         <View style={styles.statsRow}>
           <View style={[styles.statCard, { backgroundColor: '#10B98115', borderColor: '#10B98130' }]}>
-            <Text style={[styles.statValue, { color: '#10B981' }]}>{entries.filter(e => e.status === 'current').length}</Text>
-            <Text style={[styles.statLabel, { color: '#10B981' }]}>Current</Text>
+            <Text style={[styles.statValue, { color: '#10B981' }]}>{entries.filter((e: any) => e.status === 'active').length}</Text>
+            <Text style={[styles.statLabel, { color: '#10B981' }]}>Active</Text>
           </View>
-          <View style={[styles.statCard, { backgroundColor: '#F59E0B15', borderColor: '#F59E0B30' }]}>
-            <Text style={[styles.statValue, { color: '#F59E0B' }]}>{entries.filter(e => e.status === 'review_needed').length}</Text>
-            <Text style={[styles.statLabel, { color: '#F59E0B' }]}>Review</Text>
+          <View style={[styles.statCard, { backgroundColor: '#EF444415', borderColor: '#EF444430' }]}>
+            <Text style={[styles.statValue, { color: '#EF4444' }]}>{entries.filter((e: any) => e.status === 'expired').length}</Text>
+            <Text style={[styles.statLabel, { color: '#EF4444' }]}>Expired</Text>
           </View>
           <View style={[styles.statCard, { backgroundColor: '#3B82F615', borderColor: '#3B82F630' }]}>
             <Text style={[styles.statValue, { color: '#3B82F6' }]}>{entries.length}</Text>
@@ -371,111 +690,26 @@ export default function SDSIndexScreen() {
           </View>
         </View>
 
+        {/* List */}
         {isLoading && entries.length === 0 ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Loading SDS entries...</Text>
+            <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Loading SDS records...</Text>
           </View>
         ) : filteredEntries.length === 0 ? (
           <View style={styles.emptyContainer}>
             <FileText size={48} color={colors.textSecondary} />
-            <Text style={[styles.emptyText, { color: colors.textSecondary }]}>No SDS entries found</Text>
-            <Text style={[styles.emptySubtext, { color: colors.textSecondary }]}>Tap + to add an SDS entry</Text>
+            <Text style={[styles.emptyText, { color: colors.textSecondary }]}>No SDS records found</Text>
+            <Text style={[styles.emptySubtext, { color: colors.textSecondary }]}>Tap + to add an SDS record</Text>
           </View>
         ) : (
-          filteredEntries.map((entry) => (
-            <Pressable
-              key={entry.id}
-              style={[styles.entryCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
-              onPress={() => handleEditEntry(entry)}
-            >
-              <View style={styles.entryHeader}>
-                <View style={styles.entryTitleRow}>
-                  <FileText size={20} color="#EAB308" />
-                  <Text style={[styles.entryTitle, { color: colors.text }]} numberOfLines={1}>
-                    {entry.chemical_name}
-                  </Text>
-                </View>
-                <View style={[styles.statusBadge, { backgroundColor: getStatusColor(entry.status) + '20' }]}>
-                  <Text style={[styles.statusText, { color: getStatusColor(entry.status) }]}>
-                    {getStatusLabel(entry.status)}
-                  </Text>
-                </View>
-              </View>
-
-              <View style={styles.entryDetails}>
-                <View style={styles.detailRow}>
-                  <Building size={14} color={colors.textSecondary} />
-                  <Text style={[styles.detailText, { color: colors.textSecondary }]}>
-                    {entry.manufacturer}
-                  </Text>
-                </View>
-                <View style={styles.detailRow}>
-                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Code:</Text>
-                  <Text style={[styles.detailTextBold, { color: colors.text }]}>{entry.product_code}</Text>
-                </View>
-              </View>
-
-              <View style={styles.hazardRow}>
-                {entry.signal_word !== 'None' && (
-                  <View style={[styles.signalBadge, { backgroundColor: getSignalWordColor(entry.signal_word) + '20' }]}>
-                    <AlertTriangle size={12} color={getSignalWordColor(entry.signal_word)} />
-                    <Text style={[styles.signalText, { color: getSignalWordColor(entry.signal_word) }]}>
-                      {entry.signal_word}
-                    </Text>
-                  </View>
-                )}
-                {(entry.hazard_class || []).slice(0, 3).map((hazard, idx) => (
-                  <View key={idx} style={[styles.hazardBadge, { backgroundColor: colors.card }]}>
-                    <Text style={[styles.hazardText, { color: colors.textSecondary }]}>{hazard}</Text>
-                  </View>
-                ))}
-                {(entry.hazard_class || []).length > 3 && (
-                  <Text style={[styles.moreHazards, { color: colors.textSecondary }]}>
-                    +{entry.hazard_class.length - 3}
-                  </Text>
-                )}
-              </View>
-
-              <View style={styles.locationRow}>
-                <MapPin size={14} color={colors.textSecondary} />
-                <Text style={[styles.locationText, { color: colors.textSecondary }]} numberOfLines={1}>
-                  {(entry.locations || []).join(', ') || 'No locations'}
-                </Text>
-              </View>
-
-              <View style={styles.entryFooter}>
-                <View style={styles.dateInfo}>
-                  <Calendar size={12} color={colors.textSecondary} />
-                  <Text style={[styles.dateText, { color: colors.textSecondary }]}>
-                    Rev: {entry.sds_revision_date}
-                  </Text>
-                </View>
-                <View style={styles.entryActions}>
-                  <Pressable
-                    onPress={() => {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      Alert.alert('View SDS', 'This would open the full SDS document.');
-                    }}
-                    style={[styles.actionButton, { backgroundColor: '#3B82F615' }]}
-                  >
-                    <ExternalLink size={14} color="#3B82F6" />
-                  </Pressable>
-                  <Pressable
-                    onPress={() => handleDeleteEntry(entry.id)}
-                    style={[styles.actionButton, { backgroundColor: '#EF444415' }]}
-                  >
-                    <Trash2 size={14} color="#EF4444" />
-                  </Pressable>
-                </View>
-              </View>
-            </Pressable>
-          ))
+          filteredEntries.map(renderEntryCard)
         )}
 
         <View style={styles.bottomPadding} />
       </ScrollView>
 
+      {/* FAB */}
       <Pressable
         style={[styles.fab, { backgroundColor: '#EAB308' }]}
         onPress={() => {
@@ -492,6 +726,9 @@ export default function SDSIndexScreen() {
         )}
       </Pressable>
 
+      {/* ================================================================== */}
+      {/* ADD/EDIT MODAL */}
+      {/* ================================================================== */}
       <Modal visible={showAddModal} animationType="slide" presentationStyle="pageSheet">
         <View style={[styles.modalContainer, { backgroundColor: colors.background }]}>
           <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
@@ -499,9 +736,9 @@ export default function SDSIndexScreen() {
               <X size={24} color={colors.text} />
             </Pressable>
             <Text style={[styles.modalTitle, { color: colors.text }]}>
-              {editingEntry ? 'Edit SDS Entry' : 'Add SDS Entry'}
+              {editingEntry ? 'Edit SDS Record' : 'Add SDS Record'}
             </Text>
-            <Pressable onPress={handleAddEntry} disabled={isMutating}>
+            <Pressable onPress={handleSave} disabled={isMutating}>
               {isMutating ? (
                 <ActivityIndicator size="small" color="#EAB308" />
               ) : (
@@ -511,15 +748,44 @@ export default function SDSIndexScreen() {
           </View>
 
           <ScrollView style={styles.modalContent}>
-            <Text style={[styles.inputLabel, { color: colors.text }]}>Chemical Name *</Text>
+            {/* Duplicate Warning */}
+            {showDuplicateWarning && !editingEntry && (
+              <View style={[styles.duplicateWarning, { backgroundColor: '#FEF3C7', borderColor: '#F59E0B40' }]}>
+                <View style={styles.duplicateHeader}>
+                  <Info size={18} color="#F59E0B" />
+                  <Text style={styles.duplicateTitle}>Similar chemicals found!</Text>
+                </View>
+                {duplicateMatches.map((match: any) => (
+                  <View key={match.id} style={[styles.duplicateItem, { backgroundColor: '#FFFFFF', borderColor: '#F59E0B30' }]}>
+                    <View style={styles.duplicateInfo}>
+                      <Text style={styles.duplicateItemName}>{match.product_name}</Text>
+                      <Text style={styles.duplicateItemMfr}>{match.manufacturer}</Text>
+                      <Text style={styles.duplicateItemLabel}>
+                        {getQRLabel(match.primary_department, match.sds_master_number)}
+                      </Text>
+                    </View>
+                    <Text style={styles.duplicateScore}>
+                      {Math.round(match.score * 100)}% match
+                    </Text>
+                  </View>
+                ))}
+                <Text style={styles.duplicateNote}>
+                  If this is the same chemical, consider editing the existing record instead.
+                </Text>
+              </View>
+            )}
+
+            {/* Chemical Name */}
+            <Text style={[styles.inputLabel, { color: colors.text }]}>Chemical / Product Name *</Text>
             <TextInput
               style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
-              placeholder="Enter chemical name"
+              placeholder="Enter chemical or product name"
               placeholderTextColor={colors.textSecondary}
-              value={formData.chemicalName}
-              onChangeText={(text) => setFormData(prev => ({ ...prev, chemicalName: text }))}
+              value={formData.product_name}
+              onChangeText={(text) => setFormData(prev => ({ ...prev, product_name: text }))}
             />
 
+            {/* Manufacturer */}
             <Text style={[styles.inputLabel, { color: colors.text }]}>Manufacturer *</Text>
             <TextInput
               style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
@@ -529,48 +795,117 @@ export default function SDSIndexScreen() {
               onChangeText={(text) => setFormData(prev => ({ ...prev, manufacturer: text }))}
             />
 
-            <Text style={[styles.inputLabel, { color: colors.text }]}>Product Code</Text>
-            <TextInput
-              style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
-              placeholder="Enter product code"
-              placeholderTextColor={colors.textSecondary}
-              value={formData.productCode}
-              onChangeText={(text) => setFormData(prev => ({ ...prev, productCode: text }))}
-            />
+            {/* Primary Department (for QR label) */}
+            <Text style={[styles.inputLabel, { color: colors.text }]}>Primary Department * (QR Label Prefix)</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.deptScroll}>
+              <View style={styles.deptRow}>
+                {DEPARTMENTS.map(dept => (
+                  <Pressable
+                    key={dept.value}
+                    style={[
+                      styles.deptChip,
+                      {
+                        backgroundColor: formData.primary_department === dept.value ? dept.color + '20' : colors.surface,
+                        borderColor: formData.primary_department === dept.value ? dept.color : colors.border,
+                      },
+                    ]}
+                    onPress={() => setFormData(prev => ({ ...prev, primary_department: dept.value }))}
+                  >
+                    {formData.primary_department === dept.value && (
+                      <Check size={14} color={dept.color} />
+                    )}
+                    <Text style={[
+                      styles.deptChipText,
+                      { color: formData.primary_department === dept.value ? dept.color : colors.textSecondary },
+                    ]}>
+                      {dept.prefix} - {dept.label}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </ScrollView>
+            {formData.primary_department ? (
+              <Text style={[styles.qrPreviewText, { color: DEPARTMENT_PREFIXES[formData.primary_department]?.color || '#666' }]}>
+                QR Label: {DEPARTMENT_PREFIXES[formData.primary_department]?.prefix || 'SDS'} SDS #{editingEntry?.sds_master_number || 'auto'}
+              </Text>
+            ) : null}
 
-            <Text style={[styles.inputLabel, { color: colors.text }]}>SDS Revision Date</Text>
-            <TextInput
-              style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
-              placeholder="YYYY-MM-DD"
-              placeholderTextColor={colors.textSecondary}
-              value={formData.sdsRevisionDate}
-              onChangeText={(text) => setFormData(prev => ({ ...prev, sdsRevisionDate: text }))}
-            />
+            {/* Phones */}
+            <View style={styles.twoCol}>
+              <View style={styles.colHalf}>
+                <Text style={[styles.inputLabel, { color: colors.text }]}>Mfr Phone</Text>
+                <TextInput
+                  style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
+                  placeholder="Phone"
+                  placeholderTextColor={colors.textSecondary}
+                  value={formData.manufacturer_phone}
+                  onChangeText={(text) => setFormData(prev => ({ ...prev, manufacturer_phone: text }))}
+                  keyboardType="phone-pad"
+                />
+              </View>
+              <View style={styles.colHalf}>
+                <Text style={[styles.inputLabel, { color: colors.text }]}>Emergency Phone</Text>
+                <TextInput
+                  style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
+                  placeholder="Emergency"
+                  placeholderTextColor={colors.textSecondary}
+                  value={formData.emergency_phone}
+                  onChangeText={(text) => setFormData(prev => ({ ...prev, emergency_phone: text }))}
+                  keyboardType="phone-pad"
+                />
+              </View>
+            </View>
 
+            {/* CAS / SDS Number */}
+            <View style={styles.twoCol}>
+              <View style={styles.colHalf}>
+                <Text style={[styles.inputLabel, { color: colors.text }]}>CAS Number</Text>
+                <TextInput
+                  style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
+                  placeholder="CAS #"
+                  placeholderTextColor={colors.textSecondary}
+                  value={formData.cas_number}
+                  onChangeText={(text) => setFormData(prev => ({ ...prev, cas_number: text }))}
+                />
+              </View>
+              <View style={styles.colHalf}>
+                <Text style={[styles.inputLabel, { color: colors.text }]}>SDS Number</Text>
+                <TextInput
+                  style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
+                  placeholder="Vendor SDS #"
+                  placeholderTextColor={colors.textSecondary}
+                  value={formData.sds_number}
+                  onChangeText={(text) => setFormData(prev => ({ ...prev, sds_number: text }))}
+                />
+              </View>
+            </View>
+
+            {/* Signal Word */}
             <Text style={[styles.inputLabel, { color: colors.text }]}>Signal Word</Text>
             <View style={styles.signalWordRow}>
-              {(['Danger', 'Warning', 'None'] as const).map((word) => (
+              {(['danger', 'warning', 'none'] as const).map((word) => (
                 <Pressable
                   key={word}
                   style={[
                     styles.signalWordOption,
                     {
-                      backgroundColor: formData.signalWord === word ? getSignalWordColor(word) + '20' : colors.surface,
-                      borderColor: formData.signalWord === word ? getSignalWordColor(word) : colors.border,
+                      backgroundColor: formData.signal_word === word ? getSignalWordColor(word) + '20' : colors.surface,
+                      borderColor: formData.signal_word === word ? getSignalWordColor(word) : colors.border,
                     },
                   ]}
-                  onPress={() => setFormData(prev => ({ ...prev, signalWord: word }))}
+                  onPress={() => setFormData(prev => ({ ...prev, signal_word: word }))}
                 >
                   <Text style={[
                     styles.signalWordText,
-                    { color: formData.signalWord === word ? getSignalWordColor(word) : colors.textSecondary },
+                    { color: formData.signal_word === word ? getSignalWordColor(word) : colors.textSecondary },
                   ]}>
-                    {word}
+                    {word.charAt(0).toUpperCase() + word.slice(1)}
                   </Text>
                 </Pressable>
               ))}
             </View>
 
+            {/* Hazard Classes */}
             <Text style={[styles.inputLabel, { color: colors.text }]}>Hazard Classes</Text>
             <View style={styles.chipContainer}>
               {HAZARD_CLASSES.map((hazard) => (
@@ -579,15 +914,15 @@ export default function SDSIndexScreen() {
                   style={[
                     styles.chip,
                     {
-                      backgroundColor: formData.hazardClass.includes(hazard) ? '#EAB30820' : colors.surface,
-                      borderColor: formData.hazardClass.includes(hazard) ? '#EAB308' : colors.border,
+                      backgroundColor: formData.hazard_class.includes(hazard) ? '#EAB30820' : colors.surface,
+                      borderColor: formData.hazard_class.includes(hazard) ? '#EAB308' : colors.border,
                     },
                   ]}
-                  onPress={() => toggleHazardClass(hazard)}
+                  onPress={() => toggleArrayItem('hazard_class', hazard)}
                 >
                   <Text style={[
                     styles.chipText,
-                    { color: formData.hazardClass.includes(hazard) ? '#EAB308' : colors.textSecondary },
+                    { color: formData.hazard_class.includes(hazard) ? '#EAB308' : colors.textSecondary },
                   ]}>
                     {hazard}
                   </Text>
@@ -595,6 +930,7 @@ export default function SDSIndexScreen() {
               ))}
             </View>
 
+            {/* Storage Locations */}
             <Text style={[styles.inputLabel, { color: colors.text }]}>Storage Locations</Text>
             <View style={styles.chipContainer}>
               {LOCATIONS.map((location) => (
@@ -603,15 +939,15 @@ export default function SDSIndexScreen() {
                   style={[
                     styles.chip,
                     {
-                      backgroundColor: formData.locations.includes(location) ? '#3B82F620' : colors.surface,
-                      borderColor: formData.locations.includes(location) ? '#3B82F6' : colors.border,
+                      backgroundColor: formData.location_used.includes(location) ? '#3B82F620' : colors.surface,
+                      borderColor: formData.location_used.includes(location) ? '#3B82F6' : colors.border,
                     },
                   ]}
-                  onPress={() => toggleLocation(location)}
+                  onPress={() => toggleArrayItem('location_used', location)}
                 >
                   <Text style={[
                     styles.chipText,
-                    { color: formData.locations.includes(location) ? '#3B82F6' : colors.textSecondary },
+                    { color: formData.location_used.includes(location) ? '#3B82F6' : colors.textSecondary },
                   ]}>
                     {location}
                   </Text>
@@ -619,10 +955,81 @@ export default function SDSIndexScreen() {
               ))}
             </View>
 
+            {/* Dates */}
+            <View style={styles.twoCol}>
+              <View style={styles.colHalf}>
+                <Text style={[styles.inputLabel, { color: colors.text }]}>Issue Date</Text>
+                <TextInput
+                  style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
+                  placeholder="YYYY-MM-DD"
+                  placeholderTextColor={colors.textSecondary}
+                  value={formData.issue_date}
+                  onChangeText={(text) => setFormData(prev => ({ ...prev, issue_date: text }))}
+                />
+              </View>
+              <View style={styles.colHalf}>
+                <Text style={[styles.inputLabel, { color: colors.text }]}>Expiration Date</Text>
+                <TextInput
+                  style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
+                  placeholder="YYYY-MM-DD"
+                  placeholderTextColor={colors.textSecondary}
+                  value={formData.expiration_date}
+                  onChangeText={(text) => setFormData(prev => ({ ...prev, expiration_date: text }))}
+                />
+              </View>
+            </View>
+
+            {/* First Aid */}
+            <Text style={[styles.sectionHeader, { color: colors.text }]}>First Aid Measures</Text>
+            {(['first_aid_inhalation', 'first_aid_skin', 'first_aid_eye', 'first_aid_ingestion'] as const).map((field) => (
+              <View key={field}>
+                <Text style={[styles.inputLabel, { color: colors.text }]}>
+                  {field.replace('first_aid_', '').charAt(0).toUpperCase() + field.replace('first_aid_', '').slice(1)}
+                </Text>
+                <TextInput
+                  style={[styles.textArea, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
+                  placeholder={`First aid for ${field.replace('first_aid_', '')}...`}
+                  placeholderTextColor={colors.textSecondary}
+                  value={formData[field]}
+                  onChangeText={(text) => setFormData(prev => ({ ...prev, [field]: text }))}
+                  multiline
+                  numberOfLines={2}
+                  textAlignVertical="top"
+                />
+              </View>
+            ))}
+
+            {/* Spill / Storage */}
+            <Text style={[styles.sectionHeader, { color: colors.text }]}>Handling & Storage</Text>
+            <Text style={[styles.inputLabel, { color: colors.text }]}>Spill Procedures</Text>
+            <TextInput
+              style={[styles.textArea, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
+              placeholder="Spill cleanup procedures..."
+              placeholderTextColor={colors.textSecondary}
+              value={formData.spill_procedures}
+              onChangeText={(text) => setFormData(prev => ({ ...prev, spill_procedures: text }))}
+              multiline
+              numberOfLines={2}
+              textAlignVertical="top"
+            />
+
+            <Text style={[styles.inputLabel, { color: colors.text }]}>Storage Requirements</Text>
+            <TextInput
+              style={[styles.textArea, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
+              placeholder="Storage requirements..."
+              placeholderTextColor={colors.textSecondary}
+              value={formData.storage_requirements}
+              onChangeText={(text) => setFormData(prev => ({ ...prev, storage_requirements: text }))}
+              multiline
+              numberOfLines={2}
+              textAlignVertical="top"
+            />
+
+            {/* Notes */}
             <Text style={[styles.inputLabel, { color: colors.text }]}>Notes</Text>
             <TextInput
               style={[styles.textArea, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
-              placeholder="Additional notes about this chemical..."
+              placeholder="Additional notes..."
               placeholderTextColor={colors.textSecondary}
               value={formData.notes}
               onChangeText={(text) => setFormData(prev => ({ ...prev, notes: text }))}
@@ -631,17 +1038,200 @@ export default function SDSIndexScreen() {
               textAlignVertical="top"
             />
 
+            {/* SDS File URL (manual for now) */}
+            <Text style={[styles.inputLabel, { color: colors.text }]}>SDS Document URL</Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
+              placeholder="https://... (paste PDF link or upload later)"
+              placeholderTextColor={colors.textSecondary}
+              value={formData.file_url}
+              onChangeText={(text) => setFormData(prev => ({ ...prev, file_url: text }))}
+              autoCapitalize="none"
+              keyboardType="url"
+            />
+
             <View style={styles.modalBottomPadding} />
           </ScrollView>
         </View>
       </Modal>
 
+      {/* ================================================================== */}
+      {/* DETAIL MODAL */}
+      {/* ================================================================== */}
+      <Modal visible={showDetailModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.detailModal, { backgroundColor: colors.surface }]}>
+            {selectedEntry && (
+              <>
+                <View style={[styles.detailModalHeader, { borderBottomColor: colors.border }]}>
+                  <View style={styles.detailHeaderLeft}>
+                    <View style={[styles.sdsIconBadge, { backgroundColor: '#EF4444' + '20' }]}>
+                      <AlertTriangle size={24} color="#EF4444" />
+                    </View>
+                    <View style={styles.detailHeaderInfo}>
+                      <Text style={[styles.detailTitle, { color: colors.text }]} numberOfLines={1}>
+                        {selectedEntry.product_name}
+                      </Text>
+                      <Text style={[styles.detailSubtitle, { color: DEPARTMENT_PREFIXES[selectedEntry.primary_department]?.color || '#666' }]}>
+                        {getQRLabel(selectedEntry.primary_department, selectedEntry.sds_master_number)}
+                      </Text>
+                    </View>
+                  </View>
+                  <Pressable onPress={() => setShowDetailModal(false)}>
+                    <X size={24} color={colors.textSecondary} />
+                  </Pressable>
+                </View>
+
+                <ScrollView style={styles.detailContent}>
+                  {/* QR Section */}
+                  <View style={[styles.qrSection, { backgroundColor: '#FFFFFF', borderColor: colors.border }]}>
+                    <View style={styles.qrLarge}>
+                      <QrCode size={100} color="#000000" />
+                    </View>
+                    <Text style={styles.qrLabelLarge}>
+                      {getQRLabel(selectedEntry.primary_department, selectedEntry.sds_master_number)}
+                    </Text>
+                    <Text style={styles.qrUrl}>tulkenz.app/sds/{selectedEntry.id}</Text>
+                    <Text style={styles.qrNote}>Scan for instant SDS access — no login required</Text>
+                  </View>
+
+                  {/* Detail rows */}
+                  <View style={[styles.detailsList, { borderColor: colors.border }]}>
+                    {[
+                      { label: 'Manufacturer', value: selectedEntry.manufacturer },
+                      { label: 'CAS Number', value: selectedEntry.cas_number },
+                      { label: 'SDS Number', value: selectedEntry.sds_number },
+                      { label: 'Emergency Phone', value: selectedEntry.emergency_phone },
+                      { label: 'Signal Word', value: selectedEntry.signal_word?.toUpperCase() },
+                      { label: 'Physical State', value: selectedEntry.physical_state },
+                      { label: 'Issue Date', value: selectedEntry.issue_date },
+                      { label: 'Expiration', value: selectedEntry.expiration_date },
+                    ].filter(r => r.value).map((row, idx) => (
+                      <View key={idx} style={[styles.detailListRow, idx > 0 && { borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.05)' }]}>
+                        <Text style={[styles.detailListLabel, { color: colors.textSecondary }]}>{row.label}</Text>
+                        <Text style={[styles.detailListValue, { color: colors.text }]}>{row.value}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </ScrollView>
+
+                <View style={[styles.detailFooter, { borderTopColor: colors.border }]}>
+                  <Pressable
+                    style={[styles.detailBtn, { backgroundColor: '#3B82F6' }]}
+                    onPress={() => { setShowDetailModal(false); handleViewSDS(selectedEntry); }}
+                  >
+                    <Eye size={16} color="#FFFFFF" />
+                    <Text style={styles.detailBtnText}>View SDS</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.detailBtn, { backgroundColor: '#8B5CF6' }]}
+                    onPress={() => { setShowDetailModal(false); handlePrintQR(selectedEntry); }}
+                  >
+                    <QrCode size={16} color="#FFFFFF" />
+                    <Text style={styles.detailBtnText}>Print QR</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.detailBtn, { backgroundColor: '#F59E0B' }]}
+                    onPress={() => { setShowDetailModal(false); handleEdit(selectedEntry); }}
+                  >
+                    <Edit3 size={16} color="#FFFFFF" />
+                    <Text style={styles.detailBtnText}>Edit</Text>
+                  </Pressable>
+                </View>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* ================================================================== */}
+      {/* PRINT QR MODAL */}
+      {/* ================================================================== */}
+      <Modal visible={showPrintQRModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.printModal, { backgroundColor: colors.surface }]}>
+            <View style={[styles.printModalHeader, { borderBottomColor: colors.border }]}>
+              <Text style={[styles.printModalTitle, { color: colors.text }]}>Print QR Code</Text>
+              <Pressable onPress={() => setShowPrintQRModal(false)}>
+                <X size={24} color={colors.textSecondary} />
+              </Pressable>
+            </View>
+
+            {selectedEntry && (
+              <ScrollView style={styles.printModalContent}>
+                {/* QR Preview with Label */}
+                <View style={[styles.qrPreviewCard, { backgroundColor: '#FFFFFF', borderColor: colors.border }]}>
+                  <View style={styles.qrPreviewInner}>
+                    <QrCode size={120} color="#000000" />
+                  </View>
+                  <Text style={styles.qrPreviewLabel}>
+                    {getQRLabel(selectedEntry.primary_department, selectedEntry.sds_master_number)}
+                  </Text>
+                  <Text style={styles.qrPreviewName}>{selectedEntry.product_name}</Text>
+                  <Text style={styles.qrPreviewScan}>SCAN FOR SDS</Text>
+                </View>
+
+                {/* Size Options */}
+                <Text style={[styles.printSectionTitle, { color: colors.text }]}>Label Size</Text>
+                <View style={styles.sizeOptions}>
+                  {QR_PRINT_SIZES.map(size => (
+                    <Pressable
+                      key={size.id}
+                      style={[
+                        styles.sizeOption,
+                        {
+                          backgroundColor: printSize === size.id ? colors.primary + '20' : colors.background,
+                          borderColor: printSize === size.id ? colors.primary : colors.border,
+                        },
+                      ]}
+                      onPress={() => setPrintSize(size.id)}
+                    >
+                      {printSize === size.id && <Check size={16} color={colors.primary} />}
+                      <Text style={[styles.sizeOptionText, { color: printSize === size.id ? colors.primary : colors.text }]}>
+                        {size.label}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </ScrollView>
+            )}
+
+            <View style={[styles.printModalFooter, { borderTopColor: colors.border }]}>
+              <Pressable
+                style={[styles.downloadPngBtn, { borderColor: colors.border }]}
+                onPress={() => {
+                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                  Alert.alert('Download', 'QR code PNG download — requires react-native-qrcode-svg library. Coming soon!');
+                }}
+              >
+                <Download size={18} color={colors.text} />
+                <Text style={[styles.downloadPngText, { color: colors.text }]}>Download PNG</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.printBtn, { backgroundColor: '#8B5CF6' }]}
+                onPress={() => {
+                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                  Alert.alert('Print', 'QR code print — requires react-native-qrcode-svg library. Coming soon!');
+                  setShowPrintQRModal(false);
+                }}
+              >
+                <Printer size={18} color="#FFFFFF" />
+                <Text style={styles.printBtnTextLarge}>Print QR Label</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ================================================================== */}
+      {/* FILTER MODAL */}
+      {/* ================================================================== */}
       <Modal visible={showFilterModal} animationType="slide" transparent>
         <Pressable style={styles.filterOverlay} onPress={() => setShowFilterModal(false)}>
           <View style={[styles.filterSheet, { backgroundColor: colors.surface }]}>
             <View style={styles.filterHeader}>
               <Text style={[styles.filterTitle, { color: colors.text }]}>Filter SDS Index</Text>
-              <Pressable onPress={() => { setFilterStatus(null); setFilterLocation(null); }}>
+              <Pressable onPress={() => { setFilterStatus(null); setFilterDepartment(null); }}>
                 <Text style={[styles.clearFilters, { color: '#EAB308' }]}>Clear All</Text>
               </Pressable>
             </View>
@@ -650,9 +1240,9 @@ export default function SDSIndexScreen() {
             <View style={styles.filterOptions}>
               {[
                 { value: null, label: 'All' },
-                { value: 'current', label: 'Current' },
-                { value: 'review_needed', label: 'Review Needed' },
+                { value: 'active', label: 'Active' },
                 { value: 'expired', label: 'Expired' },
+                { value: 'superseded', label: 'Superseded' },
               ].map((option) => (
                 <Pressable
                   key={option.label}
@@ -675,42 +1265,42 @@ export default function SDSIndexScreen() {
               ))}
             </View>
 
-            <Text style={[styles.filterLabel, { color: colors.text }]}>Location</Text>
+            <Text style={[styles.filterLabel, { color: colors.text }]}>Department</Text>
             <View style={styles.filterOptions}>
               <Pressable
                 style={[
                   styles.filterOption,
                   {
-                    backgroundColor: filterLocation === null ? '#3B82F620' : colors.card,
-                    borderColor: filterLocation === null ? '#3B82F6' : colors.border,
+                    backgroundColor: filterDepartment === null ? '#3B82F620' : colors.card,
+                    borderColor: filterDepartment === null ? '#3B82F6' : colors.border,
                   },
                 ]}
-                onPress={() => setFilterLocation(null)}
+                onPress={() => setFilterDepartment(null)}
               >
                 <Text style={[
                   styles.filterOptionText,
-                  { color: filterLocation === null ? '#3B82F6' : colors.text },
+                  { color: filterDepartment === null ? '#3B82F6' : colors.text },
                 ]}>
                   All
                 </Text>
               </Pressable>
-              {LOCATIONS.map((location) => (
+              {DEPARTMENTS.map((dept) => (
                 <Pressable
-                  key={location}
+                  key={dept.value}
                   style={[
                     styles.filterOption,
                     {
-                      backgroundColor: filterLocation === location ? '#3B82F620' : colors.card,
-                      borderColor: filterLocation === location ? '#3B82F6' : colors.border,
+                      backgroundColor: filterDepartment === dept.value ? dept.color + '20' : colors.card,
+                      borderColor: filterDepartment === dept.value ? dept.color : colors.border,
                     },
                   ]}
-                  onPress={() => setFilterLocation(location)}
+                  onPress={() => setFilterDepartment(dept.value)}
                 >
                   <Text style={[
                     styles.filterOptionText,
-                    { color: filterLocation === location ? '#3B82F6' : colors.text },
+                    { color: filterDepartment === dept.value ? dept.color : colors.text },
                   ]}>
-                    {location}
+                    {dept.prefix}
                   </Text>
                 </Pressable>
               ))}
@@ -729,351 +1319,151 @@ export default function SDSIndexScreen() {
   );
 }
 
+// ============================================================================
+// Styles
+// ============================================================================
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  content: {
-    padding: 16,
-  },
-  backButton: {
-    padding: 8,
-    marginLeft: -8,
-  },
-  searchContainer: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    margin: 16,
-    marginBottom: 0,
-    paddingHorizontal: 14,
-    borderRadius: 12,
-    borderWidth: 1,
-    height: 48,
-  },
-  searchInput: {
-    flex: 1,
-    marginLeft: 10,
-    fontSize: 16,
-  },
-  filterButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 8,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-  },
-  statsRow: {
-    flexDirection: 'row' as const,
-    gap: 10,
-    marginBottom: 16,
-  },
-  statCard: {
-    flex: 1,
-    borderRadius: 10,
-    padding: 12,
-    alignItems: 'center' as const,
-    borderWidth: 1,
-  },
-  statValue: {
-    fontSize: 24,
-    fontWeight: '700' as const,
-  },
-  statLabel: {
-    fontSize: 11,
-    fontWeight: '500' as const,
-  },
-  loadingContainer: {
-    padding: 40,
-    alignItems: 'center' as const,
-  },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 14,
-  },
-  emptyContainer: {
-    padding: 40,
-    alignItems: 'center' as const,
-  },
-  emptyText: {
-    marginTop: 12,
-    fontSize: 16,
-    fontWeight: '500' as const,
-  },
-  emptySubtext: {
-    marginTop: 4,
-    fontSize: 14,
-  },
-  entryCard: {
-    borderRadius: 12,
-    padding: 14,
-    borderWidth: 1,
-    marginBottom: 10,
-  },
-  entryHeader: {
-    flexDirection: 'row' as const,
-    justifyContent: 'space-between' as const,
-    alignItems: 'flex-start' as const,
-    marginBottom: 10,
-  },
-  entryTitleRow: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    flex: 1,
-    gap: 8,
-  },
-  entryTitle: {
-    fontSize: 16,
-    fontWeight: '600' as const,
-    flex: 1,
-  },
-  statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    marginLeft: 8,
-  },
-  statusText: {
-    fontSize: 11,
-    fontWeight: '600' as const,
-  },
-  entryDetails: {
-    marginBottom: 10,
-    gap: 4,
-  },
-  detailRow: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: 6,
-  },
-  detailLabel: {
-    fontSize: 12,
-  },
-  detailText: {
-    fontSize: 12,
-  },
-  detailTextBold: {
-    fontSize: 12,
-    fontWeight: '500' as const,
-  },
-  hazardRow: {
-    flexDirection: 'row' as const,
-    flexWrap: 'wrap' as const,
-    gap: 6,
-    marginBottom: 10,
-  },
-  signalBadge: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    gap: 4,
-  },
-  signalText: {
-    fontSize: 11,
-    fontWeight: '600' as const,
-  },
-  hazardBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  hazardText: {
-    fontSize: 11,
-  },
-  moreHazards: {
-    fontSize: 11,
-    alignSelf: 'center' as const,
-  },
-  locationRow: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: 6,
-    marginBottom: 10,
-  },
-  locationText: {
-    fontSize: 12,
-    flex: 1,
-  },
-  entryFooter: {
-    flexDirection: 'row' as const,
-    justifyContent: 'space-between' as const,
-    alignItems: 'center' as const,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(0,0,0,0.05)',
-    paddingTop: 10,
-  },
-  dateInfo: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: 4,
-  },
-  dateText: {
-    fontSize: 11,
-  },
-  entryActions: {
-    flexDirection: 'row' as const,
-    gap: 8,
-  },
-  actionButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-  },
-  fab: {
-    position: 'absolute' as const,
-    right: 20,
-    bottom: 20,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 8,
-  },
-  modalContainer: {
-    flex: 1,
-  },
-  modalHeader: {
-    flexDirection: 'row' as const,
-    justifyContent: 'space-between' as const,
-    alignItems: 'center' as const,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: '600' as const,
-  },
-  saveButton: {
-    fontSize: 16,
-    fontWeight: '600' as const,
-  },
-  modalContent: {
-    flex: 1,
-    padding: 16,
-  },
-  inputLabel: {
-    fontSize: 14,
-    fontWeight: '500' as const,
-    marginBottom: 6,
-    marginTop: 12,
-  },
-  input: {
-    borderRadius: 10,
-    borderWidth: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 16,
-  },
-  textArea: {
-    borderRadius: 10,
-    borderWidth: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 16,
-    minHeight: 80,
-  },
-  signalWordRow: {
-    flexDirection: 'row' as const,
-    gap: 10,
-  },
-  signalWordOption: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-    alignItems: 'center' as const,
-  },
-  signalWordText: {
-    fontSize: 14,
-    fontWeight: '600' as const,
-  },
-  chipContainer: {
-    flexDirection: 'row' as const,
-    flexWrap: 'wrap' as const,
-    gap: 8,
-  },
-  chip: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  chipText: {
-    fontSize: 13,
-  },
-  modalBottomPadding: {
-    height: 40,
-  },
-  filterOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end' as const,
-  },
-  filterSheet: {
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 20,
-    maxHeight: '70%',
-  },
-  filterHeader: {
-    flexDirection: 'row' as const,
-    justifyContent: 'space-between' as const,
-    alignItems: 'center' as const,
-    marginBottom: 20,
-  },
-  filterTitle: {
-    fontSize: 18,
-    fontWeight: '600' as const,
-  },
-  clearFilters: {
-    fontSize: 14,
-    fontWeight: '500' as const,
-  },
-  filterLabel: {
-    fontSize: 14,
-    fontWeight: '500' as const,
-    marginBottom: 10,
-    marginTop: 10,
-  },
-  filterOptions: {
-    flexDirection: 'row' as const,
-    flexWrap: 'wrap' as const,
-    gap: 8,
-  },
-  filterOption: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  filterOptionText: {
-    fontSize: 13,
-    fontWeight: '500' as const,
-  },
-  applyFilterButton: {
-    marginTop: 24,
-    paddingVertical: 14,
-    borderRadius: 10,
-    alignItems: 'center' as const,
-  },
-  applyFilterText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600' as const,
-  },
-  bottomPadding: {
-    height: 80,
-  },
+  container: { flex: 1 },
+  scrollView: { flex: 1 },
+  content: { padding: 16 },
+  backButton: { padding: 8, marginLeft: -8 },
+  searchContainer: { flexDirection: 'row' as const, alignItems: 'center' as const, margin: 16, marginBottom: 0, paddingHorizontal: 14, borderRadius: 12, borderWidth: 1, height: 48 },
+  searchInput: { flex: 1, marginLeft: 10, fontSize: 15 },
+  filterButton: { width: 36, height: 36, borderRadius: 8, alignItems: 'center' as const, justifyContent: 'center' as const },
+  statsRow: { flexDirection: 'row' as const, gap: 10, marginBottom: 16 },
+  statCard: { flex: 1, borderRadius: 10, padding: 12, alignItems: 'center' as const, borderWidth: 1 },
+  statValue: { fontSize: 24, fontWeight: '700' as const },
+  statLabel: { fontSize: 11, fontWeight: '500' as const },
+  loadingContainer: { padding: 40, alignItems: 'center' as const },
+  loadingText: { marginTop: 12, fontSize: 14 },
+  emptyContainer: { padding: 40, alignItems: 'center' as const },
+  emptyText: { marginTop: 12, fontSize: 16, fontWeight: '500' as const },
+  emptySubtext: { marginTop: 4, fontSize: 14 },
+
+  // Entry Card
+  entryCard: { borderRadius: 12, padding: 14, borderWidth: 1, marginBottom: 10 },
+  entryHeader: { flexDirection: 'row' as const, justifyContent: 'space-between' as const, alignItems: 'flex-start' as const, marginBottom: 10 },
+  entryTitleRow: { flexDirection: 'row' as const, alignItems: 'center' as const, flex: 1, gap: 10 },
+  masterNumberBadge: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, borderWidth: 1 },
+  masterNumberText: { fontSize: 13, fontWeight: '700' as const },
+  titleBlock: { flex: 1 },
+  entryTitle: { fontSize: 15, fontWeight: '600' as const },
+  qrLabelText: { fontSize: 11, fontWeight: '600' as const, marginTop: 2 },
+  statusBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, marginLeft: 8 },
+  statusText: { fontSize: 11, fontWeight: '600' as const },
+  entryDetails: { marginBottom: 8, gap: 4 },
+  detailRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 6 },
+  detailText: { fontSize: 12 },
+  hazardRow: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: 6, marginBottom: 8 },
+  signalBadge: { flexDirection: 'row' as const, alignItems: 'center' as const, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, gap: 4 },
+  signalText: { fontSize: 11, fontWeight: '600' as const },
+  hazardBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  hazardText: { fontSize: 11 },
+  moreHazards: { fontSize: 11, alignSelf: 'center' as const },
+  locationRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 6, marginBottom: 8 },
+  locationText: { fontSize: 12, flex: 1 },
+  entryFooter: { flexDirection: 'row' as const, justifyContent: 'space-between' as const, alignItems: 'center' as const, borderTopWidth: 1, paddingTop: 10 },
+  dateInfo: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 4 },
+  dateText: { fontSize: 11 },
+  entryActions: { flexDirection: 'row' as const, gap: 6 },
+  actionButton: { width: 32, height: 32, borderRadius: 8, alignItems: 'center' as const, justifyContent: 'center' as const },
+
+  // FAB
+  fab: { position: 'absolute' as const, right: 20, bottom: 20, width: 56, height: 56, borderRadius: 28, alignItems: 'center' as const, justifyContent: 'center' as const, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 8 },
+
+  // Modal shared
+  modalContainer: { flex: 1 },
+  modalHeader: { flexDirection: 'row' as const, justifyContent: 'space-between' as const, alignItems: 'center' as const, paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1 },
+  modalTitle: { fontSize: 18, fontWeight: '600' as const },
+  saveButton: { fontSize: 16, fontWeight: '600' as const },
+  modalContent: { flex: 1, padding: 16 },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' as const },
+  modalBottomPadding: { height: 60 },
+
+  // Form
+  inputLabel: { fontSize: 13, fontWeight: '500' as const, marginBottom: 6, marginTop: 12 },
+  sectionHeader: { fontSize: 16, fontWeight: '700' as const, marginTop: 24, marginBottom: 4 },
+  input: { borderRadius: 10, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15 },
+  textArea: { borderRadius: 10, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, minHeight: 70 },
+  twoCol: { flexDirection: 'row' as const, gap: 12 },
+  colHalf: { flex: 1 },
+  signalWordRow: { flexDirection: 'row' as const, gap: 10 },
+  signalWordOption: { flex: 1, paddingVertical: 12, borderRadius: 10, borderWidth: 1, alignItems: 'center' as const },
+  signalWordText: { fontSize: 14, fontWeight: '600' as const },
+  chipContainer: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: 8 },
+  chip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, borderWidth: 1 },
+  chipText: { fontSize: 13 },
+  deptScroll: { marginBottom: 4 },
+  deptRow: { flexDirection: 'row' as const, gap: 8, paddingVertical: 4 },
+  deptChip: { flexDirection: 'row' as const, alignItems: 'center' as const, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, borderWidth: 1, gap: 6 },
+  deptChipText: { fontSize: 12, fontWeight: '500' as const },
+  qrPreviewText: { fontSize: 13, fontWeight: '600' as const, marginTop: 6, marginBottom: 4 },
+
+  // Duplicate Warning
+  duplicateWarning: { borderRadius: 12, borderWidth: 1, padding: 14, marginBottom: 16 },
+  duplicateHeader: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 8, marginBottom: 10 },
+  duplicateTitle: { fontSize: 14, fontWeight: '600' as const, color: '#92400E' },
+  duplicateItem: { borderRadius: 8, borderWidth: 1, padding: 10, marginBottom: 6 },
+  duplicateInfo: { flex: 1 },
+  duplicateItemName: { fontSize: 13, fontWeight: '600' as const, color: '#1A1A2E' },
+  duplicateItemMfr: { fontSize: 12, color: '#666', marginTop: 2 },
+  duplicateItemLabel: { fontSize: 11, fontWeight: '600' as const, color: '#8B5CF6', marginTop: 2 },
+  duplicateScore: { fontSize: 11, color: '#F59E0B', fontWeight: '600' as const },
+  duplicateNote: { fontSize: 12, color: '#92400E', fontStyle: 'italic' as const, marginTop: 4 },
+
+  // Detail Modal
+  detailModal: { borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '90%' },
+  detailModalHeader: { flexDirection: 'row' as const, justifyContent: 'space-between' as const, alignItems: 'center' as const, padding: 20, borderBottomWidth: 1, gap: 12 },
+  detailHeaderLeft: { flexDirection: 'row' as const, alignItems: 'center' as const, flex: 1, gap: 12 },
+  sdsIconBadge: { width: 44, height: 44, borderRadius: 12, alignItems: 'center' as const, justifyContent: 'center' as const },
+  detailHeaderInfo: { flex: 1 },
+  detailTitle: { fontSize: 16, fontWeight: '600' as const },
+  detailSubtitle: { fontSize: 13, fontWeight: '600' as const, marginTop: 2 },
+  detailContent: { padding: 20 },
+  qrSection: { alignItems: 'center' as const, padding: 24, borderRadius: 16, borderWidth: 1, marginBottom: 20 },
+  qrLarge: { padding: 16, backgroundColor: '#FFFFFF', borderRadius: 12, marginBottom: 12 },
+  qrLabelLarge: { fontSize: 18, fontWeight: '700' as const, color: '#1A1A2E', marginBottom: 4 },
+  qrUrl: { fontSize: 11, color: '#666', marginBottom: 8 },
+  qrNote: { fontSize: 12, color: '#10B981', fontWeight: '500' as const, textAlign: 'center' as const },
+  detailsList: { borderWidth: 1, borderRadius: 12, overflow: 'hidden' as const },
+  detailListRow: { flexDirection: 'row' as const, justifyContent: 'space-between' as const, alignItems: 'center' as const, paddingHorizontal: 14, paddingVertical: 12 },
+  detailListLabel: { fontSize: 13 },
+  detailListValue: { fontSize: 13, fontWeight: '500' as const },
+  detailFooter: { flexDirection: 'row' as const, gap: 10, padding: 20, borderTopWidth: 1 },
+  detailBtn: { flex: 1, flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'center' as const, paddingVertical: 12, borderRadius: 10, gap: 6 },
+  detailBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '600' as const },
+
+  // Print QR Modal
+  printModal: { borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '85%' },
+  printModalHeader: { flexDirection: 'row' as const, justifyContent: 'space-between' as const, alignItems: 'center' as const, padding: 20, borderBottomWidth: 1 },
+  printModalTitle: { fontSize: 18, fontWeight: '600' as const },
+  printModalContent: { padding: 20 },
+  printSectionTitle: { fontSize: 15, fontWeight: '600' as const, marginBottom: 12, marginTop: 20 },
+  qrPreviewCard: { alignItems: 'center' as const, padding: 24, borderRadius: 16, borderWidth: 1 },
+  qrPreviewInner: { padding: 16, backgroundColor: '#FFFFFF', borderRadius: 12, marginBottom: 16 },
+  qrPreviewLabel: { fontSize: 18, fontWeight: '700' as const, color: '#1A1A2E' },
+  qrPreviewName: { fontSize: 14, color: '#666', marginTop: 4 },
+  qrPreviewScan: { fontSize: 10, color: '#999', marginTop: 8, letterSpacing: 2 },
+  sizeOptions: { gap: 10 },
+  sizeOption: { flexDirection: 'row' as const, alignItems: 'center' as const, padding: 14, borderRadius: 12, borderWidth: 1, gap: 10 },
+  sizeOptionText: { fontSize: 14, fontWeight: '500' as const },
+  printModalFooter: { flexDirection: 'row' as const, gap: 12, padding: 20, borderTopWidth: 1 },
+  downloadPngBtn: { flex: 1, flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'center' as const, paddingVertical: 14, borderRadius: 12, borderWidth: 1, gap: 8 },
+  downloadPngText: { fontSize: 14, fontWeight: '600' as const },
+  printBtn: { flex: 2, flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'center' as const, paddingVertical: 14, borderRadius: 12, gap: 8 },
+  printBtnTextLarge: { color: '#FFFFFF', fontSize: 15, fontWeight: '600' as const },
+
+  // Filter Modal
+  filterOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' as const },
+  filterSheet: { borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: '70%' },
+  filterHeader: { flexDirection: 'row' as const, justifyContent: 'space-between' as const, alignItems: 'center' as const, marginBottom: 20 },
+  filterTitle: { fontSize: 18, fontWeight: '600' as const },
+  clearFilters: { fontSize: 14, fontWeight: '500' as const },
+  filterLabel: { fontSize: 14, fontWeight: '500' as const, marginBottom: 10, marginTop: 10 },
+  filterOptions: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: 8 },
+  filterOption: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, borderWidth: 1 },
+  filterOptionText: { fontSize: 13, fontWeight: '500' as const },
+  applyFilterButton: { marginTop: 24, paddingVertical: 14, borderRadius: 10, alignItems: 'center' as const },
+  applyFilterText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600' as const },
+  bottomPadding: { height: 80 },
 });
