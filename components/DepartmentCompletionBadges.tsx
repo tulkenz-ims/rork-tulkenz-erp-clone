@@ -200,10 +200,19 @@ export default function DepartmentCompletionBadges({
                 {linkedWorkOrders.filter(wo => {
                   // Match 1: WO has department field matching this dept
                   if (wo.department === deptCode) return true;
-                  // Match 2: Department task links to this WO via module_reference
+                  // Match 2: This department task links to this WO via module_reference
                   if (task?.moduleHistoryType === 'work_order' && task?.moduleHistoryId === wo.id) return true;
                   // Match 3: WO source is task_feed and this is Maintenance (default WO dept)
                   if (deptCode === '1001' && wo.source === 'task_feed' && !wo.department) return true;
+                  // Match 4: WO title/description references this department name
+                  const deptNameLower = deptName.toLowerCase();
+                  if ((wo.title || '').toLowerCase().includes(deptNameLower)) return true;
+                  if ((wo.description || '').toLowerCase().includes(deptNameLower)) return true;
+                  // Match 5: WO completion notes reference this department 
+                  if ((wo.completion_notes || wo.completionNotes || '').toLowerCase().includes(deptNameLower)) return true;
+                  // Match 6: Check if this dept task's completion notes reference the WO number
+                  const woNum = wo.work_order_number || wo.workOrderNumber || '';
+                  if (woNum && task?.completionNotes?.includes(woNum)) return true;
                   return false;
                 }).map(wo => (
                   <TouchableOpacity
