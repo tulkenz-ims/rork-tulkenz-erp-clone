@@ -439,19 +439,6 @@ export default function PostFormDecisionModal({
                     </View>
                     <ArrowRight size={16} color={deptColor} />
                   </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[styles.nextActionBtn, { backgroundColor: '#8B5CF615', borderColor: '#8B5CF660' }]}
-                    onPress={handleEscalate}
-                    activeOpacity={0.7}
-                  >
-                    <ArrowRight size={18} color="#8B5CF6" />
-                    <View style={styles.nextActionInfo}>
-                      <Text style={[styles.nextActionTitle, { color: colors.text }]}>Escalate to another department</Text>
-                      <Text style={[styles.nextActionDesc, { color: colors.textSecondary }]}>Send this task to additional departments</Text>
-                    </View>
-                    <ArrowRight size={16} color="#8B5CF6" />
-                  </TouchableOpacity>
                 </View>
               </>
             )}
