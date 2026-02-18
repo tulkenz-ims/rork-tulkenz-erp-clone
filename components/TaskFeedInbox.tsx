@@ -62,6 +62,7 @@ interface TaskFeedInboxProps {
   onTaskCompleted?: (task: TaskFeedDepartmentTask, moduleHistoryId?: string) => void;
   createModuleHistoryRecord?: (task: TaskFeedDepartmentTask, notes: string) => Promise<string | null>;
   createFullWorkOrder?: (task: TaskFeedDepartmentTask, data: WorkOrderCompletionData) => Promise<string | null>;
+  createOpenWorkOrder?: (task: TaskFeedDepartmentTask) => Promise<string | null>;
   maxVisible?: number;
   showHeader?: boolean;
   requiresFullWorkOrder?: boolean;
@@ -88,6 +89,7 @@ export default function TaskFeedInbox({
   onTaskCompleted,
   createModuleHistoryRecord,
   createFullWorkOrder,
+  createOpenWorkOrder,
   maxVisible = 5,
   showHeader = true,
   requiresFullWorkOrder,
@@ -194,7 +196,7 @@ export default function TaskFeedInbox({
   const visibleTasks = showAllTasks ? pendingTasks : pendingTasks.slice(0, maxVisible);
   const hasMoreTasks = pendingTasks.length > maxVisible;
 
-  const handleStartComplete = useCallback((task: TaskFeedDepartmentTask & { post?: PostDetails }) => {
+  const handleStartComplete = useCallback(async (task: TaskFeedDepartmentTask & { post?: PostDetails }) => {
     setSelectedTask(task);
     setCompletionNotes('');
     
@@ -208,7 +210,38 @@ export default function TaskFeedInbox({
         router.push(`/(tabs)/cmms/work-orders/${linkedWO.id}`);
         return;
       }
-      if (createFullWorkOrder) {
+      // Create an OPEN work order and navigate to the full detail screen
+      if (createOpenWorkOrder) {
+        try {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          const workOrderId = await createOpenWorkOrder(task);
+          if (workOrderId) {
+            // Link WO to department task and mark as in_progress
+            try {
+              await supabase
+                .from('task_feed_department_tasks')
+                .update({
+                  status: 'in_progress',
+                  started_at: new Date().toISOString(),
+                  module_reference_type: 'work_order',
+                  module_reference_id: workOrderId,
+                })
+                .eq('id', task.id)
+                .eq('organization_id', organizationId);
+            } catch (linkErr) {
+              console.error('[TaskFeedInbox] Error linking WO to dept task:', linkErr);
+            }
+            queryClient.invalidateQueries({ queryKey: ['task_feed_department_tasks'] });
+            queryClient.invalidateQueries({ queryKey: ['work_orders'] });
+            router.push(`/(tabs)/cmms/work-orders/${workOrderId}`);
+            return;
+          }
+        } catch (err) {
+          console.error('[TaskFeedInbox] Error creating open WO:', err);
+          Alert.alert('Error', 'Failed to create work order. Please try again.');
+          return;
+        }
+      } else if (createFullWorkOrder) {
         setShowWorkOrderModal(true);
       } else {
         setShowCompleteModal(true);
@@ -221,7 +254,7 @@ export default function TaskFeedInbox({
       setShowFormPicker(true);
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  }, [isMaintenanceDept, createFullWorkOrder, workOrders, router]);
+  }, [isMaintenanceDept, createFullWorkOrder, createOpenWorkOrder, workOrders, router, organizationId, queryClient]);
 
   const handleNotInvolvedPress = useCallback((task: TaskFeedDepartmentTask & { post?: PostDetails }) => {
     setSelectedTask(task);
