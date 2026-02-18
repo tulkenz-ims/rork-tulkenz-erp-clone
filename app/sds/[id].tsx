@@ -41,6 +41,23 @@ const DEPARTMENT_PREFIXES: Record<string, string> = {
   general: 'GEN',
 };
 
+const ALLERGEN_LABELS: Record<string, { label: string; color: string }> = {
+  peanut: { label: 'Peanut', color: '#DC2626' },
+  tree_nut: { label: 'Tree Nut', color: '#DC2626' },
+  milk: { label: 'Milk/Dairy', color: '#2563EB' },
+  egg: { label: 'Egg', color: '#F59E0B' },
+  wheat: { label: 'Wheat/Gluten', color: '#D97706' },
+  soy: { label: 'Soy', color: '#65A30D' },
+  fish: { label: 'Fish', color: '#0891B2' },
+  shellfish: { label: 'Shellfish', color: '#0E7490' },
+  sesame: { label: 'Sesame', color: '#A16207' },
+  coconut: { label: 'Coconut', color: '#15803D' },
+  corn: { label: 'Corn', color: '#CA8A04' },
+  sulfites: { label: 'Sulfites', color: '#7C3AED' },
+  latex: { label: 'Latex', color: '#BE185D' },
+  other: { label: 'Other', color: '#6B7280' },
+};
+
 // Format date helper (inline so no dependency issues)
 const formatDate = (date: string | null | undefined): string => {
   if (!date) return 'N/A';
@@ -340,6 +357,39 @@ export default function PublicSDSViewScreen() {
             </View>
           )}
 
+          {/* Allergen Information */}
+          <View style={styles.documentSection}>
+            <Text style={styles.sectionTitle}>Allergen Status</Text>
+            {sdsRecord.contains_allergens ? (
+              <View style={[styles.detailsCard, { borderWidth: 2, borderColor: '#DC262640' }]}>
+                <View style={styles.allergenHeader}>
+                  <AlertTriangle size={20} color="#DC2626" />
+                  <Text style={styles.allergenTitle}>CONTAINS KNOWN ALLERGENS</Text>
+                </View>
+                <View style={styles.allergenChipRow}>
+                  {(sdsRecord.allergens || []).map((a: string, idx: number) => {
+                    const info = ALLERGEN_LABELS[a];
+                    return info ? (
+                      <View key={idx} style={[styles.allergenChipPublic, { backgroundColor: info.color + '15', borderColor: info.color + '30' }]}>
+                        <Text style={[styles.allergenChipPublicText, { color: info.color }]}>{info.label}</Text>
+                      </View>
+                    ) : null;
+                  })}
+                </View>
+                {sdsRecord.allergen_notes && (
+                  <Text style={styles.allergenNotes}>{sdsRecord.allergen_notes}</Text>
+                )}
+              </View>
+            ) : (
+              <View style={[styles.detailsCard, { borderWidth: 1, borderColor: '#10B98130' }]}>
+                <View style={styles.allergenHeader}>
+                  <Shield size={20} color="#10B981" />
+                  <Text style={[styles.allergenTitle, { color: '#10B981' }]}>No Known Allergens</Text>
+                </View>
+              </View>
+            )}
+          </View>
+
           {/* Actions */}
           <View style={styles.actionsSection}>
             {sdsRecord.file_url ? (
@@ -598,6 +648,41 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#991B1B',
     fontWeight: '500' as const,
+  },
+  allergenHeader: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 10,
+    padding: 14,
+  },
+  allergenTitle: {
+    fontSize: 14,
+    fontWeight: '700' as const,
+    color: '#DC2626',
+  },
+  allergenChipRow: {
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingBottom: 14,
+  },
+  allergenChipPublic: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  allergenChipPublicText: {
+    fontSize: 13,
+    fontWeight: '600' as const,
+  },
+  allergenNotes: {
+    fontSize: 12,
+    color: '#92400E',
+    paddingHorizontal: 14,
+    paddingBottom: 14,
+    fontStyle: 'italic' as const,
   },
   actionsSection: {
     gap: 12,
