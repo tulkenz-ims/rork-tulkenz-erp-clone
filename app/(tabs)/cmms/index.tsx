@@ -621,7 +621,7 @@ ${completionData.additionalNotes}` : ''}
           status: 'open',
           priority: 'medium',
           type: 'corrective',
-          source: 'task_feed',
+          source: 'request',
           source_id: task.postId,
           department: '1001',
           department_name: 'Maintenance',
@@ -645,7 +645,33 @@ ${completionData.additionalNotes}` : ''}
 
       if (error) {
         console.error('[CMMS] Error creating open WO:', error);
-        return null;
+        // Fallback: try without assigned_to/facility_id in case of UUID issues
+        const { data: fallback, error: fallbackErr } = await supabase
+          .from('work_orders')
+          .insert({
+            organization_id: organizationId,
+            work_order_number: workOrderNumber,
+            title: `[${task.postNumber}] ${task.post?.template_name || 'Work Order'}`,
+            description,
+            status: 'open',
+            priority: 'medium',
+            type: 'corrective',
+            source: 'request',
+            department: '1001',
+            department_name: 'Maintenance',
+            due_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+            safety: {},
+            tasks: [],
+            attachments: [],
+          })
+          .select('id, work_order_number')
+          .single();
+        if (fallbackErr) {
+          console.error('[CMMS] Fallback also failed:', fallbackErr);
+          return null;
+        }
+        console.log('[CMMS] Created open WO (fallback):', fallback.work_order_number);
+        return fallback.id;
       }
 
       console.log('[CMMS] Created open work order:', data.work_order_number, data.id);
