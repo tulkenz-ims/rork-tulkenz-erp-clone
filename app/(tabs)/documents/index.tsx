@@ -427,7 +427,14 @@ export default function DocumentLibraryScreen() {
                   borderColor: selectedCategory === cat.value ? cat.color : colors.border,
                 },
               ]}
-              onPress={() => setSelectedCategory(cat.value)}
+              onPress={() => {
+                if (cat.value === 'SDS') {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  router.push('/(tabs)/documents/sds' as any);
+                } else {
+                  setSelectedCategory(cat.value);
+                }
+              }}
             >
               <Text style={[
                 styles.categoryChipText,
@@ -499,7 +506,15 @@ export default function DocumentLibraryScreen() {
                         borderColor: selectedCategory === cat.value ? cat.color : colors.border,
                       },
                     ]}
-                    onPress={() => setSelectedCategory(cat.value)}
+                    onPress={() => {
+                      if (cat.value === 'SDS') {
+                        setShowFilterModal(false);
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        router.push('/(tabs)/documents/sds' as any);
+                      } else {
+                        setSelectedCategory(cat.value);
+                      }
+                    }}
                   >
                     <Text style={[styles.filterOptionText, { color: selectedCategory === cat.value ? cat.color : colors.text }]}>
                       {cat.label}
