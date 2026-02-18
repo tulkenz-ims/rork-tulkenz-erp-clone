@@ -39,6 +39,7 @@ export default function QualityLayout() {
       <Stack.Screen name="hourlylinechecks" options={{ title: 'Hourly Line Checks' }} />
       <Stack.Screen name="tasksetup" options={{ title: 'Task Schedule Setup' }} />
       <Stack.Screen name="roomhygienelog" options={{ title: 'Room Hygiene Log' }} />
+      <Stack.Screen name="room-hygiene-history" options={{ title: 'Room Hygiene History' }} />
       <Stack.Screen name="equipmenthygiene" options={{ title: 'Equipment Hygiene Sign-off' }} />
       <Stack.Screen name="labelverification" options={{ title: 'Label Verification' }} />
       <Stack.Screen name="datecodeverification" options={{ title: 'Date Code Verification' }} />
