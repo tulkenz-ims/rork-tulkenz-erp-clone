@@ -105,9 +105,34 @@ const getQRLabel = (dept: string | null, masterNumber: number | null): string =>
   return `${prefix} SDS #${masterNumber || '?'}`;
 };
 
+// Calculate review status based on next_review_date with 30-day warning window
+const getReviewStatus = (entry: any): { status: string; daysUntil: number | null; label: string } => {
+  if (!entry.next_review_date) {
+    if (!entry.last_reviewed_date) {
+      return { status: 'never_reviewed', daysUntil: null, label: 'Never Reviewed' };
+    }
+    return { status: 'active', daysUntil: null, label: 'Active' };
+  }
+  const now = new Date();
+  const nextReview = new Date(entry.next_review_date);
+  const diffMs = nextReview.getTime() - now.getTime();
+  const daysUntil = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+
+  if (daysUntil < 0) {
+    return { status: 'review_overdue', daysUntil, label: `Overdue ${Math.abs(daysUntil)}d` };
+  }
+  if (daysUntil <= 30) {
+    return { status: 'review_due', daysUntil, label: `Review in ${daysUntil}d` };
+  }
+  return { status: 'active', daysUntil, label: 'Active' };
+};
+
 const getStatusColor = (status: string): string => {
   switch (status) {
     case 'active': return '#10B981';
+    case 'review_due': return '#F59E0B';
+    case 'review_overdue': return '#EF4444';
+    case 'never_reviewed': return '#8B5CF6';
     case 'expired': return '#EF4444';
     case 'superseded': return '#F59E0B';
     case 'archived': return '#6B7280';
@@ -118,6 +143,9 @@ const getStatusColor = (status: string): string => {
 const getStatusLabel = (status: string): string => {
   switch (status) {
     case 'active': return 'Active';
+    case 'review_due': return 'Review Due';
+    case 'review_overdue': return 'Overdue';
+    case 'never_reviewed': return 'Needs Review';
     case 'expired': return 'Expired';
     case 'superseded': return 'Superseded';
     case 'archived': return 'Archived';
@@ -186,6 +214,7 @@ export default function SDSMasterIndexScreen() {
     revision_date: '',
     notes: '',
     file_url: '',
+    last_reviewed_date: new Date().toISOString().split('T')[0],
   });
   const [isUploading, setIsUploading] = useState(false);
 
@@ -315,6 +344,7 @@ export default function SDSMasterIndexScreen() {
       revision_date: '',
       notes: '',
       file_url: '',
+      last_reviewed_date: new Date().toISOString().split('T')[0],
     });
     setEditingEntry(null);
     setDuplicateMatches([]);
@@ -361,6 +391,7 @@ export default function SDSMasterIndexScreen() {
       revision_date: formData.revision_date || null,
       notes: formData.notes || null,
       file_url: formData.file_url || null,
+      last_reviewed_date: formData.last_reviewed_date || new Date().toISOString().split('T')[0],
       status: 'active',
       version: '1.0',
       approved_for_use: true,
@@ -394,6 +425,7 @@ export default function SDSMasterIndexScreen() {
       revision_date: entry.revision_date || '',
       notes: entry.notes || '',
       file_url: entry.file_url || '',
+      last_reviewed_date: entry.last_reviewed_date || '',
     });
     setShowAddModal(true);
   };
@@ -430,6 +462,24 @@ export default function SDSMasterIndexScreen() {
     } else {
       Alert.alert('No PDF', 'No SDS document has been uploaded for this chemical yet.');
     }
+  };
+
+  const handleMarkReviewed = (entry: any) => {
+    const today = new Date().toISOString().split('T')[0];
+    Alert.alert(
+      'Mark as Reviewed',
+      `Confirm ${entry.product_name} SDS has been reviewed today (${today}). Next review will be due in 1 year.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Confirm Review',
+          onPress: () => updateMutation.mutate({
+            id: entry.id,
+            last_reviewed_date: today,
+          }),
+        },
+      ]
+    );
   };
 
   const toggleArrayItem = (field: string, item: string) => {
@@ -470,14 +520,16 @@ export default function SDSMasterIndexScreen() {
     const statusColor = getStatusColor(entry.status || 'active');
     const deptInfo = DEPARTMENT_PREFIXES[entry.primary_department] || DEPARTMENT_PREFIXES.general;
     const qrLabel = getQRLabel(entry.primary_department, entry.sds_master_number);
+    const reviewStatus = getReviewStatus(entry);
+    const reviewColor = getStatusColor(reviewStatus.status);
 
     return (
       <Pressable
         key={entry.id}
-        style={[styles.entryCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
+        style={[styles.entryCard, { backgroundColor: colors.surface, borderColor: reviewStatus.status === 'review_overdue' ? '#EF444460' : reviewStatus.status === 'review_due' ? '#F59E0B40' : colors.border }]}
         onPress={() => handleViewDetail(entry)}
       >
-        {/* Header: Master # + Name + Status */}
+        {/* Header: Master # + Name + Review Status */}
         <View style={styles.entryHeader}>
           <View style={styles.entryTitleRow}>
             <View style={[styles.masterNumberBadge, { backgroundColor: deptInfo.color + '20', borderColor: deptInfo.color + '40' }]}>
@@ -494,9 +546,9 @@ export default function SDSMasterIndexScreen() {
               </Text>
             </View>
           </View>
-          <View style={[styles.statusBadge, { backgroundColor: statusColor + '20' }]}>
-            <Text style={[styles.statusText, { color: statusColor }]}>
-              {getStatusLabel(entry.status || 'active')}
+          <View style={[styles.statusBadge, { backgroundColor: reviewColor + '20' }]}>
+            <Text style={[styles.statusText, { color: reviewColor }]}>
+              {reviewStatus.label}
             </Text>
           </View>
         </View>
@@ -525,6 +577,18 @@ export default function SDSMasterIndexScreen() {
               </Text>
             </View>
           )}
+        </View>
+
+        {/* Review date info */}
+        <View style={styles.reviewRow}>
+          <View style={styles.detailRow}>
+            <Calendar size={13} color={reviewColor} />
+            <Text style={[styles.reviewDateText, { color: reviewColor }]}>
+              {entry.last_reviewed_date
+                ? `Reviewed: ${entry.last_reviewed_date}${entry.next_review_date ? '  →  Due: ' + entry.next_review_date : ''}`
+                : 'Never reviewed — tap ✓ to mark reviewed'}
+            </Text>
+          </View>
         </View>
 
         {/* Hazard badges */}
@@ -568,6 +632,12 @@ export default function SDSMasterIndexScreen() {
             </Text>
           </View>
           <View style={styles.entryActions}>
+            <Pressable
+              onPress={() => handleMarkReviewed(entry)}
+              style={[styles.actionButton, { backgroundColor: '#10B98115' }]}
+            >
+              <Check size={14} color="#10B981" />
+            </Pressable>
             <Pressable
               onPress={() => handleViewSDS(entry)}
               style={[styles.actionButton, { backgroundColor: '#3B82F615' }]}
@@ -656,12 +726,16 @@ export default function SDSMasterIndexScreen() {
         {/* Stats */}
         <View style={styles.statsRow}>
           <View style={[styles.statCard, { backgroundColor: '#10B98115', borderColor: '#10B98130' }]}>
-            <Text style={[styles.statValue, { color: '#10B981' }]}>{entries.filter((e: any) => e.status === 'active').length}</Text>
+            <Text style={[styles.statValue, { color: '#10B981' }]}>{entries.filter((e: any) => getReviewStatus(e).status === 'active').length}</Text>
             <Text style={[styles.statLabel, { color: '#10B981' }]}>Active</Text>
           </View>
+          <View style={[styles.statCard, { backgroundColor: '#F59E0B15', borderColor: '#F59E0B30' }]}>
+            <Text style={[styles.statValue, { color: '#F59E0B' }]}>{entries.filter((e: any) => getReviewStatus(e).status === 'review_due').length}</Text>
+            <Text style={[styles.statLabel, { color: '#F59E0B' }]}>Due Soon</Text>
+          </View>
           <View style={[styles.statCard, { backgroundColor: '#EF444415', borderColor: '#EF444430' }]}>
-            <Text style={[styles.statValue, { color: '#EF4444' }]}>{entries.filter((e: any) => e.status === 'expired').length}</Text>
-            <Text style={[styles.statLabel, { color: '#EF4444' }]}>Expired</Text>
+            <Text style={[styles.statValue, { color: '#EF4444' }]}>{entries.filter((e: any) => ['review_overdue', 'never_reviewed'].includes(getReviewStatus(e).status)).length}</Text>
+            <Text style={[styles.statLabel, { color: '#EF4444' }]}>Overdue</Text>
           </View>
           <View style={[styles.statCard, { backgroundColor: '#3B82F615', borderColor: '#3B82F630' }]}>
             <Text style={[styles.statValue, { color: '#3B82F6' }]}>{entries.length}</Text>
@@ -1069,6 +1143,26 @@ export default function SDSMasterIndexScreen() {
               </View>
             </View>
 
+            {/* Internal Review */}
+            <Text style={[styles.sectionHeader, { color: colors.text }]}>Internal Review</Text>
+            <Text style={[styles.sectionDesc, { color: colors.textSecondary }]}>
+              When was this SDS last verified as current? Review expires 1 year from this date with a 30-day warning.
+            </Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
+              placeholder="YYYY-MM-DD (defaults to today)"
+              placeholderTextColor={colors.textSecondary}
+              value={formData.last_reviewed_date}
+              onChangeText={(text) => setFormData(prev => ({ ...prev, last_reviewed_date: text }))}
+            />
+            <Pressable
+              style={[styles.reviewTodayBtn, { backgroundColor: '#10B98115', borderColor: '#10B98130' }]}
+              onPress={() => setFormData(prev => ({ ...prev, last_reviewed_date: new Date().toISOString().split('T')[0] }))}
+            >
+              <Check size={16} color="#10B981" />
+              <Text style={styles.reviewTodayText}>Set to Today</Text>
+            </Pressable>
+
             {/* Notes */}
             <Text style={[styles.inputLabel, { color: colors.text }]}>Notes</Text>
             <TextInput
@@ -1144,6 +1238,8 @@ export default function SDSMasterIndexScreen() {
                       { label: 'Physical State', value: selectedEntry.physical_state },
                       { label: 'Issue Date', value: selectedEntry.issue_date },
                       { label: 'Expiration', value: selectedEntry.expiration_date },
+                      { label: 'Last Reviewed', value: selectedEntry.last_reviewed_date },
+                      { label: 'Next Review Due', value: selectedEntry.next_review_date },
                     ].filter(r => r.value).map((row, idx) => (
                       <View key={idx} style={[styles.detailListRow, idx > 0 && { borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.05)' }]}>
                         <Text style={[styles.detailListLabel, { color: colors.textSecondary }]}>{row.label}</Text>
@@ -1406,6 +1502,10 @@ const styles = StyleSheet.create({
   moreHazards: { fontSize: 11, alignSelf: 'center' as const },
   locationRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 6, marginBottom: 8 },
   locationText: { fontSize: 12, flex: 1 },
+  reviewRow: { marginBottom: 8 },
+  reviewDateText: { fontSize: 12, fontWeight: '500' as const },
+  reviewTodayBtn: { flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'center' as const, paddingVertical: 10, borderRadius: 8, borderWidth: 1, gap: 6, marginTop: 8 },
+  reviewTodayText: { fontSize: 14, fontWeight: '600' as const, color: '#10B981' },
   entryFooter: { flexDirection: 'row' as const, justifyContent: 'space-between' as const, alignItems: 'center' as const, borderTopWidth: 1, paddingTop: 10 },
   dateInfo: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 4 },
   dateText: { fontSize: 11 },
