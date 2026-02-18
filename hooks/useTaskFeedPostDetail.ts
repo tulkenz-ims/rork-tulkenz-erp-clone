@@ -260,7 +260,7 @@ export function useTaskFeedPostDetail(postId: string | undefined, options?: { en
         }
       }
 
-      // Also search for work orders that directly reference this post (source_id only, not description search to avoid duplicates)
+      // Also search for work orders that directly reference this post (source_id or title/description containing post number)
       const { data: relatedWorkOrders } = await supabase
         .from('work_orders')
         .select('id')
@@ -272,6 +272,24 @@ export function useTaskFeedPostDetail(postId: string | undefined, options?: { en
         for (const wo of relatedWorkOrders) {
           if (!workOrderIds.includes(wo.id)) {
             workOrderIds.push(wo.id);
+          }
+        }
+      }
+
+      // Also search by post number in title/description (catches manually created WOs)
+      if (post.postNumber) {
+        const { data: namedWorkOrders } = await supabase
+          .from('work_orders')
+          .select('id')
+          .eq('organization_id', organizationId)
+          .or(`title.ilike.%${post.postNumber}%,description.ilike.%${post.postNumber}%`)
+          .limit(10);
+
+        if (namedWorkOrders) {
+          for (const wo of namedWorkOrders) {
+            if (!workOrderIds.includes(wo.id)) {
+              workOrderIds.push(wo.id);
+            }
           }
         }
       }
