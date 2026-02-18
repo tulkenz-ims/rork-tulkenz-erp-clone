@@ -38,6 +38,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import * as Haptics from 'expo-haptics';
 import { formatFileSize, formatDate } from '@/constants/documentsConstants';
 import { useDocumentsQuery } from '@/hooks/useSupabaseDocuments';
+import { useSDSRecordsQuery } from '@/hooks/useSupabaseSDS';
 import { Document, DocumentCategory, DocumentStatus, DOCUMENT_CATEGORIES, getCategoryInfo, getStatusColor, getStatusLabel } from '@/types/documents';
 import { INVENTORY_DEPARTMENTS } from '@/constants/inventoryDepartmentCodes';
 
@@ -114,6 +115,7 @@ export default function DocumentLibraryScreen() {
   const [showDocumentModal, setShowDocumentModal] = useState(false);
 
   const { data: supabaseDocuments, isLoading, refetch, isRefetching } = useDocumentsQuery();
+  const { data: sdsRecords = [] } = useSDSRecordsQuery();
   
   const documents = useMemo(() => {
     if (!supabaseDocuments || supabaseDocuments.length === 0) return [];
@@ -142,12 +144,16 @@ export default function DocumentLibraryScreen() {
   }, [documents, searchQuery, selectedCategory, selectedDepartment, selectedStatus]);
 
   const categoryStats = useMemo(() => {
-    const stats: Record<string, number> = { all: documents.length };
+    const stats: Record<string, number> = { all: documents.length + sdsRecords.length };
     DOCUMENT_CATEGORIES.forEach(cat => {
-      stats[cat.value] = documents.filter(d => d.category === cat.value).length;
+      if (cat.value === 'SDS') {
+        stats[cat.value] = sdsRecords.length;
+      } else {
+        stats[cat.value] = documents.filter(d => d.category === cat.value).length;
+      }
     });
     return stats;
-  }, [documents]);
+  }, [documents, sdsRecords]);
 
   const handleDocumentPress = useCallback((doc: Document) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -276,11 +282,11 @@ export default function DocumentLibraryScreen() {
           <>
         <View style={styles.statsRow}>
           <View style={[styles.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[styles.statValue, { color: colors.text }]}>{documents.length}</Text>
+            <Text style={[styles.statValue, { color: colors.text }]}>{documents.length + sdsRecords.length}</Text>
             <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Total Docs</Text>
           </View>
           <View style={[styles.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[styles.statValue, { color: '#EF4444' }]}>{categoryStats['SDS'] || 0}</Text>
+            <Text style={[styles.statValue, { color: '#EF4444' }]}>{sdsRecords.length}</Text>
             <Text style={[styles.statLabel, { color: colors.textSecondary }]}>SDS Sheets</Text>
           </View>
           <View style={[styles.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -311,7 +317,7 @@ export default function DocumentLibraryScreen() {
             <View>
               <Text style={[styles.sdsQuickTitle, { color: colors.text }]}>SDS Index with QR Codes</Text>
               <Text style={[styles.sdsQuickSubtitle, { color: colors.textSecondary }]}>
-                {categoryStats['SDS'] || 0} sheets • Print QR labels
+                {sdsRecords.length} sheets • Print QR labels
               </Text>
             </View>
           </View>
