@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,8 @@ import {
   ScrollView,
   Pressable,
   Linking,
+  ActivityIndicator,
+  Platform,
 } from 'react-native';
 import {
   AlertTriangle,
@@ -17,40 +19,92 @@ import {
   Hash,
   Shield,
   Clock,
+  Phone,
+  Beaker,
+  ShieldAlert,
 } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, Stack } from 'expo-router';
-import { formatDate } from '@/constants/documentsConstants';
-import { INVENTORY_DEPARTMENTS } from '@/constants/inventoryDepartmentCodes';
-import { getStatusColor, getStatusLabel, type Document } from '@/types/documents';
-import { useSupabaseDocuments } from '@/hooks/useSupabaseDocuments';
+import { supabase } from '@/lib/supabase';
+
+// Format date helper (inline so no dependency issues)
+const formatDate = (date: string | null | undefined): string => {
+  if (!date) return 'N/A';
+  try {
+    return new Date(date).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  } catch {
+    return date;
+  }
+};
 
 export default function PublicSDSViewScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { documents } = useSupabaseDocuments();
+  const [sdsRecord, setSdsRecord] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const document = useMemo(() => {
-    return documents.find((doc: Document) => doc.id === id);
-  }, [documents, id]);
+  // Fetch directly by ID — no auth or org context required
+  // RLS policy allows anon SELECT for OSHA compliance
+  useEffect(() => {
+    if (!id) {
+      setIsLoading(false);
+      setError('No SDS ID provided');
+      return;
+    }
 
-  const department = useMemo(() => {
-    if (!document) return null;
-    return INVENTORY_DEPARTMENTS[document.departmentId];
-  }, [document]);
+    const fetchSDS = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
+        const { data, error: fetchError } = await supabase
+          .from('sds_records')
+          .select('*')
+          .eq('id', id)
+          .single();
+
+        if (fetchError) {
+          console.error('Public SDS fetch error:', fetchError);
+          setError(fetchError.message);
+          setSdsRecord(null);
+        } else {
+          setSdsRecord(data);
+        }
+      } catch (err: any) {
+        console.error('Public SDS error:', err);
+        setError(err.message || 'Failed to load SDS');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchSDS();
+  }, [id]);
 
   const handleViewPDF = () => {
-    if (document?.fileUrl) {
-      Linking.openURL(document.fileUrl);
+    if (sdsRecord?.file_url) {
+      Linking.openURL(sdsRecord.file_url);
     }
   };
 
-  const handleDownload = () => {
-    if (document?.fileUrl) {
-      Linking.openURL(document.fileUrl);
-    }
-  };
+  if (isLoading) {
+    return (
+      <>
+        <Stack.Screen options={{ headerShown: false }} />
+        <SafeAreaView style={styles.container}>
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#0066CC" />
+            <Text style={styles.loadingText}>Loading Safety Data Sheet...</Text>
+          </View>
+        </SafeAreaView>
+      </>
+    );
+  }
 
-  if (!document) {
+  if (error || !sdsRecord) {
     return (
       <>
         <Stack.Screen options={{ headerShown: false }} />
@@ -61,23 +115,53 @@ export default function PublicSDSViewScreen() {
             <Text style={styles.errorText}>
               The requested Safety Data Sheet could not be found.
             </Text>
-            <Text style={styles.errorId}>Document ID: {id}</Text>
+            {error && <Text style={styles.errorDetail}>{error}</Text>}
+            <Text style={styles.errorId}>ID: {id}</Text>
           </View>
         </SafeAreaView>
       </>
     );
   }
 
-  const statusColor = getStatusColor(document.status);
+  const getStatusColor = (status: string): string => {
+    switch (status) {
+      case 'active': return '#10B981';
+      case 'expired': return '#EF4444';
+      case 'superseded': return '#F59E0B';
+      case 'archived': return '#6B7280';
+      default: return '#6B7280';
+    }
+  };
+
+  const getStatusLabel = (status: string): string => {
+    switch (status) {
+      case 'active': return 'Active';
+      case 'expired': return 'Expired';
+      case 'superseded': return 'Superseded';
+      case 'archived': return 'Archived';
+      default: return status;
+    }
+  };
+
+  const getSignalWordColor = (word: string | null): string => {
+    switch (word) {
+      case 'danger': return '#EF4444';
+      case 'warning': return '#F59E0B';
+      default: return '#6B7280';
+    }
+  };
+
+  const statusColor = getStatusColor(sdsRecord.status || 'active');
 
   return (
     <>
       <Stack.Screen options={{ headerShown: false }} />
       <SafeAreaView style={styles.container}>
-        <ScrollView 
+        <ScrollView
           style={styles.scrollView}
           contentContainerStyle={styles.content}
         >
+          {/* Header */}
           <View style={styles.header}>
             <View style={styles.logoSection}>
               <View style={styles.companyBadge}>
@@ -88,6 +172,7 @@ export default function PublicSDSViewScreen() {
             </View>
           </View>
 
+          {/* Product Card */}
           <View style={styles.sdsCard}>
             <View style={styles.sdsIconRow}>
               <View style={styles.sdsIcon}>
@@ -95,72 +180,120 @@ export default function PublicSDSViewScreen() {
               </View>
               <View style={styles.sdsTitleSection}>
                 <Text style={styles.chemicalName}>
-                  {document.linkedChemicalName || document.title}
+                  {sdsRecord.product_name}
                 </Text>
-                <View style={styles.materialRow}>
-                  <Hash size={14} color="#666" />
-                  <Text style={styles.materialNumber}>
-                    Material # {document.linkedMaterialNumber || 'N/A'}
+                {sdsRecord.sds_number && (
+                  <View style={styles.materialRow}>
+                    <Hash size={14} color="#666" />
+                    <Text style={styles.materialNumber}>
+                      SDS # {sdsRecord.sds_number}
+                    </Text>
+                  </View>
+                )}
+                {sdsRecord.sds_master_number && (
+                  <Text style={styles.masterNumber}>
+                    Master #{sdsRecord.sds_master_number}
                   </Text>
-                </View>
+                )}
               </View>
             </View>
 
             <View style={styles.statusRow}>
               <View style={[styles.statusBadge, { backgroundColor: statusColor + '20' }]}>
                 <Text style={[styles.statusText, { color: statusColor }]}>
-                  {getStatusLabel(document.status)}
+                  {getStatusLabel(sdsRecord.status || 'active')}
                 </Text>
               </View>
-              {department && (
-                <View style={[styles.deptBadge, { backgroundColor: department.color + '20' }]}>
-                  <Building2 size={12} color={department.color} />
-                  <Text style={[styles.deptText, { color: department.color }]}>
-                    {department.name}
+              {sdsRecord.signal_word && sdsRecord.signal_word !== 'none' && (
+                <View style={[styles.statusBadge, { backgroundColor: getSignalWordColor(sdsRecord.signal_word) + '20' }]}>
+                  <ShieldAlert size={12} color={getSignalWordColor(sdsRecord.signal_word)} />
+                  <Text style={[styles.statusText, { color: getSignalWordColor(sdsRecord.signal_word) }]}>
+                    {sdsRecord.signal_word.toUpperCase()}
+                  </Text>
+                </View>
+              )}
+              {sdsRecord.physical_state && (
+                <View style={[styles.deptBadge, { backgroundColor: '#6366F1' + '20' }]}>
+                  <Beaker size={12} color="#6366F1" />
+                  <Text style={[styles.deptText, { color: '#6366F1' }]}>
+                    {sdsRecord.physical_state}
                   </Text>
                 </View>
               )}
             </View>
           </View>
 
+          {/* Product Info */}
           <View style={styles.documentSection}>
-            <Text style={styles.sectionTitle}>Document Information</Text>
+            <Text style={styles.sectionTitle}>Product Information</Text>
             <View style={styles.detailsCard}>
+              <View style={styles.detailRow}>
+                <View style={styles.detailIcon}>
+                  <Building2 size={16} color="#666" />
+                </View>
+                <View style={styles.detailContent}>
+                  <Text style={styles.detailLabel}>Manufacturer</Text>
+                  <Text style={styles.detailValue}>{sdsRecord.manufacturer || 'N/A'}</Text>
+                </View>
+              </View>
+
+              {sdsRecord.emergency_phone && (
+                <>
+                  <View style={styles.divider} />
+                  <View style={styles.detailRow}>
+                    <View style={styles.detailIcon}>
+                      <Phone size={16} color="#EF4444" />
+                    </View>
+                    <View style={styles.detailContent}>
+                      <Text style={styles.detailLabel}>Emergency Phone</Text>
+                      <Pressable onPress={() => Linking.openURL(`tel:${sdsRecord.emergency_phone}`)}>
+                        <Text style={[styles.detailValue, { color: '#EF4444', textDecorationLine: 'underline' }]}>
+                          {sdsRecord.emergency_phone}
+                        </Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                </>
+              )}
+
+              {sdsRecord.cas_number && (
+                <>
+                  <View style={styles.divider} />
+                  <View style={styles.detailRow}>
+                    <View style={styles.detailIcon}>
+                      <Hash size={16} color="#666" />
+                    </View>
+                    <View style={styles.detailContent}>
+                      <Text style={styles.detailLabel}>CAS Number</Text>
+                      <Text style={styles.detailValue}>{sdsRecord.cas_number}</Text>
+                    </View>
+                  </View>
+                </>
+              )}
+
+              <View style={styles.divider} />
               <View style={styles.detailRow}>
                 <View style={styles.detailIcon}>
                   <FileText size={16} color="#666" />
                 </View>
                 <View style={styles.detailContent}>
-                  <Text style={styles.detailLabel}>Document Title</Text>
-                  <Text style={styles.detailValue}>{document.title}</Text>
-                </View>
-              </View>
-
-              <View style={styles.divider} />
-
-              <View style={styles.detailRow}>
-                <View style={styles.detailIcon}>
-                  <Hash size={16} color="#666" />
-                </View>
-                <View style={styles.detailContent}>
                   <Text style={styles.detailLabel}>Version</Text>
-                  <Text style={styles.detailValue}>{document.version}</Text>
+                  <Text style={styles.detailValue}>{sdsRecord.version || '1.0'}</Text>
                 </View>
               </View>
 
               <View style={styles.divider} />
-
               <View style={styles.detailRow}>
                 <View style={styles.detailIcon}>
                   <Calendar size={16} color="#666" />
                 </View>
                 <View style={styles.detailContent}>
-                  <Text style={styles.detailLabel}>Effective Date</Text>
-                  <Text style={styles.detailValue}>{formatDate(document.effectiveDate)}</Text>
+                  <Text style={styles.detailLabel}>Issue Date</Text>
+                  <Text style={styles.detailValue}>{formatDate(sdsRecord.issue_date)}</Text>
                 </View>
               </View>
 
-              {document.expirationDate && (
+              {sdsRecord.expiration_date && (
                 <>
                   <View style={styles.divider} />
                   <View style={styles.detailRow}>
@@ -169,7 +302,7 @@ export default function PublicSDSViewScreen() {
                     </View>
                     <View style={styles.detailContent}>
                       <Text style={styles.detailLabel}>Expiration Date</Text>
-                      <Text style={styles.detailValue}>{formatDate(document.expirationDate)}</Text>
+                      <Text style={styles.detailValue}>{formatDate(sdsRecord.expiration_date)}</Text>
                     </View>
                   </View>
                 </>
@@ -177,54 +310,76 @@ export default function PublicSDSViewScreen() {
             </View>
           </View>
 
-          {document.description && (
-            <View style={styles.descriptionSection}>
-              <Text style={styles.sectionTitle}>Description</Text>
-              <View style={styles.descriptionCard}>
-                <Text style={styles.descriptionText}>{document.description}</Text>
+          {/* Hazard Statements */}
+          {(sdsRecord.hazard_class && sdsRecord.hazard_class.length > 0) && (
+            <View style={styles.documentSection}>
+              <Text style={styles.sectionTitle}>Hazard Classification</Text>
+              <View style={styles.detailsCard}>
+                <View style={styles.hazardChips}>
+                  {sdsRecord.hazard_class.map((hazard: string, index: number) => (
+                    <View key={index} style={styles.hazardChip}>
+                      <AlertTriangle size={12} color="#EF4444" />
+                      <Text style={styles.hazardChipText}>{hazard}</Text>
+                    </View>
+                  ))}
+                </View>
               </View>
             </View>
           )}
 
+          {/* Actions */}
           <View style={styles.actionsSection}>
-            <Pressable
-              style={({ pressed }) => [
-                styles.primaryButton,
-                { opacity: pressed ? 0.9 : 1 },
-              ]}
-              onPress={handleViewPDF}
-            >
-              <ExternalLink size={20} color="#FFFFFF" />
-              <Text style={styles.primaryButtonText}>View Full SDS Document</Text>
-            </Pressable>
+            {sdsRecord.file_url ? (
+              <>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.primaryButton,
+                    { opacity: pressed ? 0.9 : 1 },
+                  ]}
+                  onPress={handleViewPDF}
+                >
+                  <ExternalLink size={20} color="#FFFFFF" />
+                  <Text style={styles.primaryButtonText}>View Full SDS Document</Text>
+                </Pressable>
 
-            <Pressable
-              style={({ pressed }) => [
-                styles.secondaryButton,
-                { opacity: pressed ? 0.9 : 1 },
-              ]}
-              onPress={handleDownload}
-            >
-              <Download size={20} color="#0066CC" />
-              <Text style={styles.secondaryButtonText}>Download PDF</Text>
-            </Pressable>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.secondaryButton,
+                    { opacity: pressed ? 0.9 : 1 },
+                  ]}
+                  onPress={handleViewPDF}
+                >
+                  <Download size={20} color="#0066CC" />
+                  <Text style={styles.secondaryButtonText}>Download PDF</Text>
+                </Pressable>
+              </>
+            ) : (
+              <View style={styles.noPdfNotice}>
+                <FileText size={20} color="#F59E0B" />
+                <Text style={styles.noPdfText}>
+                  No PDF attached yet. Contact your facility safety manager for the full SDS document.
+                </Text>
+              </View>
+            )}
           </View>
 
+          {/* Compliance Note */}
           <View style={styles.complianceNote}>
             <AlertTriangle size={16} color="#F59E0B" />
             <Text style={styles.complianceText}>
-              This Safety Data Sheet is provided for informational purposes. 
-              Always refer to the most current version and follow all safety 
+              This Safety Data Sheet is provided for informational purposes.
+              Always refer to the most current version and follow all safety
               guidelines when handling this material.
             </Text>
           </View>
 
+          {/* Footer */}
           <View style={styles.footer}>
             <Text style={styles.footerText}>
-              Last Updated: {formatDate(document.updatedAt)}
+              Last Updated: {formatDate(sdsRecord.updated_at)}
             </Text>
             <Text style={styles.footerText}>
-              Uploaded by: {document.uploadedBy}
+              Version: {sdsRecord.version || '1.0'}
             </Text>
           </View>
         </ScrollView>
@@ -237,6 +392,16 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F5F7FA',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    gap: 12,
+  },
+  loadingText: {
+    fontSize: 14,
+    color: '#666',
   },
   scrollView: {
     flex: 1,
@@ -315,15 +480,25 @@ const styles = StyleSheet.create({
     color: '#666',
     fontWeight: '500' as const,
   },
+  masterNumber: {
+    fontSize: 12,
+    color: '#8B5CF6',
+    fontWeight: '600' as const,
+    marginTop: 2,
+  },
   statusRow: {
     flexDirection: 'row' as const,
     flexWrap: 'wrap' as const,
     gap: 10,
+    alignItems: 'center' as const,
   },
   statusBadge: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,
+    gap: 5,
   },
   statusText: {
     fontSize: 12,
@@ -396,23 +571,25 @@ const styles = StyleSheet.create({
     backgroundColor: '#F0F0F0',
     marginHorizontal: 14,
   },
-  descriptionSection: {
-    marginBottom: 20,
+  hazardChips: {
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    gap: 8,
+    padding: 14,
   },
-  descriptionCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+  hazardChip: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    backgroundColor: '#FEF2F2',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    gap: 6,
   },
-  descriptionText: {
-    fontSize: 14,
-    color: '#444',
-    lineHeight: 22,
+  hazardChipText: {
+    fontSize: 13,
+    color: '#991B1B',
+    fontWeight: '500' as const,
   },
   actionsSection: {
     gap: 12,
@@ -452,6 +629,20 @@ const styles = StyleSheet.create({
     color: '#0066CC',
     fontSize: 16,
     fontWeight: '600' as const,
+  },
+  noPdfNotice: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    backgroundColor: '#FEF3C7',
+    borderRadius: 12,
+    padding: 16,
+    gap: 12,
+  },
+  noPdfText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#92400E',
+    lineHeight: 20,
   },
   complianceNote: {
     flexDirection: 'row' as const,
@@ -496,7 +687,13 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#666',
     textAlign: 'center' as const,
-    marginBottom: 20,
+    marginBottom: 12,
+  },
+  errorDetail: {
+    fontSize: 13,
+    color: '#EF4444',
+    textAlign: 'center' as const,
+    marginBottom: 12,
   },
   errorId: {
     fontSize: 12,
