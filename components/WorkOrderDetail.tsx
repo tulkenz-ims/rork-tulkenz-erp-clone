@@ -3322,16 +3322,38 @@ export default function WorkOrderDetail({
     };
 
     const handleConfirmCompletion = async () => {
-      // Require PPN signature
-      if (!isSignatureVerified(completionSignature)) {
-        Alert.alert('Signature Required', 'Please verify your identity with PPN signature before completing this work order.');
-        return;
+      const missingItems: string[] = [];
+
+      // Check tasks are completed
+      const hasTasks = (workOrder.tasks || []).length > 0;
+      const incompleteTasks = (workOrder.tasks || []).filter((t: any) => !t.completed);
+      if (hasTasks && incompleteTasks.length > 0) {
+        missingItems.push(`${incompleteTasks.length} task(s) not completed`);
       }
+
+      // Check LOTO is addressed if required
+      if (workOrder.safety?.lotoRequired && (workOrder.safety?.lotoSteps || []).length === 0) {
+        missingItems.push('LOTO procedure required but no steps defined');
+      }
+
       // Require completion notes
       if (!completionNotes.trim()) {
-        Alert.alert('Notes Required', 'Please add completion notes describing the work performed.');
+        missingItems.push('Completion notes required');
+      }
+
+      // Require PPN signature
+      if (!isSignatureVerified(completionSignature)) {
+        missingItems.push('PPN signature required');
+      }
+
+      if (missingItems.length > 0) {
+        Alert.alert(
+          'Cannot Complete Work Order',
+          `Please address the following before completing:\n\n• ${missingItems.join('\n• ')}`,
+        );
         return;
       }
+
       setIsCompleting(true);
       console.log('[WorkOrderDetail] Starting work order completion for:', workOrder.id, 'Signed by:', completionSignature?.employeeName);
       
