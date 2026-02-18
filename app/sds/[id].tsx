@@ -27,6 +27,20 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, Stack } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 
+// Department prefix mapping for QR labels
+const DEPARTMENT_PREFIXES: Record<string, string> = {
+  maintenance: 'MAINT',
+  sanitation: 'SANI',
+  production: 'PROD',
+  quality: 'QUAL',
+  warehouse: 'WHSE',
+  cold_storage: 'COLD',
+  refrigeration: 'REFRIG',
+  receiving: 'RECV',
+  safety: 'SAFE',
+  general: 'GEN',
+};
+
 // Format date helper (inline so no dependency issues)
 const formatDate = (date: string | null | undefined): string => {
   if (!date) return 'N/A';
@@ -165,10 +179,9 @@ export default function PublicSDSViewScreen() {
           <View style={styles.header}>
             <View style={styles.logoSection}>
               <View style={styles.companyBadge}>
-                <Shield size={20} color="#0066CC" />
-                <Text style={styles.companyName}>TulKenz OPS</Text>
+                <Shield size={20} color="#EF4444" />
+                <Text style={styles.headerLabel}>SAFETY DATA SHEET</Text>
               </View>
-              <Text style={styles.headerLabel}>SAFETY DATA SHEET</Text>
             </View>
           </View>
 
@@ -192,7 +205,7 @@ export default function PublicSDSViewScreen() {
                 )}
                 {sdsRecord.sds_master_number && (
                   <Text style={styles.masterNumber}>
-                    Master #{sdsRecord.sds_master_number}
+                    {DEPARTMENT_PREFIXES[sdsRecord.primary_department] || 'SDS'} #{sdsRecord.sds_master_number}
                   </Text>
                 )}
               </View>
@@ -421,16 +434,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     gap: 8,
-    marginBottom: 8,
-  },
-  companyName: {
-    fontSize: 18,
-    fontWeight: '700' as const,
-    color: '#0066CC',
+    marginBottom: 4,
   },
   headerLabel: {
-    fontSize: 12,
-    fontWeight: '600' as const,
+    fontSize: 16,
+    fontWeight: '700' as const,
     color: '#EF4444',
     letterSpacing: 2,
   },
