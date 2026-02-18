@@ -32,6 +32,19 @@ const MONTHS = [
   'July', 'August', 'September', 'October', 'November', 'December'
 ];
 
+/** Format a local Date to YYYY-MM-DD without UTC conversion */
+function toLocalDateString(date: Date): string {
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+/** Parse a YYYY-MM-DD string as local midnight (not UTC) */
+function parseLocalDate(dateStr: string): Date {
+  return new Date(dateStr + 'T00:00:00');
+}
+
 export default function DatePickerModal({
   visible,
   onClose,
@@ -43,13 +56,13 @@ export default function DatePickerModal({
 }: DatePickerModalProps) {
   const { colors } = useTheme();
   
-  const initialDate = selectedDate ? new Date(selectedDate) : new Date();
+  const initialDate = selectedDate ? parseLocalDate(selectedDate) : new Date();
   const [viewYear, setViewYear] = useState(initialDate.getFullYear());
   const [viewMonth, setViewMonth] = useState(initialDate.getMonth());
   const [showYearPicker, setShowYearPicker] = useState(false);
 
-  const minDateObj = useMemo(() => minDate ? new Date(minDate) : null, [minDate]);
-  const maxDateObj = useMemo(() => maxDate ? new Date(maxDate) : null, [maxDate]);
+  const minDateObj = useMemo(() => minDate ? parseLocalDate(minDate) : null, [minDate]);
+  const maxDateObj = useMemo(() => maxDate ? parseLocalDate(maxDate) : null, [maxDate]);
 
   const calendarDays = useMemo(() => {
     const firstDay = new Date(viewYear, viewMonth, 1);
@@ -96,7 +109,7 @@ export default function DatePickerModal({
 
   const isDateSelected = useCallback((day: number) => {
     if (!selectedDate) return false;
-    const selected = new Date(selectedDate);
+    const selected = parseLocalDate(selectedDate);
     return (
       selected.getFullYear() === viewYear &&
       selected.getMonth() === viewMonth &&
@@ -134,8 +147,9 @@ export default function DatePickerModal({
   const handleSelectDate = useCallback((day: number) => {
     if (isDateDisabled(day)) return;
     
-    const date = new Date(viewYear, viewMonth, day);
-    const formatted = date.toISOString().split('T')[0];
+    const mm = String(viewMonth + 1).padStart(2, '0');
+    const dd = String(day).padStart(2, '0');
+    const formatted = `${viewYear}-${mm}-${dd}`;
     onSelect(formatted);
     onClose();
   }, [viewYear, viewMonth, isDateDisabled, onSelect, onClose]);
@@ -199,7 +213,7 @@ export default function DatePickerModal({
                     key={idx}
                     style={[styles.quickSelectButton, { backgroundColor: colors.primary + '15' }]}
                     onPress={() => {
-                      const formatted = opt.date.toISOString().split('T')[0];
+                      const formatted = toLocalDateString(opt.date);
                       onSelect(formatted);
                       onClose();
                     }}
@@ -318,7 +332,7 @@ export default function DatePickerModal({
                 Selected:
               </Text>
               <Text style={[styles.selectedDateValue, { color: colors.text }]}>
-                {new Date(selectedDate).toLocaleDateString('en-US', {
+                {parseLocalDate(selectedDate).toLocaleDateString('en-US', {
                   weekday: 'long',
                   year: 'numeric',
                   month: 'long',
