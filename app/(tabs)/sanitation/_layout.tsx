@@ -21,6 +21,7 @@ export default function SanitationLayout() {
       <Stack.Screen name="weeklytasks" options={{ title: 'Weekly Sanitation Tasks' }} />
       <Stack.Screen name="monthlytasks" options={{ title: 'Monthly Sanitation Tasks' }} />
       <Stack.Screen name="deepclean" options={{ title: 'Deep Clean Schedule' }} />
+      <Stack.Screen name="spillcleanup" options={{ title: 'Spill Cleanup Report' }} />
       <Stack.Screen name="zonemap" options={{ title: 'Sanitation Zone Map' }} />
       <Stack.Screen name="crewassignment" options={{ title: 'Crew Assignment Log' }} />
       <Stack.Screen name="restroomcleaning" options={{ title: 'Restroom Cleaning Checklist' }} />
