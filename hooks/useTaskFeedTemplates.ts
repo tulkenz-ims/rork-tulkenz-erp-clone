@@ -1472,6 +1472,28 @@ export function useDeleteTaskFeedPost(callbacks?: MutationCallbacks<string>) {
         // Continue anyway
       }
 
+      // Delete related room hygiene log entries
+      const { error: hygieneLogDeleteError } = await supabase
+        .from('room_hygiene_log')
+        .delete()
+        .eq('task_feed_post_id', postId);
+
+      if (hygieneLogDeleteError) {
+        console.error('[useDeleteTaskFeedPost] Error deleting room hygiene log:', hygieneLogDeleteError);
+        // Continue anyway
+      }
+
+      // Unlink any work orders that reference this post (don't delete the WOs, just clear source_id)
+      const { error: woUnlinkError } = await supabase
+        .from('work_orders')
+        .update({ source_id: null })
+        .eq('source_id', postId);
+
+      if (woUnlinkError) {
+        console.error('[useDeleteTaskFeedPost] Error unlinking work orders:', woUnlinkError);
+        // Continue anyway
+      }
+
       // Delete related form links
       const { error: formLinksDeleteError } = await supabase
         .from('task_feed_form_links')
