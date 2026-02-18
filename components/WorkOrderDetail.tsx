@@ -66,7 +66,8 @@ import {
   PermitSubmission,
   generatePermitId,
 } from '@/mocks/workOrderData';
-import DepartmentDocumentation from '@/components/DepartmentDocumentation';
+import PinSignatureCapture, { isSignatureVerified } from '@/components/PinSignatureCapture';
+import { SignatureVerification } from '@/hooks/usePinSignature';
 import BarcodeScanner from '@/components/BarcodeScanner';
 import { Material } from '@/mocks/inventoryData';
 import LaborTimer from '@/components/LaborTimer';
@@ -362,6 +363,7 @@ export default function WorkOrderDetail({
   const [resumedAt, setResumedAt] = useState<Date>(new Date());
   const [completionNotes, setCompletionNotes] = useState('');
   const [isCompleting, setIsCompleting] = useState(false);
+  const [completionSignature, setCompletionSignature] = useState<SignatureVerification | null>(null);
 
   // Live downtime timer
   const [downtimeDuration, setDowntimeDuration] = useState<string>('');
@@ -2395,20 +2397,6 @@ export default function WorkOrderDetail({
         {renderPartsSection()}
         {renderChemicalsSection()}
         
-        <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <DepartmentDocumentation
-            workflow={workOrder.workflow}
-            currentDepartment={workOrder.currentDepartment || userDepartment}
-            requiredDepartments={workOrder.requiredDepartments}
-            userDepartment={userDepartment}
-            userId={userId}
-            userName={userName}
-            canEdit={canEdit}
-            onAddDocumentation={handleAddDocumentation}
-            onSendToDepartment={handleSendToDepartment}
-            onUpdateWorkflow={handleUpdateWorkflow}
-          />
-        </View>
       </ScrollView>
 
       {workOrder.status !== 'completed' && workOrder.status !== 'cancelled' && canEdit && (
@@ -3334,11 +3322,22 @@ export default function WorkOrderDetail({
       setResumedAt(new Date());
       setCompletionNotes('');
       setIsCompleting(false);
+      setCompletionSignature(null);
     };
 
     const handleConfirmCompletion = async () => {
+      // Require PPN signature
+      if (!isSignatureVerified(completionSignature)) {
+        Alert.alert('Signature Required', 'Please verify your identity with PPN signature before completing this work order.');
+        return;
+      }
+      // Require completion notes
+      if (!completionNotes.trim()) {
+        Alert.alert('Notes Required', 'Please add completion notes describing the work performed.');
+        return;
+      }
       setIsCompleting(true);
-      console.log('[WorkOrderDetail] Starting work order completion for:', workOrder.id);
+      console.log('[WorkOrderDetail] Starting work order completion for:', workOrder.id, 'Signed by:', completionSignature?.employeeName);
       
       try {
         let downtimeCompletionData: DowntimeCompletionData | undefined;
@@ -3387,13 +3386,17 @@ export default function WorkOrderDetail({
         }
 
         // Complete work order in Supabase
-        console.log('[WorkOrderDetail] Completing work order in Supabase:', workOrder.id);
+        const signedName = completionSignature?.employeeName || userName;
+        const signatureStamp = completionSignature?.signatureStamp || '';
+        const fullNotes = `${completionNotes || ''}${signatureStamp ? '\n\n--- PPN Verified ---\n' + signatureStamp : ''}`;
+        
+        console.log('[WorkOrderDetail] Completing work order in Supabase:', workOrder.id, 'by:', signedName);
         const actualHours = workOrder.actualHours ?? workOrder.estimatedHours ?? undefined;
         await completeWorkOrderMutation.mutateAsync({
           workOrderId: workOrder.id,
-          completionNotes: completionNotes || undefined,
+          completionNotes: fullNotes || undefined,
           actualHours: actualHours,
-          completedBy: userName,
+          completedBy: signedName,
         });
 
         // Update local state
@@ -3607,16 +3610,53 @@ export default function WorkOrderDetail({
             )}
 
             <View style={styles.completionNotesSection}>
-              <Text style={[styles.completionNotesLabel, { color: colors.text }]}>Completion Notes</Text>
+              <Text style={[styles.completionNotesLabel, { color: colors.text }]}>Completion Notes *</Text>
               <TextInput
-                style={[styles.completionNotesInput, { backgroundColor: colors.backgroundSecondary, color: colors.text, borderColor: colors.border, opacity: isCompleting ? 0.5 : 1 }]}
+                style={[styles.completionNotesInput, { backgroundColor: colors.backgroundSecondary, color: colors.text, borderColor: completionNotes.trim() ? '#10B981' : colors.border, opacity: isCompleting ? 0.5 : 1 }]}
                 value={completionNotes}
                 onChangeText={setCompletionNotes}
-                placeholder="Add any notes about the completed work..."
+                placeholder="Describe the work performed, action taken, and any findings..."
                 placeholderTextColor={colors.textTertiary}
                 multiline
                 numberOfLines={4}
                 editable={!isCompleting}
+              />
+            </View>
+
+            {/* Completion Checklist */}
+            <View style={[{ marginHorizontal: 16, marginBottom: 16, padding: 12, borderRadius: 10, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }]}>
+              <Text style={[{ fontSize: 14, fontWeight: '700', color: colors.text, marginBottom: 10 }]}>Completion Checklist</Text>
+              {[
+                { label: 'Tasks completed', done: (workOrder.tasks || []).length === 0 || (workOrder.tasks || []).every((t: any) => t.completed) },
+                { label: 'LOTO verified / de-energized', done: !workOrder.safety?.lotoRequired || (workOrder.safety?.lotoSteps || []).length > 0 },
+                { label: 'Completion notes filled', done: !!completionNotes.trim() },
+                { label: 'PPN signature verified', done: isSignatureVerified(completionSignature) },
+              ].map((item, idx) => (
+                <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6 }}>
+                  <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: item.done ? '#10B98120' : '#EF444420', justifyContent: 'center', alignItems: 'center' }}>
+                    {item.done ? (
+                      <CheckCircle2 size={16} color="#10B981" />
+                    ) : (
+                      <AlertTriangle size={14} color="#EF4444" />
+                    )}
+                  </View>
+                  <Text style={{ fontSize: 13, color: item.done ? '#10B981' : colors.textSecondary, fontWeight: item.done ? '600' : '400' }}>
+                    {item.label}
+                  </Text>
+                </View>
+              ))}
+            </View>
+
+            {/* PPN Signature */}
+            <View style={{ marginHorizontal: 16, marginBottom: 16 }}>
+              <Text style={[{ fontSize: 14, fontWeight: '700', color: colors.text, marginBottom: 8 }]}>Verified By (PPN Signature) *</Text>
+              <PinSignatureCapture
+                onVerified={setCompletionSignature}
+                onCleared={() => setCompletionSignature(null)}
+                formLabel="Work Order Completion"
+                accentColor="#10B981"
+                existingVerification={completionSignature}
+                required={true}
               />
             </View>
 
@@ -3632,12 +3672,12 @@ export default function WorkOrderDetail({
                 style={[
                   styles.completionConfirmBtn, 
                   { 
-                    backgroundColor: (timeIsValid && !isCompleting) ? '#10B981' : '#9CA3AF',
-                    opacity: (timeIsValid && !isCompleting) ? 1 : 0.6,
+                    backgroundColor: (timeIsValid && !isCompleting && isSignatureVerified(completionSignature) && completionNotes.trim()) ? '#10B981' : '#9CA3AF',
+                    opacity: (timeIsValid && !isCompleting && isSignatureVerified(completionSignature) && completionNotes.trim()) ? 1 : 0.6,
                   }
                 ]}
                 onPress={handleConfirmCompletion}
-                disabled={!timeIsValid || isCompleting}
+                disabled={!timeIsValid || isCompleting || !isSignatureVerified(completionSignature) || !completionNotes.trim()}
               >
                 {isCompleting ? (
                   <ActivityIndicator size="small" color="#FFFFFF" />
