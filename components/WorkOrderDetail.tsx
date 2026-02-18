@@ -2419,19 +2419,15 @@ export default function WorkOrderDetail({
               <Text style={styles.actionButtonText}>{startWorkMutation.isPending ? 'Starting...' : 'Start Work'}</Text>
             </Pressable>
           )}
-          {workOrder.status === 'in_progress' && onCompleteWork && (
+          {workOrder.status === 'in_progress' && (
             <Pressable
               style={[styles.actionButton, { backgroundColor: '#10B981' }]}
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                const hasOngoingDowntime = activeDowntimeEvent && activeDowntimeEvent.production_stopped === true && activeDowntimeEvent.status === 'ongoing';
-                
-                if (hasOngoingDowntime) {
-                  setResumedAt(new Date());
-                  setShowCompletionModal(true);
-                } else {
-                  onCompleteWork(workOrder.id);
-                }
+                setResumedAt(new Date());
+                setCompletionSignature(null);
+                setCompletionNotes('');
+                setShowCompletionModal(true);
               }}
             >
               <CheckCircle2 size={20} color="#FFFFFF" />
