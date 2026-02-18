@@ -18,7 +18,6 @@ import {
   Eye,
   Download,
   Printer,
-  QrCode,
   Check,
   CheckSquare,
   Square,
@@ -30,6 +29,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
+import QRCode from 'react-native-qrcode-svg';
 import * as Haptics from 'expo-haptics';
 import { formatDate } from '@/constants/documentsConstants';
 import { QR_PRINT_SIZES, QRPrintSize } from '@/types/documents';
@@ -195,7 +195,13 @@ export default function SDSIndexScreen() {
             </View>
           </View>
           <View style={[styles.qrContainer, { backgroundColor: '#FFFFFF', borderColor: colors.border }]}>
-            <QrCode size={40} color="#000000" />
+            <QRCode
+              value={`https://tulkenz.app/sds/${doc.id}`}
+              size={44}
+              color="#000000"
+              backgroundColor="#FFFFFF"
+              ecl="L"
+            />
           </View>
         </View>
 
@@ -467,7 +473,15 @@ export default function SDSIndexScreen() {
                 <Text style={styles.previewTitle}>Print Preview</Text>
                 <View style={styles.previewContent}>
                   <View style={[styles.previewQR, { width: QR_PRINT_SIZES.find(s => s.id === printSize)?.width || 144 / 2, height: QR_PRINT_SIZES.find(s => s.id === printSize)?.height || 144 / 2 }]}>
-                    <QrCode size={QR_PRINT_SIZES.find(s => s.id === printSize)?.width ? (QR_PRINT_SIZES.find(s => s.id === printSize)!.width / 2 - 10) : 62} color="#000000" />
+                    <QRCode
+                      value={selectedDocuments.length > 0 && sdsRecords.find(d => d.id === selectedDocuments[0])
+                        ? `https://tulkenz.app/sds/${selectedDocuments[0]}`
+                        : 'https://tulkenz.app/sds/preview'}
+                      size={printSize === 'small' ? 50 : printSize === 'medium' ? 70 : 90}
+                      color="#000000"
+                      backgroundColor="#FFFFFF"
+                      ecl="M"
+                    />
                   </View>
                   <Text style={styles.previewChemical}>Product Name</Text>
                   <Text style={styles.previewMaterial}>SDS-001</Text>
@@ -531,7 +545,13 @@ export default function SDSIndexScreen() {
                 <ScrollView style={styles.detailContent}>
                   <View style={[styles.qrSection, { backgroundColor: '#FFFFFF', borderColor: colors.border }]}>
                     <View style={styles.qrLarge}>
-                      <QrCode size={120} color="#000000" />
+                      <QRCode
+                        value={`https://tulkenz.app/sds/${selectedDocument.id}`}
+                        size={200}
+                        color="#000000"
+                        backgroundColor="#FFFFFF"
+                        ecl="M"
+                      />
                     </View>
                     <Text style={styles.qrUrl}>{generateQRValue(selectedDocument)}</Text>
                     <Text style={styles.qrNote}>Scan to view SDS instantly - no login required</Text>
