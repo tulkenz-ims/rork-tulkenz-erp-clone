@@ -7,10 +7,12 @@ import {
   Pressable,
   TextInput,
   Modal,
+  RefreshControl,
   Alert,
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 import {
   Plus,
   X,
@@ -30,6 +32,7 @@ import {
   Thermometer,
   FileText,
   Lock,
+  History,
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useUser } from '@/contexts/UserContext';
@@ -99,6 +102,7 @@ export default function RoomHygieneLogScreen() {
   const { colors } = useTheme();
   const { user } = useUser();
   const { organizationId } = useOrganization();
+  const router = useRouter();
   const todayStr = new Date().toISOString().split('T')[0];
 
   // Pull real locations from DB
@@ -107,7 +111,7 @@ export default function RoomHygieneLogScreen() {
   // Map locations to room options
   const roomOptions = useMemo(() => {
     return locations
-      .filter(loc => loc.status === 'active' && (loc as any).hygiene_log_required === true)
+      .filter(loc => loc.status === 'active')
       .map(loc => ({
         id: loc.id,
         code: loc.location_code,
@@ -326,13 +330,22 @@ export default function RoomHygieneLogScreen() {
               </Text>
             </View>
           </View>
-          <Pressable
-            style={[styles.addBtn, { backgroundColor: '#8B5CF6' }]}
-            onPress={() => setShowAddModal(true)}
-          >
-            <Plus size={18} color="#fff" />
-            <Text style={styles.addBtnText}>Log Entry</Text>
-          </Pressable>
+          <View style={styles.headerBtns}>
+            <Pressable
+              style={[styles.historyBtn, { backgroundColor: colors.background, borderColor: '#8B5CF6' }]}
+              onPress={() => router.push('/quality/room-hygiene-history')}
+            >
+              <History size={16} color="#8B5CF6" />
+              <Text style={styles.historyBtnText}>History</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.addBtn, { backgroundColor: '#8B5CF6' }]}
+              onPress={() => setShowAddModal(true)}
+            >
+              <Plus size={18} color="#fff" />
+              <Text style={styles.addBtnText}>Log Entry</Text>
+            </Pressable>
+          </View>
         </View>
 
         {/* Tab bar */}
@@ -388,6 +401,7 @@ export default function RoomHygieneLogScreen() {
       {activeTab === 'log' && (
         <ScrollView
           style={styles.list}
+          refreshControl={<RefreshControl refreshing={isFetching} onRefresh={refetch} />}
         >
           {activeEntries.length > 0 && (
             <View style={styles.section}>
@@ -485,6 +499,7 @@ export default function RoomHygieneLogScreen() {
       {activeTab === 'reports' && (
         <ScrollView
           style={styles.list}
+          refreshControl={<RefreshControl refreshing={reportsLoading} onRefresh={refetchReports} />}
         >
           {dailyReports.length === 0 && !reportsLoading && (
             <View style={[styles.emptyState, { backgroundColor: colors.surface, marginTop: 20 }]}>
@@ -937,9 +952,12 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   header: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8, borderBottomWidth: 1 },
   headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
   headerTitle: { fontSize: 18, fontWeight: '700' },
   headerSub: { fontSize: 12, marginTop: 1 },
+  headerBtns: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  historyBtn: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, gap: 5, borderWidth: 1 },
+  historyBtnText: { color: '#8B5CF6', fontSize: 13, fontWeight: '700' },
   addBtn: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, gap: 6 },
   addBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
   tabRow: { flexDirection: 'row', gap: 0, marginBottom: 6 },
