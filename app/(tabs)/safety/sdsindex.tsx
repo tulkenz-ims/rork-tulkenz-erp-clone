@@ -159,7 +159,7 @@ export default function SDSMasterIndexScreen() {
   const [duplicateMatches, setDuplicateMatches] = useState<any[]>([]);
   const [showDuplicateWarning, setShowDuplicateWarning] = useState(false);
 
-  // Form state
+  // Form state — registration info only (SDS content comes from vendor PDF)
   const [formData, setFormData] = useState({
     product_name: '',
     manufacturer: '',
@@ -168,28 +168,16 @@ export default function SDSMasterIndexScreen() {
     cas_number: '',
     sds_number: '',
     primary_department: '' as string,
-    physical_state: '' as string,
     signal_word: 'warning' as string,
     hazard_class: [] as string[],
-    hazard_statements: [] as string[],
-    precautionary_statements: [] as string[],
     location_used: [] as string[],
-    department_codes: [] as string[],
-    first_aid_inhalation: '',
-    first_aid_skin: '',
-    first_aid_eye: '',
-    first_aid_ingestion: '',
-    spill_procedures: '',
-    storage_requirements: '',
-    handling_precautions: '',
-    fire_extinguishing_media: '',
-    disposal_methods: '',
     issue_date: new Date().toISOString().split('T')[0],
     expiration_date: '',
     revision_date: '',
     notes: '',
     file_url: '',
   });
+  const [isUploading, setIsUploading] = useState(false);
 
   // ============================================================================
   // Queries
@@ -309,22 +297,9 @@ export default function SDSMasterIndexScreen() {
       cas_number: '',
       sds_number: '',
       primary_department: '',
-      physical_state: '',
       signal_word: 'warning',
       hazard_class: [],
-      hazard_statements: [],
-      precautionary_statements: [],
       location_used: [],
-      department_codes: [],
-      first_aid_inhalation: '',
-      first_aid_skin: '',
-      first_aid_eye: '',
-      first_aid_ingestion: '',
-      spill_procedures: '',
-      storage_requirements: '',
-      handling_precautions: '',
-      fire_extinguishing_media: '',
-      disposal_methods: '',
       issue_date: new Date().toISOString().split('T')[0],
       expiration_date: '',
       revision_date: '',
@@ -345,7 +320,21 @@ export default function SDSMasterIndexScreen() {
       Alert.alert('Required Fields', 'Please select a primary department for the QR label.');
       return;
     }
+    if (!formData.file_url.trim()) {
+      Alert.alert(
+        'No SDS Attached',
+        'No SDS document has been linked. Save anyway?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Save Without SDS', onPress: () => doSave() },
+        ]
+      );
+      return;
+    }
+    doSave();
+  };
 
+  const doSave = () => {
     const record: any = {
       product_name: formData.product_name.trim(),
       manufacturer: formData.manufacturer.trim(),
@@ -354,22 +343,9 @@ export default function SDSMasterIndexScreen() {
       cas_number: formData.cas_number || null,
       sds_number: formData.sds_number || null,
       primary_department: formData.primary_department,
-      physical_state: formData.physical_state || null,
       signal_word: formData.signal_word || 'none',
       hazard_class: formData.hazard_class,
-      hazard_statements: formData.hazard_statements,
-      precautionary_statements: formData.precautionary_statements,
       location_used: formData.location_used,
-      department_codes: formData.department_codes,
-      first_aid_inhalation: formData.first_aid_inhalation || null,
-      first_aid_skin: formData.first_aid_skin || null,
-      first_aid_eye: formData.first_aid_eye || null,
-      first_aid_ingestion: formData.first_aid_ingestion || null,
-      spill_procedures: formData.spill_procedures || null,
-      storage_requirements: formData.storage_requirements || null,
-      handling_precautions: formData.handling_precautions || null,
-      fire_extinguishing_media: formData.fire_extinguishing_media || null,
-      disposal_methods: formData.disposal_methods || null,
       issue_date: formData.issue_date || new Date().toISOString().split('T')[0],
       expiration_date: formData.expiration_date || null,
       revision_date: formData.revision_date || null,
@@ -400,22 +376,9 @@ export default function SDSMasterIndexScreen() {
       cas_number: entry.cas_number || '',
       sds_number: entry.sds_number || '',
       primary_department: entry.primary_department || '',
-      physical_state: entry.physical_state || '',
       signal_word: entry.signal_word || 'warning',
       hazard_class: entry.hazard_class || [],
-      hazard_statements: entry.hazard_statements || [],
-      precautionary_statements: entry.precautionary_statements || [],
       location_used: entry.location_used || [],
-      department_codes: entry.department_codes || [],
-      first_aid_inhalation: entry.first_aid_inhalation || '',
-      first_aid_skin: entry.first_aid_skin || '',
-      first_aid_eye: entry.first_aid_eye || '',
-      first_aid_ingestion: entry.first_aid_ingestion || '',
-      spill_procedures: entry.spill_procedures || '',
-      storage_requirements: entry.storage_requirements || '',
-      handling_precautions: entry.handling_precautions || '',
-      fire_extinguishing_media: entry.fire_extinguishing_media || '',
-      disposal_methods: entry.disposal_methods || '',
       issue_date: entry.issue_date || '',
       expiration_date: entry.expiration_date || '',
       revision_date: entry.revision_date || '',
@@ -742,24 +705,97 @@ export default function SDSMasterIndexScreen() {
               <X size={24} color={colors.text} />
             </Pressable>
             <Text style={[styles.modalTitle, { color: colors.text }]}>
-              {editingEntry ? 'Edit SDS Record' : 'Add SDS Record'}
+              {editingEntry ? 'Edit SDS Record' : 'Register Vendor SDS'}
             </Text>
             <Pressable onPress={handleSave} disabled={isMutating}>
               {isMutating ? (
                 <ActivityIndicator size="small" color="#EAB308" />
               ) : (
-                <Text style={[styles.saveButton, { color: '#EAB308' }]}>Save</Text>
+                <Text style={[styles.saveButton, { color: '#EAB308' }]}>{editingEntry ? 'Save' : 'Register'}</Text>
               )}
             </Pressable>
           </View>
 
           <ScrollView style={styles.modalContent}>
+            {/* UPLOAD SDS FIRST - PRIMARY ACTION */}
+            <View style={[styles.uploadSection, { backgroundColor: colors.primary + '08', borderColor: colors.primary + '30' }]}>
+              <Upload size={28} color={colors.primary} />
+              <Text style={[styles.uploadTitle, { color: colors.text }]}>
+                {editingEntry ? 'Update Vendor SDS Document' : 'Upload Vendor SDS (PDF)'}
+              </Text>
+              <Text style={[styles.uploadDesc, { color: colors.textSecondary }]}>
+                Upload the official SDS from the manufacturer
+              </Text>
+              <Pressable
+                style={[styles.uploadBtn, { backgroundColor: colors.primary }]}
+                onPress={async () => {
+                  try {
+                    const DocumentPicker = require('expo-document-picker');
+                    const result = await DocumentPicker.getDocumentAsync({
+                      type: 'application/pdf',
+                      copyToCacheDirectory: true,
+                    });
+                    if (!result.canceled && result.assets && result.assets.length > 0) {
+                      const file = result.assets[0];
+                      const fileName = `sds_${Date.now()}_${file.name}`;
+                      const response = await fetch(file.uri);
+                      const blob = await response.blob();
+                      const { data, error } = await supabase.storage
+                        .from('sds-documents')
+                        .upload(fileName, blob, { contentType: 'application/pdf', upsert: true });
+                      if (error) {
+                        Alert.alert('Upload Error', error.message);
+                        return;
+                      }
+                      const { data: urlData } = supabase.storage
+                        .from('sds-documents')
+                        .getPublicUrl(data.path);
+                      setFormData(prev => ({
+                        ...prev,
+                        file_url: urlData.publicUrl,
+                      }));
+                      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                      Alert.alert('Uploaded', `${file.name} uploaded successfully.`);
+                    }
+                  } catch (err: any) {
+                    console.warn('Upload error:', err);
+                    Alert.alert('Upload Error', 'Could not upload file. You can paste a URL below instead.');
+                  }
+                }}
+              >
+                <Upload size={16} color="#FFFFFF" />
+                <Text style={styles.uploadBtnText}>Choose PDF File</Text>
+              </Pressable>
+              {formData.file_url ? (
+                <View style={[styles.uploadedFile, { backgroundColor: '#10B98115', borderColor: '#10B98130' }]}>
+                  <Check size={16} color="#10B981" />
+                  <Text style={styles.uploadedFileText} numberOfLines={1}>SDS uploaded</Text>
+                  <Pressable onPress={() => Linking.openURL(formData.file_url)}>
+                    <Eye size={14} color="#3B82F6" />
+                  </Pressable>
+                  <Pressable onPress={() => setFormData(prev => ({ ...prev, file_url: '' }))}>
+                    <X size={14} color="#EF4444" />
+                  </Pressable>
+                </View>
+              ) : null}
+              <Text style={[styles.orText, { color: colors.textSecondary }]}>— or paste a URL —</Text>
+              <TextInput
+                style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
+                placeholder="https://vendor.com/sds/product.pdf"
+                placeholderTextColor={colors.textSecondary}
+                value={formData.file_url}
+                onChangeText={(text) => setFormData(prev => ({ ...prev, file_url: text }))}
+                autoCapitalize="none"
+                keyboardType="url"
+              />
+            </View>
+
             {/* Duplicate Warning */}
             {showDuplicateWarning && !editingEntry && (
               <View style={[styles.duplicateWarning, { backgroundColor: '#FEF3C7', borderColor: '#F59E0B40' }]}>
                 <View style={styles.duplicateHeader}>
                   <Info size={18} color="#F59E0B" />
-                  <Text style={styles.duplicateTitle}>Similar chemicals found!</Text>
+                  <Text style={styles.duplicateTitle}>Similar chemicals already registered!</Text>
                 </View>
                 {duplicateMatches.map((match: any) => (
                   <View key={match.id} style={[styles.duplicateItem, { backgroundColor: '#FFFFFF', borderColor: '#F59E0B30' }]}>
@@ -781,11 +817,14 @@ export default function SDSMasterIndexScreen() {
               </View>
             )}
 
+            {/* SECTION: Identify the Chemical */}
+            <Text style={[styles.sectionHeader, { color: colors.text }]}>Identify the Chemical</Text>
+
             {/* Chemical Name */}
             <Text style={[styles.inputLabel, { color: colors.text }]}>Chemical / Product Name *</Text>
             <TextInput
               style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
-              placeholder="Enter chemical or product name"
+              placeholder="Exactly as shown on the SDS"
               placeholderTextColor={colors.textSecondary}
               value={formData.product_name}
               onChangeText={(text) => setFormData(prev => ({ ...prev, product_name: text }))}
@@ -795,7 +834,7 @@ export default function SDSMasterIndexScreen() {
             <Text style={[styles.inputLabel, { color: colors.text }]}>Manufacturer *</Text>
             <TextInput
               style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
-              placeholder="Enter manufacturer name"
+              placeholder="Exactly as shown on the SDS"
               placeholderTextColor={colors.textSecondary}
               value={formData.manufacturer}
               onChangeText={(text) => setFormData(prev => ({ ...prev, manufacturer: text }))}
@@ -842,7 +881,7 @@ export default function SDSMasterIndexScreen() {
                 <Text style={[styles.inputLabel, { color: colors.text }]}>Mfr Phone</Text>
                 <TextInput
                   style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
-                  placeholder="Phone"
+                  placeholder="From SDS Section 1"
                   placeholderTextColor={colors.textSecondary}
                   value={formData.manufacturer_phone}
                   onChangeText={(text) => setFormData(prev => ({ ...prev, manufacturer_phone: text }))}
@@ -853,7 +892,7 @@ export default function SDSMasterIndexScreen() {
                 <Text style={[styles.inputLabel, { color: colors.text }]}>Emergency Phone</Text>
                 <TextInput
                   style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
-                  placeholder="Emergency"
+                  placeholder="From SDS Section 1"
                   placeholderTextColor={colors.textSecondary}
                   value={formData.emergency_phone}
                   onChangeText={(text) => setFormData(prev => ({ ...prev, emergency_phone: text }))}
@@ -868,17 +907,17 @@ export default function SDSMasterIndexScreen() {
                 <Text style={[styles.inputLabel, { color: colors.text }]}>CAS Number</Text>
                 <TextInput
                   style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
-                  placeholder="CAS #"
+                  placeholder="From SDS Section 3"
                   placeholderTextColor={colors.textSecondary}
                   value={formData.cas_number}
                   onChangeText={(text) => setFormData(prev => ({ ...prev, cas_number: text }))}
                 />
               </View>
               <View style={styles.colHalf}>
-                <Text style={[styles.inputLabel, { color: colors.text }]}>SDS Number</Text>
+                <Text style={[styles.inputLabel, { color: colors.text }]}>Vendor SDS #</Text>
                 <TextInput
                   style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
-                  placeholder="Vendor SDS #"
+                  placeholder="Vendor's SDS #"
                   placeholderTextColor={colors.textSecondary}
                   value={formData.sds_number}
                   onChangeText={(text) => setFormData(prev => ({ ...prev, sds_number: text }))}
@@ -886,8 +925,14 @@ export default function SDSMasterIndexScreen() {
               </View>
             </View>
 
+            {/* SECTION: Key SDS Info */}
+            <Text style={[styles.sectionHeader, { color: colors.text }]}>Key Info from Vendor SDS</Text>
+            <Text style={[styles.sectionDesc, { color: colors.textSecondary }]}>
+              Copy these from the SDS for quick reference without opening the PDF
+            </Text>
+
             {/* Signal Word */}
-            <Text style={[styles.inputLabel, { color: colors.text }]}>Signal Word</Text>
+            <Text style={[styles.inputLabel, { color: colors.text }]}>Signal Word (Section 2)</Text>
             <View style={styles.signalWordRow}>
               {(['danger', 'warning', 'none'] as const).map((word) => (
                 <Pressable
@@ -912,7 +957,7 @@ export default function SDSMasterIndexScreen() {
             </View>
 
             {/* Hazard Classes */}
-            <Text style={[styles.inputLabel, { color: colors.text }]}>Hazard Classes</Text>
+            <Text style={[styles.inputLabel, { color: colors.text }]}>Hazard Classes (from SDS Section 2)</Text>
             <View style={styles.chipContainer}>
               {HAZARD_CLASSES.map((hazard) => (
                 <Pressable
@@ -937,7 +982,7 @@ export default function SDSMasterIndexScreen() {
             </View>
 
             {/* Storage Locations */}
-            <Text style={[styles.inputLabel, { color: colors.text }]}>Storage Locations</Text>
+            <Text style={[styles.inputLabel, { color: colors.text }]}>Where is this chemical stored/used?</Text>
             <View style={styles.chipContainer}>
               {LOCATIONS.map((location) => (
                 <Pressable
@@ -964,7 +1009,7 @@ export default function SDSMasterIndexScreen() {
             {/* Dates */}
             <View style={styles.twoCol}>
               <View style={styles.colHalf}>
-                <Text style={[styles.inputLabel, { color: colors.text }]}>Issue Date</Text>
+                <Text style={[styles.inputLabel, { color: colors.text }]}>SDS Issue Date</Text>
                 <TextInput
                   style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
                   placeholder="YYYY-MM-DD"
@@ -974,86 +1019,28 @@ export default function SDSMasterIndexScreen() {
                 />
               </View>
               <View style={styles.colHalf}>
-                <Text style={[styles.inputLabel, { color: colors.text }]}>Expiration Date</Text>
+                <Text style={[styles.inputLabel, { color: colors.text }]}>SDS Revision Date</Text>
                 <TextInput
                   style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
                   placeholder="YYYY-MM-DD"
                   placeholderTextColor={colors.textSecondary}
-                  value={formData.expiration_date}
-                  onChangeText={(text) => setFormData(prev => ({ ...prev, expiration_date: text }))}
+                  value={formData.revision_date}
+                  onChangeText={(text) => setFormData(prev => ({ ...prev, revision_date: text }))}
                 />
               </View>
             </View>
-
-            {/* First Aid */}
-            <Text style={[styles.sectionHeader, { color: colors.text }]}>First Aid Measures</Text>
-            {(['first_aid_inhalation', 'first_aid_skin', 'first_aid_eye', 'first_aid_ingestion'] as const).map((field) => (
-              <View key={field}>
-                <Text style={[styles.inputLabel, { color: colors.text }]}>
-                  {field.replace('first_aid_', '').charAt(0).toUpperCase() + field.replace('first_aid_', '').slice(1)}
-                </Text>
-                <TextInput
-                  style={[styles.textArea, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
-                  placeholder={`First aid for ${field.replace('first_aid_', '')}...`}
-                  placeholderTextColor={colors.textSecondary}
-                  value={formData[field]}
-                  onChangeText={(text) => setFormData(prev => ({ ...prev, [field]: text }))}
-                  multiline
-                  numberOfLines={2}
-                  textAlignVertical="top"
-                />
-              </View>
-            ))}
-
-            {/* Spill / Storage */}
-            <Text style={[styles.sectionHeader, { color: colors.text }]}>Handling & Storage</Text>
-            <Text style={[styles.inputLabel, { color: colors.text }]}>Spill Procedures</Text>
-            <TextInput
-              style={[styles.textArea, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
-              placeholder="Spill cleanup procedures..."
-              placeholderTextColor={colors.textSecondary}
-              value={formData.spill_procedures}
-              onChangeText={(text) => setFormData(prev => ({ ...prev, spill_procedures: text }))}
-              multiline
-              numberOfLines={2}
-              textAlignVertical="top"
-            />
-
-            <Text style={[styles.inputLabel, { color: colors.text }]}>Storage Requirements</Text>
-            <TextInput
-              style={[styles.textArea, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
-              placeholder="Storage requirements..."
-              placeholderTextColor={colors.textSecondary}
-              value={formData.storage_requirements}
-              onChangeText={(text) => setFormData(prev => ({ ...prev, storage_requirements: text }))}
-              multiline
-              numberOfLines={2}
-              textAlignVertical="top"
-            />
 
             {/* Notes */}
             <Text style={[styles.inputLabel, { color: colors.text }]}>Notes</Text>
             <TextInput
               style={[styles.textArea, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
-              placeholder="Additional notes..."
+              placeholder="Internal notes about this chemical..."
               placeholderTextColor={colors.textSecondary}
               value={formData.notes}
               onChangeText={(text) => setFormData(prev => ({ ...prev, notes: text }))}
               multiline
               numberOfLines={3}
               textAlignVertical="top"
-            />
-
-            {/* SDS File URL (manual for now) */}
-            <Text style={[styles.inputLabel, { color: colors.text }]}>SDS Document URL</Text>
-            <TextInput
-              style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
-              placeholder="https://... (paste PDF link or upload later)"
-              placeholderTextColor={colors.textSecondary}
-              value={formData.file_url}
-              onChangeText={(text) => setFormData(prev => ({ ...prev, file_url: text }))}
-              autoCapitalize="none"
-              keyboardType="url"
             />
 
             <View style={styles.modalBottomPadding} />
@@ -1404,6 +1391,17 @@ const styles = StyleSheet.create({
   deptChip: { flexDirection: 'row' as const, alignItems: 'center' as const, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, borderWidth: 1, gap: 6 },
   deptChipText: { fontSize: 12, fontWeight: '500' as const },
   qrPreviewText: { fontSize: 13, fontWeight: '600' as const, marginTop: 6, marginBottom: 4 },
+
+  // Upload Section
+  uploadSection: { borderRadius: 14, borderWidth: 1, padding: 20, marginBottom: 20, alignItems: 'center' as const, gap: 8 },
+  uploadTitle: { fontSize: 16, fontWeight: '600' as const, textAlign: 'center' as const },
+  uploadDesc: { fontSize: 13, textAlign: 'center' as const },
+  uploadBtn: { flexDirection: 'row' as const, alignItems: 'center' as const, paddingHorizontal: 20, paddingVertical: 12, borderRadius: 10, gap: 8, marginTop: 4 },
+  uploadBtnText: { color: '#FFFFFF', fontSize: 14, fontWeight: '600' as const },
+  uploadedFile: { flexDirection: 'row' as const, alignItems: 'center' as const, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, borderWidth: 1, gap: 8, width: '100%' },
+  uploadedFileText: { flex: 1, fontSize: 13, color: '#10B981', fontWeight: '500' as const },
+  orText: { fontSize: 12, marginVertical: 4 },
+  sectionDesc: { fontSize: 12, marginBottom: 8 },
 
   // Duplicate Warning
   duplicateWarning: { borderRadius: 12, borderWidth: 1, padding: 14, marginBottom: 16 },
