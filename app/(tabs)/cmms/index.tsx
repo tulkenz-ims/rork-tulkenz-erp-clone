@@ -595,6 +595,67 @@ ${completionData.additionalNotes}` : ''}
     }
   }, [organizationId, facilityId, user]);
 
+  // Create an OPEN work order from Task Feed and return its ID
+  // Tech will use the full WorkOrderDetail screen to complete it
+  const handleCreateOpenWorkOrder = useCallback(async (
+    task: TaskFeedDepartmentTask & { post?: { template_name?: string } }
+  ): Promise<string | null> => {
+    try {
+      if (!organizationId) {
+        console.warn('[CMMS] No organization ID available');
+        return null;
+      }
+
+      const workOrderNumber = `WO-${Date.now().toString(36).toUpperCase()}`;
+      const createdByName = user ? `${user.first_name} ${user.last_name}` : 'System';
+
+      const description = `**Source:** Task Feed - ${task.postNumber}\n**Department:** ${task.departmentName || 'Maintenance'}\n**Created by:** ${createdByName}`;
+
+      const { data, error } = await supabase
+        .from('work_orders')
+        .insert({
+          organization_id: organizationId,
+          work_order_number: workOrderNumber,
+          title: `[${task.postNumber}] ${task.post?.template_name || 'Work Order'}`,
+          description,
+          status: 'open',
+          priority: 'medium',
+          type: 'corrective',
+          source: 'task_feed',
+          source_id: task.postId,
+          department: '1001',
+          department_name: 'Maintenance',
+          facility_id: facilityId || null,
+          assigned_to: user?.id || null,
+          assigned_name: createdByName,
+          due_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+          safety: {
+            lotoRequired: false,
+            lotoSteps: [],
+            permits: [],
+            permitNumbers: {},
+            permitExpiry: {},
+            ppeRequired: [],
+          },
+          tasks: [],
+          attachments: [],
+        })
+        .select('id, work_order_number')
+        .single();
+
+      if (error) {
+        console.error('[CMMS] Error creating open WO:', error);
+        return null;
+      }
+
+      console.log('[CMMS] Created open work order:', data.work_order_number, data.id);
+      return data.id;
+    } catch (err) {
+      console.error('[CMMS] Error in handleCreateOpenWorkOrder:', err);
+      return null;
+    }
+  }, [organizationId, facilityId, user]);
+
   const handleTaskCompleted = useCallback((task: TaskFeedDepartmentTask, moduleHistoryId?: string) => {
     console.log('[CMMS] Task completed:', task.postNumber, 'History ID:', moduleHistoryId);
     refetchWO();
@@ -799,6 +860,7 @@ ${completionData.additionalNotes}` : ''}
           moduleColor="#3B82F6"
           onTaskCompleted={handleTaskCompleted}
           createFullWorkOrder={handleCreateFullWorkOrder}
+          createOpenWorkOrder={handleCreateOpenWorkOrder}
           requiresFullWorkOrder={true}
           maxVisible={3}
         />
