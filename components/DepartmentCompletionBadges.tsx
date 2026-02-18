@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { Check, Clock, Play, ShieldCheck, AlertTriangle, ArrowRight, FileText, Wrench, Link2 } from 'lucide-react-native';
+import { Check, Clock, Play, ShieldCheck, AlertTriangle, ArrowRight, FileText, Wrench, Link2, MinusCircle } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { getDepartmentName, getDepartmentColor } from '@/constants/organizationCodes';
 import { TaskFeedDepartmentTask } from '@/types/taskFeedTemplates';
@@ -10,11 +10,21 @@ const STATUS_CONFIG = {
   pending: { label: 'Pending', color: '#EF4444', icon: Clock, bgAlpha: '20' },
   in_progress: { label: 'In Progress', color: '#F59E0B', icon: Play, bgAlpha: '20' },
   completed: { label: 'Completed', color: '#3B82F6', icon: Check, bgAlpha: '20' },
+  not_involved: { label: 'Not Involved', color: '#6B7280', icon: MinusCircle, bgAlpha: '15' },
   signed_off: { label: 'Signed Off', color: '#10B981', icon: ShieldCheck, bgAlpha: '20' },
 } as const;
 
 function getStatusConfig(status: string) {
   return STATUS_CONFIG[status as keyof typeof STATUS_CONFIG] || STATUS_CONFIG.pending;
+}
+
+// Helper: detect if a completed task is actually "not involved"
+function getEffectiveStatus(task: TaskFeedDepartmentTask | undefined): string {
+  if (!task) return 'pending';
+  if (task.status === 'completed' && task.completionNotes?.startsWith('NOT INVOLVED')) {
+    return 'not_involved';
+  }
+  return task.status;
 }
 
 // ── Full Department Badges (for post detail page) ──────────────
@@ -92,11 +102,21 @@ export default function DepartmentCompletionBadges({
       <View style={styles.badgesContainer}>
         {deptCodes.map((deptCode) => {
           const task = taskMap.get(deptCode);
-          const status = task?.status || 'pending';
+          const status = getEffectiveStatus(task);
           const config = getStatusConfig(status);
           const StatusIcon = config.icon;
           const deptName = getDepartmentName(deptCode);
-          const needsSignoff = task?.requiresSignoff && task.status === 'completed';
+          const needsSignoff = task?.requiresSignoff && task.status === 'completed' && status !== 'not_involved';
+          const isNotInvolved = status === 'not_involved';
+
+          // Extract reason from "NOT INVOLVED: reason\n\nVerified by: ..."
+          const notInvolvedReason = isNotInvolved && task?.completionNotes
+            ? task.completionNotes.replace('NOT INVOLVED: ', '').split('\n\nVerified by:')[0].trim()
+            : '';
+          // Extract verifier from completion notes
+          const verifiedBy = isNotInvolved && task?.completionNotes?.includes('Verified by:')
+            ? task.completionNotes.split('Verified by: ')[1]?.trim()
+            : '';
 
           const badge = (
             <View
@@ -132,6 +152,25 @@ export default function DepartmentCompletionBadges({
                 <Text style={[styles.badgeStatus, { color: config.color }]}>
                   {needsSignoff ? 'Awaiting Sign-off' : config.label}
                 </Text>
+
+                {/* Not Involved reason + verifier */}
+                {isNotInvolved && notInvolvedReason ? (
+                  <Text style={[styles.badgeCompletedBy, { color: '#6B7280', fontStyle: 'italic' }]} numberOfLines={2}>
+                    "{notInvolvedReason}"
+                  </Text>
+                ) : null}
+                {isNotInvolved && verifiedBy ? (
+                  <Text style={[styles.badgeCompletedBy, { color: '#6B7280' }]} numberOfLines={1}>
+                    ✓ {verifiedBy}
+                  </Text>
+                ) : null}
+
+                {/* Completion notes for non-not-involved completed tasks without forms/WOs */}
+                {!isNotInvolved && task?.completionNotes && !task?.formType && status === 'completed' && (
+                  <Text style={[styles.badgeCompletedBy, { color: colors.textTertiary }]} numberOfLines={2}>
+                    {task.completionNotes.substring(0, 80)}{task.completionNotes.length > 80 ? '...' : ''}
+                  </Text>
+                )}
 
                 {/* Form used */}
                 {task?.formType && (
@@ -222,18 +261,6 @@ export default function DepartmentCompletionBadges({
           return <View key={deptCode}>{badge}</View>;
         })}
       </View>
-
-      {/* Escalate button */}
-      {showEscalateButton && onEscalatePress && (
-        <TouchableOpacity
-          style={[styles.escalateBtn, { borderColor: colors.border }]}
-          onPress={onEscalatePress}
-          activeOpacity={0.7}
-        >
-          <ArrowRight size={14} color="#8B5CF6" />
-          <Text style={styles.escalateBtnText}>Send to Department</Text>
-        </TouchableOpacity>
-      )}
 
       {/* All green banner */}
       {allGreen && totalCount > 0 && (
