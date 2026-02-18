@@ -69,9 +69,7 @@ export function useAddWorkOrderChemical() {
         refrigeration: 'REFRIG', receiving: 'RECV', safety: 'SAFE', general: 'GEN',
       };
 
-      const { data, error } = await supabase
-        .from('work_order_chemicals')
-        .insert({
+      const insertPayload = {
           organization_id: organizationId,
           work_order_id: params.workOrderId,
           sds_record_id: params.sdsRecord.id,
@@ -84,11 +82,21 @@ export function useAddWorkOrderChemical() {
           allergens: params.sdsRecord.allergens || [],
           usage_notes: params.usageNotes || null,
           logged_by: params.loggedBy || null,
-        })
+        };
+
+      console.log('[useAddWorkOrderChemical] Inserting:', JSON.stringify(insertPayload, null, 2));
+
+      const { data, error } = await supabase
+        .from('work_order_chemicals')
+        .insert(insertPayload)
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('[useAddWorkOrderChemical] Insert error:', error.message, error.code, error.details);
+        throw error;
+      }
+      console.log('[useAddWorkOrderChemical] Success:', data.id);
       return data;
     },
     onSuccess: (_data, variables) => {
