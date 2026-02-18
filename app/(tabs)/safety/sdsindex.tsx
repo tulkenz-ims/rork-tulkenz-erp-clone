@@ -215,16 +215,16 @@ export default function SDSMasterIndexScreen() {
   // ============================================================================
   // Duplicate Detection
   // ============================================================================
-  useEffect(() => {
+  const checkDuplicates = useCallback(() => {
     if (!formData.product_name || formData.product_name.length < 3 || editingEntry) {
-      setDuplicateMatches([]);
-      setShowDuplicateWarning(false);
+      if (duplicateMatches.length > 0) setDuplicateMatches([]);
+      if (showDuplicateWarning) setShowDuplicateWarning(false);
       return;
     }
 
     const matches = entries
-      .filter(e => editingEntry ? e.id !== editingEntry.id : true)
-      .map(e => ({
+      .filter((e: any) => editingEntry ? e.id !== editingEntry.id : true)
+      .map((e: any) => ({
         ...e,
         score: Math.max(
           fuzzyMatch(e.product_name, formData.product_name),
@@ -232,13 +232,19 @@ export default function SDSMasterIndexScreen() {
           formData.cas_number ? fuzzyMatch(e.cas_number || '', formData.cas_number) : 0,
         ),
       }))
-      .filter(e => e.score >= 0.5)
-      .sort((a, b) => b.score - a.score)
+      .filter((e: any) => e.score >= 0.5)
+      .sort((a: any, b: any) => b.score - a.score)
       .slice(0, 5);
 
     setDuplicateMatches(matches);
     setShowDuplicateWarning(matches.length > 0);
   }, [formData.product_name, formData.manufacturer, formData.cas_number, entries, editingEntry]);
+
+  useEffect(() => {
+    if (!showAddModal) return;
+    const timer = setTimeout(checkDuplicates, 300);
+    return () => clearTimeout(timer);
+  }, [checkDuplicates, showAddModal]);
 
   // ============================================================================
   // Mutations
