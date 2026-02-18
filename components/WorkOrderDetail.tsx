@@ -2999,6 +2999,14 @@ export default function WorkOrderDetail({
                                 workOrderId: workOrder.id,
                                 sdsRecord: sds,
                                 loggedBy: userName || undefined,
+                              }, {
+                                onSuccess: () => {
+                                  Alert.alert('✓ Chemical Logged', `${sds.product_name} has been logged to this work order.`);
+                                },
+                                onError: (err: any) => {
+                                  console.error('[WorkOrderDetail] Chemical add error:', err);
+                                  Alert.alert('Error', `Failed to log chemical: ${err?.message || 'Unknown error'}`);
+                                },
                               });
                             },
                           },
