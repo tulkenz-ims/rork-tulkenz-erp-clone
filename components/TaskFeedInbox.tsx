@@ -44,6 +44,7 @@ import WorkOrderCompletionForm from './WorkOrderCompletionForm';
 import FormPickerModal from './FormPickerModal';
 import PostFormDecisionModal from './PostFormDecisionModal';
 import { SignatureVerification, useLogSignature } from '@/hooks/usePinSignature';
+import { useLinkFormToPost } from '@/hooks/useTaskFeedFormLinks';
 
 interface WorkOrderCompletionData {
   workPerformed: string;
@@ -184,6 +185,8 @@ export default function TaskFeedInbox({
     },
   });
 
+  const linkFormMutation = useLinkFormToPost();
+
   const clearHoldMutation = useClearProductionHold({
     onSuccess: (data) => {
       console.log('[TaskFeedInbox] Production hold cleared for post:', data.postNumber);
@@ -274,12 +277,28 @@ export default function TaskFeedInbox({
       formRoute: form.route,
     });
 
+    // Auto-link form to the task feed post
+    try {
+      linkFormMutation.mutate({
+        postId: selectedTask.postId,
+        postNumber: selectedTask.postNumber || '',
+        formType: form.label,
+        formId: selectedTask.id, // dept task ID as form reference
+        formTitle: form.label,
+        departmentCode: departmentCode,
+        departmentName: getDepartmentName(departmentCode),
+      });
+      console.log('[TaskFeedInbox] Auto-linked form', form.label, 'to post', selectedTask.postNumber);
+    } catch (linkErr) {
+      console.error('[TaskFeedInbox] Form link error (non-blocking):', linkErr);
+    }
+
     setShowFormPicker(false);
     setShowDecisionModal(false);
     
     // Navigate to the form
     router.push(form.route as any);
-  }, [selectedTask, startTaskMutation, router]);
+  }, [selectedTask, startTaskMutation, linkFormMutation, departmentCode, router]);
 
   const handleFormPickerClose = useCallback(() => {
     setShowFormPicker(false);
@@ -313,6 +332,31 @@ export default function TaskFeedInbox({
         referenceId: selectedTask.postId,
         referenceNumber: selectedTask.postNumber,
       });
+
+      // Auto-link any work orders that reference this post to this dept task
+      try {
+        const { data: relatedWOs } = await supabase
+          .from('work_orders')
+          .select('id')
+          .eq('organization_id', organizationId)
+          .or(`source_id.eq.${selectedTask.postId},title.ilike.%${selectedTask.postNumber}%,description.ilike.%${selectedTask.postNumber}%`)
+          .eq('department', departmentCode)
+          .limit(1);
+
+        if (relatedWOs && relatedWOs.length > 0) {
+          await supabase
+            .from('task_feed_department_tasks')
+            .update({
+              module_reference_type: 'work_order',
+              module_reference_id: relatedWOs[0].id,
+            })
+            .eq('id', selectedTask.id)
+            .eq('organization_id', organizationId);
+          console.log('[TaskFeedInbox] Auto-linked WO', relatedWOs[0].id, 'to dept task');
+        }
+      } catch (woLinkErr) {
+        console.error('[TaskFeedInbox] WO auto-link error (non-blocking):', woLinkErr);
+      }
 
       // Clear production hold — ONLY Quality (1004) can release the line
       if (data.lineOperational && selectedTask.post?.is_production_hold && departmentCode === '1004') {
