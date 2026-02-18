@@ -90,6 +90,8 @@ import { useWorkOrderDowntimeQuery, useResolveDowntimeEvent, DowntimeEvent } fro
 import { useMaterialsQuery, MaterialWithLabels } from '@/hooks/useSupabaseMaterials';
 import { useFailureCodesQuery, useFailureCodeCategories } from '@/hooks/useSupabaseFailureCodes';
 import { useUpdateWorkOrderDetail, useUploadAttachment, useDeleteAttachment, useWorkOrderParts, useStartWorkOrder, useCompleteWorkOrder } from '@/hooks/useSupabaseWorkOrders';
+import { useWorkOrderChemicals, useAddWorkOrderChemical, useRemoveWorkOrderChemical, WorkOrderChemical } from '@/hooks/useWorkOrderChemicals';
+import { useSDSRecordsQuery } from '@/hooks/useSupabaseSDS';
 
 export interface DowntimeCompletionData {
   downtimeId: string;
@@ -115,7 +117,7 @@ interface WorkOrderDetailProps {
   onUpdateDowntime?: (downtimeId: string, updates: Partial<DowntimeEvent | MockDowntimeEvent>) => void;
 }
 
-type SectionType = 'info' | 'loto' | 'permits' | 'ppe' | 'tasks' | 'attachments' | 'parts';
+type SectionType = 'info' | 'loto' | 'permits' | 'ppe' | 'tasks' | 'attachments' | 'parts' | 'chemicals';
 
 const priorityColors: Record<string, string> = {
   low: '#10B981',
@@ -332,6 +334,15 @@ export default function WorkOrderDetail({
     }
   }, [supabaseLinkedParts, partsInitialized]);
   const [partQuantities, setPartQuantities] = useState<Record<string, number>>({});
+
+  // Chemical/Lubricant Usage tracking
+  const { data: workOrderChemicals = [], isLoading: isLoadingChemicals } = useWorkOrderChemicals(workOrder.id);
+  const addChemicalMutation = useAddWorkOrderChemical();
+  const removeChemicalMutation = useRemoveWorkOrderChemical();
+  const { data: allSdsRecords = [] } = useSDSRecordsQuery();
+  const [showChemicalsModal, setShowChemicalsModal] = useState(false);
+  const [chemicalSearchQuery, setChemicalSearchQuery] = useState('');
+
   const [showFailureCodeModal, setShowFailureCodeModal] = useState(false);
   const [failureCodeSearch, setFailureCodeSearch] = useState('');
   const [selectedFailureCode, setSelectedFailureCode] = useState<FailureCode | null>(null);
@@ -2382,6 +2393,7 @@ export default function WorkOrderDetail({
         {renderAttachmentsSection()}
         {renderLaborSection()}
         {renderPartsSection()}
+        {renderChemicalsSection()}
         
         <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <DepartmentDocumentation
@@ -2462,6 +2474,7 @@ export default function WorkOrderDetail({
       {renderPPEModal()}
       {renderPermitFormModal()}
       {renderPartsModal()}
+      {renderChemicalsModal()}
       {renderFailureCodeModal()}
       {renderCompletionModal()}
       {renderLOTOModal()}
@@ -2764,6 +2777,276 @@ export default function WorkOrderDetail({
           </View>
         )}
       </View>
+    );
+  }
+
+  // ============================================================================
+  // CHEMICALS / LUBRICANTS SECTION
+  // ============================================================================
+  function renderChemicalsSection() {
+    const ALLERGEN_LABELS: Record<string, string> = {
+      peanut: 'Peanut', tree_nut: 'Tree Nut', milk: 'Milk/Dairy', egg: 'Egg',
+      wheat: 'Wheat/Gluten', soy: 'Soy', fish: 'Fish', shellfish: 'Shellfish',
+      sesame: 'Sesame', coconut: 'Coconut', corn: 'Corn', sulfites: 'Sulfites',
+      latex: 'Latex', other: 'Other',
+    };
+
+    const hasAllergenChemicals = workOrderChemicals.some(c => c.contains_allergens);
+
+    return (
+      <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        {renderSectionHeader(
+          'Chemicals / Lubricants Used',
+          'chemicals',
+          <Droplets size={18} color="#8B5CF6" />,
+          workOrderChemicals.length,
+          hasAllergenChemicals ? '#DC2626' : workOrderChemicals.length > 0 ? '#8B5CF6' : colors.textTertiary
+        )}
+        {expandedSections.has('chemicals') && (
+          <View style={styles.sectionContent}>
+            {isLoadingChemicals ? (
+              <ActivityIndicator size="small" color="#8B5CF6" style={{ marginVertical: 20 }} />
+            ) : workOrderChemicals.length > 0 ? (
+              <>
+                {hasAllergenChemicals && (
+                  <View style={[styles.stockWarningBanner, { backgroundColor: '#FEE2E2', borderColor: '#FECACA' }]}>
+                    <AlertTriangle size={18} color="#DC2626" />
+                    <View style={styles.stockWarningContent}>
+                      <Text style={[styles.stockWarningTitle, { color: '#991B1B' }]}>
+                        ⚠ Allergen-containing chemicals used on this work order
+                      </Text>
+                      <Text style={[styles.stockWarningSubtitle, { color: '#B91C1C' }]}>
+                        Verify no product contact before resuming production
+                      </Text>
+                    </View>
+                  </View>
+                )}
+                <View style={styles.partsList}>
+                  {workOrderChemicals.map((chem) => (
+                    <View
+                      key={chem.id}
+                      style={[
+                        styles.partItem,
+                        {
+                          backgroundColor: colors.backgroundSecondary,
+                          borderColor: chem.contains_allergens ? '#DC262640' : colors.border,
+                          borderLeftWidth: chem.contains_allergens ? 3 : 1,
+                          borderLeftColor: chem.contains_allergens ? '#DC2626' : colors.border,
+                        },
+                      ]}
+                    >
+                      <View style={styles.partInfo}>
+                        <View style={styles.partHeader}>
+                          <Text style={[styles.partName, { color: colors.text }]} numberOfLines={1}>
+                            {chem.product_name}
+                          </Text>
+                          {chem.contains_allergens ? (
+                            <View style={[styles.partStockWarningBadge, { backgroundColor: '#DC262620' }]}>
+                              <AlertTriangle size={10} color="#DC2626" />
+                              <Text style={[styles.partStockWarningText, { color: '#DC2626' }]}>ALLERGEN</Text>
+                            </View>
+                          ) : (
+                            <View style={[styles.partStatusBadge, { backgroundColor: '#8B5CF620' }]}>
+                              <Text style={[styles.partStatusText, { color: '#8B5CF6' }]}>LOGGED</Text>
+                            </View>
+                          )}
+                        </View>
+                        <Text style={[styles.partSku, { color: colors.textSecondary }]}>
+                          {chem.department_prefix ? `${chem.department_prefix} SDS #${chem.sds_master_number}` : `SDS #${chem.sds_master_number || '?'}`}
+                          {chem.manufacturer ? ` • ${chem.manufacturer}` : ''}
+                        </Text>
+                        {chem.contains_allergens && (chem.allergens || []).length > 0 && (
+                          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
+                            {chem.allergens.map((a, i) => (
+                              <View key={i} style={{ backgroundColor: '#DC262615', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                                <Text style={{ fontSize: 10, color: '#DC2626', fontWeight: '600' }}>
+                                  {ALLERGEN_LABELS[a] || a}
+                                </Text>
+                              </View>
+                            ))}
+                          </View>
+                        )}
+                        {chem.usage_notes && (
+                          <Text style={[styles.partLocation, { color: colors.textTertiary }]}>
+                            Note: {chem.usage_notes}
+                          </Text>
+                        )}
+                        <Text style={[styles.partLocation, { color: colors.textTertiary }]}>
+                          Logged: {new Date(chem.logged_at).toLocaleDateString()} {chem.logged_by ? `by ${chem.logged_by}` : ''}
+                        </Text>
+                      </View>
+                      {canEdit && (
+                        <Pressable
+                          style={styles.partRemove}
+                          onPress={() => {
+                            Alert.alert('Remove Chemical', `Remove ${chem.product_name} from this work order?`, [
+                              { text: 'Cancel', style: 'cancel' },
+                              { text: 'Remove', style: 'destructive', onPress: () => removeChemicalMutation.mutate({ id: chem.id, workOrderId: workOrder.id }) },
+                            ]);
+                          }}
+                        >
+                          <Trash2 size={18} color={colors.error} />
+                        </Pressable>
+                      )}
+                    </View>
+                  ))}
+                </View>
+              </>
+            ) : (
+              <Text style={[styles.noItemsText, { color: colors.textSecondary }]}>
+                No chemicals/lubricants logged for this work order
+              </Text>
+            )}
+
+            {canEdit && (
+              <View style={styles.partsActions}>
+                <Pressable
+                  style={[styles.partsActionButton, { backgroundColor: '#8B5CF615', borderColor: '#8B5CF6' }]}
+                  onPress={() => { setChemicalSearchQuery(''); setShowChemicalsModal(true); }}
+                >
+                  <Plus size={18} color="#8B5CF6" />
+                  <Text style={[styles.partsActionText, { color: '#8B5CF6' }]}>Add Chemical / Lubricant</Text>
+                </Pressable>
+              </View>
+            )}
+          </View>
+        )}
+      </View>
+    );
+  }
+
+  function renderChemicalsModal() {
+    const filteredSds = allSdsRecords.filter((sds: any) => {
+      if (!chemicalSearchQuery.trim()) return true;
+      const q = chemicalSearchQuery.toLowerCase();
+      return (
+        (sds.product_name || '').toLowerCase().includes(q) ||
+        (sds.manufacturer || '').toLowerCase().includes(q) ||
+        (sds.sds_number || '').toLowerCase().includes(q) ||
+        (sds.cas_number || '').toLowerCase().includes(q)
+      );
+    }).slice(0, 30);
+
+    const alreadyLinkedIds = new Set(workOrderChemicals.map(c => c.sds_record_id));
+
+    return (
+      <Modal visible={showChemicalsModal} animationType="slide" presentationStyle="pageSheet">
+        <View style={[styles.modalContainer, { backgroundColor: colors.background }]}>
+          <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Log Chemical / Lubricant</Text>
+            <Pressable onPress={() => setShowChemicalsModal(false)} style={styles.modalCloseBtn}>
+              <X size={24} color={colors.textSecondary} />
+            </Pressable>
+          </View>
+
+          <View style={[styles.modalSearchContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Search size={18} color={colors.textSecondary} />
+            <TextInput
+              style={[styles.modalSearchInput, { color: colors.text }]}
+              placeholder="Search chemicals by name, manufacturer, CAS..."
+              placeholderTextColor={colors.textSecondary}
+              value={chemicalSearchQuery}
+              onChangeText={setChemicalSearchQuery}
+              autoFocus
+            />
+            {chemicalSearchQuery.length > 0 && (
+              <Pressable onPress={() => setChemicalSearchQuery('')}>
+                <X size={18} color={colors.textSecondary} />
+              </Pressable>
+            )}
+          </View>
+
+          <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
+            {filteredSds.length === 0 ? (
+              <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                <Droplets size={48} color={colors.textTertiary} />
+                <Text style={[styles.noItemsText, { color: colors.textSecondary, marginTop: 12 }]}>
+                  {chemicalSearchQuery ? 'No matching chemicals found' : 'No SDS records available'}
+                </Text>
+                <Text style={[{ fontSize: 12, color: colors.textTertiary, marginTop: 4, textAlign: 'center' }]}>
+                  Register chemicals in Safety → SDS Index first
+                </Text>
+              </View>
+            ) : (
+              filteredSds.map((sds: any) => {
+                const isLinked = alreadyLinkedIds.has(sds.id);
+                return (
+                  <Pressable
+                    key={sds.id}
+                    style={[
+                      styles.partModalItem,
+                      {
+                        backgroundColor: isLinked ? '#8B5CF610' : colors.surface,
+                        borderColor: sds.contains_allergens ? '#DC262640' : isLinked ? '#8B5CF640' : colors.border,
+                        borderLeftWidth: sds.contains_allergens ? 3 : 1,
+                        borderLeftColor: sds.contains_allergens ? '#DC2626' : isLinked ? '#8B5CF6' : colors.border,
+                      },
+                    ]}
+                    onPress={() => {
+                      if (isLinked) {
+                        Alert.alert('Already Logged', 'This chemical is already logged on this work order.');
+                        return;
+                      }
+                      Alert.alert(
+                        'Log Chemical',
+                        `Add "${sds.product_name}" to this work order?${sds.contains_allergens ? '\n\n⚠ WARNING: This chemical contains allergens!' : ''}`,
+                        [
+                          { text: 'Cancel', style: 'cancel' },
+                          {
+                            text: 'Log It',
+                            onPress: () => {
+                              addChemicalMutation.mutate({
+                                workOrderId: workOrder.id,
+                                sdsRecord: sds,
+                                loggedBy: userName || undefined,
+                              });
+                            },
+                          },
+                        ]
+                      );
+                    }}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <Text style={[styles.partModalItemName, { color: colors.text }]} numberOfLines={1}>
+                          {sds.product_name}
+                        </Text>
+                        {isLinked && (
+                          <View style={[styles.partStatusBadge, { backgroundColor: '#8B5CF620' }]}>
+                            <Text style={[styles.partStatusText, { color: '#8B5CF6' }]}>LOGGED</Text>
+                          </View>
+                        )}
+                        {sds.contains_allergens && (
+                          <View style={[styles.partStockWarningBadge, { backgroundColor: '#DC262620' }]}>
+                            <AlertTriangle size={10} color="#DC2626" />
+                            <Text style={[styles.partStockWarningText, { color: '#DC2626' }]}>ALLERGEN</Text>
+                          </View>
+                        )}
+                      </View>
+                      <Text style={[styles.partModalItemSku, { color: colors.textSecondary }]}>
+                        {sds.manufacturer || 'Unknown'} • SDS #{sds.sds_master_number || '?'}
+                        {sds.sds_number ? ` • ${sds.sds_number}` : ''}
+                      </Text>
+                      {sds.contains_allergens && (sds.allergens || []).length > 0 && (
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
+                          {sds.allergens.map((a: string, i: number) => (
+                            <View key={i} style={{ backgroundColor: '#DC262610', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 3 }}>
+                              <Text style={{ fontSize: 9, color: '#DC2626', fontWeight: '600' }}>{a}</Text>
+                            </View>
+                          ))}
+                        </View>
+                      )}
+                    </View>
+                    {!isLinked && (
+                      <Plus size={20} color="#8B5CF6" />
+                    )}
+                  </Pressable>
+                );
+              })
+            )}
+          </ScrollView>
+        </View>
+      </Modal>
     );
   }
 
