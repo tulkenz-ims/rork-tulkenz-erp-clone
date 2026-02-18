@@ -97,6 +97,24 @@ const LOCATIONS = [
   'Receiving',
 ];
 
+// FDA Big 9 + common industrial allergens found in lubricants/chemicals
+const ALLERGENS = [
+  { id: 'peanut', label: 'Peanut', color: '#DC2626' },
+  { id: 'tree_nut', label: 'Tree Nut', color: '#DC2626' },
+  { id: 'milk', label: 'Milk/Dairy', color: '#2563EB' },
+  { id: 'egg', label: 'Egg', color: '#F59E0B' },
+  { id: 'wheat', label: 'Wheat/Gluten', color: '#D97706' },
+  { id: 'soy', label: 'Soy', color: '#65A30D' },
+  { id: 'fish', label: 'Fish', color: '#0891B2' },
+  { id: 'shellfish', label: 'Shellfish', color: '#0E7490' },
+  { id: 'sesame', label: 'Sesame', color: '#A16207' },
+  { id: 'coconut', label: 'Coconut', color: '#15803D' },
+  { id: 'corn', label: 'Corn', color: '#CA8A04' },
+  { id: 'sulfites', label: 'Sulfites', color: '#7C3AED' },
+  { id: 'latex', label: 'Latex', color: '#BE185D' },
+  { id: 'other', label: 'Other (see notes)', color: '#6B7280' },
+];
+
 // ============================================================================
 // Helpers
 // ============================================================================
@@ -215,6 +233,9 @@ export default function SDSMasterIndexScreen() {
     notes: '',
     file_url: '',
     last_reviewed_date: new Date().toISOString().split('T')[0],
+    contains_allergens: false,
+    allergens: [] as string[],
+    allergen_notes: '',
   });
   const [isUploading, setIsUploading] = useState(false);
 
@@ -345,6 +366,9 @@ export default function SDSMasterIndexScreen() {
       notes: '',
       file_url: '',
       last_reviewed_date: new Date().toISOString().split('T')[0],
+      contains_allergens: false,
+      allergens: [],
+      allergen_notes: '',
     });
     setEditingEntry(null);
     setDuplicateMatches([]);
@@ -392,6 +416,9 @@ export default function SDSMasterIndexScreen() {
       notes: formData.notes || null,
       file_url: formData.file_url || null,
       last_reviewed_date: formData.last_reviewed_date || new Date().toISOString().split('T')[0],
+      contains_allergens: formData.contains_allergens,
+      allergens: formData.allergens,
+      allergen_notes: formData.allergen_notes || null,
       status: 'active',
       version: '1.0',
       approved_for_use: true,
@@ -426,6 +453,9 @@ export default function SDSMasterIndexScreen() {
       notes: entry.notes || '',
       file_url: entry.file_url || '',
       last_reviewed_date: entry.last_reviewed_date || '',
+      contains_allergens: entry.contains_allergens || false,
+      allergens: entry.allergens || [],
+      allergen_notes: entry.allergen_notes || '',
     });
     setShowAddModal(true);
   };
@@ -612,6 +642,24 @@ export default function SDSMasterIndexScreen() {
             </Text>
           )}
         </View>
+
+        {/* Allergen warning */}
+        {entry.contains_allergens && (
+          <View style={styles.allergenWarningRow}>
+            <View style={styles.allergenBadge}>
+              <AlertTriangle size={12} color="#DC2626" />
+              <Text style={styles.allergenBadgeText}>CONTAINS ALLERGEN</Text>
+            </View>
+            {(entry.allergens || []).map((a: string, idx: number) => {
+              const info = ALLERGENS.find(al => al.id === a);
+              return info ? (
+                <View key={idx} style={[styles.allergenChipSmall, { backgroundColor: info.color + '15', borderColor: info.color + '30' }]}>
+                  <Text style={[styles.allergenChipSmallText, { color: info.color }]}>{info.label}</Text>
+                </View>
+              ) : null;
+            })}
+          </View>
+        )}
 
         {/* Locations */}
         {(entry.location_used || []).length > 0 && (
@@ -1095,6 +1143,85 @@ export default function SDSMasterIndexScreen() {
             </View>
 
             {/* Storage Locations */}
+            {/* SECTION: Allergen Check (Section 3) */}
+            <Text style={[styles.sectionHeader, { color: '#DC2626' }]}>⚠ Allergen Check (Section 3)</Text>
+            <Text style={[styles.sectionDesc, { color: colors.textSecondary }]}>
+              Does this chemical contain any known allergens? Check Section 3 of the SDS for ingredients like peanut oil, soy-based compounds, etc.
+            </Text>
+
+            <View style={styles.allergenToggleRow}>
+              <Pressable
+                style={[
+                  styles.allergenToggle,
+                  {
+                    backgroundColor: !formData.contains_allergens ? '#10B98120' : colors.surface,
+                    borderColor: !formData.contains_allergens ? '#10B981' : colors.border,
+                  },
+                ]}
+                onPress={() => setFormData(prev => ({ ...prev, contains_allergens: false, allergens: [], allergen_notes: '' }))}
+              >
+                <Check size={14} color={!formData.contains_allergens ? '#10B981' : colors.textSecondary} />
+                <Text style={[styles.allergenToggleText, { color: !formData.contains_allergens ? '#10B981' : colors.textSecondary }]}>
+                  No Known Allergens
+                </Text>
+              </Pressable>
+              <Pressable
+                style={[
+                  styles.allergenToggle,
+                  {
+                    backgroundColor: formData.contains_allergens ? '#DC262620' : colors.surface,
+                    borderColor: formData.contains_allergens ? '#DC2626' : colors.border,
+                  },
+                ]}
+                onPress={() => setFormData(prev => ({ ...prev, contains_allergens: true }))}
+              >
+                <AlertTriangle size={14} color={formData.contains_allergens ? '#DC2626' : colors.textSecondary} />
+                <Text style={[styles.allergenToggleText, { color: formData.contains_allergens ? '#DC2626' : colors.textSecondary }]}>
+                  Contains Allergens
+                </Text>
+              </Pressable>
+            </View>
+
+            {formData.contains_allergens && (
+              <>
+                <Text style={[styles.inputLabel, { color: colors.text }]}>Select Allergens</Text>
+                <View style={styles.chipContainer}>
+                  {ALLERGENS.map((allergen) => (
+                    <Pressable
+                      key={allergen.id}
+                      style={[
+                        styles.chip,
+                        {
+                          backgroundColor: formData.allergens.includes(allergen.id) ? allergen.color + '20' : colors.surface,
+                          borderColor: formData.allergens.includes(allergen.id) ? allergen.color : colors.border,
+                        },
+                      ]}
+                      onPress={() => toggleArrayItem('allergens', allergen.id)}
+                    >
+                      <Text style={[
+                        styles.chipText,
+                        { color: formData.allergens.includes(allergen.id) ? allergen.color : colors.textSecondary },
+                      ]}>
+                        {allergen.label}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+
+                <Text style={[styles.inputLabel, { color: colors.text }]}>Allergen Details</Text>
+                <TextInput
+                  style={[styles.textArea, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
+                  placeholder="e.g., Contains peanut oil (CAS 8002-03-7) per Section 3..."
+                  placeholderTextColor={colors.textSecondary}
+                  value={formData.allergen_notes}
+                  onChangeText={(text) => setFormData(prev => ({ ...prev, allergen_notes: text }))}
+                  multiline
+                  numberOfLines={2}
+                  textAlignVertical="top"
+                />
+              </>
+            )}
+
             <Text style={[styles.inputLabel, { color: colors.text }]}>Where is this chemical stored/used?</Text>
             <View style={styles.chipContainer}>
               {LOCATIONS.map((location) => (
@@ -1247,6 +1374,36 @@ export default function SDSMasterIndexScreen() {
                       </View>
                     ))}
                   </View>
+
+                  {/* Allergen Info */}
+                  {selectedEntry.contains_allergens ? (
+                    <View style={[styles.allergenDetailSection, { backgroundColor: '#FEF2F2', borderColor: '#DC262630' }]}>
+                      <View style={styles.allergenDetailHeader}>
+                        <AlertTriangle size={18} color="#DC2626" />
+                        <Text style={styles.allergenDetailTitle}>CONTAINS ALLERGENS</Text>
+                      </View>
+                      <View style={styles.allergenDetailChips}>
+                        {(selectedEntry.allergens || []).map((a: string, idx: number) => {
+                          const info = ALLERGENS.find(al => al.id === a);
+                          return info ? (
+                            <View key={idx} style={[styles.allergenDetailChip, { backgroundColor: info.color + '20', borderColor: info.color + '40' }]}>
+                              <Text style={[styles.allergenDetailChipText, { color: info.color }]}>{info.label}</Text>
+                            </View>
+                          ) : null;
+                        })}
+                      </View>
+                      {selectedEntry.allergen_notes && (
+                        <Text style={styles.allergenDetailNotes}>{selectedEntry.allergen_notes}</Text>
+                      )}
+                    </View>
+                  ) : (
+                    <View style={[styles.allergenDetailSection, { backgroundColor: '#F0FDF4', borderColor: '#10B98130' }]}>
+                      <View style={styles.allergenDetailHeader}>
+                        <Check size={18} color="#10B981" />
+                        <Text style={[styles.allergenDetailTitle, { color: '#10B981' }]}>No Known Allergens</Text>
+                      </View>
+                    </View>
+                  )}
                 </ScrollView>
 
                 <View style={[styles.detailFooter, { borderTopColor: colors.border }]}>
@@ -1506,6 +1663,27 @@ const styles = StyleSheet.create({
   reviewDateText: { fontSize: 12, fontWeight: '500' as const },
   reviewTodayBtn: { flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'center' as const, paddingVertical: 10, borderRadius: 8, borderWidth: 1, gap: 6, marginTop: 8 },
   reviewTodayText: { fontSize: 14, fontWeight: '600' as const, color: '#10B981' },
+
+  // Allergen - Form
+  allergenToggleRow: { flexDirection: 'row' as const, gap: 10, marginBottom: 8 },
+  allergenToggle: { flex: 1, flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'center' as const, paddingVertical: 12, borderRadius: 10, borderWidth: 1, gap: 6 },
+  allergenToggleText: { fontSize: 13, fontWeight: '600' as const },
+
+  // Allergen - Card
+  allergenWarningRow: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: 6, marginBottom: 8, alignItems: 'center' as const },
+  allergenBadge: { flexDirection: 'row' as const, alignItems: 'center' as const, backgroundColor: '#DC262620', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, gap: 4 },
+  allergenBadgeText: { fontSize: 10, fontWeight: '700' as const, color: '#DC2626', letterSpacing: 0.5 },
+  allergenChipSmall: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, borderWidth: 1 },
+  allergenChipSmallText: { fontSize: 10, fontWeight: '500' as const },
+
+  // Allergen - Detail Modal
+  allergenDetailSection: { borderRadius: 12, borderWidth: 1, padding: 16, marginTop: 16 },
+  allergenDetailHeader: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 8, marginBottom: 8 },
+  allergenDetailTitle: { fontSize: 14, fontWeight: '700' as const, color: '#DC2626' },
+  allergenDetailChips: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: 8 },
+  allergenDetailChip: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1 },
+  allergenDetailChipText: { fontSize: 12, fontWeight: '600' as const },
+  allergenDetailNotes: { fontSize: 12, color: '#92400E', marginTop: 10, fontStyle: 'italic' as const },
   entryFooter: { flexDirection: 'row' as const, justifyContent: 'space-between' as const, alignItems: 'center' as const, borderTopWidth: 1, paddingTop: 10 },
   dateInfo: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 4 },
   dateText: { fontSize: 11 },
