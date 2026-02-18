@@ -232,7 +232,9 @@ export default function TaskFeedInbox({
               console.error('[TaskFeedInbox] Error linking WO to dept task:', linkErr);
             }
             queryClient.invalidateQueries({ queryKey: ['task_feed_department_tasks'] });
-            queryClient.invalidateQueries({ queryKey: ['work_orders'] });
+            await queryClient.refetchQueries({ queryKey: ['work_orders'] });
+            // Small delay to ensure data is ready before navigating
+            await new Promise(resolve => setTimeout(resolve, 500));
             router.push(`/(tabs)/cmms/work-orders/${workOrderId}`);
             return;
           }
