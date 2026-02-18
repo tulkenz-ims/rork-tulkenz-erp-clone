@@ -10,7 +10,16 @@ import {
   Modal,
   Linking,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
+
+// Base URL for QR codes
+const getBaseUrl = (): string => {
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    return window.location.origin;
+  }
+  return 'https://tulkenz.app';
+};
 import {
   AlertTriangle,
   Search,
@@ -139,8 +148,7 @@ export default function SDSIndexScreen() {
   }, [router]);
 
   const generateQRValue = (doc: SDSRecord): string => {
-    const baseUrl = 'https://tulkenz.app';
-    return `${baseUrl}/sds/${doc.id}`;
+    return `${getBaseUrl()}/sds/${doc.id}`;
   };
 
   const renderSDSCard = (doc: SDSRecord) => {
@@ -196,7 +204,7 @@ export default function SDSIndexScreen() {
           </View>
           <View style={[styles.qrContainer, { backgroundColor: '#FFFFFF', borderColor: colors.border }]}>
             <QRCode
-              value={`https://tulkenz.app/sds/${doc.id}`}
+              value={`${getBaseUrl()}/sds/${doc.id}`}
               size={44}
               color="#000000"
               backgroundColor="#FFFFFF"
@@ -475,8 +483,8 @@ export default function SDSIndexScreen() {
                   <View style={[styles.previewQR, { width: QR_PRINT_SIZES.find(s => s.id === printSize)?.width || 144 / 2, height: QR_PRINT_SIZES.find(s => s.id === printSize)?.height || 144 / 2 }]}>
                     <QRCode
                       value={selectedDocuments.length > 0 && sdsRecords.find(d => d.id === selectedDocuments[0])
-                        ? `https://tulkenz.app/sds/${selectedDocuments[0]}`
-                        : 'https://tulkenz.app/sds/preview'}
+                        ? `${getBaseUrl()}/sds/${selectedDocuments[0]}`
+                        : `${getBaseUrl()}/sds/preview`}
                       size={printSize === 'small' ? 50 : printSize === 'medium' ? 70 : 90}
                       color="#000000"
                       backgroundColor="#FFFFFF"
@@ -546,7 +554,7 @@ export default function SDSIndexScreen() {
                   <View style={[styles.qrSection, { backgroundColor: '#FFFFFF', borderColor: colors.border }]}>
                     <View style={styles.qrLarge}>
                       <QRCode
-                        value={`https://tulkenz.app/sds/${selectedDocument.id}`}
+                        value={`${getBaseUrl()}/sds/${selectedDocument.id}`}
                         size={200}
                         color="#000000"
                         backgroundColor="#FFFFFF"
