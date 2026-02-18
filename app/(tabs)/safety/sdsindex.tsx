@@ -1082,9 +1082,10 @@ export default function SDSMasterIndexScreen() {
                     <View style={styles.qrLarge}>
                       <QRCode
                         value={`https://tulkenz.app/sds/${selectedEntry.id}`}
-                        size={140}
+                        size={200}
                         color="#000000"
                         backgroundColor="#FFFFFF"
+                        ecl="M"
                       />
                     </View>
                     <Text style={styles.qrLabelLarge}>
@@ -1163,9 +1164,10 @@ export default function SDSMasterIndexScreen() {
                   <View style={styles.qrPreviewInner}>
                     <QRCode
                       value={`https://tulkenz.app/sds/${selectedEntry.id}`}
-                      size={printSize === 'small' ? 80 : printSize === 'medium' ? 120 : 160}
+                      size={printSize === 'small' ? 120 : printSize === 'medium' ? 180 : 240}
                       color="#000000"
                       backgroundColor="#FFFFFF"
+                      ecl="M"
                     />
                   </View>
                   <Text style={styles.qrPreviewLabel}>
