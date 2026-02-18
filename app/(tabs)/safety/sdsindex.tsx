@@ -11,7 +11,16 @@ import {
   Modal,
   ActivityIndicator,
   Linking,
+  Platform,
 } from 'react-native';
+
+// Base URL for QR codes — uses current origin on web, fallback for native
+const getBaseUrl = (): string => {
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    return window.location.origin;
+  }
+  return 'https://tulkenz.app'; // Update when custom domain is live
+};
 import { useRouter, Stack } from 'expo-router';
 import {
   FileText,
@@ -729,38 +738,67 @@ export default function SDSMasterIndexScreen() {
               </Text>
               <Pressable
                 style={[styles.uploadBtn, { backgroundColor: colors.primary }]}
-                onPress={async () => {
-                  try {
-                    const DocumentPicker = require('expo-document-picker');
-                    const result = await DocumentPicker.getDocumentAsync({
-                      type: 'application/pdf',
-                      copyToCacheDirectory: true,
-                    });
-                    if (!result.canceled && result.assets && result.assets.length > 0) {
-                      const file = result.assets[0];
-                      const fileName = `sds_${Date.now()}_${file.name}`;
-                      const response = await fetch(file.uri);
-                      const blob = await response.blob();
-                      const { data, error } = await supabase.storage
-                        .from('sds-documents')
-                        .upload(fileName, blob, { contentType: 'application/pdf', upsert: true });
-                      if (error) {
-                        Alert.alert('Upload Error', error.message);
-                        return;
+                onPress={() => {
+                  if (Platform.OS === 'web') {
+                    // Web: use native file input
+                    const input = document.createElement('input');
+                    input.type = 'file';
+                    input.accept = 'application/pdf';
+                    input.onchange = async (e: any) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      try {
+                        const fileName = `sds_${Date.now()}_${file.name}`;
+                        const { data, error } = await supabase.storage
+                          .from('sds-documents')
+                          .upload(fileName, file, { contentType: 'application/pdf', upsert: true });
+                        if (error) {
+                          Alert.alert('Upload Error', error.message);
+                          return;
+                        }
+                        const { data: urlData } = supabase.storage
+                          .from('sds-documents')
+                          .getPublicUrl(data.path);
+                        setFormData(prev => ({ ...prev, file_url: urlData.publicUrl }));
+                        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                        Alert.alert('Uploaded', `${file.name} uploaded successfully.`);
+                      } catch (err: any) {
+                        Alert.alert('Upload Error', err.message || 'Upload failed');
                       }
-                      const { data: urlData } = supabase.storage
-                        .from('sds-documents')
-                        .getPublicUrl(data.path);
-                      setFormData(prev => ({
-                        ...prev,
-                        file_url: urlData.publicUrl,
-                      }));
-                      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                      Alert.alert('Uploaded', `${file.name} uploaded successfully.`);
-                    }
-                  } catch (err: any) {
-                    console.warn('Upload error:', err);
-                    Alert.alert('Upload Error', 'Could not upload file. You can paste a URL below instead.');
+                    };
+                    input.click();
+                  } else {
+                    // Native: use expo-document-picker
+                    (async () => {
+                      try {
+                        const DocumentPicker = require('expo-document-picker');
+                        const result = await DocumentPicker.getDocumentAsync({
+                          type: 'application/pdf',
+                          copyToCacheDirectory: true,
+                        });
+                        if (!result.canceled && result.assets?.length > 0) {
+                          const file = result.assets[0];
+                          const fileName = `sds_${Date.now()}_${file.name}`;
+                          const response = await fetch(file.uri);
+                          const blob = await response.blob();
+                          const { data, error } = await supabase.storage
+                            .from('sds-documents')
+                            .upload(fileName, blob, { contentType: 'application/pdf', upsert: true });
+                          if (error) {
+                            Alert.alert('Upload Error', error.message);
+                            return;
+                          }
+                          const { data: urlData } = supabase.storage
+                            .from('sds-documents')
+                            .getPublicUrl(data.path);
+                          setFormData(prev => ({ ...prev, file_url: urlData.publicUrl }));
+                          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                          Alert.alert('Uploaded', `${file.name} uploaded successfully.`);
+                        }
+                      } catch (err: any) {
+                        Alert.alert('Upload Error', 'Could not upload file.');
+                      }
+                    })();
                   }
                 }}
               >
@@ -1081,7 +1119,7 @@ export default function SDSMasterIndexScreen() {
                   <View style={[styles.qrSection, { backgroundColor: '#FFFFFF', borderColor: colors.border }]}>
                     <View style={styles.qrLarge}>
                       <QRCode
-                        value={`https://tulkenz.app/sds/${selectedEntry.id}`}
+                        value={`${getBaseUrl()}/sds/${selectedEntry.id}`}
                         size={200}
                         color="#000000"
                         backgroundColor="#FFFFFF"
@@ -1091,7 +1129,7 @@ export default function SDSMasterIndexScreen() {
                     <Text style={styles.qrLabelLarge}>
                       {getQRLabel(selectedEntry.primary_department, selectedEntry.sds_master_number)}
                     </Text>
-                    <Text style={styles.qrUrl}>tulkenz.app/sds/{selectedEntry.id}</Text>
+                    <Text style={styles.qrUrl}>{getBaseUrl()}/sds/{selectedEntry.id}</Text>
                     <Text style={styles.qrNote}>Scan for instant SDS access — no login required</Text>
                   </View>
 
@@ -1163,7 +1201,7 @@ export default function SDSMasterIndexScreen() {
                 <View style={[styles.qrPreviewCard, { backgroundColor: '#FFFFFF', borderColor: colors.border }]}>
                   <View style={styles.qrPreviewInner}>
                     <QRCode
-                      value={`https://tulkenz.app/sds/${selectedEntry.id}`}
+                      value={`${getBaseUrl()}/sds/${selectedEntry.id}`}
                       size={printSize === 'small' ? 120 : printSize === 'medium' ? 180 : 240}
                       color="#000000"
                       backgroundColor="#FFFFFF"
