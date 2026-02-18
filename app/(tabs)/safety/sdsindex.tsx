@@ -39,6 +39,7 @@ import {
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useOrganization } from '@/contexts/OrganizationContext';
+import QRCode from 'react-native-qrcode-svg';
 import * as Haptics from 'expo-haptics';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
@@ -1079,7 +1080,12 @@ export default function SDSMasterIndexScreen() {
                   {/* QR Section */}
                   <View style={[styles.qrSection, { backgroundColor: '#FFFFFF', borderColor: colors.border }]}>
                     <View style={styles.qrLarge}>
-                      <QrCode size={100} color="#000000" />
+                      <QRCode
+                        value={`https://tulkenz.app/sds/${selectedEntry.id}`}
+                        size={140}
+                        color="#000000"
+                        backgroundColor="#FFFFFF"
+                      />
                     </View>
                     <Text style={styles.qrLabelLarge}>
                       {getQRLabel(selectedEntry.primary_department, selectedEntry.sds_master_number)}
@@ -1155,7 +1161,12 @@ export default function SDSMasterIndexScreen() {
                 {/* QR Preview with Label */}
                 <View style={[styles.qrPreviewCard, { backgroundColor: '#FFFFFF', borderColor: colors.border }]}>
                   <View style={styles.qrPreviewInner}>
-                    <QrCode size={120} color="#000000" />
+                    <QRCode
+                      value={`https://tulkenz.app/sds/${selectedEntry.id}`}
+                      size={printSize === 'small' ? 80 : printSize === 'medium' ? 120 : 160}
+                      color="#000000"
+                      backgroundColor="#FFFFFF"
+                    />
                   </View>
                   <Text style={styles.qrPreviewLabel}>
                     {getQRLabel(selectedEntry.primary_department, selectedEntry.sds_master_number)}
