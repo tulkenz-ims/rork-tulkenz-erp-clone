@@ -281,14 +281,10 @@ export default function TaskFeedInbox({
 
   const handleFormPickerClose = useCallback(() => {
     setShowFormPicker(false);
-    // If task is in_progress (came from decision → another form → cancelled), go back to decision
-    if (selectedTask?.status === 'in_progress') {
-      setShowDecisionModal(true);
-    } else {
-      // Pending task — open regular complete modal as fallback
-      setShowCompleteModal(true);
-    }
-  }, [selectedTask]);
+    // Always show decision modal (has line restore, signature, etc.)
+    // regardless of whether task is pending or in_progress
+    setShowDecisionModal(true);
+  }, []);
 
   const handleDecisionResolve = useCallback(async (data: {
     lineOperational: boolean;
