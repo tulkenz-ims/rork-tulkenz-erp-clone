@@ -175,10 +175,23 @@ function LocationModal({
 
   const filteredParentLocations = useMemo(() => {
     if (!formData.facility_id) return [];
-    return locations.filter((l) => 
+    const candidates = locations.filter((l) => 
       l.facility_id === formData.facility_id && 
       l.id !== location?.id
     );
+    
+    // Sort into tree order with depth
+    const buildTree = (parentId: string | null, depth: number): Array<LocationWithFacility & { _depth: number }> => {
+      const children = candidates.filter(l => (l.parent_location_id || null) === parentId);
+      const result: Array<LocationWithFacility & { _depth: number }> = [];
+      for (const child of children) {
+        result.push({ ...child, _depth: depth });
+        result.push(...buildTree(child.id, depth + 1));
+      }
+      return result;
+    };
+    
+    return buildTree(null, 0);
   }, [locations, formData.facility_id, location]);
 
   const selectedFacility = facilities.find((f) => f.id === formData.facility_id);
@@ -439,6 +452,7 @@ function LocationModal({
                     style={[
                       styles.pickerItem,
                       formData.parent_location_id === loc.id && { backgroundColor: colors.primary + '15' },
+                      { paddingLeft: 16 + ((loc as any)._depth || 0) * 20 },
                     ]}
                     onPress={() => {
                       setFormData((prev) => ({ ...prev, parent_location_id: loc.id }));
@@ -446,7 +460,7 @@ function LocationModal({
                     }}
                   >
                     <Text style={[styles.pickerItemText, { color: colors.text }]}>
-                      {loc.name} ({loc.location_code})
+                      {'  '.repeat((loc as any)._depth || 0)}{(loc as any)._depth > 0 ? '└ ' : ''}{loc.name} ({loc.location_code})
                     </Text>
                   </Pressable>
                 ))}
@@ -663,8 +677,22 @@ export default function AreasScreen() {
 
   const filteredLocations = useMemo(() => {
     if (!locations) return [];
-    if (!filterFacility) return locations;
-    return locations.filter((l) => l.facility_id === filterFacility);
+    const base = !filterFacility ? locations : locations.filter((l) => l.facility_id === filterFacility);
+    
+    // Build tree-ordered list with depth
+    const buildTree = (parentId: string | null, depth: number): Array<LocationWithFacility & { _depth: number }> => {
+      const children = base.filter(l => (l.parent_location_id || null) === parentId);
+      // Sort alphabetically within each level
+      children.sort((a, b) => a.name.localeCompare(b.name));
+      const result: Array<LocationWithFacility & { _depth: number }> = [];
+      for (const child of children) {
+        result.push({ ...child, _depth: depth });
+        result.push(...buildTree(child.id, depth + 1));
+      }
+      return result;
+    };
+    
+    return buildTree(null, 0);
   }, [locations, filterFacility]);
 
   const selectedFilterFacility = facilities.find((f) => f.id === filterFacility);
@@ -796,6 +824,7 @@ export default function AreasScreen() {
           ) : filteredLocations && filteredLocations.length > 0 ? (
             filteredLocations.map((location) => {
               const TypeIcon = getLocationTypeIcon(location.location_type);
+              const depth = (location as any)._depth || 0;
               return (
                 <Pressable
                   key={location.id}
@@ -805,10 +834,14 @@ export default function AreasScreen() {
                       backgroundColor: colors.surface,
                       borderColor: location.status === 'active' ? colors.border : colors.textTertiary,
                       opacity: location.status === 'active' ? 1 : 0.7,
+                      marginLeft: depth * 20,
                     },
                   ]}
                   onPress={() => handleEditLocation(location)}
                 >
+                  {depth > 0 && (
+                    <View style={{ position: 'absolute', left: -10, top: '50%', width: 10, height: 1, backgroundColor: colors.border }} />
+                  )}
                   <View
                     style={[
                       styles.locationItemIcon,
@@ -830,9 +863,20 @@ export default function AreasScreen() {
                     <Text style={[styles.locationItemCode, { color: colors.textSecondary }]}>
                       {location.location_code} • {LOCATION_TYPES.find((t) => t.value === location.location_type)?.label}
                     </Text>
-                    {location.facility && (
-                      <Text style={[styles.locationItemFacility, { color: colors.textTertiary }]}>
-                        {location.facility.name}
+                    {(location.facility || location.parent_location_id) && (
+                      <Text style={[styles.locationItemFacility, { color: colors.textTertiary }]} numberOfLines={1}>
+                        {[
+                          location.facility?.name,
+                          ...((() => {
+                            const chain: string[] = [];
+                            let pid = location.parent_location_id;
+                            while (pid) {
+                              const parent = (locations || []).find(l => l.id === pid);
+                              if (parent) { chain.unshift(parent.name); pid = parent.parent_location_id; } else break;
+                            }
+                            return chain;
+                          })()),
+                        ].filter(Boolean).join(' › ')}
                       </Text>
                     )}
                     <View style={styles.attributeTags}>
@@ -946,6 +990,7 @@ export default function AreasScreen() {
       </ScrollView>
 
       <LocationModal
+        key={selectedLocation?.id || 'new-location'}
         visible={modalVisible}
         onClose={() => {
           setModalVisible(false);
