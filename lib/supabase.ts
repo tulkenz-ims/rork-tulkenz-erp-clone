@@ -29,6 +29,11 @@ export const supabase = createClient(supabaseUrl || 'https://placeholder.supabas
     persistSession: true,
     detectSessionInUrl: false,
   },
+  realtime: {
+    params: {
+      eventsPerSecond: 10,
+    },
+  },
   global: {
     fetch: async (url, options = {}) => {
       if (!hasValidConfig) {
