@@ -12,6 +12,7 @@ import { OrganizationProvider } from "@/contexts/OrganizationContext";
 import { PushNotificationsProvider } from "@/contexts/PushNotificationsContext";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { RealtimeProvider } from "@/contexts/RealtimeContext";
+import EmergencyAlertOverlay from "@/components/EmergencyAlertOverlay";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -56,6 +57,7 @@ export default function RootLayout() {
                       <PushNotificationsProvider>
                         <RealtimeProvider>
                          <RootLayoutNav />
+                         <EmergencyAlertOverlay />
                         </RealtimeProvider>
                       </PushNotificationsProvider>
                      </NotificationsProvider>
