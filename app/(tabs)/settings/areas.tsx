@@ -97,6 +97,8 @@ interface LocationModalProps {
   departments: Array<{ id: string; name: string; department_code: string; facility_id: string | null }>;
   locations: LocationWithFacility[];
   nextCode: string;
+  prefillFacilityId?: string;
+  prefillDepartmentId?: string;
 }
 
 function LocationModal({ 
@@ -106,7 +108,9 @@ function LocationModal({
   facilities, 
   departments, 
   locations,
-  nextCode 
+  nextCode,
+  prefillFacilityId,
+  prefillDepartmentId,
 }: LocationModalProps) {
   const { colors } = useTheme();
   const createLocation = useCreateLocation();
@@ -143,8 +147,8 @@ function LocationModal({
   const [formData, setFormData] = useState<LocationFormData>({
     name: location?.name || '',
     location_code: location?.location_code || nextCode,
-    facility_id: location?.facility_id || (facilities[0]?.id || ''),
-    department_id: location?.department_id || null,
+    facility_id: location?.facility_id || prefillFacilityId || (facilities[0]?.id || ''),
+    department_id: location?.department_id || prefillDepartmentId || null,
     description: location?.description || '',
     location_type: location?.location_type || 'room',
     parent_location_id: location?.parent_location_id || null,
@@ -169,6 +173,7 @@ function LocationModal({
   const [showTypePicker, setShowTypePicker] = useState(false);
   const [showStatusPicker, setShowStatusPicker] = useState(false);
   const [showParentPicker, setShowParentPicker] = useState(false);
+  const [showDepartmentPicker, setShowDepartmentPicker] = useState(false);
 
   const filteredDepartments = useMemo(() => {
     if (!formData.facility_id) return departments;
@@ -179,11 +184,13 @@ function LocationModal({
     if (!formData.facility_id) return [];
     return locations.filter((l) => 
       l.facility_id === formData.facility_id && 
+      (!formData.department_id || l.department_id === formData.department_id) &&
       l.id !== location?.id
     );
-  }, [locations, formData.facility_id, location]);
+  }, [locations, formData.facility_id, formData.department_id, location]);
 
   const selectedFacility = facilities.find((f) => f.id === formData.facility_id);
+  const selectedDepartment = filteredDepartments.find((d) => d.id === formData.department_id);
   const selectedType = LOCATION_TYPES.find((t) => t.value === formData.location_type);
   const selectedStatus = LOCATION_STATUSES.find((s) => s.value === formData.status);
   const selectedParent = locations.find((l) => l.id === formData.parent_location_id);
@@ -201,6 +208,10 @@ function LocationModal({
 
     if (!formData.facility_id) {
       newErrors.facility_id = 'Facility is required';
+    }
+
+    if (!formData.department_id) {
+      newErrors.department_id = 'Department is required';
     }
 
     setErrors(newErrors);
@@ -404,6 +415,54 @@ function LocationModal({
                     </Text>
                   </Pressable>
                 ))}
+              </View>
+            )}
+
+            <View style={styles.formGroup}>
+              <Text style={[styles.label, { color: colors.text }]}>Department <Text style={{ color: colors.error }}>*</Text></Text>
+              <Pressable
+                style={[
+                  styles.pickerButton, 
+                  { backgroundColor: colors.surface, borderColor: errors.department_id ? colors.error : colors.border }
+                ]}
+                onPress={() => setShowDepartmentPicker(!showDepartmentPicker)}
+              >
+                {selectedDepartment && (
+                  <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: getDepartmentColor((selectedDepartment as any).department_code) || '#6B7280' }} />
+                )}
+                <Text style={[styles.pickerText, { color: selectedDepartment ? colors.text : colors.textTertiary }]} numberOfLines={1}>
+                  {selectedDepartment ? `${selectedDepartment.name} (${(selectedDepartment as any).department_code})` : 'Select Department'}
+                </Text>
+                <ChevronDown size={16} color={colors.textTertiary} />
+              </Pressable>
+              {errors.department_id && <Text style={[styles.errorText, { color: colors.error }]}>{errors.department_id}</Text>}
+            </View>
+
+            {showDepartmentPicker && (
+              <View style={[styles.pickerDropdown, { backgroundColor: colors.surface, borderColor: colors.border, maxHeight: 280 }]}>
+                <ScrollView nestedScrollEnabled={true} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={true}>
+                {filteredDepartments.map((dept) => {
+                  const dColor = getDepartmentColor((dept as any).department_code) || '#6B7280';
+                  return (
+                    <Pressable
+                      key={dept.id}
+                      style={[
+                        styles.pickerItem,
+                        formData.department_id === dept.id && { backgroundColor: dColor + '15' },
+                      ]}
+                      onPress={() => {
+                        setFormData((prev) => ({ ...prev, department_id: dept.id, parent_location_id: null }));
+                        setShowDepartmentPicker(false);
+                      }}
+                    >
+                      <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: dColor }} />
+                      <Text style={[styles.pickerItemText, { color: colors.text }]}>
+                        {dept.name} ({(dept as any).department_code})
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+                </ScrollView>
               </View>
             )}
 
@@ -776,7 +835,11 @@ export default function AreasScreen() {
     })();
   }, [facilities, departments, createDepartment]);
 
-  const handleAddLocation = useCallback(() => {
+  // Pre-fill state for new locations added from tree
+  const [preFill, setPreFill] = useState<{ facilityId?: string; departmentId?: string } | null>(null);
+
+  const handleAddLocation = useCallback((prefillFacilityId?: string, prefillDeptId?: string) => {
+    setPreFill(prefillFacilityId ? { facilityId: prefillFacilityId, departmentId: prefillDeptId } : null);
     setSelectedLocation(null);
     setModalVisible(true);
   }, []);
@@ -888,7 +951,7 @@ export default function AreasScreen() {
             </Text>
             <Pressable
               style={[styles.addButton, { backgroundColor: colors.primary + '20' }]}
-              onPress={handleAddLocation}
+              onPress={() => handleAddLocation()}
             >
               <Plus size={16} color={colors.primary} />
               <Text style={[styles.addButtonText, { color: colors.primary }]}>Add</Text>
@@ -917,15 +980,11 @@ export default function AreasScreen() {
                       paddingVertical: 10,
                     }]}
                   >
-                    <Pressable
-                      onPress={() => setCollapsedFacs(p => ({ ...p, [facility.id]: !p[facility.id] }))}
-                      hitSlop={10}
-                      style={{ width: 28, height: 28, justifyContent: 'center', alignItems: 'center', marginRight: -4 }}
-                    >
+                    <View style={{ width: 28, height: 28, justifyContent: 'center', alignItems: 'center', marginRight: -4 }}>
                       {facCollapsed
                         ? <ChevronRight size={18} color={colors.primary} />
                         : <ChevronDown size={18} color={colors.primary} />}
-                    </Pressable>
+                    </View>
                     <View style={[styles.locationItemIcon, { backgroundColor: colors.primary + '20' }]}>
                       <Building2 size={20} color={colors.primary} />
                     </View>
@@ -1118,7 +1177,7 @@ export default function AreasScreen() {
                         {/* Empty dept placeholder */}
                         {!deptCollapsed && de.dbDept && de.locs.length === 0 && (
                           <Pressable
-                            onPress={handleAddLocation}
+                            onPress={() => handleAddLocation(facility.id, de.dbDept?.id)}
                             style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginLeft: 48, marginVertical: 4, paddingVertical: 8, borderRadius: 7, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.border }}
                           >
                             <Plus size={13} color={colors.textTertiary} />
@@ -1140,7 +1199,7 @@ export default function AreasScreen() {
               </Text>
               <Pressable
                 style={[styles.emptyButton, { backgroundColor: colors.primary }]}
-                onPress={handleAddLocation}
+                onPress={() => handleAddLocation()}
               >
                 <Plus size={18} color="#fff" />
                 <Text style={styles.emptyButtonText}>Add Area/Location</Text>
@@ -1181,17 +1240,20 @@ export default function AreasScreen() {
       </ScrollView>
 
       <LocationModal
-        key={selectedLocation?.id || 'new-location'}
+        key={selectedLocation?.id || `new-${preFill?.facilityId}-${preFill?.departmentId}`}
         visible={modalVisible}
         onClose={() => {
           setModalVisible(false);
           setSelectedLocation(null);
+          setPreFill(null);
         }}
         location={selectedLocation}
         facilities={facilities}
         departments={departments}
         locations={locations || []}
         nextCode={nextCode}
+        prefillFacilityId={preFill?.facilityId}
+        prefillDepartmentId={preFill?.departmentId}
       />
     </SafeAreaView>
   );
