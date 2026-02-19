@@ -57,21 +57,33 @@ import type {
   LOCATION_TYPE_LABELS,
 } from '@/types/location';
 
-const LOCATION_TYPES: { value: LocationType; label: string; icon: typeof MapPin }[] = [
-  { value: 'building', label: 'Building', icon: Building2 },
-  { value: 'floor', label: 'Floor', icon: Layers },
-  { value: 'wing', label: 'Wing', icon: LayoutGrid },
-  { value: 'room', label: 'Room', icon: DoorOpen },
-  { value: 'area', label: 'Area', icon: Square },
-  { value: 'zone', label: 'Zone', icon: MapPin },
-  { value: 'line', label: 'Production Line', icon: Activity },
-  { value: 'cell', label: 'Work Cell', icon: Grid3x3 },
-  { value: 'workstation', label: 'Workstation', icon: Monitor },
-  { value: 'storage', label: 'Storage Area', icon: Package },
-  { value: 'dock', label: 'Dock', icon: Truck },
-  { value: 'yard', label: 'Yard', icon: TreePine },
-  { value: 'other', label: 'Other', icon: CircleDot },
+// ── Hierarchy: Organization → Facility → Building → Department → Room/Area → Equipment
+// Organization & Facility are separate tables. Buildings are top-level locations under a facility.
+// Departments go under buildings. Rooms/Areas go under departments.
+
+const LOCATION_TYPES: { value: LocationType; label: string; icon: typeof MapPin; hierarchyLevel: number; allowedParentTypes: LocationType[] }[] = [
+  { value: 'building', label: 'Building', icon: Building2, hierarchyLevel: 1, allowedParentTypes: [] },
+  { value: 'floor', label: 'Floor / Wing', icon: Layers, hierarchyLevel: 2, allowedParentTypes: ['building'] },
+  { value: 'wing', label: 'Department Area', icon: LayoutGrid, hierarchyLevel: 3, allowedParentTypes: ['building', 'floor'] },
+  { value: 'room', label: 'Room', icon: DoorOpen, hierarchyLevel: 4, allowedParentTypes: ['building', 'floor', 'wing'] },
+  { value: 'area', label: 'Area', icon: Square, hierarchyLevel: 4, allowedParentTypes: ['building', 'floor', 'wing', 'room'] },
+  { value: 'zone', label: 'Zone', icon: MapPin, hierarchyLevel: 4, allowedParentTypes: ['building', 'floor', 'wing', 'room', 'area'] },
+  { value: 'line', label: 'Production Line', icon: Activity, hierarchyLevel: 5, allowedParentTypes: ['room', 'area', 'wing'] },
+  { value: 'cell', label: 'Work Cell', icon: Grid3x3, hierarchyLevel: 5, allowedParentTypes: ['room', 'area', 'line'] },
+  { value: 'workstation', label: 'Workstation', icon: Monitor, hierarchyLevel: 5, allowedParentTypes: ['room', 'area', 'cell', 'line'] },
+  { value: 'storage', label: 'Storage', icon: Package, hierarchyLevel: 4, allowedParentTypes: ['building', 'floor', 'wing', 'room'] },
+  { value: 'dock', label: 'Dock', icon: Truck, hierarchyLevel: 3, allowedParentTypes: ['building'] },
+  { value: 'yard', label: 'Yard / Exterior', icon: TreePine, hierarchyLevel: 2, allowedParentTypes: [] },
+  { value: 'other', label: 'Other', icon: CircleDot, hierarchyLevel: 5, allowedParentTypes: [] },
 ];
+
+// What parent types a given type can be placed under (empty = top level under facility)
+const getHierarchyHint = (type: LocationType): string => {
+  const entry = LOCATION_TYPES.find(t => t.value === type);
+  if (!entry || entry.allowedParentTypes.length === 0) return 'Top level under facility';
+  const parentLabels = entry.allowedParentTypes.map(pt => LOCATION_TYPES.find(t => t.value === pt)?.label || pt);
+  return `Goes under: ${parentLabels.join(', ')}`;
+};
 
 const LOCATION_STATUSES: { value: LocationStatus; label: string; color: string }[] = [
   { value: 'active', label: 'Active', color: '#10B981' },
@@ -180,19 +192,31 @@ function LocationModal({
       l.id !== location?.id
     );
     
+    // Filter by allowed parent types for the current location type
+    const currentTypeConfig = LOCATION_TYPES.find(t => t.value === formData.location_type);
+    const allowedParents = currentTypeConfig?.allowedParentTypes || [];
+    
+    const validCandidates = allowedParents.length > 0 
+      ? candidates.filter(l => allowedParents.includes(l.location_type as LocationType))
+      : candidates; // 'other' or top-level types can go anywhere
+    
     // Sort into tree order with depth
     const buildTree = (parentId: string | null, depth: number): Array<LocationWithFacility & { _depth: number }> => {
-      const children = candidates.filter(l => (l.parent_location_id || null) === parentId);
+      const children = validCandidates.filter(l => (l.parent_location_id || null) === parentId);
       const result: Array<LocationWithFacility & { _depth: number }> = [];
       for (const child of children) {
         result.push({ ...child, _depth: depth });
-        result.push(...buildTree(child.id, depth + 1));
+        // Also include children of valid parents so we can see the tree
+        const subChildren = candidates.filter(c => c.parent_location_id === child.id && allowedParents.includes(c.location_type as LocationType));
+        for (const sub of subChildren) {
+          result.push({ ...sub, _depth: depth + 1 });
+        }
       }
       return result;
     };
     
     return buildTree(null, 0);
-  }, [locations, formData.facility_id, location]);
+  }, [locations, formData.facility_id, formData.location_type, location]);
 
   const selectedFacility = facilities.find((f) => f.id === formData.facility_id);
   const selectedType = LOCATION_TYPES.find((t) => t.value === formData.location_type);
@@ -360,14 +384,20 @@ function LocationModal({
                     style={[
                       styles.pickerItem,
                       formData.location_type === type.value && { backgroundColor: colors.primary + '15' },
+                      { flexDirection: 'column', alignItems: 'flex-start', paddingVertical: 10 },
                     ]}
                     onPress={() => {
-                      setFormData((prev) => ({ ...prev, location_type: type.value }));
+                      setFormData((prev) => ({ ...prev, location_type: type.value, parent_location_id: null }));
                       setShowTypePicker(false);
                     }}
                   >
-                    <type.icon size={16} color={formData.location_type === type.value ? colors.primary : colors.textSecondary} />
-                    <Text style={[styles.pickerItemText, { color: colors.text }]}>{type.label}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <type.icon size={16} color={formData.location_type === type.value ? colors.primary : colors.textSecondary} />
+                      <Text style={[styles.pickerItemText, { color: colors.text }]}>{type.label}</Text>
+                    </View>
+                    <Text style={{ fontSize: 10, color: colors.textTertiary, marginLeft: 24, marginTop: 2 }}>
+                      {getHierarchyHint(type.value)}
+                    </Text>
                   </Pressable>
                 ))}
               </View>
@@ -420,6 +450,9 @@ function LocationModal({
 
             <View style={styles.formGroup}>
               <Text style={[styles.label, { color: colors.text }]}>Parent Location</Text>
+              <Text style={{ fontSize: 10, color: colors.textTertiary, marginBottom: 4 }}>
+                {getHierarchyHint(formData.location_type)}
+              </Text>
               <Pressable
                 style={[styles.pickerButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
                 onPress={() => setShowParentPicker(!showParentPicker)}
@@ -460,7 +493,7 @@ function LocationModal({
                     }}
                   >
                     <Text style={[styles.pickerItemText, { color: colors.text }]}>
-                      {'  '.repeat((loc as any)._depth || 0)}{(loc as any)._depth > 0 ? '└ ' : ''}{loc.name} ({loc.location_code})
+                      {'  '.repeat((loc as any)._depth || 0)}{(loc as any)._depth > 0 ? '└ ' : ''}{loc.name} ({loc.location_code}) — {LOCATION_TYPES.find(t => t.value === loc.location_type)?.label || loc.location_type}
                     </Text>
                   </Pressable>
                 ))}
@@ -758,6 +791,18 @@ export default function AreasScreen() {
         }
       >
         <View style={styles.filterSection}>
+          {/* Hierarchy Guide */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 12, flexWrap: 'wrap' }}>
+            <Text style={{ fontSize: 10, fontWeight: '700', color: colors.textTertiary, letterSpacing: 0.5 }}>HIERARCHY:</Text>
+            {['Organization', 'Facility', 'Building', 'Dept Area', 'Room/Area', 'Equipment'].map((level, i, arr) => (
+              <React.Fragment key={level}>
+                <Text style={{ fontSize: 10, color: i <= 1 ? colors.textTertiary : colors.primary, fontWeight: i > 1 ? '600' : '400' }}>
+                  {level}
+                </Text>
+                {i < arr.length - 1 && <Text style={{ fontSize: 10, color: colors.textTertiary }}>›</Text>}
+              </React.Fragment>
+            ))}
+          </View>
           <Text style={[styles.filterLabel, { color: colors.textSecondary }]}>Filter by Facility</Text>
           <Pressable
             style={[styles.filterButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
