@@ -11,6 +11,7 @@ import { NotificationsProvider } from "@/contexts/NotificationsContext";
 import { OrganizationProvider } from "@/contexts/OrganizationContext";
 import { PushNotificationsProvider } from "@/contexts/PushNotificationsContext";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { RealtimeProvider } from "@/contexts/RealtimeContext";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -53,7 +54,9 @@ export default function RootLayout() {
                   <LicenseProvider>
                     <NotificationsProvider>
                       <PushNotificationsProvider>
+                        <RealtimeProvider>
                          <RootLayoutNav />
+                        </RealtimeProvider>
                       </PushNotificationsProvider>
                      </NotificationsProvider>
                  </LicenseProvider>
