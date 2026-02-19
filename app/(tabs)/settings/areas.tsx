@@ -175,7 +175,7 @@ function LocationModal({
   const [showParentPicker, setShowParentPicker] = useState(false);
   const [showDepartmentPicker, setShowDepartmentPicker] = useState(false);
 
-  // Departments are org-level, show all active ones regardless of facility
+  // Departments are org-level, show all (including legacy per-facility records)
   const filteredDepartments = useMemo(() => {
     return departments.filter((d: any) => d.status === 'active' || !d.status);
   }, [departments]);
@@ -781,11 +781,15 @@ export default function AreasScreen() {
   // Locations ARE facility-specific
   const facilityTree = useMemo(() => {
     const activeFacs = facilities.filter(f => (f as any).active !== false);
-    const allDepts = departments.filter(d => d.status === 'active');
+    const allDepts = departments.filter(d => d.status === 'active' || !d.status);
     return activeFacs.map(fac => {
       const deptEntries = Object.entries(DEPARTMENT_CODES).map(([code, info]) => {
-        const dbDept = allDepts.find(d => d.department_code === code);
-        const locs = dbDept ? (locations || []).filter(l => l.facility_id === fac.id && l.department_id === dbDept.id) : [];
+        // There may be multiple dept records with same code (legacy per-facility records)
+        // Match locations against ANY dept record with this code
+        const matchingDepts = allDepts.filter(d => d.department_code === code);
+        const matchingDeptIds = new Set(matchingDepts.map(d => d.id));
+        const dbDept = matchingDepts[0] || null; // primary record for creating new locations
+        const locs = (locations || []).filter(l => l.facility_id === fac.id && matchingDeptIds.has(l.department_id));
         return { code, name: info.name, color: info.color, dbDept, locs };
       });
       const facLocs = (locations || []).filter(l => l.facility_id === fac.id);
