@@ -41,6 +41,7 @@ import {
 import { useTheme } from '@/contexts/ThemeContext';
 import { useFacilities } from '@/hooks/useFacilities';
 import { useDepartments } from '@/hooks/useDepartments';
+import { DEPARTMENT_CODES, getDepartmentColor, getDepartmentName } from '@/constants/organizationCodes';
 import {
   useLocations,
   useCreateLocation,
@@ -660,6 +661,8 @@ export default function AreasScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedLocation, setSelectedLocation] = useState<LocationWithFacility | null>(null);
   const [collapsedNodes, setCollapsedNodes] = useState<Record<string, boolean>>({});
+  const [collapsedFacs, setCollapsedFacs] = useState<Record<string, boolean>>({});
+  const [collapsedDepts, setCollapsedDepts] = useState<Record<string, boolean>>({});
   const [filterFacility, setFilterFacility] = useState<string | null>(null);
   const [showFilterPicker, setShowFilterPicker] = useState(false);
 
@@ -712,6 +715,23 @@ export default function AreasScreen() {
   const toggleCollapse = useCallback((id: string) => {
     setCollapsedNodes(prev => ({ ...prev, [id]: !prev[id] }));
   }, []);
+
+  // ── Group locations by facility → department ──
+  const facilityTree = useMemo(() => {
+    const activeFacs = facilities.filter(f => (f as any).active !== false);
+    return activeFacs.map(fac => {
+      // Get DB departments for this facility
+      const facDepts = departments.filter(d => d.facility_id === fac.id && d.status === 'active');
+      // Map approved dept codes, show those that exist in DB for this facility
+      const deptEntries = Object.entries(DEPARTMENT_CODES).map(([code, info]) => {
+        const dbDept = facDepts.find(d => d.department_code === code);
+        const locs = dbDept ? (locations || []).filter(l => l.facility_id === fac.id && l.department_id === dbDept.id) : [];
+        return { code, name: info.name, color: info.color, dbDept, locs, enabled: !!dbDept };
+      });
+      const facLocs = (locations || []).filter(l => l.facility_id === fac.id);
+      return { facility: fac, deptEntries, totalLocs: facLocs.length };
+    });
+  }, [facilities, departments, locations]);
 
   const handleAddLocation = useCallback(() => {
     setSelectedLocation(null);
@@ -837,154 +857,246 @@ export default function AreasScreen() {
               <ActivityIndicator size="large" color={colors.primary} />
               <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Loading areas...</Text>
             </View>
-          ) : filteredLocations && filteredLocations.length > 0 ? (
-            filteredLocations.map((location) => {
-              const TypeIcon = getLocationTypeIcon(location.location_type);
-              const depth = (location as any)._depth || 0;
-              const hasChildren = !!(childrenMap[location.id] && childrenMap[location.id].length > 0);
-              const isCollapsed = collapsedNodes[location.id];
-              const childCount = childrenMap[location.id]?.length || 0;
-
-              // Skip items whose ancestor is collapsed
-              if (isHiddenByCollapse(location)) return null;
+          ) : facilityTree.length > 0 ? (
+            facilityTree
+              .filter(ft => !filterFacility || ft.facility.id === filterFacility)
+              .map(({ facility, deptEntries, totalLocs }) => {
+              const facCollapsed = collapsedFacs[facility.id];
+              const enabledDepts = deptEntries.filter(d => d.enabled);
 
               return (
-                <Pressable
-                  key={location.id}
-                  style={[
-                    styles.locationItem,
-                    {
-                      backgroundColor: colors.surface,
-                      borderColor: location.status === 'active' ? colors.border : colors.textTertiary,
-                      opacity: location.status === 'active' ? 1 : 0.7,
-                      marginLeft: depth * 24,
-                    },
-                  ]}
-                  onPress={() => handleEditLocation(location)}
-                >
-                  {/* Collapse/Expand chevron */}
-                  {hasChildren ? (
+                <View key={facility.id} style={{ marginBottom: 10 }}>
+                  {/* ── Facility Header ── */}
+                  <Pressable
+                    onPress={() => setCollapsedFacs(p => ({ ...p, [facility.id]: !p[facility.id] }))}
+                    style={[styles.locationItem, {
+                      backgroundColor: colors.primary + '08',
+                      borderColor: colors.primary + '30',
+                      borderWidth: 1.5,
+                      paddingVertical: 10,
+                    }]}
+                  >
                     <Pressable
-                      onPress={(e) => { e.stopPropagation?.(); toggleCollapse(location.id); }}
+                      onPress={() => setCollapsedFacs(p => ({ ...p, [facility.id]: !p[facility.id] }))}
                       hitSlop={10}
                       style={{ width: 28, height: 28, justifyContent: 'center', alignItems: 'center', marginRight: -4 }}
                     >
-                      {isCollapsed
-                        ? <ChevronRight size={18} color={colors.textSecondary} />
-                        : <ChevronDown size={18} color={colors.textSecondary} />}
+                      {facCollapsed
+                        ? <ChevronRight size={18} color={colors.primary} />
+                        : <ChevronDown size={18} color={colors.primary} />}
                     </Pressable>
-                  ) : (
-                    <View style={{ width: 28, marginRight: -4 }} />
-                  )}
-                  <View
-                    style={[
-                      styles.locationItemIcon,
-                      { backgroundColor: location.status === 'active' ? colors.infoBg : colors.backgroundSecondary },
-                    ]}
-                  >
-                    <TypeIcon size={20} color={location.status === 'active' ? colors.primary : colors.textTertiary} />
-                  </View>
-                  <View style={styles.locationItemContent}>
-                    <View style={styles.locationItemHeader}>
-                      <Text style={[styles.locationItemName, { color: colors.text }]}>{location.name}</Text>
-                      {hasChildren && isCollapsed && (
-                        <View style={{ backgroundColor: colors.primary + '20', borderRadius: 8, paddingHorizontal: 6, paddingVertical: 1, marginLeft: 6 }}>
-                          <Text style={{ fontSize: 10, color: colors.primary, fontWeight: '600' }}>{childCount}</Text>
-                        </View>
-                      )}
-                      <View style={[styles.statusBadge, { backgroundColor: getStatusColor(location.status) + '20' }]}>
-                        <View style={[styles.statusDotSmall, { backgroundColor: getStatusColor(location.status) }]} />
-                        <Text style={[styles.statusText, { color: getStatusColor(location.status) }]}>
-                          {getStatusLabel(location.status)}
-                        </Text>
-                      </View>
+                    <View style={[styles.locationItemIcon, { backgroundColor: colors.primary + '20' }]}>
+                      <Building2 size={20} color={colors.primary} />
                     </View>
-                    <Text style={[styles.locationItemCode, { color: colors.textSecondary }]}>
-                      {location.location_code} • {LOCATION_TYPES.find((t) => t.value === location.location_type)?.label}
-                    </Text>
-                    {(location.facility || location.parent_location_id) && (
-                      <Text style={[styles.locationItemFacility, { color: colors.textTertiary }]} numberOfLines={1}>
-                        {[
-                          location.facility?.name,
-                          ...((() => {
-                            const chain: string[] = [];
-                            let pid = location.parent_location_id;
-                            while (pid) {
-                              const parent = (locations || []).find(l => l.id === pid);
-                              if (parent) { chain.unshift(parent.name); pid = parent.parent_location_id; } else break;
-                            }
-                            return chain;
-                          })()),
-                        ].filter(Boolean).join(' › ')}
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>{facility.name}</Text>
+                      <Text style={{ fontSize: 10, color: colors.textTertiary }}>
+                        {(facility as any).facility_code} • {enabledDepts.length} dept{enabledDepts.length !== 1 ? 's' : ''} • {totalLocs} location{totalLocs !== 1 ? 's' : ''}
                       </Text>
-                    )}
-                    <View style={styles.attributeTags}>
-                      {location.is_production && (
-                        <View style={[styles.attributeTag, { backgroundColor: colors.primary + '15' }]}>
-                          <Activity size={10} color={colors.primary} />
-                          <Text style={[styles.attributeTagText, { color: colors.primary }]}>Production</Text>
-                        </View>
-                      )}
-                      {location.is_storage && (
-                        <View style={[styles.attributeTag, { backgroundColor: colors.info + '15' }]}>
-                          <Package size={10} color={colors.info} />
-                          <Text style={[styles.attributeTagText, { color: colors.info }]}>Storage</Text>
-                        </View>
-                      )}
-                      {location.is_hazardous && (
-                        <View style={[styles.attributeTag, { backgroundColor: colors.error + '15' }]}>
-                          <AlertCircle size={10} color={colors.error} />
-                          <Text style={[styles.attributeTagText, { color: colors.error }]}>Hazardous</Text>
-                        </View>
-                      )}
-                      {location.is_restricted && (
-                        <View style={[styles.attributeTag, { backgroundColor: colors.warning + '15' }]}>
-                          <Shield size={10} color={colors.warning} />
-                          <Text style={[styles.attributeTagText, { color: colors.warning }]}>Restricted</Text>
-                        </View>
-                      )}
-                      {location.max_occupancy && (
-                        <View style={[styles.attributeTag, { backgroundColor: colors.backgroundSecondary }]}>
-                          <Users size={10} color={colors.textSecondary} />
-                          <Text style={[styles.attributeTagText, { color: colors.textSecondary }]}>
-                            Max {location.max_occupancy}
-                          </Text>
-                        </View>
-                      )}
                     </View>
-                  </View>
-                  <View style={styles.locationItemActions}>
-                    <Pressable
-                      style={[styles.actionButton, { backgroundColor: colors.backgroundSecondary }]}
-                      onPress={() => handleToggleStatus(location)}
-                      hitSlop={8}
-                    >
-                      <Power size={16} color={location.status === 'active' ? colors.success : colors.textTertiary} />
-                    </Pressable>
-                    <Pressable
-                      style={[styles.actionButton, { backgroundColor: colors.backgroundSecondary }]}
-                      onPress={() => handleEditLocation(location)}
-                      hitSlop={8}
-                    >
-                      <Edit2 size={16} color={colors.primary} />
-                    </Pressable>
-                    <Pressable
-                      style={[styles.actionButton, { backgroundColor: colors.error + '15' }]}
-                      onPress={() => handleDeleteLocation(location)}
-                      hitSlop={8}
-                    >
-                      <Trash2 size={16} color={colors.error} />
-                    </Pressable>
-                  </View>
-                </Pressable>
+                  </Pressable>
+
+                  {/* ── Departments under this facility ── */}
+                  {!facCollapsed && deptEntries.map(de => {
+                    if (!de.enabled) return null;
+                    const dKey = `${facility.id}-${de.code}`;
+                    const deptCollapsed = collapsedDepts[dKey];
+                    const deptColor = de.color || '#6B7280';
+
+                    // Build tree-ordered locations for this dept
+                    const buildDeptTree = (parentId: string | null, depth: number): Array<LocationWithFacility & { _depth: number }> => {
+                      const kids = de.locs
+                        .filter(l => (l.parent_location_id || null) === parentId)
+                        .sort((a, b) => a.name.localeCompare(b.name));
+                      const result: Array<LocationWithFacility & { _depth: number }> = [];
+                      for (const kid of kids) {
+                        result.push({ ...kid, _depth: depth });
+                        result.push(...buildDeptTree(kid.id, depth + 1));
+                      }
+                      return result;
+                    };
+                    const treeLocations = buildDeptTree(null, 0);
+
+                    return (
+                      <View key={dKey}>
+                        {/* Department Row */}
+                        <Pressable
+                          onPress={() => setCollapsedDepts(p => ({ ...p, [dKey]: !p[dKey] }))}
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: 8,
+                            paddingVertical: 8,
+                            paddingHorizontal: 10,
+                            marginLeft: 24,
+                            marginTop: 2,
+                            borderRadius: 8,
+                            backgroundColor: deptColor + '08',
+                            borderWidth: 1,
+                            borderColor: deptColor + '25',
+                          }}
+                        >
+                          <View style={{ width: 22, alignItems: 'center' }}>
+                            {deptCollapsed
+                              ? <ChevronRight size={16} color={deptColor} />
+                              : <ChevronDown size={16} color={deptColor} />}
+                          </View>
+                          <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: deptColor }} />
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ fontSize: 13, fontWeight: '600', color: colors.text }}>{de.name}</Text>
+                            <Text style={{ fontSize: 10, color: colors.textTertiary }}>
+                              {de.code} • {de.locs.length} location{de.locs.length !== 1 ? 's' : ''}
+                            </Text>
+                          </View>
+                        </Pressable>
+
+                        {/* Locations under this department */}
+                        {!deptCollapsed && treeLocations.map((location) => {
+                          const TypeIcon = getLocationTypeIcon(location.location_type);
+                          const depth = location._depth || 0;
+                          const hasChildren = !!(childrenMap[location.id] && childrenMap[location.id].length > 0);
+                          const isCollapsed = collapsedNodes[location.id];
+                          const childCount = childrenMap[location.id]?.length || 0;
+
+                          if (isHiddenByCollapse(location)) return null;
+
+                          return (
+                            <Pressable
+                              key={location.id}
+                              style={[
+                                styles.locationItem,
+                                {
+                                  backgroundColor: colors.surface,
+                                  borderColor: location.status === 'active' ? colors.border : colors.textTertiary,
+                                  opacity: location.status === 'active' ? 1 : 0.7,
+                                  marginLeft: 48 + depth * 24,
+                                },
+                              ]}
+                              onPress={() => handleEditLocation(location)}
+                            >
+                              {hasChildren ? (
+                                <Pressable
+                                  onPress={(e) => { e.stopPropagation?.(); toggleCollapse(location.id); }}
+                                  hitSlop={10}
+                                  style={{ width: 28, height: 28, justifyContent: 'center', alignItems: 'center', marginRight: -4 }}
+                                >
+                                  {isCollapsed
+                                    ? <ChevronRight size={18} color={colors.textSecondary} />
+                                    : <ChevronDown size={18} color={colors.textSecondary} />}
+                                </Pressable>
+                              ) : (
+                                <View style={{ width: 28, marginRight: -4 }} />
+                              )}
+                              <View
+                                style={[
+                                  styles.locationItemIcon,
+                                  { backgroundColor: location.status === 'active' ? deptColor + '18' : colors.backgroundSecondary },
+                                ]}
+                              >
+                                <TypeIcon size={20} color={location.status === 'active' ? deptColor : colors.textTertiary} />
+                              </View>
+                              <View style={styles.locationItemContent}>
+                                <View style={styles.locationItemHeader}>
+                                  <Text style={[styles.locationItemName, { color: colors.text }]}>{location.name}</Text>
+                                  {hasChildren && isCollapsed && (
+                                    <View style={{ backgroundColor: deptColor + '20', borderRadius: 8, paddingHorizontal: 6, paddingVertical: 1, marginLeft: 6 }}>
+                                      <Text style={{ fontSize: 10, color: deptColor, fontWeight: '600' }}>{childCount}</Text>
+                                    </View>
+                                  )}
+                                  <View style={[styles.statusBadge, { backgroundColor: getStatusColor(location.status) + '20' }]}>
+                                    <View style={[styles.statusDotSmall, { backgroundColor: getStatusColor(location.status) }]} />
+                                    <Text style={[styles.statusText, { color: getStatusColor(location.status) }]}>
+                                      {getStatusLabel(location.status)}
+                                    </Text>
+                                  </View>
+                                </View>
+                                <Text style={[styles.locationItemCode, { color: colors.textSecondary }]}>
+                                  {location.location_code} • {LOCATION_TYPES.find((t) => t.value === location.location_type)?.label}
+                                </Text>
+                                <View style={styles.attributeTags}>
+                                  {location.is_production && (
+                                    <View style={[styles.attributeTag, { backgroundColor: colors.primary + '15' }]}>
+                                      <Activity size={10} color={colors.primary} />
+                                      <Text style={[styles.attributeTagText, { color: colors.primary }]}>Production</Text>
+                                    </View>
+                                  )}
+                                  {location.is_storage && (
+                                    <View style={[styles.attributeTag, { backgroundColor: colors.info + '15' }]}>
+                                      <Package size={10} color={colors.info} />
+                                      <Text style={[styles.attributeTagText, { color: colors.info }]}>Storage</Text>
+                                    </View>
+                                  )}
+                                  {location.is_hazardous && (
+                                    <View style={[styles.attributeTag, { backgroundColor: colors.error + '15' }]}>
+                                      <AlertCircle size={10} color={colors.error} />
+                                      <Text style={[styles.attributeTagText, { color: colors.error }]}>Hazardous</Text>
+                                    </View>
+                                  )}
+                                  {location.is_restricted && (
+                                    <View style={[styles.attributeTag, { backgroundColor: colors.warning + '15' }]}>
+                                      <Shield size={10} color={colors.warning} />
+                                      <Text style={[styles.attributeTagText, { color: colors.warning }]}>Restricted</Text>
+                                    </View>
+                                  )}
+                                  {location.max_occupancy && (
+                                    <View style={[styles.attributeTag, { backgroundColor: colors.backgroundSecondary }]}>
+                                      <Users size={10} color={colors.textSecondary} />
+                                      <Text style={[styles.attributeTagText, { color: colors.textSecondary }]}>
+                                        Max {location.max_occupancy}
+                                      </Text>
+                                    </View>
+                                  )}
+                                </View>
+                              </View>
+                              <View style={styles.locationItemActions}>
+                                <Pressable
+                                  style={[styles.actionButton, { backgroundColor: colors.backgroundSecondary }]}
+                                  onPress={() => handleToggleStatus(location)}
+                                  hitSlop={8}
+                                >
+                                  <Power size={16} color={location.status === 'active' ? colors.success : colors.textTertiary} />
+                                </Pressable>
+                                <Pressable
+                                  style={[styles.actionButton, { backgroundColor: colors.backgroundSecondary }]}
+                                  onPress={() => handleEditLocation(location)}
+                                  hitSlop={8}
+                                >
+                                  <Edit2 size={16} color={colors.primary} />
+                                </Pressable>
+                                <Pressable
+                                  style={[styles.actionButton, { backgroundColor: colors.error + '15' }]}
+                                  onPress={() => handleDeleteLocation(location)}
+                                  hitSlop={8}
+                                >
+                                  <Trash2 size={16} color={colors.error} />
+                                </Pressable>
+                              </View>
+                            </Pressable>
+                          );
+                        })}
+
+                        {/* Empty dept placeholder */}
+                        {!deptCollapsed && de.locs.length === 0 && (
+                          <Pressable
+                            onPress={handleAddLocation}
+                            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginLeft: 48, marginVertical: 4, paddingVertical: 8, borderRadius: 7, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.border }}
+                          >
+                            <Plus size={13} color={colors.textTertiary} />
+                            <Text style={{ fontSize: 11, color: colors.textTertiary }}>Add location to {de.name}</Text>
+                          </Pressable>
+                        )}
+                      </View>
+                    );
+                  })}
+                </View>
               );
             })
           ) : (
             <View style={[styles.emptyState, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <MapPin size={40} color={colors.textTertiary} />
-              <Text style={[styles.emptyTitle, { color: colors.text }]}>No Areas/Locations</Text>
+              <Text style={[styles.emptyTitle, { color: colors.text }]}>No Facilities Found</Text>
               <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
-                Add physical areas and locations within your facilities to organize equipment, materials, and operations.
+                Create facilities in Settings → Facilities, then add departments and locations here.
               </Text>
               <Pressable
                 style={[styles.emptyButton, { backgroundColor: colors.primary }]}
