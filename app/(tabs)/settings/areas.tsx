@@ -175,10 +175,10 @@ function LocationModal({
   const [showParentPicker, setShowParentPicker] = useState(false);
   const [showDepartmentPicker, setShowDepartmentPicker] = useState(false);
 
+  // Departments are org-level, show all active ones regardless of facility
   const filteredDepartments = useMemo(() => {
-    if (!formData.facility_id) return departments;
-    return departments.filter((d) => d.facility_id === formData.facility_id || !d.facility_id);
-  }, [departments, formData.facility_id]);
+    return departments.filter((d: any) => d.status === 'active' || !d.status);
+  }, [departments]);
 
   const filteredParentLocations = useMemo(() => {
     if (!formData.facility_id) return [];
@@ -777,34 +777,33 @@ export default function AreasScreen() {
   }, []);
 
   // ── Group locations by facility → department ──
+  // Departments are ORG-LEVEL (not per-facility), so show all under every facility
+  // Locations ARE facility-specific
   const facilityTree = useMemo(() => {
     const activeFacs = facilities.filter(f => (f as any).active !== false);
+    const allDepts = departments.filter(d => d.status === 'active');
     return activeFacs.map(fac => {
-      // Get DB departments for this facility
-      const facDepts = departments.filter(d => d.facility_id === fac.id && d.status === 'active');
-      // Map approved dept codes, show those that exist in DB for this facility
       const deptEntries = Object.entries(DEPARTMENT_CODES).map(([code, info]) => {
-        const dbDept = facDepts.find(d => d.department_code === code);
+        const dbDept = allDepts.find(d => d.department_code === code);
         const locs = dbDept ? (locations || []).filter(l => l.facility_id === fac.id && l.department_id === dbDept.id) : [];
-        return { code, name: info.name, color: info.color, dbDept, locs, enabled: !!dbDept };
+        return { code, name: info.name, color: info.color, dbDept, locs };
       });
       const facLocs = (locations || []).filter(l => l.facility_id === fac.id);
       return { facility: fac, deptEntries, totalLocs: facLocs.length };
     });
   }, [facilities, departments, locations]);
 
-  // ── Auto-create missing department records for every facility ──
+  // ── Auto-create missing department records (org-level, not per-facility) ──
   const syncingRef = useRef(false);
   useEffect(() => {
     if (syncingRef.current || facilities.length === 0) return;
-    const missing: Array<{ facilityId: string; code: string; name: string; color: string }> = [];
-    for (const fac of facilities) {
-      if ((fac as any).active === false) continue;
-      const facDepts = departments.filter(d => d.facility_id === fac.id);
-      for (const [code, info] of Object.entries(DEPARTMENT_CODES)) {
-        if (!facDepts.find(d => d.department_code === code)) {
-          missing.push({ facilityId: fac.id, code, name: info.name, color: info.color });
-        }
+    // Departments are org-level with unique constraint on (org_id, dept_code)
+    // Only create codes that don't exist at all
+    const existingCodes = new Set(departments.map(d => d.department_code));
+    const missing: Array<{ code: string; name: string; color: string }> = [];
+    for (const [code, info] of Object.entries(DEPARTMENT_CODES)) {
+      if (!existingCodes.has(code)) {
+        missing.push({ code, name: info.name, color: info.color });
       }
     }
     if (missing.length === 0) return;
@@ -816,7 +815,7 @@ export default function AreasScreen() {
           await createDepartment.mutateAsync({
             name: m.name,
             department_code: m.code,
-            facility_id: m.facilityId,
+            facility_id: facilities[0]?.id || null,
             color: m.color,
             gl_account: deptInfo?.glAccountPrefix ? deptInfo.glAccountPrefix + '-001' : '',
             cost_center: deptInfo?.costCenterPrefix ? deptInfo.costCenterPrefix + '-001' : '',
@@ -825,9 +824,8 @@ export default function AreasScreen() {
             is_support: ['1000', '1006', '1009'].includes(m.code),
           } as any);
         } catch (e: any) {
-          // Duplicate is fine, skip
           if (!e.message?.includes('duplicate') && !e.message?.includes('23505')) {
-            console.warn('[Areas] Failed to auto-create dept', m.code, 'for facility', m.facilityId, e.message);
+            console.warn('[Areas] Failed to auto-create dept', m.code, e.message);
           }
         }
       }
