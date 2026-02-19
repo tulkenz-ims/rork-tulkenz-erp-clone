@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -734,52 +734,52 @@ export default function AreasScreen() {
     });
   }, [facilities, departments, locations]);
 
+  // ── Auto-create missing department records for every facility ──
+  const syncingRef = useRef(false);
+  useEffect(() => {
+    if (syncingRef.current || facilities.length === 0) return;
+    const missing: Array<{ facilityId: string; code: string; name: string; color: string }> = [];
+    for (const fac of facilities) {
+      if ((fac as any).active === false) continue;
+      const facDepts = departments.filter(d => d.facility_id === fac.id);
+      for (const [code, info] of Object.entries(DEPARTMENT_CODES)) {
+        if (!facDepts.find(d => d.department_code === code)) {
+          missing.push({ facilityId: fac.id, code, name: info.name, color: info.color });
+        }
+      }
+    }
+    if (missing.length === 0) return;
+    syncingRef.current = true;
+    (async () => {
+      for (const m of missing) {
+        try {
+          const deptInfo = DEPARTMENT_CODES[m.code];
+          await createDepartment.mutateAsync({
+            name: m.name,
+            department_code: m.code,
+            facility_id: m.facilityId,
+            color: m.color,
+            gl_account: deptInfo?.glAccountPrefix ? deptInfo.glAccountPrefix + '-001' : '',
+            cost_center: deptInfo?.costCenterPrefix ? deptInfo.costCenterPrefix + '-001' : '',
+            status: 'active',
+            is_production: ['1003'].includes(m.code),
+            is_support: ['1000', '1006', '1009'].includes(m.code),
+          } as any);
+        } catch (e: any) {
+          // Duplicate is fine, skip
+          if (!e.message?.includes('duplicate') && !e.message?.includes('23505')) {
+            console.warn('[Areas] Failed to auto-create dept', m.code, 'for facility', m.facilityId, e.message);
+          }
+        }
+      }
+      syncingRef.current = false;
+    })();
+  }, [facilities, departments, createDepartment]);
+
   const handleAddLocation = useCallback(() => {
     setSelectedLocation(null);
     setModalVisible(true);
   }, []);
-
-  // Auto-create department for facility if it doesn't exist, then open add location modal
-  const [creatingDept, setCreatingDept] = useState<string | null>(null);
-  const handleEnsureDeptAndAdd = useCallback(async (facilityId: string, deptCode: string, deptName: string, deptColor: string) => {
-    const key = `${facilityId}-${deptCode}`;
-    const existing = departments.find(d => d.facility_id === facilityId && d.department_code === deptCode);
-    if (existing) {
-      // Dept exists, just open add modal
-      setSelectedLocation(null);
-      setModalVisible(true);
-      return;
-    }
-    // Create the department first
-    setCreatingDept(key);
-    try {
-      const deptInfo = DEPARTMENT_CODES[deptCode];
-      await createDepartment.mutateAsync({
-        name: deptName,
-        department_code: deptCode,
-        facility_id: facilityId,
-        color: deptColor,
-        gl_account: deptInfo?.glAccountPrefix ? deptInfo.glAccountPrefix + '-001' : '',
-        cost_center: deptInfo?.costCenterPrefix ? deptInfo.costCenterPrefix + '-001' : '',
-        status: 'active',
-        is_production: ['1003'].includes(deptCode),
-        is_support: ['1000', '1006', '1009'].includes(deptCode),
-      } as any);
-      // Now open the add modal
-      setSelectedLocation(null);
-      setModalVisible(true);
-    } catch (error: any) {
-      if (error.message?.includes('duplicate') || error.message?.includes('23505')) {
-        // Already exists (race condition), just open modal
-        setSelectedLocation(null);
-        setModalVisible(true);
-      } else {
-        Alert.alert('Error', error.message || 'Failed to create department.');
-      }
-    } finally {
-      setCreatingDept(null);
-    }
-  }, [departments, createDepartment]);
 
   const handleEditLocation = useCallback((location: LocationWithFacility) => {
     setSelectedLocation(location);
@@ -905,8 +905,6 @@ export default function AreasScreen() {
               .filter(ft => !filterFacility || ft.facility.id === filterFacility)
               .map(({ facility, deptEntries, totalLocs }) => {
               const facCollapsed = collapsedFacs[facility.id];
-              const enabledDepts = deptEntries.filter(d => d.enabled);
-
               return (
                 <View key={facility.id} style={{ marginBottom: 10 }}>
                   {/* ── Facility Header ── */}
@@ -934,7 +932,7 @@ export default function AreasScreen() {
                     <View style={{ flex: 1 }}>
                       <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>{facility.name}</Text>
                       <Text style={{ fontSize: 10, color: colors.textTertiary }}>
-                        {(facility as any).facility_code} • {enabledDepts.length}/{deptEntries.length} depts active • {totalLocs} location{totalLocs !== 1 ? 's' : ''}
+                        {(facility as any).facility_code} • {deptEntries.length} depts • {totalLocs} location{totalLocs !== 1 ? 's' : ''}
                       </Text>
                     </View>
                   </Pressable>
@@ -944,7 +942,6 @@ export default function AreasScreen() {
                     const dKey = `${facility.id}-${de.code}`;
                     const deptCollapsed = collapsedDepts[dKey];
                     const deptColor = de.color || '#6B7280';
-                    const isDeptCreating = creatingDept === dKey;
 
                     // Build tree-ordered locations for this dept
                     const buildDeptTree = (parentId: string | null, depth: number): Array<LocationWithFacility & { _depth: number }> => {
@@ -964,7 +961,7 @@ export default function AreasScreen() {
                       <View key={dKey}>
                         {/* Department Row */}
                         <Pressable
-                          onPress={() => de.enabled ? setCollapsedDepts(p => ({ ...p, [dKey]: !p[dKey] })) : handleEnsureDeptAndAdd(facility.id, de.code, de.name, de.color)}
+                          onPress={() => setCollapsedDepts(p => ({ ...p, [dKey]: !p[dKey] }))}
                           style={{
                             flexDirection: 'row',
                             alignItems: 'center',
@@ -974,36 +971,27 @@ export default function AreasScreen() {
                             marginLeft: 24,
                             marginTop: 2,
                             borderRadius: 8,
-                            backgroundColor: de.enabled ? deptColor + '08' : colors.backgroundSecondary,
+                            backgroundColor: deptColor + '08',
                             borderWidth: 1,
-                            borderColor: de.enabled ? deptColor + '25' : colors.border,
-                            opacity: de.enabled ? 1 : 0.6,
+                            borderColor: deptColor + '25',
                           }}
                         >
                           <View style={{ width: 22, alignItems: 'center' }}>
-                            {de.enabled ? (
-                              deptCollapsed
-                                ? <ChevronRight size={16} color={deptColor} />
-                                : <ChevronDown size={16} color={deptColor} />
-                            ) : (
-                              isDeptCreating
-                                ? <ActivityIndicator size="small" color={deptColor} />
-                                : <Plus size={14} color={colors.textTertiary} />
-                            )}
+                            {deptCollapsed
+                              ? <ChevronRight size={16} color={deptColor} />
+                              : <ChevronDown size={16} color={deptColor} />}
                           </View>
-                          <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: de.enabled ? deptColor : deptColor + '50' }} />
+                          <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: deptColor }} />
                           <View style={{ flex: 1 }}>
-                            <Text style={{ fontSize: 13, fontWeight: '600', color: de.enabled ? colors.text : colors.textTertiary }}>{de.name}</Text>
+                            <Text style={{ fontSize: 13, fontWeight: '600', color: colors.text }}>{de.name}</Text>
                             <Text style={{ fontSize: 10, color: colors.textTertiary }}>
-                              {de.enabled
-                                ? `${de.code} • ${de.locs.length} location${de.locs.length !== 1 ? 's' : ''}`
-                                : `${de.code} • Tap to activate`}
+                              {de.code} • {de.locs.length} location{de.locs.length !== 1 ? 's' : ''}
                             </Text>
                           </View>
                         </Pressable>
 
                         {/* Locations under this department */}
-                        {de.enabled && !deptCollapsed && treeLocations.map((location) => {
+                        {!deptCollapsed && de.dbDept && treeLocations.map((location) => {
                           const TypeIcon = getLocationTypeIcon(location.location_type);
                           const depth = location._depth || 0;
                           const hasChildren = !!(childrenMap[location.id] && childrenMap[location.id].length > 0);
@@ -1128,7 +1116,7 @@ export default function AreasScreen() {
                         })}
 
                         {/* Empty dept placeholder */}
-                        {de.enabled && !deptCollapsed && de.locs.length === 0 && (
+                        {!deptCollapsed && de.dbDept && de.locs.length === 0 && (
                           <Pressable
                             onPress={handleAddLocation}
                             style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginLeft: 48, marginVertical: 4, paddingVertical: 8, borderRadius: 7, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.border }}
