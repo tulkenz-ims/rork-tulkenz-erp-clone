@@ -32,6 +32,7 @@ import {
   TreePine,
   CircleDot,
   ChevronDown,
+  ChevronRight,
   Thermometer,
   Shield,
   Users,
@@ -658,6 +659,7 @@ export default function AreasScreen() {
 
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedLocation, setSelectedLocation] = useState<LocationWithFacility | null>(null);
+  const [collapsedNodes, setCollapsedNodes] = useState<Record<string, boolean>>({});
   const [filterFacility, setFilterFacility] = useState<string | null>(null);
   const [showFilterPicker, setShowFilterPicker] = useState(false);
 
@@ -683,6 +685,33 @@ export default function AreasScreen() {
   }, [locations, filterFacility]);
 
   const selectedFilterFacility = facilities.find((f) => f.id === filterFacility);
+
+  // Check if a location has children in the current list
+  const childrenMap = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    (locations || []).forEach(l => {
+      if (l.parent_location_id) {
+        if (!map[l.parent_location_id]) map[l.parent_location_id] = [];
+        map[l.parent_location_id].push(l.id);
+      }
+    });
+    return map;
+  }, [locations]);
+
+  // Check if any ancestor is collapsed
+  const isHiddenByCollapse = useCallback((location: LocationWithFacility) => {
+    let pid = location.parent_location_id;
+    while (pid) {
+      if (collapsedNodes[pid]) return true;
+      const parent = (locations || []).find(l => l.id === pid);
+      pid = parent?.parent_location_id || null;
+    }
+    return false;
+  }, [collapsedNodes, locations]);
+
+  const toggleCollapse = useCallback((id: string) => {
+    setCollapsedNodes(prev => ({ ...prev, [id]: !prev[id] }));
+  }, []);
 
   const handleAddLocation = useCallback(() => {
     setSelectedLocation(null);
@@ -812,6 +841,13 @@ export default function AreasScreen() {
             filteredLocations.map((location) => {
               const TypeIcon = getLocationTypeIcon(location.location_type);
               const depth = (location as any)._depth || 0;
+              const hasChildren = !!(childrenMap[location.id] && childrenMap[location.id].length > 0);
+              const isCollapsed = collapsedNodes[location.id];
+              const childCount = childrenMap[location.id]?.length || 0;
+
+              // Skip items whose ancestor is collapsed
+              if (isHiddenByCollapse(location)) return null;
+
               return (
                 <Pressable
                   key={location.id}
@@ -826,6 +862,20 @@ export default function AreasScreen() {
                   ]}
                   onPress={() => handleEditLocation(location)}
                 >
+                  {/* Collapse/Expand chevron */}
+                  {hasChildren ? (
+                    <Pressable
+                      onPress={(e) => { e.stopPropagation?.(); toggleCollapse(location.id); }}
+                      hitSlop={10}
+                      style={{ width: 28, height: 28, justifyContent: 'center', alignItems: 'center', marginRight: -4 }}
+                    >
+                      {isCollapsed
+                        ? <ChevronRight size={18} color={colors.textSecondary} />
+                        : <ChevronDown size={18} color={colors.textSecondary} />}
+                    </Pressable>
+                  ) : (
+                    <View style={{ width: 28, marginRight: -4 }} />
+                  )}
                   <View
                     style={[
                       styles.locationItemIcon,
@@ -837,6 +887,11 @@ export default function AreasScreen() {
                   <View style={styles.locationItemContent}>
                     <View style={styles.locationItemHeader}>
                       <Text style={[styles.locationItemName, { color: colors.text }]}>{location.name}</Text>
+                      {hasChildren && isCollapsed && (
+                        <View style={{ backgroundColor: colors.primary + '20', borderRadius: 8, paddingHorizontal: 6, paddingVertical: 1, marginLeft: 6 }}>
+                          <Text style={{ fontSize: 10, color: colors.primary, fontWeight: '600' }}>{childCount}</Text>
+                        </View>
+                      )}
                       <View style={[styles.statusBadge, { backgroundColor: getStatusColor(location.status) + '20' }]}>
                         <View style={[styles.statusDotSmall, { backgroundColor: getStatusColor(location.status) }]} />
                         <Text style={[styles.statusText, { color: getStatusColor(location.status) }]}>
