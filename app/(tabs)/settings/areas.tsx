@@ -420,7 +420,8 @@ function LocationModal({
             </View>
 
             {showParentPicker && (
-              <View style={[styles.pickerDropdown, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <View style={[styles.pickerDropdown, { backgroundColor: colors.surface, borderColor: colors.border, maxHeight: 250 }]}>
+                <ScrollView nestedScrollEnabled={true} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={true}>
                 <Pressable
                   style={[
                     styles.pickerItem,
@@ -450,6 +451,7 @@ function LocationModal({
                     </Text>
                   </Pressable>
                 ))}
+                </ScrollView>
               </View>
             )}
 
@@ -1316,7 +1318,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     borderRadius: 8,
     borderWidth: 1,
-    maxHeight: 200,
+    maxHeight: 280,
     overflow: 'hidden',
   },
   pickerItem: {
