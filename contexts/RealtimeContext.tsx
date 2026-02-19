@@ -418,6 +418,7 @@ export function RealtimeProvider({ children, disabled = false }: RealtimeProvide
     let connectedCount = 0;
 
     const handleChange = (table: string) => {
+      console.log(`[Realtime] 📡 Change detected on: ${table}`);
       // Debounce per table
       if (debounceTimers.current[table]) {
         clearTimeout(debounceTimers.current[table]);
@@ -425,6 +426,7 @@ export function RealtimeProvider({ children, disabled = false }: RealtimeProvide
       debounceTimers.current[table] = setTimeout(() => {
         const queryKeys = TABLE_QUERY_KEYS[table];
         if (queryKeys) {
+          console.log(`[Realtime] 🔄 Invalidating ${queryKeys.length} queries for ${table}:`, queryKeys);
           queryKeys.forEach(key => {
             queryClient.invalidateQueries({ queryKey: [key] });
           });
@@ -445,7 +447,8 @@ export function RealtimeProvider({ children, disabled = false }: RealtimeProvide
         );
       }
 
-      channel.subscribe((status) => {
+      channel.subscribe((status, err) => {
+        console.log(`[Realtime] Channel ${groupName}: ${status}`, err ? `Error: ${err.message}` : '');
         if (status === 'SUBSCRIBED') {
           connectedCount++;
           setActiveCount(connectedCount);
