@@ -10,1066 +10,1247 @@ import {
   RefreshControl,
   Alert,
   ActivityIndicator,
+  Platform,
+  Switch,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   Plus,
   X,
-  FileX,
-  AlertCircle,
-  CheckCircle,
-  Search,
+  FileText,
+  Camera,
   ChevronRight,
-  Calendar,
-  User,
-  MapPin,
+  ChevronDown,
+  Save,
+  Send,
+  Eye,
+  Trash2,
+  Edit3,
+  List,
   Clock,
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useUser } from '@/contexts/UserContext';
-import { useSupabaseQuality, NCRRecord, NCRStatus, NCRSeverity, NCRSource, NCRType } from '@/hooks/useSupabaseQuality';
+import { useOrganization } from '@/contexts/OrganizationContext';
+import PinSignatureCapture from '@/components/PinSignatureCapture';
+import { SignatureVerification } from '@/hooks/usePinSignature';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/lib/supabase';
 import * as Haptics from 'expo-haptics';
-import TaskFeedPostLinker from '@/components/TaskFeedPostLinker';
-import { useLinkFormToPost } from '@/hooks/useTaskFeedFormLinks';
 
-const SEVERITY_CONFIG: Record<NCRSeverity, { label: string; color: string; bgColor: string }> = {
-  minor: { label: 'Minor', color: '#F59E0B', bgColor: 'rgba(245, 158, 11, 0.15)' },
-  major: { label: 'Major', color: '#EF4444', bgColor: 'rgba(239, 68, 68, 0.15)' },
-  critical: { label: 'Critical', color: '#DC2626', bgColor: 'rgba(220, 38, 38, 0.2)' },
-};
+// ─── COLORS matching the paper form ────────────────────────────
+const FORM_BLUE = '#4A90D9';
+const FORM_HEADER_BG = '#D6E9F8';
+const FORM_BORDER = '#000000';
+const FORM_SECTION_BG = '#5B9BD5';
+const FORM_LABEL_BG = '#E8F0FE';
+const FORM_WHITE = '#FFFFFF';
+const FORM_GRAY_TEXT = '#444444';
 
-const STATUS_CONFIG: Record<NCRStatus, { label: string; color: string; icon: typeof AlertCircle }> = {
-  open: { label: 'Open', color: '#EF4444', icon: AlertCircle },
-  investigation: { label: 'Investigation', color: '#F59E0B', icon: Search },
-  containment: { label: 'Containment', color: '#8B5CF6', icon: Clock },
-  root_cause: { label: 'Root Cause', color: '#EC4899', icon: Search },
-  corrective_action: { label: 'Corrective Action', color: '#3B82F6', icon: Clock },
-  verification: { label: 'Verification', color: '#06B6D4', icon: CheckCircle },
-  closed: { label: 'Closed', color: '#10B981', icon: CheckCircle },
-  rejected: { label: 'Rejected', color: '#6B7280', icon: X },
-};
-
-const NCR_TYPES: { value: NCRType; label: string }[] = [
-  { value: 'product', label: 'Product' },
-  { value: 'process', label: 'Process' },
-  { value: 'supplier', label: 'Supplier' },
-  { value: 'customer', label: 'Customer' },
-  { value: 'internal', label: 'Internal' },
-  { value: 'regulatory', label: 'Regulatory' },
+// ─── NCR Categories ────────────────────────────────────────────
+const NCR_CATEGORIES = [
+  'Product Non-Conformance',
+  'Process Non-Conformance',
+  'Supplier Non-Conformance',
+  'Material Non-Conformance',
+  'Equipment Non-Conformance',
+  'Documentation Non-Conformance',
+  'Regulatory Non-Conformance',
+  'Completely Remove',
+  'Other',
 ];
 
-const NCR_SOURCES: { value: NCRSource; label: string }[] = [
-  { value: 'incoming_inspection', label: 'Incoming Inspection' },
-  { value: 'in_process', label: 'In-Process' },
-  { value: 'final_inspection', label: 'Final Inspection' },
-  { value: 'customer_complaint', label: 'Customer Complaint' },
-  { value: 'audit', label: 'Audit' },
-  { value: 'supplier', label: 'Supplier' },
-  { value: 'internal', label: 'Internal' },
-  { value: 'other', label: 'Other' },
-];
+// ─── Form Data Interface ───────────────────────────────────────
+interface NCRFormData {
+  // Section 1: Project Info
+  project_package: string;
+  item_component_no: string;
+  specification_reference_no: string;
+  // Contractor Info
+  contractor_location: string;
+  contractor_person_in_charge: string;
+  contractor_phone: string;
+  contractor_email: string;
+  // Supplier Info
+  supplier_location: string;
+  supplier_person_in_charge: string;
+  supplier_phone: string;
+  supplier_email: string;
+  // Section 2
+  description_of_non_conformity: string;
+  non_conformity_category: string;
+  recommendation_by_originator: string;
+  project_time_delay: boolean;
+  expected_delay_estimate: string;
+  contractors_involved: string;
+  // Section 3
+  outcome_of_investigation: string;
+}
 
-const LOCATIONS = ['Production Line A', 'Production Line B', 'Packaging Line 1', 'Packaging Line 2', 'Mixing Area', 'Cold Storage', 'Receiving', 'Warehouse'];
+const EMPTY_FORM: NCRFormData = {
+  project_package: '',
+  item_component_no: '',
+  specification_reference_no: '',
+  contractor_location: '',
+  contractor_person_in_charge: '',
+  contractor_phone: '',
+  contractor_email: '',
+  supplier_location: '',
+  supplier_person_in_charge: '',
+  supplier_phone: '',
+  supplier_email: '',
+  description_of_non_conformity: '',
+  non_conformity_category: '',
+  recommendation_by_originator: '',
+  project_time_delay: false,
+  expected_delay_estimate: '',
+  contractors_involved: '',
+  outcome_of_investigation: '',
+};
 
-export default function NCRScreen() {
+export default function NCRFormScreen() {
   const { colors } = useTheme();
   const { user } = useUser();
-  const {
-    ncrs,
-    isLoading,
-    createNCR,
-    updateNCR,
-    generateNCRNumber,
-    refetch,
-  } = useSupabaseQuality();
+  const orgContext = useOrganization();
+  const organizationId = orgContext?.organizationId;
+  const facilityId = orgContext?.facilityId;
+  const queryClient = useQueryClient();
 
-  const [refreshing, setRefreshing] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<NCRStatus | null>(null);
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [showDetailModal, setShowDetailModal] = useState(false);
-  const [selectedNCR, setSelectedNCR] = useState<NCRRecord | null>(null);
+  const userName = user
+    ? `${user.first_name} ${user.last_name}`.trim()
+    : 'Unknown';
+
+  // ── State ──
+  const [mode, setMode] = useState<'list' | 'new' | 'view'>('list');
+  const [formData, setFormData] = useState<NCRFormData>({ ...EMPTY_FORM });
+  const [signatureVerification, setSignatureVerification] = useState<SignatureVerification | null>(null);
+  const [showCategoryPicker, setShowCategoryPicker] = useState(false);
+  const [selectedRecord, setSelectedRecord] = useState<any>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
-  const [newNCR, setNewNCR] = useState({
-    title: '',
-    description: '',
-    ncr_type: 'product' as NCRType,
-    severity: 'minor' as NCRSeverity,
-    source: 'in_process' as NCRSource,
-    location: '',
-    containment_actions: '',
-    product_name: '',
-    lot_number: '',
+  const [refreshing, setRefreshing] = useState(false);
+
+  // ── Fetch existing NCR forms ──
+  const { data: ncrForms = [], isLoading, refetch } = useQuery({
+    queryKey: ['ncr_paper_forms', organizationId],
+    queryFn: async () => {
+      if (!organizationId) return [];
+      const { data, error } = await supabase
+        .from('ncr_paper_forms')
+        .select('*')
+        .eq('organization_id', organizationId)
+        .order('created_at', { ascending: false });
+      if (error) {
+        console.error('[NCRForm] Fetch error:', error.message);
+        return [];
+      }
+      return data || [];
+    },
+    enabled: !!organizationId,
   });
 
-  // Task Feed linking
-  const [linkedPostId, setLinkedPostId] = useState<string | null>(null);
-  const [linkedPostNumber, setLinkedPostNumber] = useState<string | null>(null);
-  const linkFormMutation = useLinkFormToPost();
+  // ── Generate form number ──
+  const generateFormNumber = useCallback(() => {
+    const date = new Date();
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const seq = String((ncrForms?.length || 0) + 1).padStart(4, '0');
+    return `NCR-${y}${m}-${seq}`;
+  }, [ncrForms]);
 
-  const onRefresh = useCallback(async () => {
+  // ── Save / Submit ──
+  const handleSubmit = useCallback(async (asDraft: boolean) => {
+    if (!organizationId) return;
+
+    // Validate required fields (unless draft)
+    if (!asDraft) {
+      const requiredFields: (keyof NCRFormData)[] = [
+        'project_package', 'item_component_no', 'specification_reference_no',
+        'contractor_location', 'contractor_person_in_charge', 'contractor_phone', 'contractor_email',
+        'supplier_location', 'supplier_person_in_charge', 'supplier_phone', 'supplier_email',
+        'description_of_non_conformity', 'non_conformity_category', 'recommendation_by_originator',
+      ];
+
+      const missing = requiredFields.filter(f => !formData[f]?.toString().trim());
+      if (missing.length > 0) {
+        Alert.alert('Required Fields', `Please fill in all required fields.\n\nMissing: ${missing.length} field(s)`);
+        return;
+      }
+
+      if (!signatureVerification?.verified) {
+        Alert.alert('Signature Required', 'Please verify your PIN signature before submitting.');
+        return;
+      }
+    }
+
+    setIsSubmitting(true);
+    try {
+      const record = {
+        organization_id: organizationId,
+        facility_id: facilityId || null,
+        form_number: generateFormNumber(),
+        form_version: '1.0',
+        ...formData,
+        project_time_delay: formData.project_time_delay,
+        expected_delay_estimate: formData.project_time_delay ? formData.expected_delay_estimate : null,
+        photos_and_videos: [],
+        contractors_involved: formData.contractors_involved
+          ? formData.contractors_involved.split(',').map(s => s.trim()).filter(Boolean)
+          : [],
+        originator_name: signatureVerification?.employeeName || userName,
+        originator_employee_id: signatureVerification?.employeeCode || null,
+        originator_signed_at: signatureVerification?.timestamp || null,
+        originator_pin_verified: signatureVerification?.verified || false,
+        status: asDraft ? 'draft' : 'submitted',
+        created_by: userName,
+        created_by_id: user?.id || null,
+      };
+
+      const { error } = await supabase.from('ncr_paper_forms').insert(record);
+
+      if (error) {
+        console.error('[NCRForm] Submit error:', error.message);
+        Alert.alert('Error', error.message);
+        return;
+      }
+
+      if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      queryClient.invalidateQueries({ queryKey: ['ncr_paper_forms'] });
+      setFormData({ ...EMPTY_FORM });
+      setSignatureVerification(null);
+      setMode('list');
+      Alert.alert('Success', asDraft ? 'NCR draft saved.' : 'NCR submitted successfully.');
+    } catch (err: any) {
+      Alert.alert('Error', err.message || 'Failed to save NCR.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [formData, signatureVerification, organizationId, facilityId, userName, user, generateFormNumber]);
+
+  const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     await refetch();
     setRefreshing(false);
   }, [refetch]);
 
-  const filteredNCRs = useMemo(() => {
-    return ncrs.filter(ncr => {
-      const matchesSearch = !searchQuery || 
-        ncr.ncr_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        ncr.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        ncr.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (ncr.location?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false);
-      const matchesStatus = !statusFilter || ncr.status === statusFilter;
-      return matchesSearch && matchesStatus;
-    });
-  }, [ncrs, searchQuery, statusFilter]);
-
-  const stats = useMemo(() => ({
-    open: ncrs.filter(n => n.status === 'open').length,
-    investigation: ncrs.filter(n => n.status === 'investigation' || n.status === 'containment' || n.status === 'root_cause').length,
-    corrective_action: ncrs.filter(n => n.status === 'corrective_action' || n.status === 'verification').length,
-    closed: ncrs.filter(n => n.status === 'closed').length,
-  }), [ncrs]);
-
-  const handleAddNCR = useCallback(async () => {
-    if (!newNCR.title || !newNCR.description) {
-      Alert.alert('Required Fields', 'Please fill in title and description.');
-      return;
-    }
-
-    setIsSubmitting(true);
-    try {
-      const ncrNumber = generateNCRNumber();
-      const today = new Date().toISOString().split('T')[0];
-      
-      const createdNCR = await createNCR({
-        ncr_number: ncrNumber,
-        title: newNCR.title,
-        description: newNCR.description,
-        ncr_type: newNCR.ncr_type,
-        severity: newNCR.severity,
-        status: 'open',
-        source: newNCR.source,
-        location: newNCR.location || null,
-        product_name: newNCR.product_name || null,
-        lot_number: newNCR.lot_number || null,
-        containment_actions: newNCR.containment_actions || null,
-        discovered_date: today,
-        discovered_by: user ? `${user.first_name} ${user.last_name}` : 'Unknown',
-        discovered_by_id: user?.id || null,
-        assigned_to: null,
-        assigned_to_id: null,
-        facility_id: null,
-        department_code: null,
-        department_name: null,
-        product_code: null,
-        quantity_affected: null,
-        unit_of_measure: null,
-        root_cause: null,
-        root_cause_category: null,
-        containment_date: null,
-        corrective_actions: null,
-        corrective_action_date: null,
-        preventive_actions: null,
-        verification_method: null,
-        verification_date: null,
-        verified_by: null,
-        verified_by_id: null,
-        disposition: null,
-        disposition_notes: null,
-        cost_impact: null,
-        customer_notified: false,
-        customer_notification_date: null,
-        capa_required: false,
-        capa_id: null,
-        attachments: [],
-        closed_date: null,
-        closed_by: null,
-        closed_by_id: null,
-        notes: null,
-      });
-
-      // Link to task feed post if selected
-      if (linkedPostId && linkedPostNumber && createdNCR?.id) {
-        try {
-          await linkFormMutation.mutateAsync({
-            postId: linkedPostId,
-            postNumber: linkedPostNumber,
-            formType: 'ncr',
-            formId: createdNCR.id,
-            formNumber: ncrNumber,
-            formTitle: newNCR.title,
-            departmentCode: '1004',
-            departmentName: 'Quality',
-          });
-          console.log('[NCR] Linked NCR to task feed post:', linkedPostNumber);
-        } catch (linkErr) {
-          console.error('[NCR] Error linking to task feed:', linkErr);
-        }
-      }
-
-      setShowAddModal(false);
-      setLinkedPostId(null);
-      setLinkedPostNumber(null);
-      setNewNCR({
-        title: '',
-        description: '',
-        ncr_type: 'product',
-        severity: 'minor',
-        source: 'in_process',
-        location: '',
-        containment_actions: '',
-        product_name: '',
-        lot_number: '',
-      });
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      console.log('[NCR] Created new NCR:', ncrNumber);
-    } catch (error) {
-      console.error('[NCR] Error creating NCR:', error);
-      Alert.alert('Error', 'Failed to create NCR. Please try again.');
-    } finally {
-      setIsSubmitting(false);
-    }
-  }, [newNCR, createNCR, generateNCRNumber, user, linkedPostId, linkedPostNumber, linkFormMutation]);
-
-  const handleStatusChange = useCallback(async (ncr: NCRRecord, newStatus: NCRStatus) => {
-    try {
-      const updates: Partial<NCRRecord> & { id: string } = {
-        id: ncr.id,
-        status: newStatus,
-      };
-
-      if (newStatus === 'closed') {
-        updates.closed_date = new Date().toISOString().split('T')[0];
-        updates.closed_by = user ? `${user.first_name} ${user.last_name}` : 'Unknown';
-        updates.closed_by_id = user?.id || null;
-      }
-
-      await updateNCR(updates);
-      setSelectedNCR(prev => prev ? { ...prev, status: newStatus } : null);
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      console.log('[NCR] Status changed:', ncr.ncr_number, '->', newStatus);
-    } catch (error) {
-      console.error('[NCR] Error updating status:', error);
-      Alert.alert('Error', 'Failed to update status.');
-    }
-  }, [updateNCR, user]);
-
-  const openDetail = useCallback((ncr: NCRRecord) => {
-    setSelectedNCR(ncr);
-    setShowDetailModal(true);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  const updateField = useCallback((field: keyof NCRFormData, value: string | boolean) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
   }, []);
 
-  const renderNCRCard = useCallback((ncr: NCRRecord) => {
-    const severityConfig = SEVERITY_CONFIG[ncr.severity];
-    const statusConfig = STATUS_CONFIG[ncr.status];
-    const StatusIcon = statusConfig.icon;
+  const openViewMode = useCallback((record: any) => {
+    setSelectedRecord(record);
+    setMode('view');
+  }, []);
 
+  const openNewForm = useCallback(() => {
+    setFormData({ ...EMPTY_FORM });
+    setSignatureVerification(null);
+    setMode('new');
+  }, []);
+
+  // ── Current date/time ──
+  const nowStr = useMemo(() => {
+    const d = new Date();
+    return d.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) + ', ' +
+      d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  }, []);
+
+  const orgName = orgContext?.organization?.name || 'Organization';
+  const facilityName = orgContext?.facility?.name || 'Facility';
+
+  // ═══════════════════════════════════════════════════════════════
+  //  LIST VIEW
+  // ═══════════════════════════════════════════════════════════════
+  if (mode === 'list') {
     return (
-      <Pressable
-        key={ncr.id}
-        style={({ pressed }) => [
-          styles.ncrCard,
-          { backgroundColor: colors.surface, borderColor: colors.border, opacity: pressed ? 0.9 : 1 },
-        ]}
-        onPress={() => openDetail(ncr)}
-      >
-        <View style={styles.ncrHeader}>
-          <View style={styles.ncrTitleRow}>
-            <Text style={[styles.ncrNumber, { color: colors.text }]}>{ncr.ncr_number}</Text>
-            <View style={[styles.severityBadge, { backgroundColor: severityConfig.bgColor }]}>
-              <Text style={[styles.severityText, { color: severityConfig.color }]}>
-                {severityConfig.label}
+      <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]} edges={['bottom']}>
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{ padding: 16 }}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+        >
+          {/* New Form Button */}
+          <Pressable
+            style={[styles.newFormBtn, { backgroundColor: FORM_BLUE }]}
+            onPress={openNewForm}
+          >
+            <Plus size={20} color="#FFF" />
+            <Text style={styles.newFormBtnText}>New Non-Conformance Report</Text>
+          </Pressable>
+
+          {isLoading ? (
+            <ActivityIndicator size="large" color={FORM_BLUE} style={{ marginTop: 40 }} />
+          ) : ncrForms.length === 0 ? (
+            <View style={styles.emptyState}>
+              <FileText size={48} color={colors.textSecondary} />
+              <Text style={[styles.emptyTitle, { color: colors.text }]}>No NCR Forms</Text>
+              <Text style={[styles.emptySub, { color: colors.textSecondary }]}>
+                Tap the button above to create your first Non-Conformance Report
               </Text>
             </View>
-          </View>
-          <View style={[styles.statusBadge, { backgroundColor: statusConfig.color + '20' }]}>
-            <StatusIcon size={12} color={statusConfig.color} />
-            <Text style={[styles.statusText, { color: statusConfig.color }]}>{statusConfig.label}</Text>
-          </View>
-        </View>
-
-        <Text style={[styles.ncrTitle, { color: colors.text }]} numberOfLines={1}>
-          {ncr.title}
-        </Text>
-
-        <Text style={[styles.ncrDescription, { color: colors.textSecondary }]} numberOfLines={2}>
-          {ncr.description}
-        </Text>
-
-        <View style={styles.ncrMeta}>
-          <View style={styles.metaItem}>
-            <Calendar size={12} color={colors.textTertiary} />
-            <Text style={[styles.metaText, { color: colors.textTertiary }]}>{ncr.discovered_date}</Text>
-          </View>
-          {ncr.location && (
-            <View style={styles.metaItem}>
-              <MapPin size={12} color={colors.textTertiary} />
-              <Text style={[styles.metaText, { color: colors.textTertiary }]}>{ncr.location}</Text>
-            </View>
-          )}
-          <View style={styles.metaItem}>
-            <User size={12} color={colors.textTertiary} />
-            <Text style={[styles.metaText, { color: colors.textTertiary }]}>{ncr.discovered_by}</Text>
-          </View>
-        </View>
-
-        <ChevronRight size={18} color={colors.textTertiary} style={styles.chevron} />
-      </Pressable>
-    );
-  }, [colors, openDetail]);
-
-  return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['left', 'right']}>
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.content}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
-        }
-      >
-        <View style={[styles.headerCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <View style={[styles.iconContainer, { backgroundColor: '#EF4444' + '20' }]}>
-            <FileX size={28} color="#EF4444" />
-          </View>
-          <Text style={[styles.title, { color: colors.text }]}>Non-Conformance Reports</Text>
-          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-            Document and track non-conforming products or processes
-          </Text>
-        </View>
-
-        <View style={styles.statsRow}>
-          <Pressable
-            style={[
-              styles.statCard,
-              { backgroundColor: colors.surface, borderColor: statusFilter === 'open' ? '#EF4444' : colors.border },
-            ]}
-            onPress={() => {
-              setStatusFilter(statusFilter === 'open' ? null : 'open');
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            }}
-          >
-            <Text style={[styles.statValue, { color: '#EF4444' }]}>{stats.open}</Text>
-            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Open</Text>
-          </Pressable>
-          <Pressable
-            style={[
-              styles.statCard,
-              { backgroundColor: colors.surface, borderColor: statusFilter === 'investigation' ? '#F59E0B' : colors.border },
-            ]}
-            onPress={() => {
-              setStatusFilter(statusFilter === 'investigation' ? null : 'investigation');
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            }}
-          >
-            <Text style={[styles.statValue, { color: '#F59E0B' }]}>{stats.investigation}</Text>
-            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>In Progress</Text>
-          </Pressable>
-          <Pressable
-            style={[
-              styles.statCard,
-              { backgroundColor: colors.surface, borderColor: statusFilter === 'corrective_action' ? '#3B82F6' : colors.border },
-            ]}
-            onPress={() => {
-              setStatusFilter(statusFilter === 'corrective_action' ? null : 'corrective_action');
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            }}
-          >
-            <Text style={[styles.statValue, { color: '#3B82F6' }]}>{stats.corrective_action}</Text>
-            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Action</Text>
-          </Pressable>
-          <Pressable
-            style={[
-              styles.statCard,
-              { backgroundColor: colors.surface, borderColor: statusFilter === 'closed' ? '#10B981' : colors.border },
-            ]}
-            onPress={() => {
-              setStatusFilter(statusFilter === 'closed' ? null : 'closed');
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            }}
-          >
-            <Text style={[styles.statValue, { color: '#10B981' }]}>{stats.closed}</Text>
-            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Closed</Text>
-          </Pressable>
-        </View>
-
-        <View style={[styles.searchContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Search size={18} color={colors.textTertiary} />
-          <TextInput
-            style={[styles.searchInput, { color: colors.text }]}
-            placeholder="Search NCRs..."
-            placeholderTextColor={colors.textTertiary}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-          />
-          {searchQuery ? (
-            <Pressable onPress={() => setSearchQuery('')}>
-              <X size={18} color={colors.textTertiary} />
-            </Pressable>
-          ) : null}
-        </View>
-
-        <View style={styles.listHeader}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>
-            NCR Records ({filteredNCRs.length})
-          </Text>
-          <Pressable
-            style={[styles.addButton, { backgroundColor: colors.primary }]}
-            onPress={() => {
-              setShowAddModal(true);
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-            }}
-          >
-            <Plus size={18} color="#FFFFFF" />
-            <Text style={styles.addButtonText}>New NCR</Text>
-          </Pressable>
-        </View>
-
-        {isLoading ? (
-          <View style={[styles.loadingContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Loading NCRs...</Text>
-          </View>
-        ) : (
-          filteredNCRs.map(renderNCRCard)
-        )}
-
-        {!isLoading && filteredNCRs.length === 0 && (
-          <View style={[styles.emptyState, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <FileX size={48} color={colors.textTertiary} />
-            <Text style={[styles.emptyTitle, { color: colors.text }]}>No NCRs Found</Text>
-            <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
-              {searchQuery || statusFilter ? 'Try adjusting your filters' : 'Create a new NCR to get started'}
-            </Text>
-          </View>
-        )}
-
-        <View style={styles.bottomPadding} />
-      </ScrollView>
-
-      <Modal visible={showAddModal} animationType="slide" presentationStyle="pageSheet">
-        <SafeAreaView style={[styles.modalContainer, { backgroundColor: colors.background }]}>
-          <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
-            <Pressable onPress={() => setShowAddModal(false)}>
-              <X size={24} color={colors.text} />
-            </Pressable>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>New NCR</Text>
-            <Pressable onPress={handleAddNCR} disabled={isSubmitting}>
-              {isSubmitting ? (
-                <ActivityIndicator size="small" color={colors.primary} />
-              ) : (
-                <Text style={[styles.saveButton, { color: colors.primary }]}>Save</Text>
-              )}
-            </Pressable>
-          </View>
-
-          <ScrollView style={styles.modalContent}>
-            {/* Task Feed Linking */}
-            <TaskFeedPostLinker
-              selectedPostId={linkedPostId}
-              selectedPostNumber={linkedPostNumber}
-              onSelect={(postId, postNumber) => {
-                setLinkedPostId(postId);
-                setLinkedPostNumber(postNumber);
-              }}
-              onClear={() => {
-                setLinkedPostId(null);
-                setLinkedPostNumber(null);
-              }}
-            />
-
-            <Text style={[styles.inputLabel, { color: colors.text }]}>Title *</Text>
-            <TextInput
-              style={[styles.textInput, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
-              placeholder="Brief title for the NCR"
-              placeholderTextColor={colors.textTertiary}
-              value={newNCR.title}
-              onChangeText={(text) => setNewNCR(prev => ({ ...prev, title: text }))}
-            />
-
-            <Text style={[styles.inputLabel, { color: colors.text }]}>NCR Type *</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalOptions}>
-              {NCR_TYPES.map(type => (
-                <Pressable
-                  key={type.value}
-                  style={[
-                    styles.optionButton,
-                    { borderColor: newNCR.ncr_type === type.value ? colors.primary : colors.border },
-                    newNCR.ncr_type === type.value && { backgroundColor: colors.primary + '15' },
-                  ]}
-                  onPress={() => setNewNCR(prev => ({ ...prev, ncr_type: type.value }))}
-                >
-                  <Text style={[
-                    styles.optionText,
-                    { color: newNCR.ncr_type === type.value ? colors.primary : colors.text },
-                  ]}>{type.label}</Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-
-            <Text style={[styles.inputLabel, { color: colors.text }]}>Source</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalOptions}>
-              {NCR_SOURCES.map(source => (
-                <Pressable
-                  key={source.value}
-                  style={[
-                    styles.optionButton,
-                    { borderColor: newNCR.source === source.value ? colors.primary : colors.border },
-                    newNCR.source === source.value && { backgroundColor: colors.primary + '15' },
-                  ]}
-                  onPress={() => setNewNCR(prev => ({ ...prev, source: source.value }))}
-                >
-                  <Text style={[
-                    styles.optionText,
-                    { color: newNCR.source === source.value ? colors.primary : colors.text },
-                  ]}>{source.label}</Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-
-            <Text style={[styles.inputLabel, { color: colors.text }]}>Location</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalOptions}>
-              {LOCATIONS.map(loc => (
-                <Pressable
-                  key={loc}
-                  style={[
-                    styles.optionButton,
-                    { borderColor: newNCR.location === loc ? colors.primary : colors.border },
-                    newNCR.location === loc && { backgroundColor: colors.primary + '15' },
-                  ]}
-                  onPress={() => setNewNCR(prev => ({ ...prev, location: loc }))}
-                >
-                  <Text style={[
-                    styles.optionText,
-                    { color: newNCR.location === loc ? colors.primary : colors.text },
-                  ]}>{loc}</Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-
-            <Text style={[styles.inputLabel, { color: colors.text }]}>Description *</Text>
-            <TextInput
-              style={[styles.textArea, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
-              placeholder="Describe the non-conformance in detail..."
-              placeholderTextColor={colors.textTertiary}
-              value={newNCR.description}
-              onChangeText={(text) => setNewNCR(prev => ({ ...prev, description: text }))}
-              multiline
-              numberOfLines={4}
-              textAlignVertical="top"
-            />
-
-            <Text style={[styles.inputLabel, { color: colors.text }]}>Severity *</Text>
-            <View style={styles.optionRow}>
-              {(['minor', 'major', 'critical'] as const).map(sev => {
-                const config = SEVERITY_CONFIG[sev];
-                return (
-                  <Pressable
-                    key={sev}
-                    style={[
-                      styles.severityOption,
-                      { borderColor: newNCR.severity === sev ? config.color : colors.border },
-                      newNCR.severity === sev && { backgroundColor: config.bgColor },
-                    ]}
-                    onPress={() => setNewNCR(prev => ({ ...prev, severity: sev }))}
-                  >
-                    <Text style={[
-                      styles.optionText,
-                      { color: newNCR.severity === sev ? config.color : colors.text },
-                    ]}>{config.label}</Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-
-            <Text style={[styles.inputLabel, { color: colors.text }]}>Product Name</Text>
-            <TextInput
-              style={[styles.textInput, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
-              placeholder="Affected product name"
-              placeholderTextColor={colors.textTertiary}
-              value={newNCR.product_name}
-              onChangeText={(text) => setNewNCR(prev => ({ ...prev, product_name: text }))}
-            />
-
-            <Text style={[styles.inputLabel, { color: colors.text }]}>Lot Number</Text>
-            <TextInput
-              style={[styles.textInput, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
-              placeholder="Affected lot number"
-              placeholderTextColor={colors.textTertiary}
-              value={newNCR.lot_number}
-              onChangeText={(text) => setNewNCR(prev => ({ ...prev, lot_number: text }))}
-            />
-
-            <Text style={[styles.inputLabel, { color: colors.text }]}>Containment Actions</Text>
-            <TextInput
-              style={[styles.textArea, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
-              placeholder="What immediate containment actions were taken..."
-              placeholderTextColor={colors.textTertiary}
-              value={newNCR.containment_actions}
-              onChangeText={(text) => setNewNCR(prev => ({ ...prev, containment_actions: text }))}
-              multiline
-              numberOfLines={3}
-              textAlignVertical="top"
-            />
-
-            <View style={styles.bottomPadding} />
-          </ScrollView>
-        </SafeAreaView>
-      </Modal>
-
-      <Modal visible={showDetailModal} animationType="slide" presentationStyle="pageSheet">
-        <SafeAreaView style={[styles.modalContainer, { backgroundColor: colors.background }]}>
-          <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
-            <Pressable onPress={() => setShowDetailModal(false)}>
-              <X size={24} color={colors.text} />
-            </Pressable>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>
-              {selectedNCR?.ncr_number}
-            </Text>
-            <View style={{ width: 40 }} />
-          </View>
-
-          {selectedNCR && (
-            <ScrollView style={styles.modalContent}>
-              <View style={[styles.detailCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <View style={styles.detailRow}>
-                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Status</Text>
-                  <View style={[styles.statusBadge, { backgroundColor: STATUS_CONFIG[selectedNCR.status].color + '20' }]}>
-                    <Text style={[styles.statusText, { color: STATUS_CONFIG[selectedNCR.status].color }]}>
-                      {STATUS_CONFIG[selectedNCR.status].label}
-                    </Text>
+          ) : (
+            ncrForms.map((ncr: any) => (
+              <Pressable
+                key={ncr.id}
+                style={[styles.listCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                onPress={() => openViewMode(ncr)}
+              >
+                <View style={styles.listCardHeader}>
+                  <Text style={[styles.listCardNumber, { color: FORM_BLUE }]}>{ncr.form_number}</Text>
+                  <View style={[
+                    styles.statusBadge,
+                    { backgroundColor: ncr.status === 'submitted' ? '#10B981' : ncr.status === 'draft' ? '#F59E0B' : '#6B7280' }
+                  ]}>
+                    <Text style={styles.statusBadgeText}>{ncr.status?.toUpperCase()}</Text>
                   </View>
                 </View>
-                <View style={styles.detailRow}>
-                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Severity</Text>
-                  <View style={[styles.severityBadge, { backgroundColor: SEVERITY_CONFIG[selectedNCR.severity].bgColor }]}>
-                    <Text style={[styles.severityText, { color: SEVERITY_CONFIG[selectedNCR.severity].color }]}>
-                      {SEVERITY_CONFIG[selectedNCR.severity].label}
-                    </Text>
-                  </View>
-                </View>
-                <View style={styles.detailRow}>
-                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Type</Text>
-                  <Text style={[styles.detailValue, { color: colors.text }]}>
-                    {NCR_TYPES.find(t => t.value === selectedNCR.ncr_type)?.label || selectedNCR.ncr_type}
+                <Text style={[styles.listCardDesc, { color: colors.text }]} numberOfLines={2}>
+                  {ncr.description_of_non_conformity || 'No description'}
+                </Text>
+                <View style={styles.listCardMeta}>
+                  <Text style={[styles.listCardMetaText, { color: colors.textSecondary }]}>
+                    Package: {ncr.project_package}
+                  </Text>
+                  <Text style={[styles.listCardMetaText, { color: colors.textSecondary }]}>
+                    {new Date(ncr.created_at).toLocaleDateString()}
                   </Text>
                 </View>
-                <View style={styles.detailRow}>
-                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Discovered Date</Text>
-                  <Text style={[styles.detailValue, { color: colors.text }]}>{selectedNCR.discovered_date}</Text>
-                </View>
-                {selectedNCR.source && (
-                  <View style={styles.detailRow}>
-                    <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Source</Text>
-                    <Text style={[styles.detailValue, { color: colors.text }]}>
-                      {NCR_SOURCES.find(s => s.value === selectedNCR.source)?.label || selectedNCR.source}
-                    </Text>
-                  </View>
-                )}
-                {selectedNCR.location && (
-                  <View style={styles.detailRow}>
-                    <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Location</Text>
-                    <Text style={[styles.detailValue, { color: colors.text }]}>{selectedNCR.location}</Text>
-                  </View>
-                )}
-                {selectedNCR.product_name && (
-                  <View style={styles.detailRow}>
-                    <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Product</Text>
-                    <Text style={[styles.detailValue, { color: colors.text }]}>{selectedNCR.product_name}</Text>
-                  </View>
-                )}
-                {selectedNCR.lot_number && (
-                  <View style={styles.detailRow}>
-                    <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Lot Number</Text>
-                    <Text style={[styles.detailValue, { color: colors.text }]}>{selectedNCR.lot_number}</Text>
-                  </View>
-                )}
-                <View style={styles.detailRow}>
-                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Discovered By</Text>
-                  <Text style={[styles.detailValue, { color: colors.text }]}>{selectedNCR.discovered_by}</Text>
-                </View>
-                {selectedNCR.assigned_to && (
-                  <View style={styles.detailRow}>
-                    <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Assigned To</Text>
-                    <Text style={[styles.detailValue, { color: colors.text }]}>{selectedNCR.assigned_to}</Text>
-                  </View>
-                )}
-              </View>
-
-              <Text style={[styles.detailSectionTitle, { color: colors.text }]}>Title</Text>
-              <View style={[styles.detailCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <Text style={[styles.detailText, { color: colors.text }]}>{selectedNCR.title}</Text>
-              </View>
-
-              <Text style={[styles.detailSectionTitle, { color: colors.text }]}>Description</Text>
-              <View style={[styles.detailCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <Text style={[styles.detailText, { color: colors.text }]}>{selectedNCR.description}</Text>
-              </View>
-
-              {selectedNCR.containment_actions && (
-                <>
-                  <Text style={[styles.detailSectionTitle, { color: colors.text }]}>Containment Actions</Text>
-                  <View style={[styles.detailCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                    <Text style={[styles.detailText, { color: colors.text }]}>{selectedNCR.containment_actions}</Text>
-                  </View>
-                </>
-              )}
-
-              {selectedNCR.root_cause && (
-                <>
-                  <Text style={[styles.detailSectionTitle, { color: colors.text }]}>Root Cause</Text>
-                  <View style={[styles.detailCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                    <Text style={[styles.detailText, { color: colors.text }]}>{selectedNCR.root_cause}</Text>
-                  </View>
-                </>
-              )}
-
-              {selectedNCR.corrective_actions && (
-                <>
-                  <Text style={[styles.detailSectionTitle, { color: colors.text }]}>Corrective Actions</Text>
-                  <View style={[styles.detailCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                    <Text style={[styles.detailText, { color: colors.text }]}>{selectedNCR.corrective_actions}</Text>
-                  </View>
-                </>
-              )}
-
-              <Text style={[styles.detailSectionTitle, { color: colors.text }]}>Update Status</Text>
-              <View style={styles.statusActions}>
-                {(['open', 'investigation', 'containment', 'root_cause', 'corrective_action', 'verification', 'closed'] as NCRStatus[]).map(status => {
-                  const config = STATUS_CONFIG[status];
-                  const isActive = selectedNCR.status === status;
-                  return (
-                    <Pressable
-                      key={status}
-                      style={[
-                        styles.statusAction,
-                        { 
-                          borderColor: isActive ? config.color : colors.border,
-                          backgroundColor: isActive ? config.color + '20' : colors.surface,
-                        },
-                      ]}
-                      onPress={() => handleStatusChange(selectedNCR, status)}
-                    >
-                      <Text style={[styles.statusActionText, { color: isActive ? config.color : colors.text }]}>
-                        {config.label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-
-              <View style={styles.bottomPadding} />
-            </ScrollView>
+                <Text style={[styles.listCardMetaText, { color: colors.textSecondary, marginTop: 2 }]}>
+                  Originator: {ncr.originator_name}
+                </Text>
+              </Pressable>
+            ))
           )}
-        </SafeAreaView>
-      </Modal>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  VIEW MODE (read-only look at a submitted form)
+  // ═══════════════════════════════════════════════════════════════
+  if (mode === 'view' && selectedRecord) {
+    const r = selectedRecord;
+    return (
+      <SafeAreaView style={[styles.safeArea, { backgroundColor: '#F0F0F0' }]} edges={['bottom']}>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 12 }}>
+          <Pressable style={styles.backBtn} onPress={() => { setMode('list'); setSelectedRecord(null); }}>
+            <X size={18} color={FORM_BLUE} />
+            <Text style={[styles.backBtnText, { color: FORM_BLUE }]}>Back to List</Text>
+          </Pressable>
+
+          <View style={styles.paper}>
+            {/* Header */}
+            <View style={styles.formHeader}>
+              <View style={styles.headerLeft}>
+                <View style={styles.logoPlaceholder}>
+                  <Text style={styles.logoText}>{orgName.substring(0, 2).toUpperCase()}</Text>
+                </View>
+                <View>
+                  <Text style={styles.headerOrg}>{orgName}</Text>
+                  <Text style={styles.headerFacility}>{facilityName}</Text>
+                </View>
+              </View>
+              <View style={styles.headerRight}>
+                <Text style={styles.headerMeta}>Form: {r.form_number}</Text>
+                <Text style={styles.headerMeta}>Version: {r.form_version}</Text>
+                <Text style={styles.headerMeta}>Created: {new Date(r.created_at).toLocaleDateString()}</Text>
+              </View>
+            </View>
+
+            {/* Title Bar */}
+            <View style={styles.titleBar}>
+              <Text style={styles.titleText}>Non-Conformance Report (NCR)</Text>
+            </View>
+            <View style={styles.formNumberRow}>
+              <Text style={styles.formNumberLabel}>Form Number:</Text>
+              <Text style={styles.formNumberValue}>{r.form_number}</Text>
+            </View>
+
+            {/* Section 1 */}
+            <View style={styles.sectionBar}>
+              <Text style={styles.sectionText}>Section 1:    General Information</Text>
+            </View>
+
+            <Text style={styles.subHeader}>Project Information:</Text>
+            <View style={styles.tableRow}>
+              <View style={[styles.tableCell, styles.labelCell, { flex: 1 }]}><Text style={styles.labelText}>Package</Text></View>
+              <View style={[styles.tableCell, { flex: 1 }]}><Text style={styles.valueText}>{r.project_package}</Text></View>
+              <View style={[styles.tableCell, styles.labelCell, { flex: 1.2 }]}><Text style={styles.labelText}>Item / Component No:</Text></View>
+              <View style={[styles.tableCell, { flex: 1 }]}><Text style={styles.valueText}>{r.item_component_no}</Text></View>
+              <View style={[styles.tableCell, styles.labelCell, { flex: 1.3 }]}><Text style={styles.labelText}>Specification Ref No:</Text></View>
+              <View style={[styles.tableCell, { flex: 1 }]}><Text style={styles.valueText}>{r.specification_reference_no}</Text></View>
+            </View>
+
+            <Text style={styles.subHeader}>Contractor Information:</Text>
+            <View style={styles.tableRow}>
+              <View style={[styles.tableCell, styles.labelCell, { flex: 0.6 }]}><Text style={styles.labelText}>Location:</Text></View>
+              <View style={[styles.tableCell, { flex: 1.4 }]}><Text style={styles.valueText}>{r.contractor_location}</Text></View>
+              <View style={[styles.tableCell, styles.labelCell, { flex: 0.9 }]}><Text style={styles.labelText}>Person in charge:</Text></View>
+              <View style={[styles.tableCell, { flex: 1 }]}><Text style={styles.valueText}>{r.contractor_person_in_charge}</Text></View>
+              <View style={[styles.tableCell, styles.labelCell, { flex: 0.5 }]}><Text style={styles.labelText}>Phone:</Text></View>
+              <View style={[styles.tableCell, { flex: 1 }]}><Text style={styles.valueText}>{r.contractor_phone}</Text></View>
+            </View>
+
+            <Text style={styles.subHeader}>Supplier Information:</Text>
+            <View style={styles.tableRow}>
+              <View style={[styles.tableCell, styles.labelCell, { flex: 0.6 }]}><Text style={styles.labelText}>Location:</Text></View>
+              <View style={[styles.tableCell, { flex: 1.4 }]}><Text style={styles.valueText}>{r.supplier_location}</Text></View>
+              <View style={[styles.tableCell, styles.labelCell, { flex: 0.9 }]}><Text style={styles.labelText}>Person in charge:</Text></View>
+              <View style={[styles.tableCell, { flex: 1 }]}><Text style={styles.valueText}>{r.supplier_person_in_charge}</Text></View>
+              <View style={[styles.tableCell, styles.labelCell, { flex: 0.5 }]}><Text style={styles.labelText}>Phone:</Text></View>
+              <View style={[styles.tableCell, { flex: 1 }]}><Text style={styles.valueText}>{r.supplier_phone}</Text></View>
+            </View>
+
+            {/* Section 2 */}
+            <View style={styles.sectionBar}>
+              <Text style={styles.sectionText}>Section 2:    Non-Conformity Details</Text>
+            </View>
+
+            <View style={styles.fieldRow}>
+              <View style={[styles.fieldLabel, { flex: 0.35 }]}><Text style={styles.labelText}>Description of{'\n'}non conformity</Text></View>
+              <View style={[styles.fieldValue, { flex: 0.65 }]}><Text style={styles.valueText}>{r.description_of_non_conformity}</Text></View>
+            </View>
+
+            <View style={styles.fieldRow}>
+              <View style={[styles.fieldLabel, { flex: 0.35 }]}><Text style={styles.labelText}>Non-Conformity{'\n'}Category</Text></View>
+              <View style={[styles.fieldValue, { flex: 0.65 }]}><Text style={styles.valueText}>{r.non_conformity_category}</Text></View>
+            </View>
+
+            <View style={styles.fieldRow}>
+              <View style={[styles.fieldLabel, { flex: 0.35 }]}><Text style={styles.labelText}>Recommendation{'\n'}by Originator</Text></View>
+              <View style={[styles.fieldValue, { flex: 0.65 }]}><Text style={styles.valueText}>{r.recommendation_by_originator}</Text></View>
+            </View>
+
+            <View style={styles.fieldRow}>
+              <View style={[styles.fieldLabel, { flex: 0.35 }]}><Text style={styles.labelText}>Question:</Text></View>
+              <View style={[styles.fieldValue, { flex: 0.65 }]}>
+                <Text style={styles.valueText}>
+                  Project time delay: {r.project_time_delay ? 'Yes' : 'No'}
+                  {r.project_time_delay && r.expected_delay_estimate ? `  •  Estimate: ${r.expected_delay_estimate}` : ''}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.fieldRow}>
+              <View style={[styles.fieldLabel, { flex: 0.35 }]}><Text style={styles.labelText}>Originator{'\n'}Signature</Text></View>
+              <View style={[styles.fieldValue, { flex: 0.65 }]}>
+                <Text style={styles.valueText}>
+                  {r.originator_name}{r.originator_pin_verified ? '  ✓ PIN Verified' : ''}
+                </Text>
+                {r.originator_signed_at && (
+                  <Text style={[styles.valueText, { fontSize: 10, color: '#888' }]}>
+                    {new Date(r.originator_signed_at).toLocaleString()}
+                  </Text>
+                )}
+              </View>
+            </View>
+
+            <View style={styles.fieldRow}>
+              <View style={[styles.fieldLabel, { flex: 0.35 }]}><Text style={styles.labelText}>Contractors{'\n'}involved</Text></View>
+              <View style={[styles.fieldValue, { flex: 0.65 }]}>
+                <Text style={styles.valueText}>{Array.isArray(r.contractors_involved) ? r.contractors_involved.join(', ') : r.contractors_involved}</Text>
+              </View>
+            </View>
+
+            {/* Section 3 */}
+            <View style={styles.sectionBar}>
+              <Text style={styles.sectionText}>Section 3:    Response by contractors involved</Text>
+            </View>
+
+            <View style={styles.fieldRow}>
+              <View style={[styles.fieldLabel, { flex: 0.35 }]}><Text style={styles.labelText}>Outcome of{'\n'}investigation into{'\n'}cause of non-{'\n'}conformance</Text></View>
+              <View style={[styles.fieldValue, { flex: 0.65, minHeight: 80 }]}>
+                <Text style={styles.valueText}>{r.outcome_of_investigation || '—'}</Text>
+              </View>
+            </View>
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  NEW FORM (editable - looks like the paper)
+  // ═══════════════════════════════════════════════════════════════
+  return (
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: '#F0F0F0' }]} edges={['bottom']}>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ padding: 12, paddingBottom: 40 }}
+        keyboardShouldPersistTaps="handled"
+      >
+        {/* Top actions */}
+        <View style={styles.topActions}>
+          <Pressable style={styles.backBtn} onPress={() => setMode('list')}>
+            <X size={18} color={FORM_BLUE} />
+            <Text style={[styles.backBtnText, { color: FORM_BLUE }]}>Cancel</Text>
+          </Pressable>
+          <View style={styles.topActionsBtns}>
+            <Pressable
+              style={[styles.actionBtn, { backgroundColor: '#6B7280' }]}
+              onPress={() => handleSubmit(true)}
+              disabled={isSubmitting}
+            >
+              <Save size={14} color="#FFF" />
+              <Text style={styles.actionBtnText}>Save Draft</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.actionBtn, { backgroundColor: FORM_BLUE }]}
+              onPress={() => handleSubmit(false)}
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? (
+                <ActivityIndicator size="small" color="#FFF" />
+              ) : (
+                <>
+                  <Send size={14} color="#FFF" />
+                  <Text style={styles.actionBtnText}>Submit</Text>
+                </>
+              )}
+            </Pressable>
+          </View>
+        </View>
+
+        {/* ── THE PAPER FORM ── */}
+        <View style={styles.paper}>
+
+          {/* ── HEADER ── */}
+          <View style={styles.formHeader}>
+            <View style={styles.headerLeft}>
+              <View style={styles.logoPlaceholder}>
+                <Text style={styles.logoText}>{orgName.substring(0, 2).toUpperCase()}</Text>
+              </View>
+              <View>
+                <Text style={styles.headerOrg}>{orgName}</Text>
+                <Text style={styles.headerFacility}>{facilityName}</Text>
+              </View>
+            </View>
+            <View style={styles.headerRight}>
+              <Text style={styles.headerMeta}>Form: {generateFormNumber()}</Text>
+              <Text style={styles.headerMeta}>Version: 1.0</Text>
+              <Text style={styles.headerMeta}>Date: {nowStr}</Text>
+            </View>
+          </View>
+
+          {/* ── TITLE BAR ── */}
+          <View style={styles.titleBar}>
+            <Text style={styles.titleText}>Non-Conformance Report (NCR)</Text>
+          </View>
+
+          <View style={styles.formNumberRow}>
+            <Text style={styles.formNumberLabel}>Automated Form Number:</Text>
+            <Text style={styles.formNumberValue}>{generateFormNumber()}</Text>
+          </View>
+
+          {/* ════════════════════════════════════════════════════════
+              SECTION 1: GENERAL INFORMATION
+             ════════════════════════════════════════════════════════ */}
+          <View style={styles.sectionBar}>
+            <Text style={styles.sectionText}>Section 1:    General Information</Text>
+          </View>
+
+          {/* Project Information */}
+          <Text style={styles.subHeader}>Project Information:</Text>
+          <View style={styles.tableRow}>
+            <View style={[styles.tableCell, styles.labelCell, { flex: 1 }]}>
+              <Text style={styles.labelText}>Package</Text>
+            </View>
+            <View style={[styles.tableCell, styles.labelCell, { flex: 1.2 }]}>
+              <Text style={styles.labelText}>Item / Component No:</Text>
+            </View>
+            <View style={[styles.tableCell, styles.labelCell, { flex: 1.3 }]}>
+              <Text style={styles.labelText}>Specification Reference No:</Text>
+            </View>
+          </View>
+          <View style={styles.tableRow}>
+            <View style={[styles.tableCell, styles.inputCell, { flex: 1 }]}>
+              <TextInput
+                style={styles.cellInput}
+                value={formData.project_package}
+                onChangeText={v => updateField('project_package', v)}
+                placeholder="e.g. 12-8"
+                placeholderTextColor="#BBB"
+              />
+            </View>
+            <View style={[styles.tableCell, styles.inputCell, { flex: 1.2 }]}>
+              <TextInput
+                style={styles.cellInput}
+                value={formData.item_component_no}
+                onChangeText={v => updateField('item_component_no', v)}
+                placeholder="e.g. C1.2"
+                placeholderTextColor="#BBB"
+              />
+            </View>
+            <View style={[styles.tableCell, styles.inputCell, { flex: 1.3 }]}>
+              <TextInput
+                style={styles.cellInput}
+                value={formData.specification_reference_no}
+                onChangeText={v => updateField('specification_reference_no', v)}
+                placeholder="e.g. C76567"
+                placeholderTextColor="#BBB"
+              />
+            </View>
+          </View>
+
+          {/* Contractor Information */}
+          <Text style={styles.subHeader}>Contractor Information:</Text>
+          <View style={styles.tableRow}>
+            <View style={[styles.tableCell, styles.labelCell, { flex: 1 }]}>
+              <Text style={styles.labelText}>Location:</Text>
+            </View>
+            <View style={[styles.tableCell, styles.labelCell, { flex: 1 }]}>
+              <Text style={styles.labelText}>Person in charge:</Text>
+            </View>
+            <View style={[styles.tableCell, styles.labelCell, { flex: 0.8 }]}>
+              <Text style={styles.labelText}>Phone:</Text>
+            </View>
+            <View style={[styles.tableCell, styles.labelCell, { flex: 1 }]}>
+              <Text style={styles.labelText}>Email:</Text>
+            </View>
+          </View>
+          <View style={styles.tableRow}>
+            <View style={[styles.tableCell, styles.inputCell, { flex: 1 }]}>
+              <TextInput style={styles.cellInput} value={formData.contractor_location} onChangeText={v => updateField('contractor_location', v)} placeholder="Location" placeholderTextColor="#BBB" />
+            </View>
+            <View style={[styles.tableCell, styles.inputCell, { flex: 1 }]}>
+              <TextInput style={styles.cellInput} value={formData.contractor_person_in_charge} onChangeText={v => updateField('contractor_person_in_charge', v)} placeholder="Name" placeholderTextColor="#BBB" />
+            </View>
+            <View style={[styles.tableCell, styles.inputCell, { flex: 0.8 }]}>
+              <TextInput style={styles.cellInput} value={formData.contractor_phone} onChangeText={v => updateField('contractor_phone', v)} placeholder="Phone" placeholderTextColor="#BBB" keyboardType="phone-pad" />
+            </View>
+            <View style={[styles.tableCell, styles.inputCell, { flex: 1 }]}>
+              <TextInput style={styles.cellInput} value={formData.contractor_email} onChangeText={v => updateField('contractor_email', v)} placeholder="Email" placeholderTextColor="#BBB" keyboardType="email-address" autoCapitalize="none" />
+            </View>
+          </View>
+
+          {/* Supplier Information */}
+          <Text style={styles.subHeader}>Supplier Information:</Text>
+          <View style={styles.tableRow}>
+            <View style={[styles.tableCell, styles.labelCell, { flex: 1 }]}>
+              <Text style={styles.labelText}>Location:</Text>
+            </View>
+            <View style={[styles.tableCell, styles.labelCell, { flex: 1 }]}>
+              <Text style={styles.labelText}>Person in charge:</Text>
+            </View>
+            <View style={[styles.tableCell, styles.labelCell, { flex: 0.8 }]}>
+              <Text style={styles.labelText}>Phone:</Text>
+            </View>
+            <View style={[styles.tableCell, styles.labelCell, { flex: 1 }]}>
+              <Text style={styles.labelText}>Email:</Text>
+            </View>
+          </View>
+          <View style={styles.tableRow}>
+            <View style={[styles.tableCell, styles.inputCell, { flex: 1 }]}>
+              <TextInput style={styles.cellInput} value={formData.supplier_location} onChangeText={v => updateField('supplier_location', v)} placeholder="Location" placeholderTextColor="#BBB" />
+            </View>
+            <View style={[styles.tableCell, styles.inputCell, { flex: 1 }]}>
+              <TextInput style={styles.cellInput} value={formData.supplier_person_in_charge} onChangeText={v => updateField('supplier_person_in_charge', v)} placeholder="Name" placeholderTextColor="#BBB" />
+            </View>
+            <View style={[styles.tableCell, styles.inputCell, { flex: 0.8 }]}>
+              <TextInput style={styles.cellInput} value={formData.supplier_phone} onChangeText={v => updateField('supplier_phone', v)} placeholder="Phone" placeholderTextColor="#BBB" keyboardType="phone-pad" />
+            </View>
+            <View style={[styles.tableCell, styles.inputCell, { flex: 1 }]}>
+              <TextInput style={styles.cellInput} value={formData.supplier_email} onChangeText={v => updateField('supplier_email', v)} placeholder="Email" placeholderTextColor="#BBB" keyboardType="email-address" autoCapitalize="none" />
+            </View>
+          </View>
+
+          {/* ════════════════════════════════════════════════════════
+              SECTION 2: NON-CONFORMITY DETAILS
+             ════════════════════════════════════════════════════════ */}
+          <View style={styles.sectionBar}>
+            <Text style={styles.sectionText}>Section 2:    Non-Conformity Details</Text>
+          </View>
+
+          {/* Description */}
+          <View style={styles.fieldRow}>
+            <View style={[styles.fieldLabel, { flex: 0.3 }]}>
+              <Text style={styles.labelText}>Description of{'\n'}non conformity</Text>
+            </View>
+            <View style={[styles.fieldValue, { flex: 0.7 }]}>
+              <TextInput
+                style={[styles.cellInput, { minHeight: 100, textAlignVertical: 'top' }]}
+                value={formData.description_of_non_conformity}
+                onChangeText={v => updateField('description_of_non_conformity', v)}
+                placeholder="Describe the non-conformity in detail..."
+                placeholderTextColor="#BBB"
+                multiline
+              />
+            </View>
+          </View>
+
+          {/* Photos placeholder */}
+          <View style={styles.fieldRow}>
+            <View style={[styles.fieldLabel, { flex: 0.3 }]}>
+              <Text style={styles.labelText}>Photos and{'\n'}videos</Text>
+            </View>
+            <View style={[styles.fieldValue, { flex: 0.7 }]}>
+              <Pressable style={styles.photoPlaceholder}>
+                <Camera size={24} color="#AAA" />
+                <Text style={styles.photoPlaceholderText}>Tap to attach photos (coming soon)</Text>
+              </Pressable>
+            </View>
+          </View>
+
+          {/* Non-Conformity Category */}
+          <View style={styles.fieldRow}>
+            <View style={[styles.fieldLabel, { flex: 0.3 }]}>
+              <Text style={styles.labelText}>Non-Conformity{'\n'}Category</Text>
+            </View>
+            <View style={[styles.fieldValue, { flex: 0.7 }]}>
+              <Pressable style={styles.pickerBtn} onPress={() => setShowCategoryPicker(!showCategoryPicker)}>
+                <Text style={[styles.cellInput, { color: formData.non_conformity_category ? '#000' : '#BBB', paddingVertical: 8 }]}>
+                  {formData.non_conformity_category || 'Select category...'}
+                </Text>
+                <ChevronDown size={16} color="#888" />
+              </Pressable>
+              {showCategoryPicker && (
+                <View style={styles.pickerDropdown}>
+                  {NCR_CATEGORIES.map(cat => (
+                    <Pressable
+                      key={cat}
+                      style={[styles.pickerOption, formData.non_conformity_category === cat && { backgroundColor: FORM_HEADER_BG }]}
+                      onPress={() => { updateField('non_conformity_category', cat); setShowCategoryPicker(false); }}
+                    >
+                      <Text style={styles.pickerOptionText}>{cat}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              )}
+            </View>
+          </View>
+
+          {/* Recommendation */}
+          <View style={styles.fieldRow}>
+            <View style={[styles.fieldLabel, { flex: 0.3 }]}>
+              <Text style={styles.labelText}>Recommend-{'\n'}ation by{'\n'}Originator</Text>
+            </View>
+            <View style={[styles.fieldValue, { flex: 0.7 }]}>
+              <TextInput
+                style={[styles.cellInput, { minHeight: 80, textAlignVertical: 'top' }]}
+                value={formData.recommendation_by_originator}
+                onChangeText={v => updateField('recommendation_by_originator', v)}
+                placeholder="Provide recommendation..."
+                placeholderTextColor="#BBB"
+                multiline
+              />
+            </View>
+          </View>
+
+          {/* Time Delay Question */}
+          <View style={styles.fieldRow}>
+            <View style={[styles.fieldLabel, { flex: 0.3 }]}>
+              <Text style={styles.labelText}>Question:</Text>
+            </View>
+            <View style={[styles.fieldValue, { flex: 0.7 }]}>
+              <Text style={[styles.questionText, { marginBottom: 8 }]}>
+                Is there a project time delay caused by non-conformance?
+              </Text>
+              <View style={styles.yesNoRow}>
+                <Pressable
+                  style={[styles.yesNoBtn, formData.project_time_delay && styles.yesNoBtnActive]}
+                  onPress={() => updateField('project_time_delay', true)}
+                >
+                  <Text style={[styles.yesNoText, formData.project_time_delay && { color: '#FFF' }]}>Yes</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.yesNoBtn, !formData.project_time_delay && styles.yesNoBtnActiveNo]}
+                  onPress={() => updateField('project_time_delay', false)}
+                >
+                  <Text style={[styles.yesNoText, !formData.project_time_delay && { color: '#FFF' }]}>No</Text>
+                </Pressable>
+              </View>
+              {formData.project_time_delay && (
+                <View style={{ marginTop: 8 }}>
+                  <Text style={[styles.labelText, { marginBottom: 4 }]}>If yes, expected estimate:</Text>
+                  <TextInput
+                    style={styles.cellInput}
+                    value={formData.expected_delay_estimate}
+                    onChangeText={v => updateField('expected_delay_estimate', v)}
+                    placeholder="e.g. 1 day"
+                    placeholderTextColor="#BBB"
+                  />
+                </View>
+              )}
+            </View>
+          </View>
+
+          {/* Originator Signature */}
+          <View style={styles.fieldRow}>
+            <View style={[styles.fieldLabel, { flex: 0.3 }]}>
+              <Text style={styles.labelText}>Originator{'\n'}Signature</Text>
+            </View>
+            <View style={[styles.fieldValue, { flex: 0.7 }]}>
+              <PinSignatureCapture
+                onVerified={(v) => setSignatureVerification(v)}
+                onCleared={() => setSignatureVerification(null)}
+                formLabel="NCR Form"
+                required={true}
+                existingVerification={signatureVerification}
+                accentColor={FORM_BLUE}
+              />
+            </View>
+          </View>
+
+          {/* Contractors Involved */}
+          <View style={styles.fieldRow}>
+            <View style={[styles.fieldLabel, { flex: 0.3 }]}>
+              <Text style={styles.labelText}>Select{'\n'}contractors{'\n'}involved:</Text>
+            </View>
+            <View style={[styles.fieldValue, { flex: 0.7 }]}>
+              <TextInput
+                style={[styles.cellInput, { minHeight: 40, textAlignVertical: 'top' }]}
+                value={formData.contractors_involved}
+                onChangeText={v => updateField('contractors_involved', v)}
+                placeholder="Contractor names (comma separated)"
+                placeholderTextColor="#BBB"
+                multiline
+              />
+            </View>
+          </View>
+
+          {/* ════════════════════════════════════════════════════════
+              SECTION 3: RESPONSE BY CONTRACTORS
+             ════════════════════════════════════════════════════════ */}
+          <View style={styles.sectionBar}>
+            <Text style={styles.sectionText}>Section 3:    Response by contractors involved</Text>
+          </View>
+
+          <View style={styles.fieldRow}>
+            <View style={[styles.fieldLabel, { flex: 0.3 }]}>
+              <Text style={styles.labelText}>Outcome of{'\n'}investigation{'\n'}into cause of{'\n'}non-conformance</Text>
+            </View>
+            <View style={[styles.fieldValue, { flex: 0.7 }]}>
+              <TextInput
+                style={[styles.cellInput, { minHeight: 120, textAlignVertical: 'top' }]}
+                value={formData.outcome_of_investigation}
+                onChangeText={v => updateField('outcome_of_investigation', v)}
+                placeholder="Investigation outcome and findings..."
+                placeholderTextColor="#BBB"
+                multiline
+              />
+            </View>
+          </View>
+
+          {/* Footer */}
+          <View style={styles.formFooter}>
+            <Text style={styles.footerText}>Generated by TulKenz OPS</Text>
+            <Text style={styles.footerText}>Page 1 of 1</Text>
+          </View>
+        </View>
+
+        {/* Bottom action buttons */}
+        <View style={styles.bottomActions}>
+          <Pressable
+            style={[styles.bottomBtn, { backgroundColor: '#6B7280' }]}
+            onPress={() => handleSubmit(true)}
+            disabled={isSubmitting}
+          >
+            <Save size={18} color="#FFF" />
+            <Text style={styles.bottomBtnText}>Save as Draft</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.bottomBtn, { backgroundColor: FORM_BLUE }]}
+            onPress={() => handleSubmit(false)}
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? (
+              <ActivityIndicator size="small" color="#FFF" />
+            ) : (
+              <>
+                <Send size={18} color="#FFF" />
+                <Text style={styles.bottomBtnText}>Submit NCR</Text>
+              </>
+            )}
+          </Pressable>
+        </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
+// ═══════════════════════════════════════════════════════════════
+//  STYLES - matching the paper form aesthetic
+// ═══════════════════════════════════════════════════════════════
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  content: {
-    padding: 16,
-  },
-  headerCard: {
-    borderRadius: 16,
-    padding: 20,
-    alignItems: 'center' as const,
+  safeArea: { flex: 1 },
+
+  // ── Paper container ──
+  paper: {
+    backgroundColor: FORM_WHITE,
+    borderRadius: 4,
     borderWidth: 1,
-    marginBottom: 16,
+    borderColor: '#CCC',
+    overflow: 'hidden',
+    ...(Platform.OS === 'web' ? { boxShadow: '0 2px 8px rgba(0,0,0,0.12)' } : { elevation: 3 }),
   },
-  iconContainer: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    marginBottom: 12,
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: '700' as const,
-    marginBottom: 4,
-  },
-  subtitle: {
-    fontSize: 13,
-    textAlign: 'center' as const,
-  },
-  statsRow: {
-    flexDirection: 'row' as const,
-    gap: 8,
-    marginBottom: 16,
-  },
-  statCard: {
-    flex: 1,
-    borderRadius: 10,
+
+  // ── Header ──
+  formHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     padding: 12,
-    alignItems: 'center' as const,
-    borderWidth: 1,
+    borderBottomWidth: 1,
+    borderBottomColor: FORM_BORDER,
+    backgroundColor: FORM_HEADER_BG,
   },
-  statValue: {
-    fontSize: 20,
-    fontWeight: '700' as const,
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
-  statLabel: {
-    fontSize: 10,
-    fontWeight: '500' as const,
-    marginTop: 2,
-  },
-  searchContainer: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    borderRadius: 10,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    marginBottom: 16,
+  logoPlaceholder: {
+    width: 44,
     height: 44,
+    borderRadius: 6,
+    backgroundColor: FORM_BLUE,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  searchInput: {
-    flex: 1,
-    marginLeft: 8,
-    fontSize: 15,
-  },
-  listHeader: {
-    flexDirection: 'row' as const,
-    justifyContent: 'space-between' as const,
-    alignItems: 'center' as const,
-    marginBottom: 12,
-  },
-  sectionTitle: {
+  logoText: {
+    color: '#FFF',
     fontSize: 16,
-    fontWeight: '600' as const,
+    fontWeight: '800',
   },
-  addButton: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
+  headerOrg: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#111',
+  },
+  headerFacility: {
+    fontSize: 12,
+    color: '#555',
+  },
+  headerRight: {
+    alignItems: 'flex-end',
+  },
+  headerMeta: {
+    fontSize: 10,
+    color: '#555',
+    lineHeight: 16,
+  },
+
+  // ── Title ──
+  titleBar: {
+    backgroundColor: FORM_BLUE,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+  },
+  titleText: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: '800',
+    textAlign: 'center',
+    letterSpacing: 0.5,
+  },
+  formNumberRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: FORM_BORDER,
+    backgroundColor: '#F9F9F9',
+  },
+  formNumberLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#555',
+    marginRight: 6,
+  },
+  formNumberValue: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#111',
+  },
+
+  // ── Section bars ──
+  sectionBar: {
+    backgroundColor: FORM_SECTION_BG,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    marginTop: 0,
+  },
+  sectionText: {
+    color: '#FFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+
+  // ── Sub headers ──
+  subHeader: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#333',
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    backgroundColor: '#F5F5F5',
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#DDD',
+  },
+
+  // ── Table rows ──
+  tableRow: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: FORM_BORDER,
+  },
+  tableCell: {
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRightWidth: 1,
+    borderRightColor: FORM_BORDER,
+    justifyContent: 'center',
+  },
+  labelCell: {
+    backgroundColor: FORM_LABEL_BG,
+  },
+  inputCell: {
+    backgroundColor: FORM_WHITE,
+  },
+  labelText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#333',
+  },
+  valueText: {
+    fontSize: 11,
+    color: '#111',
+  },
+  cellInput: {
+    fontSize: 11,
+    color: '#111',
+    padding: 0,
+    margin: 0,
+    ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}),
+  },
+
+  // ── Field rows (label left, input right) ──
+  fieldRow: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: FORM_BORDER,
+  },
+  fieldLabel: {
+    backgroundColor: FORM_LABEL_BG,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRightWidth: 1,
+    borderRightColor: FORM_BORDER,
+    justifyContent: 'center',
+  },
+  fieldValue: {
+    backgroundColor: FORM_WHITE,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+
+  // ── Question / Yes-No ──
+  questionText: {
+    fontSize: 11,
+    color: '#333',
+    fontWeight: '500',
+  },
+  yesNoRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  yesNoBtn: {
+    paddingHorizontal: 20,
+    paddingVertical: 6,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#CCC',
+    backgroundColor: '#F5F5F5',
+  },
+  yesNoBtnActive: {
+    backgroundColor: FORM_BLUE,
+    borderColor: FORM_BLUE,
+  },
+  yesNoBtnActiveNo: {
+    backgroundColor: '#6B7280',
+    borderColor: '#6B7280',
+  },
+  yesNoText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#333',
+  },
+
+  // ── Photo placeholder ──
+  photoPlaceholder: {
+    borderWidth: 1,
+    borderColor: '#DDD',
+    borderStyle: 'dashed',
+    borderRadius: 6,
+    paddingVertical: 16,
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#FAFAFA',
+  },
+  photoPlaceholderText: {
+    fontSize: 11,
+    color: '#AAA',
+  },
+
+  // ── Category picker ──
+  pickerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  pickerDropdown: {
+    marginTop: 4,
+    borderWidth: 1,
+    borderColor: '#DDD',
+    borderRadius: 4,
+    backgroundColor: '#FFF',
+    maxHeight: 200,
+  },
+  pickerOption: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#EEE',
+  },
+  pickerOptionText: {
+    fontSize: 11,
+    color: '#333',
+  },
+
+  // ── Footer ──
+  formFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     paddingHorizontal: 14,
     paddingVertical: 8,
-    borderRadius: 8,
-    gap: 6,
+    borderTopWidth: 1,
+    borderTopColor: '#DDD',
+    backgroundColor: '#F9F9F9',
   },
-  addButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600' as const,
+  footerText: {
+    fontSize: 9,
+    color: '#999',
   },
-  ncrCard: {
-    borderRadius: 12,
-    padding: 14,
-    borderWidth: 1,
+
+  // ── Top / Bottom actions ──
+  topActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 10,
   },
-  ncrHeader: {
-    flexDirection: 'row' as const,
-    justifyContent: 'space-between' as const,
-    alignItems: 'flex-start' as const,
-    marginBottom: 8,
-  },
-  ncrTitleRow: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
+  topActionsBtns: {
+    flexDirection: 'row',
     gap: 8,
   },
-  ncrNumber: {
-    fontSize: 15,
-    fontWeight: '600' as const,
-  },
-  ncrTitle: {
-    fontSize: 14,
-    fontWeight: '600' as const,
-    marginBottom: 4,
-  },
-  severityBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 4,
-  },
-  severityText: {
-    fontSize: 11,
-    fontWeight: '600' as const,
-  },
-  statusBadge: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 4,
+  backBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 4,
+    paddingVertical: 6,
   },
-  statusText: {
-    fontSize: 11,
-    fontWeight: '600' as const,
+  backBtnText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
-  ncrDescription: {
-    fontSize: 13,
-    lineHeight: 18,
-    marginBottom: 10,
-  },
-  ncrMeta: {
-    flexDirection: 'row' as const,
-    flexWrap: 'wrap' as const,
-    gap: 12,
-  },
-  metaItem: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
+  actionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 6,
   },
-  metaText: {
-    fontSize: 11,
+  actionBtnText: {
+    color: '#FFF',
+    fontSize: 12,
+    fontWeight: '600',
   },
-  chevron: {
-    position: 'absolute' as const,
-    right: 14,
-    top: '50%',
-  },
-  emptyState: {
-    borderRadius: 12,
-    padding: 32,
-    alignItems: 'center' as const,
-    borderWidth: 1,
-  },
-  emptyTitle: {
-    fontSize: 16,
-    fontWeight: '600' as const,
-    marginTop: 12,
-    marginBottom: 4,
-  },
-  emptyText: {
-    fontSize: 13,
-    textAlign: 'center' as const,
-  },
-  loadingContainer: {
-    borderRadius: 12,
-    padding: 32,
-    alignItems: 'center' as const,
-    borderWidth: 1,
-  },
-  loadingText: {
-    fontSize: 14,
-    marginTop: 12,
-  },
-  bottomPadding: {
-    height: 32,
-  },
-  modalContainer: {
-    flex: 1,
-  },
-  modalHeader: {
-    flexDirection: 'row' as const,
-    justifyContent: 'space-between' as const,
-    alignItems: 'center' as const,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-  },
-  modalTitle: {
-    fontSize: 17,
-    fontWeight: '600' as const,
-  },
-  saveButton: {
-    fontSize: 16,
-    fontWeight: '600' as const,
-  },
-  modalContent: {
-    flex: 1,
-    padding: 16,
-  },
-  inputLabel: {
-    fontSize: 14,
-    fontWeight: '600' as const,
-    marginBottom: 8,
+  bottomActions: {
+    flexDirection: 'row',
+    gap: 10,
     marginTop: 16,
   },
-  optionRow: {
-    flexDirection: 'row' as const,
+  bottomBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: 8,
+  },
+  bottomBtnText: {
+    color: '#FFF',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+
+  // ── List view ──
+  newFormBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: 10,
+    marginBottom: 16,
+  },
+  newFormBtnText: {
+    color: '#FFF',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingTop: 60,
     gap: 8,
   },
-  optionButton: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    marginRight: 8,
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '700',
   },
-  optionText: {
-    fontSize: 13,
-    fontWeight: '500' as const,
-  },
-  severityOption: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    alignItems: 'center' as const,
-  },
-  horizontalOptions: {
-    flexDirection: 'row' as const,
-  },
-  textInput: {
-    borderRadius: 10,
-    borderWidth: 1,
-    padding: 12,
+  emptySub: {
     fontSize: 14,
-    height: 44,
+    textAlign: 'center',
+    paddingHorizontal: 40,
   },
-  textArea: {
-    borderRadius: 10,
+  listCard: {
     borderWidth: 1,
-    padding: 12,
-    fontSize: 14,
-    minHeight: 100,
-  },
-  detailCard: {
-    borderRadius: 12,
+    borderRadius: 10,
     padding: 14,
-    borderWidth: 1,
-  },
-  detailRow: {
-    flexDirection: 'row' as const,
-    justifyContent: 'space-between' as const,
-    alignItems: 'center' as const,
-    paddingVertical: 8,
-  },
-  detailLabel: {
-    fontSize: 13,
-  },
-  detailValue: {
-    fontSize: 13,
-    fontWeight: '500' as const,
-  },
-  detailSectionTitle: {
-    fontSize: 15,
-    fontWeight: '600' as const,
-    marginTop: 20,
     marginBottom: 10,
   },
-  detailText: {
+  listCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  listCardNumber: {
     fontSize: 14,
-    lineHeight: 20,
+    fontWeight: '700',
   },
-  statusActions: {
-    flexDirection: 'row' as const,
-    flexWrap: 'wrap' as const,
-    gap: 8,
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
   },
-  statusAction: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 8,
-    borderWidth: 1,
+  statusBadgeText: {
+    color: '#FFF',
+    fontSize: 10,
+    fontWeight: '700',
   },
-  statusActionText: {
+  listCardDesc: {
     fontSize: 13,
-    fontWeight: '500' as const,
+    marginBottom: 6,
+  },
+  listCardMeta: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  listCardMetaText: {
+    fontSize: 11,
   },
 });
