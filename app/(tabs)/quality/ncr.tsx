@@ -30,6 +30,8 @@ import {
   List,
   Clock,
   Paperclip,
+  Search,
+  Filter,
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useUser } from '@/contexts/UserContext';
@@ -141,6 +143,26 @@ export default function NCRFormScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [photos, setPhotos] = useState<{ uri: string; uploading?: boolean }[]>([]);
   const [isUploading, setIsUploading] = useState(false);
+
+  // Search & filter
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string | null>(null);
+
+  // Filtered NCR forms
+  const filteredForms = useMemo(() => {
+    return ncrForms.filter((ncr: any) => {
+      const matchesSearch = !searchQuery ||
+        ncr.form_number?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        ncr.description_of_non_conformity?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        ncr.project_package?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        ncr.originator_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        ncr.non_conformity_category?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        ncr.contractor_person_in_charge?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        ncr.supplier_person_in_charge?.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesStatus = !statusFilter || ncr.status === statusFilter;
+      return matchesSearch && matchesStatus;
+    });
+  }, [ncrForms, searchQuery, statusFilter]);
 
   // ── Photo upload to Supabase Storage ──
   const uploadPhoto = useCallback(async (uri: string): Promise<string> => {
@@ -450,6 +472,14 @@ export default function NCRFormScreen() {
   //  LIST VIEW
   // ═══════════════════════════════════════════════════════════════
   if (mode === 'list') {
+    const STATUS_TABS = [
+      { value: null, label: 'All' },
+      { value: 'draft', label: 'Draft' },
+      { value: 'submitted', label: 'Submitted' },
+      { value: 'under_review', label: 'Review' },
+      { value: 'closed', label: 'Closed' },
+    ];
+
     return (
       <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]} edges={['bottom']}>
         <ScrollView
@@ -466,18 +496,67 @@ export default function NCRFormScreen() {
             <Text style={styles.newFormBtnText}>New Non-Conformance Report</Text>
           </Pressable>
 
+          {/* Search Bar */}
+          <View style={[styles.searchBar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Search size={16} color={colors.textSecondary} />
+            <TextInput
+              style={[styles.searchInput, { color: colors.text }]}
+              placeholder="Search by number, description, package, name..."
+              placeholderTextColor={colors.textTertiary}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+            />
+            {searchQuery.length > 0 && (
+              <Pressable onPress={() => setSearchQuery('')}>
+                <X size={16} color={colors.textSecondary} />
+              </Pressable>
+            )}
+          </View>
+
+          {/* Status Filter Tabs */}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterRow} contentContainerStyle={{ gap: 6 }}>
+            {STATUS_TABS.map(tab => (
+              <Pressable
+                key={tab.label}
+                style={[
+                  styles.filterChip,
+                  { borderColor: colors.border, backgroundColor: colors.surface },
+                  statusFilter === tab.value && { backgroundColor: FORM_BLUE, borderColor: FORM_BLUE },
+                ]}
+                onPress={() => setStatusFilter(tab.value)}
+              >
+                <Text style={[
+                  styles.filterChipText,
+                  { color: colors.textSecondary },
+                  statusFilter === tab.value && { color: '#FFF' },
+                ]}>
+                  {tab.label}
+                </Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+
+          {/* Results count */}
+          <Text style={[styles.resultCount, { color: colors.textSecondary }]}>
+            {filteredForms.length} of {ncrForms.length} NCR{ncrForms.length !== 1 ? 's' : ''}
+          </Text>
+
           {isLoading ? (
             <ActivityIndicator size="large" color={FORM_BLUE} style={{ marginTop: 40 }} />
-          ) : ncrForms.length === 0 ? (
+          ) : filteredForms.length === 0 ? (
             <View style={styles.emptyState}>
               <FileText size={48} color={colors.textSecondary} />
-              <Text style={[styles.emptyTitle, { color: colors.text }]}>No NCR Forms</Text>
+              <Text style={[styles.emptyTitle, { color: colors.text }]}>
+                {ncrForms.length === 0 ? 'No NCR Forms' : 'No matching NCRs'}
+              </Text>
               <Text style={[styles.emptySub, { color: colors.textSecondary }]}>
-                Tap the button above to create your first Non-Conformance Report
+                {ncrForms.length === 0
+                  ? 'Tap the button above to create your first Non-Conformance Report'
+                  : 'Try adjusting your search or filter'}
               </Text>
             </View>
           ) : (
-            ncrForms.map((ncr: any) => (
+            filteredForms.map((ncr: any) => (
               <Pressable
                 key={ncr.id}
                 style={[styles.listCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
@@ -487,7 +566,7 @@ export default function NCRFormScreen() {
                   <Text style={[styles.listCardNumber, { color: FORM_BLUE }]}>{ncr.form_number}</Text>
                   <View style={[
                     styles.statusBadge,
-                    { backgroundColor: ncr.status === 'submitted' ? '#10B981' : ncr.status === 'draft' ? '#F59E0B' : '#6B7280' }
+                    { backgroundColor: ncr.status === 'submitted' ? '#10B981' : ncr.status === 'draft' ? '#F59E0B' : ncr.status === 'under_review' ? '#8B5CF6' : '#6B7280' }
                   ]}>
                     <Text style={styles.statusBadgeText}>{ncr.status?.toUpperCase()}</Text>
                   </View>
@@ -503,9 +582,14 @@ export default function NCRFormScreen() {
                     {new Date(ncr.created_at).toLocaleDateString()}
                   </Text>
                 </View>
-                <Text style={[styles.listCardMetaText, { color: colors.textSecondary, marginTop: 2 }]}>
-                  Originator: {ncr.originator_name}
-                </Text>
+                <View style={styles.listCardMeta}>
+                  <Text style={[styles.listCardMetaText, { color: colors.textSecondary }]}>
+                    Category: {ncr.non_conformity_category || '—'}
+                  </Text>
+                  <Text style={[styles.listCardMetaText, { color: colors.textSecondary }]}>
+                    Originator: {ncr.originator_name}
+                  </Text>
+                </View>
               </Pressable>
             ))
           )}
@@ -1487,6 +1571,40 @@ const styles = StyleSheet.create({
   },
 
   // ── List view ──
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 10,
+    gap: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 13,
+    padding: 0,
+    ...(Platform.OS === 'web' ? { outlineStyle: 'none' as any } : {}),
+  },
+  filterRow: {
+    marginBottom: 8,
+    maxHeight: 36,
+  },
+  filterChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  filterChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  resultCount: {
+    fontSize: 11,
+    marginBottom: 8,
+  },
   newFormBtn: {
     flexDirection: 'row',
     alignItems: 'center',
