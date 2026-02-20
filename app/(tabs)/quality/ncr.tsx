@@ -29,7 +29,7 @@ import {
   Edit3,
   List,
   Clock,
-  Image as ImageIcon,
+  Paperclip,
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useUser } from '@/contexts/UserContext';
@@ -886,7 +886,7 @@ export default function NCRFormScreen() {
                   <Text style={styles.photoActionText}>Take Photo</Text>
                 </Pressable>
                 <Pressable style={styles.photoActionBtn} onPress={pickFromGallery}>
-                  <ImageIcon size={18} color={FORM_BLUE} />
+                  <Paperclip size={18} color={FORM_BLUE} />
                   <Text style={styles.photoActionText}>Choose from Gallery</Text>
                 </Pressable>
               </View>
