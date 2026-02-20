@@ -334,7 +334,7 @@ export default function NCRFormScreen() {
         return;
       }
 
-      if (!signatureVerification?.verified) {
+      if (!signatureVerification?.verifiedAt) {
         Alert.alert('Signature Required', 'Please verify your PIN signature before submitting.');
         return;
       }
@@ -355,9 +355,9 @@ export default function NCRFormScreen() {
           ? formData.contractors_involved.split(',').map(s => s.trim()).filter(Boolean)
           : [],
         originator_name: signatureVerification?.employeeName || userName,
-        originator_employee_id: signatureVerification?.employeeCode || null,
-        originator_signed_at: signatureVerification?.timestamp || null,
-        originator_pin_verified: signatureVerification?.verified || false,
+        originator_employee_id: signatureVerification?.employeeId || null,
+        originator_signed_at: signatureVerification?.verifiedAt || null,
+        originator_pin_verified: !!signatureVerification?.verifiedAt,
         status: asDraft ? 'draft' : 'submitted',
         created_by: userName,
         created_by_id: user?.id || null,
