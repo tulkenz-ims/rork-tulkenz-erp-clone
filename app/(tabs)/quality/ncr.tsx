@@ -29,6 +29,7 @@ import {
   Edit3,
   List,
   Clock,
+  Image as ImageIcon,
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useUser } from '@/contexts/UserContext';
@@ -38,6 +39,8 @@ import { SignatureVerification } from '@/hooks/usePinSignature';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import * as Haptics from 'expo-haptics';
+import * as ImagePicker from 'expo-image-picker';
+import { decode } from 'base64-arraybuffer';
 
 // ─── COLORS matching the paper form ────────────────────────────
 const FORM_BLUE = '#4A90D9';
@@ -129,6 +132,160 @@ export default function NCRFormScreen() {
   const [selectedRecord, setSelectedRecord] = useState<any>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [photos, setPhotos] = useState<{ uri: string; uploading?: boolean }[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+
+  // ── Photo upload to Supabase Storage ──
+  const uploadPhoto = useCallback(async (uri: string): Promise<string> => {
+    if (!organizationId) throw new Error('No organization');
+
+    const timestamp = Date.now();
+    const fileName = `ncr-forms/${organizationId}/${timestamp}-${Math.random().toString(36).substring(2, 7)}.jpg`;
+
+    try {
+      // Web platform
+      if (Platform.OS === 'web') {
+        let dataUrl = uri;
+
+        // If blob URL, convert to data URL
+        if (uri.startsWith('blob:')) {
+          const response = await fetch(uri);
+          const blob = await response.blob();
+          dataUrl = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          });
+        }
+
+        // If already a data URL, use it
+        if (dataUrl.startsWith('data:')) {
+          const base64 = dataUrl.split(',')[1];
+          const { error: uploadError } = await supabase.storage
+            .from('ncr-photos')
+            .upload(fileName, decode(base64), { contentType: 'image/jpeg', upsert: true });
+
+          if (uploadError) {
+            console.log('[NCR Photos] Storage not available, using base64 fallback');
+            return dataUrl;
+          }
+
+          const { data: urlData } = supabase.storage.from('ncr-photos').getPublicUrl(fileName);
+          return urlData?.publicUrl || dataUrl;
+        }
+
+        return uri;
+      }
+
+      // Native platform - compress and upload
+      try {
+        const ImageManipulator = await import('expo-image-manipulator');
+        const manipulated = await ImageManipulator.manipulateAsync(
+          uri,
+          [{ resize: { width: 1024 } }],
+          { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+        );
+
+        if (manipulated.base64) {
+          const { error: uploadError } = await supabase.storage
+            .from('ncr-photos')
+            .upload(fileName, decode(manipulated.base64), { contentType: 'image/jpeg', upsert: true });
+
+          if (uploadError) {
+            console.log('[NCR Photos] Storage not available, using base64 fallback');
+            return `data:image/jpeg;base64,${manipulated.base64}`;
+          }
+
+          const { data: urlData } = supabase.storage.from('ncr-photos').getPublicUrl(fileName);
+          return urlData?.publicUrl || `data:image/jpeg;base64,${manipulated.base64}`;
+        }
+      } catch (manipError) {
+        console.warn('[NCR Photos] Compression failed:', manipError);
+      }
+
+      // Native fallback - read raw
+      const FileSystem = await import('expo-file-system');
+      const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+      const { error: uploadError } = await supabase.storage
+        .from('ncr-photos')
+        .upload(fileName, decode(base64), { contentType: 'image/jpeg', upsert: true });
+
+      if (uploadError) {
+        return `data:image/jpeg;base64,${base64}`;
+      }
+
+      const { data: urlData } = supabase.storage.from('ncr-photos').getPublicUrl(fileName);
+      return urlData?.publicUrl || `data:image/jpeg;base64,${base64}`;
+    } catch (err) {
+      console.error('[NCR Photos] Upload failed:', err);
+      return uri; // fallback to local URI
+    }
+  }, [organizationId]);
+
+  // ── Pick from camera ──
+  const takePhoto = useCallback(async () => {
+    try {
+      const permission = await ImagePicker.requestCameraPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert('Permission Required', 'Camera access is needed to take photos.');
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.8,
+        allowsEditing: false,
+      });
+
+      if (result.canceled || !result.assets?.[0]) return;
+
+      const uri = result.assets[0].uri;
+      setPhotos(prev => [...prev, { uri, uploading: true }]);
+
+      const uploadedUrl = await uploadPhoto(uri);
+      setPhotos(prev => prev.map(p => p.uri === uri ? { uri: uploadedUrl, uploading: false } : p));
+    } catch (err) {
+      console.error('[NCR Photos] Camera error:', err);
+      Alert.alert('Error', 'Could not take photo.');
+    }
+  }, [uploadPhoto]);
+
+  // ── Pick from gallery ──
+  const pickFromGallery = useCallback(async () => {
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert('Permission Required', 'Photo library access is needed.');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.8,
+        allowsMultipleSelection: true,
+        selectionLimit: 5,
+      });
+
+      if (result.canceled || !result.assets?.length) return;
+
+      for (const asset of result.assets) {
+        const uri = asset.uri;
+        setPhotos(prev => [...prev, { uri, uploading: true }]);
+
+        const uploadedUrl = await uploadPhoto(uri);
+        setPhotos(prev => prev.map(p => p.uri === uri ? { uri: uploadedUrl, uploading: false } : p));
+      }
+    } catch (err) {
+      console.error('[NCR Photos] Gallery error:', err);
+      Alert.alert('Error', 'Could not select photos.');
+    }
+  }, [uploadPhoto]);
+
+  // ── Remove photo ──
+  const removePhoto = useCallback((index: number) => {
+    setPhotos(prev => prev.filter((_, i) => i !== index));
+  }, []);
 
   // ── Fetch existing NCR forms ──
   const { data: ncrForms = [], isLoading, refetch } = useQuery({
@@ -193,7 +350,7 @@ export default function NCRFormScreen() {
         ...formData,
         project_time_delay: formData.project_time_delay,
         expected_delay_estimate: formData.project_time_delay ? formData.expected_delay_estimate : null,
-        photos_and_videos: [],
+        photos_and_videos: photos.filter(p => !p.uploading).map(p => p.uri),
         contractors_involved: formData.contractors_involved
           ? formData.contractors_involved.split(',').map(s => s.trim()).filter(Boolean)
           : [],
@@ -218,6 +375,7 @@ export default function NCRFormScreen() {
       queryClient.invalidateQueries({ queryKey: ['ncr_paper_forms'] });
       setFormData({ ...EMPTY_FORM });
       setSignatureVerification(null);
+      setPhotos([]);
       setMode('list');
       Alert.alert('Success', asDraft ? 'NCR draft saved.' : 'NCR submitted successfully.');
     } catch (err: any) {
@@ -245,6 +403,7 @@ export default function NCRFormScreen() {
   const openNewForm = useCallback(() => {
     setFormData({ ...EMPTY_FORM });
     setSignatureVerification(null);
+    setPhotos([]);
     setMode('new');
   }, []);
 
@@ -411,6 +570,21 @@ export default function NCRFormScreen() {
               <View style={[styles.fieldLabel, { flex: 0.35 }]}><Text style={styles.labelText}>Description of{'\n'}non conformity</Text></View>
               <View style={[styles.fieldValue, { flex: 0.65 }]}><Text style={styles.valueText}>{r.description_of_non_conformity}</Text></View>
             </View>
+
+            {/* Photos */}
+            {r.photos_and_videos?.length > 0 && (
+              <View style={styles.fieldRow}>
+                <View style={[styles.fieldLabel, { flex: 0.35 }]}><Text style={styles.labelText}>Photos and{'\n'}videos</Text></View>
+                <View style={[styles.fieldValue, { flex: 0.65 }]}>
+                  <View style={styles.photoGrid}>
+                    {r.photos_and_videos.map((url: string, idx: number) => (
+                      <Image key={idx} source={{ uri: url }} style={styles.photoThumb} />
+                    ))}
+                  </View>
+                  <Text style={styles.photoCount}>{r.photos_and_videos.length} photo{r.photos_and_videos.length !== 1 ? 's' : ''}</Text>
+                </View>
+              </View>
+            )}
 
             <View style={styles.fieldRow}>
               <View style={[styles.fieldLabel, { flex: 0.35 }]}><Text style={styles.labelText}>Non-Conformity{'\n'}Category</Text></View>
@@ -679,16 +853,46 @@ export default function NCRFormScreen() {
             </View>
           </View>
 
-          {/* Photos placeholder */}
+          {/* Photos */}
           <View style={styles.fieldRow}>
             <View style={[styles.fieldLabel, { flex: 0.3 }]}>
               <Text style={styles.labelText}>Photos and{'\n'}videos</Text>
             </View>
             <View style={[styles.fieldValue, { flex: 0.7 }]}>
-              <Pressable style={styles.photoPlaceholder}>
-                <Camera size={24} color="#AAA" />
-                <Text style={styles.photoPlaceholderText}>Tap to attach photos (coming soon)</Text>
-              </Pressable>
+              {/* Photo thumbnails */}
+              {photos.length > 0 && (
+                <View style={styles.photoGrid}>
+                  {photos.map((photo, idx) => (
+                    <View key={idx} style={styles.photoThumbWrap}>
+                      <Image source={{ uri: photo.uri }} style={styles.photoThumb} />
+                      {photo.uploading && (
+                        <View style={styles.photoUploading}>
+                          <ActivityIndicator size="small" color="#FFF" />
+                        </View>
+                      )}
+                      {!photo.uploading && (
+                        <Pressable style={styles.photoRemoveBtn} onPress={() => removePhoto(idx)}>
+                          <X size={12} color="#FFF" />
+                        </Pressable>
+                      )}
+                    </View>
+                  ))}
+                </View>
+              )}
+              {/* Camera + Gallery buttons */}
+              <View style={styles.photoActions}>
+                <Pressable style={styles.photoActionBtn} onPress={takePhoto}>
+                  <Camera size={18} color={FORM_BLUE} />
+                  <Text style={styles.photoActionText}>Take Photo</Text>
+                </Pressable>
+                <Pressable style={styles.photoActionBtn} onPress={pickFromGallery}>
+                  <ImageIcon size={18} color={FORM_BLUE} />
+                  <Text style={styles.photoActionText}>Choose from Gallery</Text>
+                </Pressable>
+              </View>
+              {photos.length > 0 && (
+                <Text style={styles.photoCount}>{photos.length} photo{photos.length !== 1 ? 's' : ''} attached</Text>
+              )}
             </View>
           </View>
 
@@ -1077,20 +1281,70 @@ const styles = StyleSheet.create({
     color: '#333',
   },
 
-  // ── Photo placeholder ──
-  photoPlaceholder: {
+  // ── Photo grid & actions ──
+  photoGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 10,
+  },
+  photoThumbWrap: {
+    position: 'relative',
+    width: 80,
+    height: 80,
+    borderRadius: 6,
+    overflow: 'hidden',
     borderWidth: 1,
     borderColor: '#DDD',
-    borderStyle: 'dashed',
-    borderRadius: 6,
-    paddingVertical: 16,
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#FAFAFA',
   },
-  photoPlaceholderText: {
+  photoThumb: {
+    width: 80,
+    height: 80,
+    borderRadius: 6,
+  },
+  photoUploading: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 6,
+  },
+  photoRemoveBtn: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: 'rgba(220,38,38,0.85)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  photoActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  photoActionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: FORM_BLUE,
+    borderRadius: 6,
+    backgroundColor: '#F0F7FF',
+  },
+  photoActionText: {
     fontSize: 11,
-    color: '#AAA',
+    fontWeight: '600',
+    color: FORM_BLUE,
+  },
+  photoCount: {
+    fontSize: 10,
+    color: '#888',
+    marginTop: 4,
   },
 
   // ── Category picker ──
