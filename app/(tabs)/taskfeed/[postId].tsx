@@ -1,1282 +1,932 @@
-import React, { useCallback, useMemo, useRef, useEffect, useState } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
-  Image,
+  Pressable,
+  TextInput,
+  RefreshControl,
+  Alert,
   ActivityIndicator,
   Platform,
-  Share,
-  Alert,
+  Image,
 } from 'react-native';
-import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
-
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
-  Printer,
-  Share2,
-  MapPin,
-  User,
-  Calendar,
+  Plus,
+  X,
   FileText,
-  AlertTriangle,
-  Wrench,
-  ChevronRight,
-  ClipboardList,
-  Image as ImageIcon,
-  ExternalLink,
-  Trash2,
+  Camera,
+  ChevronDown,
+  Save,
+  Send,
+  Paperclip,
+  Search,
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
-import { useTaskFeedPostDetail } from '@/hooks/useTaskFeedPostDetail';
-import { getDepartmentColor, getDepartmentName } from '@/constants/organizationCodes';
-import DepartmentCompletionBadges from '@/components/DepartmentCompletionBadges';
-import ProductionStoppedBanner from '@/components/ProductionStoppedBanner';
-import EscalationModal from '@/components/EscalationModal';
-import { useSignoffDepartmentTask, useDeleteTaskFeedPost } from '@/hooks/useTaskFeedTemplates';
-import { usePostFormLinks } from '@/hooks/useTaskFeedFormLinks';
 import { useUser } from '@/contexts/UserContext';
+import { useOrganization } from '@/contexts/OrganizationContext';
+import PinSignatureCapture from '@/components/PinSignatureCapture';
+import { SignatureVerification } from '@/hooks/usePinSignature';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/lib/supabase';
+import * as Haptics from 'expo-haptics';
+import * as ImagePicker from 'expo-image-picker';
+import { decode } from 'base64-arraybuffer';
+import TaskFeedPostLinker from '@/components/TaskFeedPostLinker';
+import { useLinkFormToPost } from '@/hooks/useTaskFeedFormLinks';
 
-const PRIORITY_COLORS: Record<string, { bg: string; text: string }> = {
-  low: { bg: '#D1FAE5', text: '#065F46' },
-  medium: { bg: '#FEF3C7', text: '#92400E' },
-  high: { bg: '#FEE2E2', text: '#991B1B' },
-  critical: { bg: '#7F1D1D', text: '#FFFFFF' },
+// ─── COLORS matching the paper form ────────────────────────────
+const FORM_BLUE = '#4A90D9';
+const FORM_HEADER_BG = '#D6E9F8';
+const FORM_BORDER = '#000000';
+const FORM_SECTION_BG = '#5B9BD5';
+const FORM_LABEL_BG = '#E8F0FE';
+const FORM_WHITE = '#FFFFFF';
+
+// ─── NCR Categories ────────────────────────────────────────────
+const NCR_CATEGORIES = [
+  'Product Non-Conformance',
+  'Process Non-Conformance',
+  'Supplier Non-Conformance',
+  'Material Non-Conformance',
+  'Equipment Non-Conformance',
+  'Documentation Non-Conformance',
+  'Regulatory Non-Conformance',
+  'Completely Remove',
+  'Other',
+];
+
+// ─── Status filter tabs ────────────────────────────────────────
+const STATUS_TABS = [
+  { value: '', label: 'All' },
+  { value: 'draft', label: 'Draft' },
+  { value: 'submitted', label: 'Submitted' },
+  { value: 'under_review', label: 'Review' },
+  { value: 'closed', label: 'Closed' },
+];
+
+// ─── Form Data Interface ───────────────────────────────────────
+interface NCRFormData {
+  project_package: string;
+  item_component_no: string;
+  specification_reference_no: string;
+  contractor_location: string;
+  contractor_person_in_charge: string;
+  contractor_phone: string;
+  contractor_email: string;
+  supplier_location: string;
+  supplier_person_in_charge: string;
+  supplier_phone: string;
+  supplier_email: string;
+  description_of_non_conformity: string;
+  non_conformity_category: string;
+  recommendation_by_originator: string;
+  project_time_delay: boolean;
+  expected_delay_estimate: string;
+  contractors_involved: string;
+  outcome_of_investigation: string;
+}
+
+const EMPTY_FORM: NCRFormData = {
+  project_package: '',
+  item_component_no: '',
+  specification_reference_no: '',
+  contractor_location: '',
+  contractor_person_in_charge: '',
+  contractor_phone: '',
+  contractor_email: '',
+  supplier_location: '',
+  supplier_person_in_charge: '',
+  supplier_phone: '',
+  supplier_email: '',
+  description_of_non_conformity: '',
+  non_conformity_category: '',
+  recommendation_by_originator: '',
+  project_time_delay: false,
+  expected_delay_estimate: '',
+  contractors_involved: '',
+  outcome_of_investigation: '',
 };
 
-const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
-  open: { bg: '#DBEAFE', text: '#1E40AF' },
-  in_progress: { bg: '#FEF3C7', text: '#92400E' },
-  completed: { bg: '#D1FAE5', text: '#065F46' },
-  overdue: { bg: '#FEE2E2', text: '#991B1B' },
-  on_hold: { bg: '#F3F4F6', text: '#6B7280' },
-  cancelled: { bg: '#F3F4F6', text: '#9CA3AF' },
-  pending: { bg: '#FEF3C7', text: '#92400E' },
-};
-
-export default function TaskFeedPostDetailScreen() {
-  const { postId } = useLocalSearchParams<{ postId: string }>();
+export default function NCRFormScreen() {
   const { colors } = useTheme();
-  const router = useRouter();
-  const scrollRef = useRef<ScrollView>(null);
   const { user } = useUser();
-  const [showEscalation, setShowEscalation] = useState(false);
+  const orgContext = useOrganization();
+  const organizationId = orgContext?.organizationId;
+  const facilityId = orgContext?.facilityId;
+  const queryClient = useQueryClient();
 
-  const { data, isLoading, error } = useTaskFeedPostDetail(postId);
+  const userName = user
+    ? `${user.first_name} ${user.last_name}`.trim()
+    : 'Unknown';
 
-  const signoff = useSignoffDepartmentTask({
-    onSuccess: () => {
-      Alert.alert('Signed Off', 'Department task signed off successfully.');
+  // ── State ──
+  const [mode, setMode] = useState<'list' | 'new' | 'view'>('list');
+  const [formData, setFormData] = useState<NCRFormData>({ ...EMPTY_FORM });
+  const [signatureVerification, setSignatureVerification] = useState<SignatureVerification | null>(null);
+  const [showCategoryPicker, setShowCategoryPicker] = useState(false);
+  const [selectedRecord, setSelectedRecord] = useState<any>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [photos, setPhotos] = useState<{ uri: string; uploading?: boolean }[]>([]);
+
+  // Task Feed linking
+  const [linkedPostId, setLinkedPostId] = useState<string | null>(null);
+  const [linkedPostNumber, setLinkedPostNumber] = useState<string | null>(null);
+  const linkFormMutation = useLinkFormToPost();
+
+  // Search & filter
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+
+  // ── Fetch existing NCR forms ──
+  const { data: ncrForms = [], isLoading, refetch } = useQuery({
+    queryKey: ['ncr_paper_forms', organizationId],
+    queryFn: async () => {
+      if (!organizationId) return [];
+      const { data, error } = await supabase
+        .from('ncr_paper_forms')
+        .select('*')
+        .eq('organization_id', organizationId)
+        .order('created_at', { ascending: false });
+      if (error) {
+        console.error('[NCRForm] Fetch error:', error.message);
+        return [];
+      }
+      return data || [];
     },
-    onError: (err) => {
-      Alert.alert('Error', err.message || 'Failed to sign off');
-    },
+    enabled: !!organizationId,
   });
 
-  const deletePostMutation = useDeleteTaskFeedPost({
-    onSuccess: () => {
-      Alert.alert('Deleted', 'Post has been deleted.');
-      router.back();
-    },
-    onError: (err) => {
-      Alert.alert('Error', err.message || 'Failed to delete post.');
-    },
-  });
-
-  const handleDeletePost = useCallback(() => {
-    if (!data?.post) return;
-    const p = data.post;
-    Alert.alert(
-      'Delete Post',
-      `Are you sure you want to delete ${p.postNumber}?\n\nThis will also remove all department tasks and cannot be undone.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => deletePostMutation.mutate(p.id),
-        },
-      ]
-    );
-  }, [data, deletePostMutation]);
-
-  // Linked forms query
-  const { data: linkedForms } = usePostFormLinks(postId);
-
-  useEffect(() => {
-    if (Platform.OS === 'web') {
-      const style = document.createElement('style');
-      style.id = 'print-styles';
-      style.innerHTML = `
-        @media print {
-          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          .print-photos-grid { display: flex !important; flex-wrap: wrap !important; gap: 12px !important; }
-          .print-photos-grid img { width: 200px !important; height: 150px !important; object-fit: cover !important; border-radius: 8px !important; page-break-inside: avoid !important; }
-          .no-print { display: none !important; }
-          .print-only { display: block !important; }
-        }
-        @media screen {
-          .print-only { display: none !important; }
-        }
-      `;
-      document.head.appendChild(style);
-      return () => {
-        const existingStyle = document.getElementById('print-styles');
-        if (existingStyle) existingStyle.remove();
-      };
-    }
-  }, []);
-
-  const formatDateTime = useCallback((dateString: string | undefined) => {
-    if (!dateString) return 'N/A';
-    const date = new Date(dateString);
-    return date.toLocaleString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true,
+  // ── Filtered NCR forms ──
+  const filteredForms = useMemo(() => {
+    return (ncrForms as any[]).filter((ncr) => {
+      const q = searchQuery.toLowerCase();
+      const matchesSearch = !q ||
+        (ncr.form_number || '').toLowerCase().includes(q) ||
+        (ncr.description_of_non_conformity || '').toLowerCase().includes(q) ||
+        (ncr.project_package || '').toLowerCase().includes(q) ||
+        (ncr.originator_name || '').toLowerCase().includes(q) ||
+        (ncr.non_conformity_category || '').toLowerCase().includes(q) ||
+        (ncr.contractor_person_in_charge || '').toLowerCase().includes(q) ||
+        (ncr.supplier_person_in_charge || '').toLowerCase().includes(q);
+      const matchesStatus = !statusFilter || ncr.status === statusFilter;
+      return matchesSearch && matchesStatus;
     });
-  }, []);
+  }, [ncrForms, searchQuery, statusFilter]);
 
-  const formatDate = useCallback((dateString: string | undefined) => {
-    if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
-  }, []);
+  // ── Generate form number ──
+  const generateFormNumber = useCallback(() => {
+    const date = new Date();
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const seq = String((ncrForms?.length || 0) + 1).padStart(4, '0');
+    return `NCR-${y}${m}-${seq}`;
+  }, [ncrForms]);
 
-  const allPhotos = useMemo(() => {
-    if (!data?.post) return [];
-    const photos: string[] = [];
-    if (data.post.photoUrl) photos.push(data.post.photoUrl);
-    if (data.post.additionalPhotos) {
-      photos.push(...data.post.additionalPhotos);
-    }
-    return photos.filter(Boolean);
-  }, [data]);
-
-  const handlePrint = useCallback(async () => {
-    if (!data) return;
-
-    if (Platform.OS === 'web') {
-      const { post, linkedWorkOrders } = data;
-      const completedCount = post.departmentTasks?.filter(t => t.status === 'completed').length || 0;
-      const totalCount = post.departmentTasks?.length || 0;
-
-      const photosHtml = allPhotos.length > 0 ? `
-        <div class="section">
-          <h3>📷 Photos (${allPhotos.length})</h3>
-          <div class="photos-grid">
-            ${allPhotos.map(photo => `<img src="${photo}" alt="Photo" />`).join('')}
-          </div>
-        </div>
-      ` : '';
-
-      const formDataHtml = post.formData && Object.keys(post.formData).length > 0 ? `
-        <div class="section">
-          <h3>📋 Form Details</h3>
-          <div class="form-grid">
-            ${Object.entries(post.formData).filter(([_, v]) => v).map(([key, value]) => {
-              const label = key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' ');
-              return `<div class="form-item"><span class="label">${label}</span><span class="value">${String(value)}</span></div>`;
-            }).join('')}
-          </div>
-        </div>
-      ` : '';
-
-      const notesHtml = post.notes ? `
-        <div class="section">
-          <h3>📝 Notes</h3>
-          <p class="notes">${post.notes}</p>
-        </div>
-      ` : '';
-
-      const deptTasksHtml = post.departmentTasks && post.departmentTasks.length > 0 ? `
-        <div class="section">
-          <h3>🏢 Department Tasks (${post.departmentTasks.length})</h3>
-          <div class="dept-tasks">
-            ${post.departmentTasks.map(task => `
-              <div class="dept-task" style="border-left-color: ${getDepartmentColor(task.departmentCode)}">
-                <div class="dept-task-header">
-                  <span class="dept-name">${task.departmentName}</span>
-                  <span class="status-badge status-${task.status || 'pending'}">${(task.status || 'pending').replace(/_/g, ' ').toUpperCase()}</span>
-                </div>
-                ${task.completedByName ? `<div class="dept-meta">Completed by ${task.completedByName} on ${formatDateTime(task.completedAt)}</div>` : ''}
-                ${task.completionNotes ? `<div class="dept-notes">${task.completionNotes}</div>` : ''}
-              </div>
-            `).join('')}
-          </div>
-        </div>
-      ` : '';
-
-      const workOrdersHtml = linkedWorkOrders.length > 0 ? `
-        <div class="section">
-          <h3>🔧 Linked Work Orders (${linkedWorkOrders.length})</h3>
-          <div class="work-orders">
-            ${linkedWorkOrders.map(wo => `
-              <div class="work-order">
-                <div class="wo-header">
-                  <span class="wo-number">${wo.work_order_number || 'WO-' + wo.id.slice(0, 8)}</span>
-                  <span class="priority-badge priority-${wo.priority || 'medium'}">${(wo.priority || 'medium').toUpperCase()}</span>
-                  <span class="status-badge status-${wo.status || 'open'}">${(wo.status || 'open').replace(/_/g, ' ').toUpperCase()}</span>
-                </div>
-                <div class="wo-title">${wo.title}</div>
-                ${wo.description ? `<div class="wo-desc">${wo.description}</div>` : ''}
-                <div class="wo-meta">
-                  ${wo.assigned_name ? `<span>👤 ${wo.assigned_name}</span>` : ''}
-                  ${wo.due_date ? `<span>📅 Due: ${formatDate(wo.due_date)}</span>` : ''}
-                  ${wo.department ? `<span class="dept-badge">${getDepartmentName(wo.department)}</span>` : ''}
-                </div>
-              </div>
-            `).join('')}
-          </div>
-        </div>
-      ` : '';
-
-      const printHtml = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <title>${post.postNumber} - Task Feed Report</title>
-          <style>
-            * { box-sizing: border-box; margin: 0; padding: 0; }
-            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 16px; max-width: 800px; margin: 0 auto; color: #1a1a1a; font-size: 11px; line-height: 1.3; }
-            .header { border-bottom: 2px solid #0ea5e9; padding-bottom: 10px; margin-bottom: 12px; }
-            .header-top { display: flex; justify-content: space-between; align-items: center; }
-            .header-left { display: flex; align-items: center; gap: 12px; }
-            .post-number { font-size: 18px; font-weight: 700; color: #0ea5e9; }
-            .template-name { font-size: 13px; color: #666; }
-            .status-badge { display: inline-block; padding: 3px 10px; border-radius: 10px; font-size: 10px; font-weight: 600; }
-            .status-completed { background: #D1FAE5; color: #065F46; }
-            .status-open { background: #DBEAFE; color: #1E40AF; }
-            .status-in_progress { background: #FEF3C7; color: #92400E; }
-            .status-pending { background: #FEF3C7; color: #92400E; }
-            .status-overdue { background: #FEE2E2; color: #991B1B; }
-            .meta-row { display: flex; gap: 16px; margin-top: 8px; color: #666; font-size: 11px; }
-            .section { margin-bottom: 12px; }
-            .section h3 { font-size: 12px; font-weight: 600; margin-bottom: 6px; padding-bottom: 4px; border-bottom: 1px solid #e5e5e5; }
-            .photos-grid { display: flex; flex-wrap: wrap; gap: 8px; }
-            .photos-grid img { width: 120px; height: 90px; object-fit: cover; border-radius: 4px; border: 1px solid #ddd; }
-            .form-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px 12px; }
-            .form-item { padding: 4px 0; }
-            .form-item .label { display: block; font-size: 9px; color: #888; }
-            .form-item .value { font-size: 11px; font-weight: 500; }
-            .notes { font-size: 11px; color: #333; }
-            .dept-tasks { display: flex; flex-direction: column; gap: 6px; }
-            .dept-task { border-left: 3px solid #ccc; padding: 6px 10px; background: #f9f9f9; border-radius: 0 4px 4px 0; }
-            .dept-task-header { display: flex; justify-content: space-between; align-items: center; }
-            .dept-name { font-weight: 600; font-size: 11px; }
-            .dept-meta { font-size: 10px; color: #666; margin-top: 3px; }
-            .dept-notes { font-size: 10px; color: #666; margin-top: 3px; }
-            .work-orders { display: flex; flex-direction: column; gap: 8px; }
-            .work-order { padding: 8px 10px; background: #f9f9f9; border-radius: 6px; border: 1px solid #e5e5e5; }
-            .wo-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
-            .wo-number { font-weight: 700; color: #0ea5e9; font-size: 11px; }
-            .priority-badge { padding: 1px 6px; border-radius: 6px; font-size: 9px; font-weight: 600; }
-            .priority-low { background: #D1FAE5; color: #065F46; }
-            .priority-medium { background: #FEF3C7; color: #92400E; }
-            .priority-high { background: #FEE2E2; color: #991B1B; }
-            .priority-critical { background: #7F1D1D; color: #FFF; }
-            .wo-title { font-weight: 500; font-size: 11px; }
-            .wo-desc { font-size: 10px; color: #666; margin-top: 2px; }
-            .wo-meta { display: flex; gap: 12px; font-size: 10px; color: #666; flex-wrap: wrap; margin-top: 4px; }
-            .dept-badge { background: #e0f2fe; color: #0369a1; padding: 1px 6px; border-radius: 6px; font-size: 9px; }
-            .footer { margin-top: 16px; padding-top: 8px; border-top: 1px solid #e5e5e5; text-align: center; color: #999; font-size: 9px; }
-            @media print { body { padding: 12px; } .section { page-break-inside: avoid; } }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <div class="header-top">
-              <div class="header-left">
-                <span class="post-number">${post.postNumber}</span>
-                <span class="template-name">${post.templateName}</span>
-              </div>
-              <span class="status-badge status-${post.status || 'pending'}">${(post.status || 'pending').replace(/_/g, ' ').toUpperCase()}</span>
-            </div>
-            <div class="meta-row">
-              <span>👤 ${post.createdByName}</span>
-              <span>📅 ${formatDateTime(post.createdAt)}</span>
-              ${post.locationName ? `<span>📍 ${post.locationName}</span>` : ''}
-              ${totalCount > 0 ? `<span>Progress: ${completedCount}/${totalCount}</span>` : ''}
-            </div>
-          </div>
-          ${photosHtml}
-          ${formDataHtml}
-          ${notesHtml}
-          ${deptTasksHtml}
-          ${workOrdersHtml}
-          <div class="footer">Generated on ${new Date().toLocaleString()}</div>
-        </body>
-        </html>
-      `;
-
-      const printWindow = window.open('', '_blank');
-      if (printWindow) {
-        printWindow.document.write(printHtml);
-        printWindow.document.close();
-        printWindow.onload = () => {
-          setTimeout(() => {
-            printWindow.print();
-          }, 500);
-        };
-      }
-    } else {
-      Alert.alert(
-        'Print',
-        'To print this report, please use the Share option and send to a printer-enabled app or email.',
-        [{ text: 'OK' }]
-      );
-    }
-  }, [data, allPhotos, formatDateTime, formatDate]);
-
-  const generateShareContent = useCallback(() => {
-    if (!data) return '';
-
-    const { post, linkedWorkOrders } = data;
-    let content = `TASK FEED POST REPORT\n`;
-    content += `${'='.repeat(40)}\n\n`;
-    content += `Post Number: ${post.postNumber}\n`;
-    content += `Template: ${post.templateName}\n`;
-    content += `Status: ${post.status?.toUpperCase()}\n`;
-    content += `Created: ${formatDateTime(post.createdAt)}\n`;
-    content += `Created By: ${post.createdByName}\n`;
-    if (post.locationName) content += `Location: ${post.locationName}\n`;
-    content += `\n`;
-
-    if (post.formData && Object.keys(post.formData).length > 0) {
-      content += `FORM DATA\n`;
-      content += `${'-'.repeat(20)}\n`;
-      for (const [key, value] of Object.entries(post.formData)) {
-        if (value) {
-          const label = key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' ');
-          content += `${label}: ${String(value)}\n`;
-        }
-      }
-      content += `\n`;
-    }
-
-    if (post.notes) {
-      content += `NOTES\n`;
-      content += `${'-'.repeat(20)}\n`;
-      content += `${post.notes}\n\n`;
-    }
-
-    if (post.departmentTasks && post.departmentTasks.length > 0) {
-      content += `DEPARTMENT TASKS\n`;
-      content += `${'-'.repeat(20)}\n`;
-      for (const task of post.departmentTasks) {
-        const statusIcon = task.status === 'completed' ? '✓' : task.status === 'pending' ? '○' : '…';
-        content += `${statusIcon} ${task.departmentName}: ${task.status?.toUpperCase()}\n`;
-        if (task.completedByName) {
-          content += `   Completed by: ${task.completedByName} on ${formatDateTime(task.completedAt)}\n`;
-        }
-        if (task.completionNotes) {
-          content += `   Notes: ${task.completionNotes}\n`;
-        }
-      }
-      content += `\n`;
-    }
-
-    if (linkedWorkOrders.length > 0) {
-      content += `LINKED WORK ORDERS (${linkedWorkOrders.length})\n`;
-      content += `${'='.repeat(40)}\n\n`;
-      for (const wo of linkedWorkOrders) {
-        content += `Work Order: ${wo.work_order_number || wo.id.slice(0, 8)}\n`;
-        content += `Title: ${wo.title}\n`;
-        content += `Status: ${wo.status?.toUpperCase()}\n`;
-        content += `Priority: ${wo.priority?.toUpperCase()}\n`;
-        if (wo.assigned_name) content += `Assigned To: ${wo.assigned_name}\n`;
-        if (wo.due_date) content += `Due Date: ${formatDate(wo.due_date)}\n`;
-        if (wo.description) content += `Description: ${wo.description.slice(0, 200)}...\n`;
-        content += `\n`;
-      }
-    }
-
-    content += `${'-'.repeat(40)}\n`;
-    content += `Generated: ${new Date().toLocaleString()}\n`;
-
-    return content;
-  }, [data, formatDateTime, formatDate]);
-
-  const handleShare = useCallback(async () => {
-    if (!data) return;
-
-    const content = generateShareContent();
+  // ── Photo upload to Supabase Storage ──
+  const uploadPhoto = useCallback(async (uri: string): Promise<string> => {
+    if (!organizationId) throw new Error('No organization');
+    const timestamp = Date.now();
+    const fileName = `ncr-forms/${organizationId}/${timestamp}-${Math.random().toString(36).substring(2, 7)}.jpg`;
 
     try {
-      await Share.share({
-        message: content,
-        title: `Task Feed Post ${data.post.postNumber}`,
-      });
+      if (Platform.OS === 'web') {
+        let dataUrl = uri;
+        if (uri.startsWith('blob:')) {
+          const response = await fetch(uri);
+          const blob = await response.blob();
+          dataUrl = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          });
+        }
+        if (dataUrl.startsWith('data:')) {
+          const base64 = dataUrl.split(',')[1];
+          const { error: uploadError } = await supabase.storage
+            .from('ncr-photos')
+            .upload(fileName, decode(base64), { contentType: 'image/jpeg', upsert: true });
+          if (uploadError) {
+            console.log('[NCR Photos] Storage not available, using base64 fallback');
+            return dataUrl;
+          }
+          const { data: urlData } = supabase.storage.from('ncr-photos').getPublicUrl(fileName);
+          return urlData?.publicUrl || dataUrl;
+        }
+        return uri;
+      }
+
+      // Native platform
+      try {
+        const ImageManipulator = await import('expo-image-manipulator');
+        const manipulated = await ImageManipulator.manipulateAsync(
+          uri,
+          [{ resize: { width: 1024 } }],
+          { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+        );
+        if (manipulated.base64) {
+          const { error: uploadError } = await supabase.storage
+            .from('ncr-photos')
+            .upload(fileName, decode(manipulated.base64), { contentType: 'image/jpeg', upsert: true });
+          if (uploadError) return `data:image/jpeg;base64,${manipulated.base64}`;
+          const { data: urlData } = supabase.storage.from('ncr-photos').getPublicUrl(fileName);
+          return urlData?.publicUrl || `data:image/jpeg;base64,${manipulated.base64}`;
+        }
+      } catch (manipError) {
+        console.warn('[NCR Photos] Compression failed:', manipError);
+      }
+
+      const FileSystem = await import('expo-file-system');
+      const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+      const { error: uploadError } = await supabase.storage
+        .from('ncr-photos')
+        .upload(fileName, decode(base64), { contentType: 'image/jpeg', upsert: true });
+      if (uploadError) return `data:image/jpeg;base64,${base64}`;
+      const { data: urlData } = supabase.storage.from('ncr-photos').getPublicUrl(fileName);
+      return urlData?.publicUrl || `data:image/jpeg;base64,${base64}`;
     } catch (err) {
-      console.error('[TaskFeedPostDetail] Share error:', err);
+      console.error('[NCR Photos] Upload failed:', err);
+      return uri;
     }
-  }, [data, generateShareContent]);
+  }, [organizationId]);
 
-  const handleWorkOrderPress = useCallback((workOrderId: string) => {
-    router.push(`/cmms/work-orders/${workOrderId}`);
-  }, [router]);
+  const takePhoto = useCallback(async () => {
+    try {
+      const permission = await ImagePicker.requestCameraPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert('Permission Required', 'Camera access is needed to take photos.');
+        return;
+      }
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.8,
+        allowsEditing: false,
+      });
+      if (result.canceled || !result.assets?.[0]) return;
+      const uri = result.assets[0].uri;
+      setPhotos(prev => [...prev, { uri, uploading: true }]);
+      const uploadedUrl = await uploadPhoto(uri);
+      setPhotos(prev => prev.map(p => p.uri === uri ? { uri: uploadedUrl, uploading: false } : p));
+    } catch (err) {
+      console.error('[NCR Photos] Camera error:', err);
+      Alert.alert('Error', 'Could not take photo.');
+    }
+  }, [uploadPhoto]);
 
-  // Navigate to the form's module page
-  const handleFormLinkPress = useCallback((link: { formType: string; departmentCode?: string | null; formId?: string }) => {
-    // Map department code to module tab
-    const deptToModule: Record<string, string> = {
-      '1001': 'cmms',
-      '1002': 'sanitation',
-      '1003': 'production',
-      '1004': 'quality',
-      '1005': 'safety',
-    };
-    // Normalize known form types to their route names
-    const formTypeRouteMap: Record<string, string> = {
-      'ncr': 'ncr',
-      'non-conformance report (ncr)': 'ncr',
-      'non-conformance report': 'ncr',
-      'nonconformancereport(ncr)': 'ncr',
-      'capa': 'capa',
-      'deviation': 'deviation',
-      'hold tag': 'holdtag',
-      'customer complaint': 'customercomplaint',
-    };
-    const module = deptToModule[link.departmentCode || ''] || 'quality';
-    const normalized = link.formType.toLowerCase().trim();
-    const formRoute = formTypeRouteMap[normalized] || normalized.replace(/[\s\-()]/g, '');
-    router.push(`/${module}/${formRoute}` as any);
-  }, [router]);
+  const pickFromGallery = useCallback(async () => {
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert('Permission Required', 'Photo library access is needed.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.8,
+        allowsMultipleSelection: true,
+        selectionLimit: 5,
+      });
+      if (result.canceled || !result.assets?.length) return;
+      for (const asset of result.assets) {
+        const uri = asset.uri;
+        setPhotos(prev => [...prev, { uri, uploading: true }]);
+        const uploadedUrl = await uploadPhoto(uri);
+        setPhotos(prev => prev.map(p => p.uri === uri ? { uri: uploadedUrl, uploading: false } : p));
+      }
+    } catch (err) {
+      console.error('[NCR Photos] Gallery error:', err);
+      Alert.alert('Error', 'Could not select photos.');
+    }
+  }, [uploadPhoto]);
 
-  const styles = createStyles(colors);
+  const removePhoto = useCallback((index: number) => {
+    setPhotos(prev => prev.filter((_, i) => i !== index));
+  }, []);
 
-  if (isLoading) {
+  // ── Save / Submit ──
+  const handleSubmit = useCallback(async (asDraft: boolean) => {
+    if (!organizationId) return;
+
+    if (!asDraft) {
+      const requiredFields: (keyof NCRFormData)[] = [
+        'project_package', 'item_component_no', 'specification_reference_no',
+        'contractor_location', 'contractor_person_in_charge', 'contractor_phone', 'contractor_email',
+        'supplier_location', 'supplier_person_in_charge', 'supplier_phone', 'supplier_email',
+        'description_of_non_conformity', 'non_conformity_category', 'recommendation_by_originator',
+      ];
+      const missing = requiredFields.filter(f => !formData[f]?.toString().trim());
+      if (missing.length > 0) {
+        Alert.alert('Required Fields', `Please fill in all required fields.\n\nMissing: ${missing.length} field(s)`);
+        return;
+      }
+      if (!signatureVerification?.verifiedAt) {
+        Alert.alert('Signature Required', 'Please verify your PIN signature before submitting.');
+        return;
+      }
+    }
+
+    setIsSubmitting(true);
+    try {
+      const formNumber = generateFormNumber();
+      const record = {
+        organization_id: organizationId,
+        facility_id: facilityId || null,
+        form_number: formNumber,
+        form_version: '1.0',
+        ...formData,
+        project_time_delay: formData.project_time_delay,
+        expected_delay_estimate: formData.project_time_delay ? formData.expected_delay_estimate : null,
+        photos_and_videos: photos.filter(p => !p.uploading).map(p => p.uri),
+        contractors_involved: formData.contractors_involved
+          ? formData.contractors_involved.split(',').map(s => s.trim()).filter(Boolean)
+          : [],
+        originator_name: signatureVerification?.employeeName || userName,
+        originator_employee_id: signatureVerification?.employeeId || null,
+        originator_signed_at: signatureVerification?.verifiedAt || null,
+        originator_pin_verified: !!signatureVerification?.verifiedAt,
+        status: asDraft ? 'draft' : 'submitted',
+        created_by: userName,
+        created_by_id: user?.id || null,
+      };
+
+      const { data: createdRecord, error } = await supabase.from('ncr_paper_forms').insert(record).select().single();
+
+      if (error) {
+        console.error('[NCRForm] Submit error:', error.message);
+        Alert.alert('Error', error.message);
+        return;
+      }
+
+      // Link to task feed post if selected
+      if (linkedPostId && linkedPostNumber && createdRecord) {
+        try {
+          await linkFormMutation.mutateAsync({
+            postId: linkedPostId,
+            postNumber: linkedPostNumber,
+            formType: 'ncr',
+            formId: createdRecord.id,
+            formNumber: formNumber,
+            formTitle: formData.description_of_non_conformity.substring(0, 80) || 'NCR',
+            departmentCode: '1004',
+            departmentName: 'Quality',
+          });
+        } catch (linkErr) {
+          console.warn('[NCRForm] Form link failed:', linkErr);
+        }
+      }
+
+      if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      queryClient.invalidateQueries({ queryKey: ['ncr_paper_forms'] });
+      setFormData({ ...EMPTY_FORM });
+      setSignatureVerification(null);
+      setPhotos([]);
+      setLinkedPostId(null);
+      setLinkedPostNumber(null);
+      setMode('list');
+      Alert.alert('Success', asDraft ? 'NCR draft saved.' : 'NCR submitted successfully.');
+    } catch (err: any) {
+      Alert.alert('Error', err.message || 'Failed to save NCR.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [formData, signatureVerification, organizationId, facilityId, userName, user, generateFormNumber, linkedPostId, linkedPostNumber, linkFormMutation, photos, queryClient]);
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await refetch();
+    setRefreshing(false);
+  }, [refetch]);
+
+  const updateField = useCallback((field: keyof NCRFormData, value: string | boolean) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+  }, []);
+
+  const openViewMode = useCallback((record: any) => {
+    setSelectedRecord(record);
+    setMode('view');
+  }, []);
+
+  const openNewForm = useCallback(() => {
+    setFormData({ ...EMPTY_FORM });
+    setSignatureVerification(null);
+    setPhotos([]);
+    setLinkedPostId(null);
+    setLinkedPostNumber(null);
+    setMode('new');
+  }, []);
+
+  const nowStr = useMemo(() => {
+    const d = new Date();
+    return d.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) + ', ' +
+      d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  }, []);
+
+  const orgName = orgContext?.organization?.name || 'Organization';
+  const facilityName = orgContext?.facility?.name || 'Facility';
+
+  // ═══════════════════════════════════════════════════════════════
+  //  LIST VIEW
+  // ═══════════════════════════════════════════════════════════════
+  if (mode === 'list') {
     return (
-      <View style={[styles.container, styles.centerContent]}>
-        <Stack.Screen options={{ title: 'Loading...' }} />
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Loading post details...</Text>
-      </View>
-    );
-  }
-
-  if (error || !data) {
-    return (
-      <View style={[styles.container, styles.centerContent]}>
-        <Stack.Screen options={{ title: 'Error' }} />
-        <AlertTriangle size={48} color={colors.error} />
-        <Text style={[styles.errorTitle, { color: colors.text }]}>Post Not Found</Text>
-        <Text style={[styles.errorText, { color: colors.textSecondary }]}>
-          The requested task feed post could not be loaded.
-        </Text>
-        <TouchableOpacity
-          style={[styles.backButton, { backgroundColor: colors.primary }]}
-          onPress={() => router.back()}
+      <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]} edges={['bottom']}>
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{ padding: 16 }}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
         >
-          <Text style={styles.backButtonText}>Go Back</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
+          <Pressable style={[styles.newFormBtn, { backgroundColor: FORM_BLUE }]} onPress={openNewForm}>
+            <Plus size={20} color="#FFF" />
+            <Text style={styles.newFormBtnText}>New Non-Conformance Report</Text>
+          </Pressable>
 
-  const { post, linkedWorkOrders } = data;
-  const completedCount = post.departmentTasks?.filter(t => t.status === 'completed').length || 0;
-  const totalCount = post.departmentTasks?.length || 0;
-
-  return (
-    <View style={styles.container}>
-      <Stack.Screen
-        options={{
-          title: post.postNumber,
-          headerRight: () => (
-            <View style={styles.headerActions}>
-              <TouchableOpacity onPress={handleShare} style={styles.headerButton}>
-                <Share2 size={22} color={colors.text} />
-              </TouchableOpacity>
-              <TouchableOpacity onPress={handlePrint} style={styles.headerButton}>
-                <Printer size={22} color={colors.text} />
-              </TouchableOpacity>
-              <TouchableOpacity onPress={handleDeletePost} style={styles.headerButton}>
-                <Trash2 size={22} color="#EF4444" />
-              </TouchableOpacity>
-            </View>
-          ),
-        }}
-      />
-
-      <ScrollView
-        ref={scrollRef}
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Header Card */}
-        <View style={[styles.card, { backgroundColor: colors.surface }]}>
-          <View style={styles.postHeader}>
-            <View style={styles.postHeaderLeft}>
-              <Text style={[styles.postNumber, { color: colors.primary }]}>{post.postNumber}</Text>
-              <Text style={[styles.templateName, { color: colors.text }]}>{post.templateName}</Text>
-            </View>
-            <View
-              style={[
-                styles.statusBadge,
-                { backgroundColor: STATUS_COLORS[post.status || 'pending']?.bg || colors.surface },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.statusText,
-                  { color: STATUS_COLORS[post.status || 'pending']?.text || colors.text },
-                ]}
-              >
-                {(post.status || 'pending').replace(/_/g, ' ').toUpperCase()}
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.metaRow}>
-            <View style={styles.metaItem}>
-              <User size={14} color={colors.textSecondary} />
-              <Text style={[styles.metaText, { color: colors.textSecondary }]}>{post.createdByName}</Text>
-            </View>
-            <View style={styles.metaItem}>
-              <Calendar size={14} color={colors.textSecondary} />
-              <Text style={[styles.metaText, { color: colors.textSecondary }]}>
-                {formatDateTime(post.createdAt)}
-              </Text>
-            </View>
-          </View>
-
-          {post.locationName && (
-            <View style={styles.metaRow}>
-              <View style={styles.metaItem}>
-                <MapPin size={14} color={colors.primary} />
-                <Text style={[styles.metaText, { color: colors.text }]}>{post.locationName}</Text>
-              </View>
-            </View>
-          )}
-
-          {/* Production Hold Banner */}
-          {post.isProductionHold && (post.holdStatus === 'active' || post.holdStatus === 'reinstated' || post.holdStatus === 'cleared') && (
-            <ProductionStoppedBanner
-              notes={post.productionLine ? `Room/Line: ${post.productionLine}` : (post.locationName ? `Room/Line: ${post.locationName}` : '')}
-              status={(post.holdStatus === 'active' || post.holdStatus === 'reinstated') ? 'flagged' : 'verified'}
-              createdAt={post.createdAt}
-              resolvedAt={post.holdClearedAt}
+          <View style={[styles.searchBar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Search size={16} color={colors.textSecondary} />
+            <TextInput
+              style={[styles.searchInput, { color: colors.text }]}
+              placeholder="Search by number, description, package, name..."
+              placeholderTextColor={colors.textTertiary || '#999'}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
             />
-          )}
-
-          {/* Reporting & Root Cause Department */}
-          {post.isProductionHold && (post.reportingDepartment || post.rootCauseDepartment) && (
-            <View style={styles.deptCauseRow}>
-              {post.reportingDepartment && (
-                <View style={[styles.deptCauseTag, { backgroundColor: getDepartmentColor(post.reportingDepartment) + '15', borderColor: getDepartmentColor(post.reportingDepartment) + '40' }]}>
-                  <Text style={[styles.deptCauseLabel, { color: colors.textSecondary }]}>Reported by</Text>
-                  <Text style={[styles.deptCauseName, { color: getDepartmentColor(post.reportingDepartment) }]}>
-                    {post.reportingDepartmentName || getDepartmentName(post.reportingDepartment)}
-                  </Text>
-                </View>
-              )}
-              {post.rootCauseDepartment && (
-                <View style={[styles.deptCauseTag, { backgroundColor: getDepartmentColor(post.rootCauseDepartment) + '15', borderColor: getDepartmentColor(post.rootCauseDepartment) + '40' }]}>
-                  <Text style={[styles.deptCauseLabel, { color: colors.textSecondary }]}>Root Cause</Text>
-                  <Text style={[styles.deptCauseName, { color: getDepartmentColor(post.rootCauseDepartment) }]}>
-                    {post.rootCauseDepartmentName || getDepartmentName(post.rootCauseDepartment)}
-                  </Text>
-                </View>
-              )}
-            </View>
-          )}
-
-          {totalCount > 0 && (
-            <View style={styles.progressSection}>
-              <View style={styles.progressHeader}>
-                <Text style={[styles.progressLabel, { color: colors.textSecondary }]}>
-                  Department Progress
-                </Text>
-                <Text style={[styles.progressCount, { color: colors.primary }]}>
-                  {completedCount} / {totalCount}
-                </Text>
-              </View>
-              <View style={[styles.progressBar, { backgroundColor: colors.border }]}>
-                <View
-                  style={[
-                    styles.progressFill,
-                    {
-                      backgroundColor: completedCount === totalCount ? '#10B981' : colors.primary,
-                      width: `${(completedCount / totalCount) * 100}%`,
-                    },
-                  ]}
-                />
-              </View>
-            </View>
-          )}
-        </View>
-
-        {/* Photos Section */}
-        {allPhotos.length > 0 && (
-          <View style={[styles.card, { backgroundColor: colors.surface }]}>
-            <View style={styles.sectionHeader}>
-              <ImageIcon size={18} color={colors.primary} />
-              <Text style={[styles.sectionTitle, { color: colors.text }]}>
-                Photos ({allPhotos.length})
-              </Text>
-            </View>
-            {/* Screen version - horizontal scroll */}
-            {Platform.OS !== 'web' ? (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photosScroll}>
-                {allPhotos.map((photo, idx) => (
-                  <Image key={`photo-${idx}`} source={{ uri: photo }} style={styles.photoLarge} />
-                ))}
-              </ScrollView>
-            ) : (
-              <>
-                {/* Web screen version - horizontal scroll */}
-                <ScrollView 
-                  horizontal 
-                  showsHorizontalScrollIndicator={false} 
-                  style={styles.photosScroll}
-                  // @ts-ignore - web className
-                  className="no-print"
-                >
-                  {allPhotos.map((photo, idx) => (
-                    <Image key={`photo-${idx}`} source={{ uri: photo }} style={styles.photoLarge} />
-                  ))}
-                </ScrollView>
-                {/* Print version - grid layout */}
-                <View 
-                  style={styles.photosGrid}
-                  // @ts-ignore - web className
-                  className="print-only print-photos-grid"
-                >
-                  {allPhotos.map((photo, idx) => (
-                    <Image key={`photo-print-${idx}`} source={{ uri: photo }} style={styles.photoGridItem} />
-                  ))}
-                </View>
-              </>
+            {searchQuery.length > 0 && (
+              <Pressable onPress={() => setSearchQuery('')}><X size={16} color={colors.textSecondary} /></Pressable>
             )}
           </View>
-        )}
 
-        {/* Form Data Section */}
-        {post.formData && Object.keys(post.formData).length > 0 && (
-          <View style={[styles.card, { backgroundColor: colors.surface }]}>
-            <View style={styles.sectionHeader}>
-              <ClipboardList size={18} color={colors.primary} />
-              <Text style={[styles.sectionTitle, { color: colors.text }]}>Form Details</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterRow} contentContainerStyle={{ gap: 6 }}>
+            {STATUS_TABS.map(tab => (
+              <Pressable
+                key={tab.label}
+                style={[styles.filterChip, { borderColor: colors.border, backgroundColor: colors.surface },
+                  statusFilter === tab.value && { backgroundColor: FORM_BLUE, borderColor: FORM_BLUE }]}
+                onPress={() => setStatusFilter(tab.value)}
+              >
+                <Text style={[styles.filterChipText, { color: colors.textSecondary },
+                  statusFilter === tab.value && { color: '#FFF' }]}>{tab.label}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+
+          <Text style={[styles.resultCount, { color: colors.textSecondary }]}>
+            {filteredForms.length} of {ncrForms.length} NCR{ncrForms.length !== 1 ? 's' : ''}
+          </Text>
+
+          {isLoading ? (
+            <ActivityIndicator size="large" color={FORM_BLUE} style={{ marginTop: 40 }} />
+          ) : filteredForms.length === 0 ? (
+            <View style={styles.emptyState}>
+              <FileText size={48} color={colors.textSecondary} />
+              <Text style={[styles.emptyTitle, { color: colors.text }]}>
+                {ncrForms.length === 0 ? 'No NCR Forms' : 'No matching NCRs'}
+              </Text>
+              <Text style={[styles.emptySub, { color: colors.textSecondary }]}>
+                {ncrForms.length === 0 ? 'Tap the button above to create your first Non-Conformance Report' : 'Try adjusting your search or filter'}
+              </Text>
             </View>
-            <View style={styles.formDataGrid}>
-              {Object.entries(post.formData).map(([key, value]) => {
-                if (!value) return null;
-                const label = key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' ');
-                return (
-                  <View key={key} style={styles.formDataItem}>
-                    <Text style={[styles.formDataLabel, { color: colors.textSecondary }]}>{label}</Text>
-                    <Text style={[styles.formDataValue, { color: colors.text }]}>{String(value)}</Text>
+          ) : (
+            filteredForms.map((ncr: any) => (
+              <Pressable
+                key={ncr.id}
+                style={[styles.listCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                onPress={() => openViewMode(ncr)}
+              >
+                <View style={styles.listCardHeader}>
+                  <Text style={[styles.listCardNumber, { color: FORM_BLUE }]}>{ncr.form_number}</Text>
+                  <View style={[styles.statusBadge,
+                    { backgroundColor: ncr.status === 'submitted' ? '#10B981' : ncr.status === 'draft' ? '#F59E0B' : ncr.status === 'under_review' ? '#8B5CF6' : '#6B7280' }]}>
+                    <Text style={styles.statusBadgeText}>{(ncr.status || '').toUpperCase()}</Text>
                   </View>
-                );
-              })}
+                </View>
+                <Text style={[styles.listCardDesc, { color: colors.text }]} numberOfLines={2}>
+                  {ncr.description_of_non_conformity || 'No description'}
+                </Text>
+                <View style={styles.listCardMeta}>
+                  <Text style={[styles.listCardMetaText, { color: colors.textSecondary }]}>Package: {ncr.project_package}</Text>
+                  <Text style={[styles.listCardMetaText, { color: colors.textSecondary }]}>{new Date(ncr.created_at).toLocaleDateString()}</Text>
+                </View>
+                <View style={styles.listCardMeta}>
+                  <Text style={[styles.listCardMetaText, { color: colors.textSecondary }]}>Category: {ncr.non_conformity_category || '—'}</Text>
+                  <Text style={[styles.listCardMetaText, { color: colors.textSecondary }]}>Originator: {ncr.originator_name}</Text>
+                </View>
+              </Pressable>
+            ))
+          )}
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  VIEW MODE
+  // ═══════════════════════════════════════════════════════════════
+  if (mode === 'view' && selectedRecord) {
+    const r = selectedRecord;
+    return (
+      <SafeAreaView style={[styles.safeArea, { backgroundColor: '#F0F0F0' }]} edges={['bottom']}>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 12 }}>
+          <Pressable style={styles.backBtn} onPress={() => { setMode('list'); setSelectedRecord(null); }}>
+            <X size={18} color={FORM_BLUE} />
+            <Text style={[styles.backBtnText, { color: FORM_BLUE }]}>Back to List</Text>
+          </Pressable>
+          <View style={styles.paper}>
+            <View style={styles.formHeader}>
+              <View style={styles.headerLeft}>
+                <View style={styles.logoPlaceholder}><Text style={styles.logoText}>{orgName.substring(0, 2).toUpperCase()}</Text></View>
+                <View>
+                  <Text style={styles.headerOrg}>{orgName}</Text>
+                  <Text style={styles.headerFacility}>{facilityName}</Text>
+                </View>
+              </View>
+              <View style={styles.headerRight}>
+                <Text style={styles.headerMeta}>Form: {r.form_number}</Text>
+                <Text style={styles.headerMeta}>Version: {r.form_version}</Text>
+                <Text style={styles.headerMeta}>Created: {new Date(r.created_at).toLocaleDateString()}</Text>
+              </View>
+            </View>
+            <View style={styles.titleBar}><Text style={styles.titleText}>Non-Conformance Report (NCR)</Text></View>
+            <View style={styles.formNumberRow}>
+              <Text style={styles.formNumberLabel}>Form Number:</Text>
+              <Text style={styles.formNumberValue}>{r.form_number}</Text>
+            </View>
+
+            <View style={styles.sectionBar}><Text style={styles.sectionText}>Section 1:    General Information</Text></View>
+            <Text style={styles.subHeader}>Project Information:</Text>
+            <View style={styles.tableRow}>
+              <View style={[styles.tableCell, styles.labelCell, { flex: 1 }]}><Text style={styles.labelText}>Package</Text></View>
+              <View style={[styles.tableCell, { flex: 1 }]}><Text style={styles.valueText}>{r.project_package}</Text></View>
+              <View style={[styles.tableCell, styles.labelCell, { flex: 1.2 }]}><Text style={styles.labelText}>Item / Component No:</Text></View>
+              <View style={[styles.tableCell, { flex: 1 }]}><Text style={styles.valueText}>{r.item_component_no}</Text></View>
+              <View style={[styles.tableCell, styles.labelCell, { flex: 1.3 }]}><Text style={styles.labelText}>Spec Ref No:</Text></View>
+              <View style={[styles.tableCell, { flex: 1 }]}><Text style={styles.valueText}>{r.specification_reference_no}</Text></View>
+            </View>
+
+            <Text style={styles.subHeader}>Contractor Information:</Text>
+            <View style={styles.tableRow}>
+              <View style={[styles.tableCell, styles.labelCell, { flex: 0.6 }]}><Text style={styles.labelText}>Location:</Text></View>
+              <View style={[styles.tableCell, { flex: 1.4 }]}><Text style={styles.valueText}>{r.contractor_location}</Text></View>
+              <View style={[styles.tableCell, styles.labelCell, { flex: 0.9 }]}><Text style={styles.labelText}>Person in charge:</Text></View>
+              <View style={[styles.tableCell, { flex: 1 }]}><Text style={styles.valueText}>{r.contractor_person_in_charge}</Text></View>
+            </View>
+
+            <Text style={styles.subHeader}>Supplier Information:</Text>
+            <View style={styles.tableRow}>
+              <View style={[styles.tableCell, styles.labelCell, { flex: 0.6 }]}><Text style={styles.labelText}>Location:</Text></View>
+              <View style={[styles.tableCell, { flex: 1.4 }]}><Text style={styles.valueText}>{r.supplier_location}</Text></View>
+              <View style={[styles.tableCell, styles.labelCell, { flex: 0.9 }]}><Text style={styles.labelText}>Person in charge:</Text></View>
+              <View style={[styles.tableCell, { flex: 1 }]}><Text style={styles.valueText}>{r.supplier_person_in_charge}</Text></View>
+            </View>
+
+            <View style={styles.sectionBar}><Text style={styles.sectionText}>Section 2:    Non-Conformity Details</Text></View>
+            <View style={styles.fieldRow}>
+              <View style={[styles.fieldLabel, { flex: 0.35 }]}><Text style={styles.labelText}>Description</Text></View>
+              <View style={[styles.fieldValue, { flex: 0.65 }]}><Text style={styles.valueText}>{r.description_of_non_conformity}</Text></View>
+            </View>
+
+            {r.photos_and_videos && r.photos_and_videos.length > 0 && (
+              <View style={styles.fieldRow}>
+                <View style={[styles.fieldLabel, { flex: 0.35 }]}><Text style={styles.labelText}>Photos</Text></View>
+                <View style={[styles.fieldValue, { flex: 0.65 }]}>
+                  <View style={styles.photoGrid}>
+                    {r.photos_and_videos.map((url: string, idx: number) => (
+                      <Image key={idx} source={{ uri: url }} style={styles.photoThumb} />
+                    ))}
+                  </View>
+                </View>
+              </View>
+            )}
+
+            <View style={styles.fieldRow}>
+              <View style={[styles.fieldLabel, { flex: 0.35 }]}><Text style={styles.labelText}>Category</Text></View>
+              <View style={[styles.fieldValue, { flex: 0.65 }]}><Text style={styles.valueText}>{r.non_conformity_category}</Text></View>
+            </View>
+            <View style={styles.fieldRow}>
+              <View style={[styles.fieldLabel, { flex: 0.35 }]}><Text style={styles.labelText}>Recommendation</Text></View>
+              <View style={[styles.fieldValue, { flex: 0.65 }]}><Text style={styles.valueText}>{r.recommendation_by_originator}</Text></View>
+            </View>
+            <View style={styles.fieldRow}>
+              <View style={[styles.fieldLabel, { flex: 0.35 }]}><Text style={styles.labelText}>Time Delay</Text></View>
+              <View style={[styles.fieldValue, { flex: 0.65 }]}>
+                <Text style={styles.valueText}>{r.project_time_delay ? 'Yes' : 'No'}{r.expected_delay_estimate ? ` — ${r.expected_delay_estimate}` : ''}</Text>
+              </View>
+            </View>
+            <View style={styles.fieldRow}>
+              <View style={[styles.fieldLabel, { flex: 0.35 }]}><Text style={styles.labelText}>Originator</Text></View>
+              <View style={[styles.fieldValue, { flex: 0.65 }]}>
+                <Text style={styles.valueText}>{r.originator_name}{r.originator_pin_verified ? '  ✓ PIN Verified' : ''}</Text>
+                {r.originator_signed_at && <Text style={{ fontSize: 10, color: '#888' }}>{new Date(r.originator_signed_at).toLocaleString()}</Text>}
+              </View>
+            </View>
+            <View style={styles.fieldRow}>
+              <View style={[styles.fieldLabel, { flex: 0.35 }]}><Text style={styles.labelText}>Contractors</Text></View>
+              <View style={[styles.fieldValue, { flex: 0.65 }]}>
+                <Text style={styles.valueText}>{Array.isArray(r.contractors_involved) ? r.contractors_involved.join(', ') : r.contractors_involved}</Text>
+              </View>
+            </View>
+
+            <View style={styles.sectionBar}><Text style={styles.sectionText}>Section 3:    Response by contractors</Text></View>
+            <View style={styles.fieldRow}>
+              <View style={[styles.fieldLabel, { flex: 0.35 }]}><Text style={styles.labelText}>Investigation{'\n'}Outcome</Text></View>
+              <View style={[styles.fieldValue, { flex: 0.65, minHeight: 80 }]}>
+                <Text style={styles.valueText}>{r.outcome_of_investigation || '—'}</Text>
+              </View>
             </View>
           </View>
-        )}
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
 
-        {/* Notes Section */}
-        {post.notes && (
-          <View style={[styles.card, { backgroundColor: colors.surface }]}>
-            <View style={styles.sectionHeader}>
-              <FileText size={18} color={colors.primary} />
-              <Text style={[styles.sectionTitle, { color: colors.text }]}>Notes</Text>
-            </View>
-            <Text style={[styles.notesText, { color: colors.text }]}>{post.notes}</Text>
+  // ═══════════════════════════════════════════════════════════════
+  //  NEW FORM
+  // ═══════════════════════════════════════════════════════════════
+  return (
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: '#F0F0F0' }]} edges={['bottom']}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 12, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
+        <View style={styles.topActions}>
+          <Pressable style={styles.backBtn} onPress={() => setMode('list')}>
+            <X size={18} color={FORM_BLUE} />
+            <Text style={[styles.backBtnText, { color: FORM_BLUE }]}>Cancel</Text>
+          </Pressable>
+          <View style={styles.topActionsBtns}>
+            <Pressable style={[styles.actionBtn, { backgroundColor: '#6B7280' }]} onPress={() => handleSubmit(true)} disabled={isSubmitting}>
+              <Save size={14} color="#FFF" /><Text style={styles.actionBtnText}>Save Draft</Text>
+            </Pressable>
+            <Pressable style={[styles.actionBtn, { backgroundColor: FORM_BLUE }]} onPress={() => handleSubmit(false)} disabled={isSubmitting}>
+              {isSubmitting ? <ActivityIndicator size="small" color="#FFF" /> : <><Send size={14} color="#FFF" /><Text style={styles.actionBtnText}>Submit</Text></>}
+            </Pressable>
           </View>
-        )}
+        </View>
 
-        {/* Department Tasks Section */}
-        {post.departmentTasks && post.departmentTasks.length > 0 && (
-          <View style={[styles.card, { backgroundColor: colors.surface }]}>
-            <DepartmentCompletionBadges
-              departmentTasks={post.departmentTasks}
-              showEscalateButton={post.status !== 'completed' && post.status !== 'cancelled'}
-              isProductionHold={post.isProductionHold}
-              holdStatus={post.holdStatus}
-              linkedWorkOrders={linkedWorkOrders}
-              linkedForms={linkedForms || []}
-              onWorkOrderPress={handleWorkOrderPress}
-              onFormPress={handleFormLinkPress}
-              onEscalatePress={() => setShowEscalation(true)}
-              onSignoffPress={(task) => {
-                Alert.alert(
-                  'Sign Off',
-                  `Confirm sign-off for ${task.departmentName}?\n\nThis verifies their work is complete and approved.`,
-                  [
-                    { text: 'Cancel', style: 'cancel' },
-                    { text: 'Sign Off', style: 'default', onPress: () => {
-                      signoff.mutate({ taskId: task.id, notes: `Signed off by ${user?.first_name} ${user?.last_name}` });
-                    }},
-                  ]
-                );
-              }}
-              onBadgePress={(task) => {
-                if (task.moduleHistoryType === 'work_order' && task.moduleHistoryId) {
-                  handleWorkOrderPress(task.moduleHistoryId);
-                }
-              }}
+        <View style={styles.paper}>
+          <View style={styles.formHeader}>
+            <View style={styles.headerLeft}>
+              <View style={styles.logoPlaceholder}><Text style={styles.logoText}>{orgName.substring(0, 2).toUpperCase()}</Text></View>
+              <View><Text style={styles.headerOrg}>{orgName}</Text><Text style={styles.headerFacility}>{facilityName}</Text></View>
+            </View>
+            <View style={styles.headerRight}>
+              <Text style={styles.headerMeta}>Form: {generateFormNumber()}</Text>
+              <Text style={styles.headerMeta}>Version: 1.0</Text>
+              <Text style={styles.headerMeta}>Date: {nowStr}</Text>
+            </View>
+          </View>
+          <View style={styles.titleBar}><Text style={styles.titleText}>Non-Conformance Report (NCR)</Text></View>
+          <View style={styles.formNumberRow}>
+            <Text style={styles.formNumberLabel}>Automated Form Number:</Text>
+            <Text style={styles.formNumberValue}>{generateFormNumber()}</Text>
+          </View>
+
+          <View style={{ padding: 12, borderBottomWidth: 1, borderBottomColor: FORM_BORDER }}>
+            <TaskFeedPostLinker
+              selectedPostId={linkedPostId}
+              selectedPostNumber={linkedPostNumber}
+              onSelect={(postId, postNumber) => { setLinkedPostId(postId); setLinkedPostNumber(postNumber); }}
+              onClear={() => { setLinkedPostId(null); setLinkedPostNumber(null); }}
             />
           </View>
-        )}
 
-        {/* Linked Work Orders Section */}
-        {linkedWorkOrders.length > 0 && (
-          <View style={[styles.card, { backgroundColor: colors.surface }]}>
-            <View style={styles.sectionHeader}>
-              <Wrench size={18} color="#EF4444" />
-              <Text style={[styles.sectionTitle, { color: colors.text }]}>
-                Linked Work Orders ({linkedWorkOrders.length})
-              </Text>
+          <View style={styles.sectionBar}><Text style={styles.sectionText}>Section 1:    General Information</Text></View>
+
+          <Text style={styles.subHeader}>Project Information:</Text>
+          <View style={styles.tableRow}>
+            <View style={[styles.tableCell, styles.labelCell, { flex: 1 }]}><Text style={styles.labelText}>Package</Text></View>
+            <View style={[styles.tableCell, styles.labelCell, { flex: 1.2 }]}><Text style={styles.labelText}>Item / Component No:</Text></View>
+            <View style={[styles.tableCell, styles.labelCell, { flex: 1.3 }]}><Text style={styles.labelText}>Specification Reference No:</Text></View>
+          </View>
+          <View style={styles.tableRow}>
+            <View style={[styles.tableCell, styles.inputCell, { flex: 1 }]}><TextInput style={styles.cellInput} value={formData.project_package} onChangeText={v => updateField('project_package', v)} placeholder="e.g. 12-8" placeholderTextColor="#BBB" /></View>
+            <View style={[styles.tableCell, styles.inputCell, { flex: 1.2 }]}><TextInput style={styles.cellInput} value={formData.item_component_no} onChangeText={v => updateField('item_component_no', v)} placeholder="e.g. C1.2" placeholderTextColor="#BBB" /></View>
+            <View style={[styles.tableCell, styles.inputCell, { flex: 1.3 }]}><TextInput style={styles.cellInput} value={formData.specification_reference_no} onChangeText={v => updateField('specification_reference_no', v)} placeholder="e.g. C76567" placeholderTextColor="#BBB" /></View>
+          </View>
+
+          <Text style={styles.subHeader}>Contractor Information:</Text>
+          <View style={styles.tableRow}>
+            <View style={[styles.tableCell, styles.labelCell, { flex: 1 }]}><Text style={styles.labelText}>Location:</Text></View>
+            <View style={[styles.tableCell, styles.labelCell, { flex: 1 }]}><Text style={styles.labelText}>Person in charge:</Text></View>
+            <View style={[styles.tableCell, styles.labelCell, { flex: 0.8 }]}><Text style={styles.labelText}>Phone:</Text></View>
+            <View style={[styles.tableCell, styles.labelCell, { flex: 1 }]}><Text style={styles.labelText}>Email:</Text></View>
+          </View>
+          <View style={styles.tableRow}>
+            <View style={[styles.tableCell, styles.inputCell, { flex: 1 }]}><TextInput style={styles.cellInput} value={formData.contractor_location} onChangeText={v => updateField('contractor_location', v)} placeholder="Location" placeholderTextColor="#BBB" /></View>
+            <View style={[styles.tableCell, styles.inputCell, { flex: 1 }]}><TextInput style={styles.cellInput} value={formData.contractor_person_in_charge} onChangeText={v => updateField('contractor_person_in_charge', v)} placeholder="Name" placeholderTextColor="#BBB" /></View>
+            <View style={[styles.tableCell, styles.inputCell, { flex: 0.8 }]}><TextInput style={styles.cellInput} value={formData.contractor_phone} onChangeText={v => updateField('contractor_phone', v)} placeholder="Phone" placeholderTextColor="#BBB" keyboardType="phone-pad" /></View>
+            <View style={[styles.tableCell, styles.inputCell, { flex: 1 }]}><TextInput style={styles.cellInput} value={formData.contractor_email} onChangeText={v => updateField('contractor_email', v)} placeholder="Email" placeholderTextColor="#BBB" keyboardType="email-address" autoCapitalize="none" /></View>
+          </View>
+
+          <Text style={styles.subHeader}>Supplier Information:</Text>
+          <View style={styles.tableRow}>
+            <View style={[styles.tableCell, styles.labelCell, { flex: 1 }]}><Text style={styles.labelText}>Location:</Text></View>
+            <View style={[styles.tableCell, styles.labelCell, { flex: 1 }]}><Text style={styles.labelText}>Person in charge:</Text></View>
+            <View style={[styles.tableCell, styles.labelCell, { flex: 0.8 }]}><Text style={styles.labelText}>Phone:</Text></View>
+            <View style={[styles.tableCell, styles.labelCell, { flex: 1 }]}><Text style={styles.labelText}>Email:</Text></View>
+          </View>
+          <View style={styles.tableRow}>
+            <View style={[styles.tableCell, styles.inputCell, { flex: 1 }]}><TextInput style={styles.cellInput} value={formData.supplier_location} onChangeText={v => updateField('supplier_location', v)} placeholder="Location" placeholderTextColor="#BBB" /></View>
+            <View style={[styles.tableCell, styles.inputCell, { flex: 1 }]}><TextInput style={styles.cellInput} value={formData.supplier_person_in_charge} onChangeText={v => updateField('supplier_person_in_charge', v)} placeholder="Name" placeholderTextColor="#BBB" /></View>
+            <View style={[styles.tableCell, styles.inputCell, { flex: 0.8 }]}><TextInput style={styles.cellInput} value={formData.supplier_phone} onChangeText={v => updateField('supplier_phone', v)} placeholder="Phone" placeholderTextColor="#BBB" keyboardType="phone-pad" /></View>
+            <View style={[styles.tableCell, styles.inputCell, { flex: 1 }]}><TextInput style={styles.cellInput} value={formData.supplier_email} onChangeText={v => updateField('supplier_email', v)} placeholder="Email" placeholderTextColor="#BBB" keyboardType="email-address" autoCapitalize="none" /></View>
+          </View>
+
+          <View style={styles.sectionBar}><Text style={styles.sectionText}>Section 2:    Non-Conformity Details</Text></View>
+
+          <View style={styles.fieldRow}>
+            <View style={[styles.fieldLabel, { flex: 0.3 }]}><Text style={styles.labelText}>Description of{'\n'}non conformity</Text></View>
+            <View style={[styles.fieldValue, { flex: 0.7 }]}>
+              <TextInput style={[styles.cellInput, { minHeight: 100, textAlignVertical: 'top' }]} value={formData.description_of_non_conformity} onChangeText={v => updateField('description_of_non_conformity', v)} placeholder="Describe the non-conformity in detail..." placeholderTextColor="#BBB" multiline />
             </View>
-            {linkedWorkOrders.map((wo) => (
-              <TouchableOpacity
-                key={wo.id}
-                style={[styles.workOrderCard, { backgroundColor: colors.background }]}
-                onPress={() => handleWorkOrderPress(wo.id)}
-                activeOpacity={0.7}
-              >
-                <View style={styles.woHeader}>
-                  <View style={styles.woHeaderLeft}>
-                    <Text style={[styles.woNumber, { color: colors.primary }]}>
-                      {wo.work_order_number || `WO-${wo.id.slice(0, 8)}`}
-                    </Text>
-                    <View
-                      style={[
-                        styles.woPriorityBadge,
-                        { backgroundColor: PRIORITY_COLORS[wo.priority || 'medium']?.bg },
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.woPriorityText,
-                          { color: PRIORITY_COLORS[wo.priority || 'medium']?.text },
-                        ]}
-                      >
-                        {(wo.priority || 'medium').toUpperCase()}
-                      </Text>
-                    </View>
-                  </View>
-                  <View
-                    style={[
-                      styles.woStatusBadge,
-                      { backgroundColor: STATUS_COLORS[wo.status || 'open']?.bg },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.woStatusText,
-                        { color: STATUS_COLORS[wo.status || 'open']?.text },
-                      ]}
-                    >
-                      {(wo.status || 'open').replace(/_/g, ' ').toUpperCase()}
-                    </Text>
-                  </View>
-                </View>
-                <Text style={[styles.woTitle, { color: colors.text }]} numberOfLines={2}>
-                  {wo.title}
-                </Text>
-                {wo.description && (
-                  <Text style={[styles.woDescription, { color: colors.textSecondary }]} numberOfLines={2}>
-                    {wo.description}
-                  </Text>
-                )}
-                <View style={styles.woMeta}>
-                  {wo.assigned_name && (
-                    <View style={styles.woMetaItem}>
-                      <User size={12} color={colors.textTertiary} />
-                      <Text style={[styles.woMetaText, { color: colors.textSecondary }]}>
-                        {wo.assigned_name}
-                      </Text>
-                    </View>
-                  )}
-                  {wo.due_date && (
-                    <View style={styles.woMetaItem}>
-                      <Calendar size={12} color={colors.textTertiary} />
-                      <Text style={[styles.woMetaText, { color: colors.textSecondary }]}>
-                        Due: {formatDate(wo.due_date)}
-                      </Text>
-                    </View>
-                  )}
-                  {wo.department && (
-                    <View
-                      style={[
-                        styles.woDeptBadge,
-                        { backgroundColor: getDepartmentColor(wo.department) + '20' },
-                      ]}
-                    >
-                      <Text
-                        style={[styles.woDeptText, { color: getDepartmentColor(wo.department) }]}
-                      >
-                        {getDepartmentName(wo.department)}
-                      </Text>
-                    </View>
-                  )}
-                </View>
-                <View style={styles.woFooter}>
-                  <Text style={[styles.woViewText, { color: colors.primary }]}>View Details</Text>
-                  <ExternalLink size={14} color={colors.primary} />
-                </View>
-              </TouchableOpacity>
-            ))}
           </View>
-        )}
 
-        {/* Linked Forms Section */}
-        {linkedForms && linkedForms.length > 0 && (
-          <View style={[styles.card, { backgroundColor: colors.surface }]}>
-            <View style={styles.sectionHeader}>
-              <FileText size={18} color="#8B5CF6" />
-              <Text style={[styles.sectionTitle, { color: colors.text }]}>
-                Linked Forms ({linkedForms.length})
-              </Text>
+          <View style={styles.fieldRow}>
+            <View style={[styles.fieldLabel, { flex: 0.3 }]}><Text style={styles.labelText}>Photos and{'\n'}videos</Text></View>
+            <View style={[styles.fieldValue, { flex: 0.7 }]}>
+              {photos.length > 0 && (
+                <View style={styles.photoGrid}>
+                  {photos.map((photo, idx) => (
+                    <View key={idx} style={styles.photoThumbWrap}>
+                      <Image source={{ uri: photo.uri }} style={styles.photoThumb} />
+                      {photo.uploading && <View style={styles.photoUploading}><ActivityIndicator size="small" color="#FFF" /></View>}
+                      {!photo.uploading && <Pressable style={styles.photoRemoveBtn} onPress={() => removePhoto(idx)}><X size={12} color="#FFF" /></Pressable>}
+                    </View>
+                  ))}
+                </View>
+              )}
+              <View style={styles.photoActions}>
+                <Pressable style={styles.photoActionBtn} onPress={takePhoto}><Camera size={18} color={FORM_BLUE} /><Text style={styles.photoActionText}>Take Photo</Text></Pressable>
+                <Pressable style={styles.photoActionBtn} onPress={pickFromGallery}><Paperclip size={18} color={FORM_BLUE} /><Text style={styles.photoActionText}>Choose from Gallery</Text></Pressable>
+              </View>
+              {photos.length > 0 && <Text style={styles.photoCount}>{photos.length} photo{photos.length !== 1 ? 's' : ''} attached</Text>}
             </View>
-            {linkedForms.map((link) => (
-              <TouchableOpacity
-                key={link.id}
-                style={[styles.workOrderCard, { backgroundColor: colors.background }]}
-                onPress={() => handleFormLinkPress(link)}
-                activeOpacity={0.7}
-              >
-                <View style={styles.woHeader}>
-                  <View style={styles.woHeaderLeft}>
-                    <Text style={[styles.woNumber, { color: '#8B5CF6' }]}>
-                      {link.formNumber || link.formType.toUpperCase()}
-                    </Text>
-                    <View style={[styles.woPriorityBadge, { backgroundColor: '#8B5CF620' }]}>
-                      <Text style={[styles.woPriorityText, { color: '#8B5CF6' }]}>
-                        {link.formType.toUpperCase()}
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-                {link.formTitle && (
-                  <Text style={[styles.woTitle, { color: colors.text }]} numberOfLines={2}>
-                    {link.formTitle}
-                  </Text>
-                )}
-                <View style={styles.woMeta}>
-                  {link.linkedByName && (
-                    <View style={styles.woMetaItem}>
-                      <User size={12} color={colors.textTertiary} />
-                      <Text style={[styles.woMetaText, { color: colors.textSecondary }]}>
-                        {link.linkedByName}
-                      </Text>
-                    </View>
-                  )}
-                  <View style={styles.woMetaItem}>
-                    <Calendar size={12} color={colors.textTertiary} />
-                    <Text style={[styles.woMetaText, { color: colors.textSecondary }]}>
-                      {new Date(link.linkedAt).toLocaleDateString()}
-                    </Text>
-                  </View>
-                  {link.departmentName && (
-                    <View style={[styles.woDeptBadge, { backgroundColor: getDepartmentColor(link.departmentCode || '') + '20' }]}>
-                      <Text style={[styles.woDeptText, { color: getDepartmentColor(link.departmentCode || '') }]}>
-                        {link.departmentName}
-                      </Text>
-                    </View>
-                  )}
-                </View>
-                <View style={styles.woFooter}>
-                  <Text style={[styles.woViewText, { color: '#8B5CF6' }]}>View Form</Text>
-                  <ExternalLink size={14} color={'#8B5CF6'} />
-                </View>
-              </TouchableOpacity>
-            ))}
           </View>
-        )}
 
-        {/* Print-only section (hidden on screen, visible when printing) */}
-        {Platform.OS === 'web' && (
-          <View style={styles.printFooter}>
-            <Text style={[styles.printFooterText, { color: colors.textTertiary }]}>
-              Generated on {new Date().toLocaleString()}
-            </Text>
+          <View style={styles.fieldRow}>
+            <View style={[styles.fieldLabel, { flex: 0.3 }]}><Text style={styles.labelText}>Non-Conformity{'\n'}Category</Text></View>
+            <View style={[styles.fieldValue, { flex: 0.7 }]}>
+              <Pressable style={styles.pickerBtn} onPress={() => setShowCategoryPicker(!showCategoryPicker)}>
+                <Text style={{ fontSize: 11, color: formData.non_conformity_category ? '#000' : '#BBB', paddingVertical: 8 }}>{formData.non_conformity_category || 'Select category...'}</Text>
+                <ChevronDown size={16} color="#888" />
+              </Pressable>
+              {showCategoryPicker && (
+                <View style={styles.pickerDropdown}>
+                  {NCR_CATEGORIES.map(cat => (
+                    <Pressable key={cat} style={[styles.pickerOption, formData.non_conformity_category === cat && { backgroundColor: FORM_HEADER_BG }]}
+                      onPress={() => { updateField('non_conformity_category', cat); setShowCategoryPicker(false); }}>
+                      <Text style={styles.pickerOptionText}>{cat}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              )}
+            </View>
           </View>
-        )}
+
+          <View style={styles.fieldRow}>
+            <View style={[styles.fieldLabel, { flex: 0.3 }]}><Text style={styles.labelText}>Recommend-{'\n'}ation by{'\n'}Originator</Text></View>
+            <View style={[styles.fieldValue, { flex: 0.7 }]}>
+              <TextInput style={[styles.cellInput, { minHeight: 80, textAlignVertical: 'top' }]} value={formData.recommendation_by_originator} onChangeText={v => updateField('recommendation_by_originator', v)} placeholder="Provide recommendation..." placeholderTextColor="#BBB" multiline />
+            </View>
+          </View>
+
+          <View style={styles.fieldRow}>
+            <View style={[styles.fieldLabel, { flex: 0.3 }]}><Text style={styles.labelText}>Question:</Text></View>
+            <View style={[styles.fieldValue, { flex: 0.7 }]}>
+              <Text style={{ fontSize: 11, color: '#333', fontWeight: '500', marginBottom: 8 }}>Is there a project time delay caused by non-conformance?</Text>
+              <View style={styles.yesNoRow}>
+                <Pressable style={[styles.yesNoBtn, formData.project_time_delay && styles.yesNoBtnActive]} onPress={() => updateField('project_time_delay', true)}>
+                  <Text style={[styles.yesNoText, formData.project_time_delay && { color: '#FFF' }]}>Yes</Text>
+                </Pressable>
+                <Pressable style={[styles.yesNoBtn, !formData.project_time_delay && styles.yesNoBtnActiveNo]} onPress={() => updateField('project_time_delay', false)}>
+                  <Text style={[styles.yesNoText, !formData.project_time_delay && { color: '#FFF' }]}>No</Text>
+                </Pressable>
+              </View>
+              {formData.project_time_delay && (
+                <View style={{ marginTop: 8 }}>
+                  <Text style={{ fontSize: 10, fontWeight: '600', color: '#333', marginBottom: 4 }}>If yes, expected estimate:</Text>
+                  <TextInput style={styles.cellInput} value={formData.expected_delay_estimate} onChangeText={v => updateField('expected_delay_estimate', v)} placeholder="e.g. 1 day" placeholderTextColor="#BBB" />
+                </View>
+              )}
+            </View>
+          </View>
+
+          <View style={styles.fieldRow}>
+            <View style={[styles.fieldLabel, { flex: 0.3 }]}><Text style={styles.labelText}>Originator{'\n'}Signature</Text></View>
+            <View style={[styles.fieldValue, { flex: 0.7 }]}>
+              <PinSignatureCapture onVerified={(v) => setSignatureVerification(v)} onCleared={() => setSignatureVerification(null)} formLabel="NCR Form" required={true} existingVerification={signatureVerification} accentColor={FORM_BLUE} />
+            </View>
+          </View>
+
+          <View style={styles.fieldRow}>
+            <View style={[styles.fieldLabel, { flex: 0.3 }]}><Text style={styles.labelText}>Select{'\n'}contractors{'\n'}involved:</Text></View>
+            <View style={[styles.fieldValue, { flex: 0.7 }]}>
+              <TextInput style={[styles.cellInput, { minHeight: 40, textAlignVertical: 'top' }]} value={formData.contractors_involved} onChangeText={v => updateField('contractors_involved', v)} placeholder="Contractor names (comma separated)" placeholderTextColor="#BBB" multiline />
+            </View>
+          </View>
+
+          <View style={styles.sectionBar}><Text style={styles.sectionText}>Section 3:    Response by contractors involved</Text></View>
+
+          <View style={styles.fieldRow}>
+            <View style={[styles.fieldLabel, { flex: 0.3 }]}><Text style={styles.labelText}>Outcome of{'\n'}investigation{'\n'}into cause of{'\n'}non-conformance</Text></View>
+            <View style={[styles.fieldValue, { flex: 0.7 }]}>
+              <TextInput style={[styles.cellInput, { minHeight: 120, textAlignVertical: 'top' }]} value={formData.outcome_of_investigation} onChangeText={v => updateField('outcome_of_investigation', v)} placeholder="Investigation outcome and findings..." placeholderTextColor="#BBB" multiline />
+            </View>
+          </View>
+
+          <View style={styles.formFooter}>
+            <Text style={styles.footerText}>Generated by TulKenz OPS</Text>
+            <Text style={styles.footerText}>Page 1 of 1</Text>
+          </View>
+        </View>
+
+        <View style={styles.bottomActions}>
+          <Pressable style={[styles.bottomBtn, { backgroundColor: '#6B7280' }]} onPress={() => handleSubmit(true)} disabled={isSubmitting}>
+            <Save size={18} color="#FFF" /><Text style={styles.bottomBtnText}>Save as Draft</Text>
+          </Pressable>
+          <Pressable style={[styles.bottomBtn, { backgroundColor: FORM_BLUE }]} onPress={() => handleSubmit(false)} disabled={isSubmitting}>
+            {isSubmitting ? <ActivityIndicator size="small" color="#FFF" /> : <><Send size={18} color="#FFF" /><Text style={styles.bottomBtnText}>Submit NCR</Text></>}
+          </Pressable>
+        </View>
       </ScrollView>
-
-      {/* Escalation Modal */}
-      {post && (
-        <EscalationModal
-          visible={showEscalation}
-          onClose={() => setShowEscalation(false)}
-          postId={post.id}
-          postNumber={post.postNumber}
-          organizationId={post.organizationId}
-          fromDepartmentCode={post.originatingDepartmentCode || post.departmentTasks?.[0]?.departmentCode || '1004'}
-          fromTaskId={post.departmentTasks?.[0]?.id || ''}
-          existingDepartments={post.departmentTasks?.map(t => t.departmentCode) || []}
-        />
-      )}
-    </View>
+    </SafeAreaView>
   );
 }
 
-const createStyles = (colors: any) =>
-  StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: colors.background,
-    },
-    centerContent: {
-      justifyContent: 'center',
-      alignItems: 'center',
-      padding: 24,
-    },
-    loadingText: {
-      marginTop: 12,
-      fontSize: 14,
-    },
-    errorTitle: {
-      fontSize: 18,
-      fontWeight: '600' as const,
-      marginTop: 16,
-    },
-    errorText: {
-      fontSize: 14,
-      textAlign: 'center' as const,
-      marginTop: 8,
-      marginBottom: 24,
-    },
-    backButton: {
-      paddingHorizontal: 24,
-      paddingVertical: 12,
-      borderRadius: 8,
-    },
-    backButtonText: {
-      color: '#fff',
-      fontSize: 14,
-      fontWeight: '600' as const,
-    },
-    headerActions: {
-      flexDirection: 'row' as const,
-      alignItems: 'center' as const,
-      gap: 8,
-    },
-    headerButton: {
-      padding: 8,
-    },
-    scrollView: {
-      flex: 1,
-    },
-    scrollContent: {
-      padding: 16,
-      paddingBottom: 40,
-      gap: 16,
-    },
-    card: {
-      borderRadius: 12,
-      padding: 16,
-    },
-    postHeader: {
-      flexDirection: 'row' as const,
-      justifyContent: 'space-between' as const,
-      alignItems: 'flex-start' as const,
-      marginBottom: 12,
-    },
-    postHeaderLeft: {
-      flex: 1,
-    },
-    postNumber: {
-      fontSize: 20,
-      fontWeight: '700' as const,
-    },
-    templateName: {
-      fontSize: 16,
-      fontWeight: '500' as const,
-      marginTop: 4,
-    },
-    statusBadge: {
-      paddingHorizontal: 12,
-      paddingVertical: 6,
-      borderRadius: 16,
-    },
-    statusText: {
-      fontSize: 11,
-      fontWeight: '600' as const,
-      textTransform: 'uppercase' as const,
-    },
-    metaRow: {
-      flexDirection: 'row' as const,
-      flexWrap: 'wrap' as const,
-      gap: 16,
-      marginBottom: 8,
-    },
-    metaItem: {
-      flexDirection: 'row' as const,
-      alignItems: 'center' as const,
-      gap: 6,
-    },
-    metaText: {
-      fontSize: 13,
-    },
-    deptCauseRow: {
-      flexDirection: 'row',
-      gap: 10,
-      marginTop: 10,
-    },
-    deptCauseTag: {
-      flex: 1,
-      paddingVertical: 6,
-      paddingHorizontal: 10,
-      borderRadius: 8,
-      borderWidth: 1,
-      alignItems: 'center',
-    },
-    deptCauseLabel: {
-      fontSize: 9,
-      fontWeight: '600',
-      letterSpacing: 0.5,
-      textTransform: 'uppercase',
-    },
-    deptCauseName: {
-      fontSize: 12,
-      fontWeight: '700',
-      marginTop: 2,
-    },
-    progressSection: {
-      marginTop: 12,
-      paddingTop: 12,
-      borderTopWidth: 1,
-      borderTopColor: colors.border,
-    },
-    progressHeader: {
-      flexDirection: 'row' as const,
-      justifyContent: 'space-between' as const,
-      marginBottom: 8,
-    },
-    progressLabel: {
-      fontSize: 12,
-    },
-    progressCount: {
-      fontSize: 12,
-      fontWeight: '600' as const,
-    },
-    progressBar: {
-      height: 6,
-      borderRadius: 3,
-      overflow: 'hidden' as const,
-    },
-    progressFill: {
-      height: '100%',
-      borderRadius: 3,
-    },
-    sectionHeader: {
-      flexDirection: 'row' as const,
-      alignItems: 'center' as const,
-      gap: 8,
-      marginBottom: 12,
-    },
-    sectionTitle: {
-      fontSize: 16,
-      fontWeight: '600' as const,
-    },
-    photosScroll: {
-      marginHorizontal: -8,
-    },
-    photoLarge: {
-      width: 200,
-      height: 150,
-      borderRadius: 8,
-      marginHorizontal: 8,
-    },
-    photosGrid: {
-      flexDirection: 'row' as const,
-      flexWrap: 'wrap' as const,
-      gap: 12,
-    },
-    photoGridItem: {
-      width: 200,
-      height: 150,
-      borderRadius: 8,
-    },
-    formDataGrid: {
-      gap: 12,
-    },
-    formDataItem: {
-      paddingBottom: 12,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
-    },
-    formDataLabel: {
-      fontSize: 12,
-      marginBottom: 4,
-    },
-    formDataValue: {
-      fontSize: 14,
-      fontWeight: '500' as const,
-    },
-    notesText: {
-      fontSize: 14,
-      lineHeight: 20,
-    },
-    deptTaskItem: {
-      borderLeftWidth: 3,
-      paddingLeft: 12,
-      paddingVertical: 12,
-      marginBottom: 12,
-    },
-    deptTaskHeader: {
-      flexDirection: 'row' as const,
-      justifyContent: 'space-between' as const,
-      alignItems: 'center' as const,
-    },
-    deptTaskLeft: {
-      flexDirection: 'row' as const,
-      alignItems: 'center' as const,
-      gap: 8,
-    },
-    deptTaskDot: {
-      width: 8,
-      height: 8,
-      borderRadius: 4,
-    },
-    deptTaskName: {
-      fontSize: 14,
-      fontWeight: '600' as const,
-    },
-    deptTaskStatus: {
-      flexDirection: 'row' as const,
-      alignItems: 'center' as const,
-      gap: 4,
-      paddingHorizontal: 8,
-      paddingVertical: 4,
-      borderRadius: 12,
-    },
-    deptTaskStatusText: {
-      fontSize: 11,
-      fontWeight: '500' as const,
-      textTransform: 'capitalize' as const,
-    },
-    deptTaskMeta: {
-      marginTop: 8,
-    },
-    deptTaskMetaText: {
-      fontSize: 12,
-    },
-    deptTaskNotes: {
-      fontSize: 13,
-      marginTop: 8,
-      fontStyle: 'italic' as const,
-    },
-    linkedWOBadge: {
-      flexDirection: 'row' as const,
-      alignItems: 'center' as const,
-      gap: 6,
-      marginTop: 8,
-      paddingVertical: 8,
-      paddingHorizontal: 12,
-      borderRadius: 8,
-      alignSelf: 'flex-start' as const,
-    },
-    linkedWOText: {
-      color: '#EF4444',
-      fontSize: 12,
-      fontWeight: '500' as const,
-    },
-    workOrderCard: {
-      padding: 12,
-      borderRadius: 8,
-      marginBottom: 12,
-    },
-    woHeader: {
-      flexDirection: 'row' as const,
-      justifyContent: 'space-between' as const,
-      alignItems: 'center' as const,
-      marginBottom: 8,
-    },
-    woHeaderLeft: {
-      flexDirection: 'row' as const,
-      alignItems: 'center' as const,
-      gap: 8,
-    },
-    woNumber: {
-      fontSize: 14,
-      fontWeight: '700' as const,
-    },
-    woPriorityBadge: {
-      paddingHorizontal: 8,
-      paddingVertical: 3,
-      borderRadius: 10,
-    },
-    woPriorityText: {
-      fontSize: 10,
-      fontWeight: '600' as const,
-    },
-    woStatusBadge: {
-      paddingHorizontal: 8,
-      paddingVertical: 4,
-      borderRadius: 12,
-    },
-    woStatusText: {
-      fontSize: 10,
-      fontWeight: '600' as const,
-    },
-    woTitle: {
-      fontSize: 14,
-      fontWeight: '500' as const,
-      marginBottom: 4,
-    },
-    woDescription: {
-      fontSize: 12,
-      lineHeight: 16,
-      marginBottom: 8,
-    },
-    woMeta: {
-      flexDirection: 'row' as const,
-      flexWrap: 'wrap' as const,
-      alignItems: 'center' as const,
-      gap: 12,
-      marginTop: 8,
-    },
-    woMetaItem: {
-      flexDirection: 'row' as const,
-      alignItems: 'center' as const,
-      gap: 4,
-    },
-    woMetaText: {
-      fontSize: 11,
-    },
-    woDeptBadge: {
-      paddingHorizontal: 8,
-      paddingVertical: 3,
-      borderRadius: 10,
-    },
-    woDeptText: {
-      fontSize: 10,
-      fontWeight: '500' as const,
-    },
-    woFooter: {
-      flexDirection: 'row' as const,
-      alignItems: 'center' as const,
-      justifyContent: 'flex-end' as const,
-      gap: 4,
-      marginTop: 12,
-      paddingTop: 8,
-      borderTopWidth: 1,
-      borderTopColor: colors.border,
-    },
-    woViewText: {
-      fontSize: 12,
-      fontWeight: '500' as const,
-    },
-    printFooter: {
-      marginTop: 24,
-      paddingTop: 16,
-      borderTopWidth: 1,
-      borderTopColor: colors.border,
-      alignItems: 'center' as const,
-    },
-    printFooterText: {
-      fontSize: 11,
-    },
-  });
+const styles = StyleSheet.create({
+  safeArea: { flex: 1 },
+  paper: { backgroundColor: FORM_WHITE, borderRadius: 4, borderWidth: 1, borderColor: '#CCC', overflow: 'hidden', elevation: 3 },
+  formHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 12, borderBottomWidth: 1, borderBottomColor: FORM_BORDER, backgroundColor: FORM_HEADER_BG },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  logoPlaceholder: { width: 44, height: 44, borderRadius: 6, backgroundColor: FORM_BLUE, justifyContent: 'center', alignItems: 'center' },
+  logoText: { color: '#FFF', fontSize: 16, fontWeight: '800' },
+  headerOrg: { fontSize: 14, fontWeight: '700', color: '#111' },
+  headerFacility: { fontSize: 12, color: '#555' },
+  headerRight: { alignItems: 'flex-end' },
+  headerMeta: { fontSize: 10, color: '#555', lineHeight: 16 },
+  titleBar: { backgroundColor: FORM_BLUE, paddingVertical: 10, paddingHorizontal: 14 },
+  titleText: { color: '#FFF', fontSize: 16, fontWeight: '800', textAlign: 'center', letterSpacing: 0.5 },
+  formNumberRow: { flexDirection: 'row', paddingHorizontal: 14, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: FORM_BORDER, backgroundColor: '#F9F9F9' },
+  formNumberLabel: { fontSize: 10, fontWeight: '600', color: '#555', marginRight: 6 },
+  formNumberValue: { fontSize: 10, fontWeight: '700', color: '#111' },
+  sectionBar: { backgroundColor: FORM_SECTION_BG, paddingVertical: 8, paddingHorizontal: 14 },
+  sectionText: { color: '#FFF', fontSize: 13, fontWeight: '700' },
+  subHeader: { fontSize: 11, fontWeight: '700', color: '#333', paddingHorizontal: 14, paddingVertical: 6, backgroundColor: '#F5F5F5', borderBottomWidth: 0.5, borderBottomColor: '#DDD' },
+  tableRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: FORM_BORDER },
+  tableCell: { paddingHorizontal: 8, paddingVertical: 6, borderRightWidth: 1, borderRightColor: FORM_BORDER, justifyContent: 'center' },
+  labelCell: { backgroundColor: FORM_LABEL_BG },
+  inputCell: { backgroundColor: FORM_WHITE },
+  labelText: { fontSize: 10, fontWeight: '600', color: '#333' },
+  valueText: { fontSize: 11, color: '#111' },
+  cellInput: { fontSize: 11, color: '#111', padding: 0, margin: 0 },
+  fieldRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: FORM_BORDER },
+  fieldLabel: { backgroundColor: FORM_LABEL_BG, paddingHorizontal: 10, paddingVertical: 8, borderRightWidth: 1, borderRightColor: FORM_BORDER, justifyContent: 'center' },
+  fieldValue: { backgroundColor: FORM_WHITE, paddingHorizontal: 10, paddingVertical: 8 },
+  yesNoRow: { flexDirection: 'row', gap: 8 },
+  yesNoBtn: { paddingHorizontal: 20, paddingVertical: 6, borderRadius: 4, borderWidth: 1, borderColor: '#CCC', backgroundColor: '#F5F5F5' },
+  yesNoBtnActive: { backgroundColor: FORM_BLUE, borderColor: FORM_BLUE },
+  yesNoBtnActiveNo: { backgroundColor: '#6B7280', borderColor: '#6B7280' },
+  yesNoText: { fontSize: 12, fontWeight: '600', color: '#333' },
+  photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 },
+  photoThumbWrap: { position: 'relative', width: 80, height: 80, borderRadius: 6, overflow: 'hidden', borderWidth: 1, borderColor: '#DDD' },
+  photoThumb: { width: 80, height: 80, borderRadius: 6 },
+  photoUploading: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', borderRadius: 6 },
+  photoRemoveBtn: { position: 'absolute', top: 2, right: 2, width: 20, height: 20, borderRadius: 10, backgroundColor: 'rgba(220,38,38,0.85)', justifyContent: 'center', alignItems: 'center' },
+  photoActions: { flexDirection: 'row', gap: 10 },
+  photoActionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderWidth: 1, borderColor: FORM_BLUE, borderRadius: 6, backgroundColor: '#F0F7FF' },
+  photoActionText: { fontSize: 11, fontWeight: '600', color: FORM_BLUE },
+  photoCount: { fontSize: 10, color: '#888', marginTop: 4 },
+  pickerBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  pickerDropdown: { marginTop: 4, borderWidth: 1, borderColor: '#DDD', borderRadius: 4, backgroundColor: '#FFF', maxHeight: 200 },
+  pickerOption: { paddingHorizontal: 10, paddingVertical: 8, borderBottomWidth: 0.5, borderBottomColor: '#EEE' },
+  pickerOptionText: { fontSize: 11, color: '#333' },
+  formFooter: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 8, borderTopWidth: 1, borderTopColor: '#DDD', backgroundColor: '#F9F9F9' },
+  footerText: { fontSize: 9, color: '#999' },
+  topActions: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  topActionsBtns: { flexDirection: 'row', gap: 8 },
+  backBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6 },
+  backBtnText: { fontSize: 14, fontWeight: '600' },
+  actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 6 },
+  actionBtnText: { color: '#FFF', fontSize: 12, fontWeight: '600' },
+  bottomActions: { flexDirection: 'row', gap: 10, marginTop: 16 },
+  bottomBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 8 },
+  bottomBtnText: { color: '#FFF', fontSize: 15, fontWeight: '700' },
+  searchBar: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, marginBottom: 10, gap: 8 },
+  searchInput: { flex: 1, fontSize: 13, padding: 0 },
+  filterRow: { marginBottom: 8, maxHeight: 36 },
+  filterChip: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 16, borderWidth: 1 },
+  filterChipText: { fontSize: 12, fontWeight: '600' },
+  resultCount: { fontSize: 11, marginBottom: 8 },
+  newFormBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 10, marginBottom: 16 },
+  newFormBtnText: { color: '#FFF', fontSize: 15, fontWeight: '700' },
+  emptyState: { alignItems: 'center', paddingTop: 60, gap: 8 },
+  emptyTitle: { fontSize: 18, fontWeight: '700' },
+  emptySub: { fontSize: 14, textAlign: 'center', paddingHorizontal: 40 },
+  listCard: { borderWidth: 1, borderRadius: 10, padding: 14, marginBottom: 10 },
+  listCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+  listCardNumber: { fontSize: 14, fontWeight: '700' },
+  statusBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 4 },
+  statusBadgeText: { color: '#FFF', fontSize: 10, fontWeight: '700' },
+  listCardDesc: { fontSize: 13, marginBottom: 6 },
+  listCardMeta: { flexDirection: 'row', justifyContent: 'space-between' },
+  listCardMetaText: { fontSize: 11 },
+});
