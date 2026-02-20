@@ -41,6 +41,8 @@ import { supabase } from '@/lib/supabase';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { decode } from 'base64-arraybuffer';
+import TaskFeedPostLinker from '@/components/TaskFeedPostLinker';
+import { useLinkFormToPost } from '@/hooks/useTaskFeedFormLinks';
 
 // ─── COLORS matching the paper form ────────────────────────────
 const FORM_BLUE = '#4A90D9';
@@ -130,6 +132,11 @@ export default function NCRFormScreen() {
   const [signatureVerification, setSignatureVerification] = useState<SignatureVerification | null>(null);
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState<any>(null);
+
+  // Task Feed linking
+  const [linkedPostId, setLinkedPostId] = useState<string | null>(null);
+  const [linkedPostNumber, setLinkedPostNumber] = useState<string | null>(null);
+  const linkFormMutation = useLinkFormToPost();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [photos, setPhotos] = useState<{ uri: string; uploading?: boolean }[]>([]);
@@ -363,7 +370,7 @@ export default function NCRFormScreen() {
         created_by_id: user?.id || null,
       };
 
-      const { error } = await supabase.from('ncr_paper_forms').insert(record);
+      const { data: createdRecord, error } = await supabase.from('ncr_paper_forms').insert(record).select().single();
 
       if (error) {
         console.error('[NCRForm] Submit error:', error.message);
@@ -371,11 +378,31 @@ export default function NCRFormScreen() {
         return;
       }
 
+      // Link to task feed post if selected
+      if (linkedPostId && linkedPostNumber && createdRecord) {
+        try {
+          await linkFormMutation.mutateAsync({
+            postId: linkedPostId,
+            postNumber: linkedPostNumber,
+            formType: 'ncr',
+            formId: createdRecord.id,
+            formNumber: record.form_number,
+            formTitle: formData.description_of_non_conformity.substring(0, 80) || 'NCR',
+            departmentCode: '1004',
+            departmentName: 'Quality',
+          });
+        } catch (linkErr) {
+          console.warn('[NCRForm] Form link failed:', linkErr);
+        }
+      }
+
       if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       queryClient.invalidateQueries({ queryKey: ['ncr_paper_forms'] });
       setFormData({ ...EMPTY_FORM });
       setSignatureVerification(null);
       setPhotos([]);
+      setLinkedPostId(null);
+      setLinkedPostNumber(null);
       setMode('list');
       Alert.alert('Success', asDraft ? 'NCR draft saved.' : 'NCR submitted successfully.');
     } catch (err: any) {
@@ -383,7 +410,7 @@ export default function NCRFormScreen() {
     } finally {
       setIsSubmitting(false);
     }
-  }, [formData, signatureVerification, organizationId, facilityId, userName, user, generateFormNumber]);
+  }, [formData, signatureVerification, organizationId, facilityId, userName, user, generateFormNumber, linkedPostId, linkedPostNumber, linkFormMutation, photos]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -404,6 +431,8 @@ export default function NCRFormScreen() {
     setFormData({ ...EMPTY_FORM });
     setSignatureVerification(null);
     setPhotos([]);
+    setLinkedPostId(null);
+    setLinkedPostNumber(null);
     setMode('new');
   }, []);
 
@@ -715,6 +744,22 @@ export default function NCRFormScreen() {
           <View style={styles.formNumberRow}>
             <Text style={styles.formNumberLabel}>Automated Form Number:</Text>
             <Text style={styles.formNumberValue}>{generateFormNumber()}</Text>
+          </View>
+
+          {/* ── TASK FEED LINK ── */}
+          <View style={{ padding: 12, borderBottomWidth: 1, borderBottomColor: FORM_BORDER }}>
+            <TaskFeedPostLinker
+              selectedPostId={linkedPostId}
+              selectedPostNumber={linkedPostNumber}
+              onSelect={(postId, postNumber) => {
+                setLinkedPostId(postId);
+                setLinkedPostNumber(postNumber);
+              }}
+              onClear={() => {
+                setLinkedPostId(null);
+                setLinkedPostNumber(null);
+              }}
+            />
           </View>
 
           {/* ════════════════════════════════════════════════════════
