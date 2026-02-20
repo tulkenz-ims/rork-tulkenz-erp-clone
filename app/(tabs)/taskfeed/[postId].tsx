@@ -433,8 +433,20 @@ export default function TaskFeedPostDetailScreen() {
       '1004': 'quality',
       '1005': 'safety',
     };
+    // Normalize known form types to their route names
+    const formTypeRouteMap: Record<string, string> = {
+      'ncr': 'ncr',
+      'non-conformance report (ncr)': 'ncr',
+      'non-conformance report': 'ncr',
+      'nonconformancereport(ncr)': 'ncr',
+      'capa': 'capa',
+      'deviation': 'deviation',
+      'hold tag': 'holdtag',
+      'customer complaint': 'customercomplaint',
+    };
     const module = deptToModule[link.departmentCode || ''] || 'quality';
-    const formRoute = link.formType.toLowerCase().replace(/[\s-]/g, '');
+    const normalized = link.formType.toLowerCase().trim();
+    const formRoute = formTypeRouteMap[normalized] || normalized.replace(/[\s\-()]/g, '');
     router.push(`/${module}/${formRoute}` as any);
   }, [router]);
 
