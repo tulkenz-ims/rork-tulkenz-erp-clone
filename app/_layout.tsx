@@ -35,6 +35,12 @@ function RootLayoutNav() {
           headerShown: false,
         }} 
       />
+      <Stack.Screen 
+        name="portal" 
+        options={{ 
+          headerShown: false,
+        }} 
+      />
     </Stack>
   );
 }
