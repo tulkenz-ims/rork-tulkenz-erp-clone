@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useOrganization } from '@/contexts/OrganizationContext';
-import * as Crypto from 'expo-crypto';
+// No external crypto dependency — uses Web Crypto API
 
 // ── Types ──────────────────────────────────────────────────────
 
@@ -99,11 +99,13 @@ function generateSecureToken(): string {
 
 async function hashToken(token: string): Promise<string> {
   try {
-    return await Crypto.digestStringAsync(
-      Crypto.CryptoDigestAlgorithm.SHA256,
-      token,
-    );
+    const encoder = new TextEncoder();
+    const data = encoder.encode(token);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
   } catch {
+    // Fallback for environments without Web Crypto
     let hash = 0;
     for (let i = 0; i < token.length; i++) {
       hash = ((hash << 5) - hash) + token.charCodeAt(i);
