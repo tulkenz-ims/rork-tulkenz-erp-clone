@@ -295,13 +295,7 @@ export default function AuditPortalAdmin() {
   // ── Scope keys ──
   const scopeKeys = Object.keys(SCOPE_LABELS);
 
-  // ── Render field row ──
-  const FieldRow = ({ label, children }: { label: string; children: React.ReactNode }) => (
-    <View style={s.fieldRow}>
-      <Text style={[s.fieldLabel, { color: colors.textSecondary }]}>{label} *</Text>
-      {children}
-    </View>
-  );
+  // FieldRow moved outside component to prevent TextInput focus loss
 
   // ============================================================
   // RENDER
@@ -437,7 +431,7 @@ export default function AuditPortalAdmin() {
             {/* Session Info */}
             <Text style={[s.sectionTitle, { color: colors.text }]}>Session Information</Text>
 
-            <FieldRow label="Session Name">
+            <View style={s.fieldRow}><Text style={[s.fieldLabel, { color: colors.textSecondary }]}>Session Name *</Text>
               <TextInput
                 style={[s.input, { color: colors.text, borderColor: colors.border, backgroundColor: colors.surface }]}
                 placeholder="e.g. SQF Ed10 Pre-Audit 2027"
@@ -445,9 +439,9 @@ export default function AuditPortalAdmin() {
                 value={form.session_name}
                 onChangeText={t => updateForm('session_name', t)}
               />
-            </FieldRow>
+            </View>
 
-            <FieldRow label="Audit Type">
+            <View style={s.fieldRow}><Text style={[s.fieldLabel, { color: colors.textSecondary }]}>Audit Type *</Text>
               <View style={s.chipRow}>
                 {AUDIT_TYPES.map(t => (
                   <Pressable
@@ -461,9 +455,9 @@ export default function AuditPortalAdmin() {
                   </Pressable>
                 ))}
               </View>
-            </FieldRow>
+            </View>
 
-            <FieldRow label="Certification Body">
+            <View style={s.fieldRow}><Text style={[s.fieldLabel, { color: colors.textSecondary }]}>Certification Body *</Text>
               <TextInput
                 style={[s.input, { color: colors.text, borderColor: colors.border, backgroundColor: colors.surface }]}
                 placeholder="e.g. FSNS, SCS Global, PJRFSI"
@@ -471,12 +465,12 @@ export default function AuditPortalAdmin() {
                 value={form.certification_body}
                 onChangeText={t => updateForm('certification_body', t)}
               />
-            </FieldRow>
+            </View>
 
             {/* Auditor Info */}
             <Text style={[s.sectionTitle, { color: colors.text, marginTop: 20 }]}>Auditor Information</Text>
 
-            <FieldRow label="Auditor Name">
+            <View style={s.fieldRow}><Text style={[s.fieldLabel, { color: colors.textSecondary }]}>Auditor Name *</Text>
               <TextInput
                 style={[s.input, { color: colors.text, borderColor: colors.border, backgroundColor: colors.surface }]}
                 placeholder="Lead auditor full name"
@@ -484,9 +478,9 @@ export default function AuditPortalAdmin() {
                 value={form.auditor_name}
                 onChangeText={t => updateForm('auditor_name', t)}
               />
-            </FieldRow>
+            </View>
 
-            <FieldRow label="Auditor Email">
+            <View style={s.fieldRow}><Text style={[s.fieldLabel, { color: colors.textSecondary }]}>Auditor Email *</Text>
               <TextInput
                 style={[s.input, { color: colors.text, borderColor: colors.border, backgroundColor: colors.surface }]}
                 placeholder="auditor@certbody.com"
@@ -496,14 +490,14 @@ export default function AuditPortalAdmin() {
                 keyboardType="email-address"
                 autoCapitalize="none"
               />
-            </FieldRow>
+            </View>
 
             {/* Date Range */}
             <Text style={[s.sectionTitle, { color: colors.text, marginTop: 20 }]}>Access Window</Text>
 
             <View style={{ flexDirection: 'row', gap: 12 }}>
               <View style={{ flex: 1 }}>
-                <FieldRow label="Valid From (YYYY-MM-DD)">
+                <View style={s.fieldRow}><Text style={[s.fieldLabel, { color: colors.textSecondary }]}>Valid From (YYYY-MM-DD) *</Text>
                   <TextInput
                     style={[s.input, { color: colors.text, borderColor: colors.border, backgroundColor: colors.surface }]}
                     placeholder="2026-03-01"
@@ -511,10 +505,10 @@ export default function AuditPortalAdmin() {
                     value={form.valid_from}
                     onChangeText={t => updateForm('valid_from', t)}
                   />
-                </FieldRow>
+                </View>
               </View>
               <View style={{ flex: 1 }}>
-                <FieldRow label="Valid Until (YYYY-MM-DD)">
+                <View style={s.fieldRow}><Text style={[s.fieldLabel, { color: colors.textSecondary }]}>Valid Until (YYYY-MM-DD) *</Text>
                   <TextInput
                     style={[s.input, { color: colors.text, borderColor: colors.border, backgroundColor: colors.surface }]}
                     placeholder="2026-04-01"
@@ -522,7 +516,7 @@ export default function AuditPortalAdmin() {
                     value={form.valid_until}
                     onChangeText={t => updateForm('valid_until', t)}
                   />
-                </FieldRow>
+                </View>
               </View>
             </View>
 
