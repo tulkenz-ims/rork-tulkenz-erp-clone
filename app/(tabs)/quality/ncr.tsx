@@ -361,7 +361,7 @@ export default function NCRScreen() {
         <View style={p.headerRight}>
           <View style={p.headerInfoRow}>
             <Text style={p.headerInfoLabel}>Organization:</Text>
-            <Text style={p.headerInfoValue}>NextLN</Text>
+            <Text style={p.headerInfoValue}>Admin Organization</Text>
           </View>
           <View style={p.headerInfoRow}>
             <Text style={p.headerInfoLabel}>Project:</Text>
@@ -548,7 +548,7 @@ export default function NCRScreen() {
               <Text style={p.logoCaption}>YOUR LOGO GOES HERE</Text>
             </View>
             <View style={p.headerRight}>
-              <View style={p.headerInfoRow}><Text style={p.headerInfoLabel}>Organization:</Text><Text style={p.headerInfoValue}>NextLN</Text></View>
+              <View style={p.headerInfoRow}><Text style={p.headerInfoLabel}>Organization:</Text><Text style={p.headerInfoValue}>Admin Organization</Text></View>
               <View style={p.headerInfoRow}><Text style={p.headerInfoLabel}>NCR Number:</Text><Text style={p.headerInfoValue}>{ncr.ncr_number}</Text></View>
             </View>
             <View style={p.headerFarRight}>
