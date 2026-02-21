@@ -56,18 +56,6 @@ export default function LoginScreen() {
     }
   }, [params]);
 
-  // ── If auditor portal is active, render it ──
-  if (showAuditorPortal) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <AuditorPortalView
-          onExit={() => { setShowAuditorPortal(false); setAuditToken(undefined); }}
-          initialToken={auditToken}
-        />
-      </SafeAreaView>
-    );
-  }
-
   const { mutate: companyMutate, isPending: isCompanyPending } = useMutation({
     mutationFn: async () => {
       return signInCompany(email, password);
@@ -138,6 +126,18 @@ export default function LoginScreen() {
   }, [email, password, platformMutate]);
 
   const isLoading = isCompanyPending || isEmployeePending || isPlatformPending;
+
+  // ── If auditor portal is active, render it ──
+  if (showAuditorPortal) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <AuditorPortalView
+          onExit={() => { setShowAuditorPortal(false); setAuditToken(undefined); }}
+          initialToken={auditToken}
+        />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
