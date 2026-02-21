@@ -54,6 +54,7 @@ export default function ComplianceLayout() {
       <Stack.Screen name="auditncresponse" options={{ title: 'Audit NC Response' }} />
       <Stack.Screen name="carcloseout" options={{ title: 'CAR Close-Out' }} />
       <Stack.Screen name="continualimprovement" options={{ title: 'Continual Improvement' }} />
+      <Stack.Screen name="auditsessions" options={{ title: 'Auditor Portal Sessions' }} />
       
       {/* Environmental Compliance (EPA) */}
       <Stack.Screen name="wastewaterpermit" options={{ title: 'Wastewater Permit' }} />
