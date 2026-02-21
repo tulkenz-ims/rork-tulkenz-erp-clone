@@ -36,7 +36,7 @@ function RootLayoutNav() {
         }} 
       />
       <Stack.Screen 
-        name="portal" 
+        name="auditor-portal" 
         options={{ 
           headerShown: false,
         }} 
