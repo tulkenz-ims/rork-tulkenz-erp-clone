@@ -212,9 +212,44 @@ export default function NCRScreen() {
   // SUBMIT
   // ============================================================
 
+  const validateAllFields = (): string[] => {
+    const missing: string[] = [];
+    // Section 1 — Project Information
+    if (!formData.project_package.trim()) missing.push('Package');
+    if (!formData.item_component_no.trim()) missing.push('Item / Component No');
+    if (!formData.specification_reference_no.trim()) missing.push('Specification Reference No');
+    // Section 1 — Contractor Information
+    if (!formData.contractor_location.trim()) missing.push('Contractor Location');
+    if (!formData.contractor_person_in_charge.trim()) missing.push('Contractor Person in Charge');
+    if (!formData.contractor_phone.trim()) missing.push('Contractor Phone');
+    if (!formData.contractor_email.trim()) missing.push('Contractor Email');
+    // Section 1 — Supplier Information
+    if (!formData.supplier_location.trim()) missing.push('Supplier Location');
+    if (!formData.supplier_person_in_charge.trim()) missing.push('Supplier Person in Charge');
+    if (!formData.supplier_phone.trim()) missing.push('Supplier Phone');
+    if (!formData.supplier_email.trim()) missing.push('Supplier Email');
+    // Section 2 — Non-Conformity Details
+    if (!formData.description.trim()) missing.push('Description of Non-Conformity');
+    if (!formData.non_conformity_category.trim()) missing.push('Non-Conformity Category');
+    if (!formData.recommendation_by_originator.trim()) missing.push('Recommendation by Originator');
+    // Time delay — if yes, estimate is required
+    if (formData.project_time_delay && !formData.expected_delay_estimate.trim()) missing.push('Expected Delay Estimate');
+    // PPN Signature
+    if (!isSignatureVerified(originatorSignature)) missing.push('Originator Signature (PPN)');
+    // Contractors involved
+    if (!formData.contractors_involved_text.trim()) missing.push('Contractors Involved');
+    // Section 3
+    if (!formData.outcome_of_investigation.trim()) missing.push('Outcome of Investigation');
+    return missing;
+  };
+
   const handleSubmit = useCallback(async () => {
-    if (!formData.description.trim()) {
-      Alert.alert('Required', 'Description of non-conformity is required.');
+    const missing = validateAllFields();
+    if (missing.length > 0) {
+      Alert.alert(
+        'All Fields Required',
+        `Every field must be filled in (use "N/A" if not applicable).\n\nMissing:\n• ${missing.join('\n• ')}`,
+      );
       return;
     }
     setIsSubmitting(true);
