@@ -256,7 +256,7 @@ export function useAuditSessions() {
   // ── Build portal URL ──
   const getPortalUrl = useCallback((token: string) => {
     // Uses the Vercel-deployed web app domain
-    return `https://rork-tulkenz-erp-clone.vercel.app/auditorportal/audit?token=${token}`;
+    return `https://rork-tulkenz-erp-clone.vercel.app/auditorportal?token=${token}`;
   }, []);
 
   return {
