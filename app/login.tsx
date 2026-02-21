@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,7 @@ import {
   Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import {
   Building2,
   Users,
@@ -20,15 +20,18 @@ import {
   Lock,
   KeyRound,
   AlertCircle,
+  Shield,
 } from 'lucide-react-native';
 import { useMutation } from '@tanstack/react-query';
 import { useUser } from '@/contexts/UserContext';
 import Colors from '@/constants/colors';
+import AuditorPortalView from '@/components/AuditorPortalView';
 
 type LoginType = 'company' | 'employee' | 'platform';
 
 export default function LoginScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams();
   const { signInCompany, signInEmployee, signInPlatformAdmin } = useUser();
   const [loginType, setLoginType] = useState<LoginType>('company');
   const [error, setError] = useState('');
@@ -39,6 +42,31 @@ export default function LoginScreen() {
   const [companyCode, setCompanyCode] = useState('');
   const [employeeCode, setEmployeeCode] = useState('');
   const [pin, setPin] = useState('');
+
+  // ── Auditor Portal Mode ──
+  const [showAuditorPortal, setShowAuditorPortal] = useState(false);
+  const [auditToken, setAuditToken] = useState<string | undefined>(undefined);
+
+  // Check URL for audit_token parameter
+  useEffect(() => {
+    const urlToken = params.audit_token || params.token;
+    if (urlToken && typeof urlToken === 'string') {
+      setAuditToken(urlToken);
+      setShowAuditorPortal(true);
+    }
+  }, [params]);
+
+  // ── If auditor portal is active, render it ──
+  if (showAuditorPortal) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <AuditorPortalView
+          onExit={() => { setShowAuditorPortal(false); setAuditToken(undefined); }}
+          initialToken={auditToken}
+        />
+      </SafeAreaView>
+    );
+  }
 
   const { mutate: companyMutate, isPending: isCompanyPending } = useMutation({
     mutationFn: async () => {
@@ -397,6 +425,25 @@ export default function LoginScreen() {
               </View>
             </View>
           )}
+
+          {/* ── Auditor Portal Access ── */}
+          <View style={styles.auditorDivider}>
+            <View style={styles.dividerLine} />
+            <Text style={styles.dividerText}>External Access</Text>
+            <View style={styles.dividerLine} />
+          </View>
+
+          <Pressable
+            style={styles.auditorButton}
+            onPress={() => setShowAuditorPortal(true)}
+          >
+            <Shield size={18} color="#6C5CE7" />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.auditorButtonTitle}>Auditor Portal Access</Text>
+              <Text style={styles.auditorButtonSub}>SQF / GFSI auditors — enter your access token</Text>
+            </View>
+            <Text style={styles.auditorArrow}>→</Text>
+          </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -597,5 +644,49 @@ const styles = StyleSheet.create({
   },
   platformButton: {
     backgroundColor: '#F59E0B',
+  },
+
+  // Auditor Portal Access
+  auditorDivider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 32,
+    marginBottom: 16,
+    gap: 12,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: Colors.border,
+  },
+  dividerText: {
+    fontSize: 12,
+    color: Colors.textTertiary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  auditorButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#6C5CE708',
+    borderWidth: 1,
+    borderColor: '#6C5CE730',
+    borderRadius: 12,
+    padding: 16,
+  },
+  auditorButtonTitle: {
+    fontSize: 15,
+    fontWeight: '600' as const,
+    color: '#6C5CE7',
+  },
+  auditorButtonSub: {
+    fontSize: 12,
+    color: Colors.textTertiary,
+    marginTop: 2,
+  },
+  auditorArrow: {
+    fontSize: 18,
+    color: '#6C5CE7',
   },
 });
