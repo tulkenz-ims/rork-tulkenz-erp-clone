@@ -1,6 +1,10 @@
 {
   "rewrites": [
     {
+      "source": "/auditorportal.html",
+      "destination": "/auditorportal.html"
+    },
+    {
       "source": "/(.*)",
       "destination": "/"
     }
