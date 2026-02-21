@@ -108,6 +108,7 @@ const COMPLIANCE_FORM_CATEGORIES: FormCategory[] = [
       { id: 'auditncresponse', title: 'Audit NC Response', route: '/compliance/auditncresponse' },
       { id: 'carcloseout', title: 'CAR Close-Out', route: '/compliance/carcloseout' },
       { id: 'continualimprovement', title: 'Continual Improvement', route: '/compliance/continualimprovement' },
+      { id: 'auditsessions', title: 'Auditor Portal Sessions', route: '/compliance/auditsessions' },
     ],
   },
   {
