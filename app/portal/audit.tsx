@@ -25,6 +25,7 @@ import {
   Heart,
   Wrench,
   Package,
+  Database,
   Eye,
   Clock,
   ChevronRight,
@@ -232,6 +233,18 @@ const MODULES: ModuleDef[] = [
     nameField: 'name',
     dateField: 'created_at',
     statusField: 'status',
+  },
+  {
+    key: 'backup_verification',
+    scopeField: 'scope_security_controls',
+    label: 'Backup Verification Log',
+    sqfRef: 'SQF 2.2.3.3 — Secure Storage & Data Integrity',
+    icon: <Database size={20} color={C.primary} />,
+    table: 'backup_verification_log',
+    columns: '*',
+    nameField: 'description',
+    dateField: 'backup_date',
+    statusField: 'verification_result',
   },
 ];
 
