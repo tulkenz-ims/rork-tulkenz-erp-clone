@@ -363,7 +363,7 @@ export default function NCRScreen() {
     keyboardType?: 'default' | 'phone-pad' | 'email-address';
   }) => (
     <TextInput
-      style={[p.cellValue, { color: colors.text }, multiline && { minHeight: 56, textAlignVertical: 'top' }]}
+      style={[p.cellValue, { color: '#333' }, multiline && { minHeight: 56, textAlignVertical: 'top' }]}
       placeholder={placeholder || ''}
       placeholderTextColor="#AAAAAA"
       value={(formData as any)[field]}
