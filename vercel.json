@@ -1,8 +1,8 @@
 {
   "rewrites": [
     {
-      "source": "/auditorportal.html",
-      "destination": "/auditorportal.html"
+      "source": "/api/(.*)",
+      "destination": "/api/$1"
     },
     {
       "source": "/(.*)",
