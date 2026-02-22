@@ -821,9 +821,8 @@ function renderSDSList(data) {
     if (rec.sds_number) h += '<div style="font-size:11px;font-weight:700;color:var(--accent);letter-spacing:0.3px;margin-bottom:2px">' + esc(rec.sds_number) + '</div>';
     h += '<h4 style="margin:0;font-size:15px">' + esc(name) + '</h4>';
     var subParts = [];
-    if (mfg) subParts.push(mfg);
     if (rec.primary_department) subParts.push(rec.primary_department);
-    if (rec.approved_by) subParts.push('Approved: ' + rec.approved_by);
+    if (rec.approved_by) subParts.push('Approved by: ' + rec.approved_by);
     if (subParts.length) h += '<div style="font-size:12px;color:var(--text3);margin-top:2px">' + esc(subParts.join(' · ')) + '</div>';
     h += '</div>';
     h += '<div style="display:flex;align-items:center;gap:8px">';
