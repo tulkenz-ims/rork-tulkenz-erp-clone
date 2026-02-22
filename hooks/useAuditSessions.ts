@@ -45,6 +45,8 @@ export interface AuditSession {
   created_by_id: string | null;
   created_at: string;
   updated_at: string;
+  email_sent_at: string | null;
+  email_sent_count: number;
 }
 
 export interface AuditAccessLogEntry {
