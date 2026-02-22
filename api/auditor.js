@@ -813,13 +813,18 @@ function renderSDSList(data) {
     var revDate = rec.revision_date ? new Date(rec.revision_date).toLocaleDateString() : '';
     var hasFile = rec.file_url && rec.file_url.length > 10;
 
-    var searchData = (name + ' ' + mfg + ' ' + cas + ' ' + allergenList + ' ' + (rec.sds_number || '')).toLowerCase();
+    var searchData = (name + ' ' + mfg + ' ' + cas + ' ' + allergenList + ' ' + (rec.sds_number || '') + ' ' + (rec.primary_department || '') + ' ' + (rec.approved_by || '')).toLowerCase();
 
     h += '<div class="record-card" data-search="' + esc(searchData) + '">';
     h += '<div class="record-head" style="padding:14px 16px">';
     h += '<div style="flex:1">';
+    if (rec.sds_number) h += '<div style="font-size:11px;font-weight:700;color:var(--accent);letter-spacing:0.3px;margin-bottom:2px">' + esc(rec.sds_number) + '</div>';
     h += '<h4 style="margin:0;font-size:15px">' + esc(name) + '</h4>';
-    if (mfg) h += '<div style="font-size:12px;color:var(--text3);margin-top:2px">' + esc(mfg) + '</div>';
+    var subParts = [];
+    if (mfg) subParts.push(mfg);
+    if (rec.primary_department) subParts.push(rec.primary_department);
+    if (rec.approved_by) subParts.push('Approved: ' + rec.approved_by);
+    if (subParts.length) h += '<div style="font-size:12px;color:var(--text3);margin-top:2px">' + esc(subParts.join(' · ')) + '</div>';
     h += '</div>';
     h += '<div style="display:flex;align-items:center;gap:8px">';
     if (hasAllergens) h += '<span style="background:#FEF2F2;color:#DC2626;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600">ALLERGEN</span>';
@@ -842,10 +847,11 @@ function renderSDSDetail(rec) {
   // ── PDF Link / QR Code row ──
   if (rec.file_url) {
     var pdfName = rec.file_url.split('/').pop() || 'SDS Document';
+    var sdsLabel = rec.sds_number || 'SDS Document';
     h += '<div style="padding:14px 16px;border-bottom:2px solid var(--border);display:flex;align-items:center;gap:14px;background:rgba(59,130,246,0.06)">';
     h += '<img src="https://api.qrserver.com/v1/create-qr-code/?size=64x64&data=' + encodeURIComponent(rec.file_url) + '" alt="QR" style="width:64px;height:64px;border-radius:6px;border:1px solid var(--border)" />';
     h += '<div style="flex:1;min-width:0">';
-    h += '<div style="font-weight:700;font-size:14px;color:var(--text1)">Safety Data Sheet (PDF)</div>';
+    h += '<div style="font-weight:700;font-size:14px;color:var(--text1)">' + esc(sdsLabel) + '</div>';
     h += '<div style="font-size:11px;color:var(--text3);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(decodeURIComponent(pdfName)) + '</div>';
     h += '</div>';
     h += '<a href="' + esc(rec.file_url) + '" target="_blank" rel="noopener" style="background:var(--accent);color:#fff;padding:8px 20px;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap">View PDF</a>';
@@ -864,6 +870,8 @@ function renderSDSDetail(rec) {
   h += sdsCell('Revision Date', rec.revision_date ? new Date(rec.revision_date).toLocaleDateString() : null);
   h += sdsCell('Location', rec.location_used || rec.storage_location);
   h += sdsCell('Primary Dept', rec.primary_department);
+  h += sdsCell('Approved By', rec.approved_by);
+  h += sdsCell('Approved For Use', rec.approved_for_use === true ? 'Yes' : rec.approved_for_use === false ? 'No' : null);
   h += '</div>';
 
   // ── Signal Word (if present) ──
