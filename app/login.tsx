@@ -47,10 +47,25 @@ export default function LoginScreen() {
   const [showAuditorPortal, setShowAuditorPortal] = useState(false);
   const [auditToken, setAuditToken] = useState<string | undefined>(undefined);
 
-  // Check URL for audit_token parameter
+  // Check URL for audit_token parameter (web: read from window.location, mobile: from router params)
   useEffect(() => {
-    const urlToken = params.audit_token || params.token;
-    if (urlToken && typeof urlToken === 'string') {
+    let urlToken: string | null = null;
+
+    // On web, read directly from browser URL since Expo Router redirect can lose params
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      const searchParams = new URLSearchParams(window.location.search);
+      urlToken = searchParams.get('audit_token') || searchParams.get('token');
+    }
+
+    // Fallback to Expo Router params
+    if (!urlToken) {
+      const paramToken = params.audit_token || params.token;
+      if (paramToken && typeof paramToken === 'string') {
+        urlToken = paramToken;
+      }
+    }
+
+    if (urlToken) {
       setAuditToken(urlToken);
       setShowAuditorPortal(true);
     }
