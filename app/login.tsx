@@ -173,7 +173,7 @@ export default function LoginScreen() {
                 resizeMode="contain"
               />
             </View>
-            <Text style={styles.title}>TulKenz OPS</Text>
+            <Text style={styles.title}>TulKenz OPS v2 TEST</Text>
             <Text style={styles.subtitle}>Sign in to your account</Text>
           </View>
 
