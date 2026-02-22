@@ -455,7 +455,7 @@ export default function LoginScreen() {
             <Shield size={18} color="#6C5CE7" />
             <View style={{ flex: 1 }}>
               <Text style={styles.auditorButtonTitle}>Auditor Portal Access</Text>
-              <Text style={styles.auditorButtonSub}>SQF / GFSI auditors — enter your access token</Text>
+              <Text style={styles.auditorButtonSub}>External auditors — enter your access token</Text>
             </View>
             <Text style={styles.auditorArrow}>→</Text>
           </Pressable>
