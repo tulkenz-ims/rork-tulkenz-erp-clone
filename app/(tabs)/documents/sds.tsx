@@ -34,6 +34,18 @@ import {
   Building2,
   Hash,
   ExternalLink,
+  ShieldAlert,
+  Droplets,
+  Flame,
+  Wind,
+  Hand,
+  Glasses,
+  HardHat,
+  Package,
+  MapPin,
+  Heart,
+  Skull,
+  Info,
 } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -214,6 +226,12 @@ export default function SDSIndexScreen() {
         </View>
 
         <View style={styles.cardMeta}>
+          {(doc as any).contains_allergens && (
+            <View style={[styles.deptBadge, { backgroundColor: '#DC2626' + '20' }]}>
+              <ShieldAlert size={11} color="#DC2626" />
+              <Text style={[styles.deptText, { color: '#DC2626', fontWeight: '700' as const }]}>ALLERGENS</Text>
+            </View>
+          )}
           {doc.manufacturer && (
             <View style={[styles.deptBadge, { backgroundColor: colors.primary + '20' }]}>
               <Building2 size={11} color={colors.primary} />
@@ -565,6 +583,30 @@ export default function SDSIndexScreen() {
                     <Text style={styles.qrNote}>Scan to view SDS instantly - no login required</Text>
                   </View>
 
+                  {/* ── ALLERGEN WARNING ── */}
+                  {(selectedDocument as any).contains_allergens && (
+                    <View style={[styles.safetyBanner, { backgroundColor: '#FEF2F2', borderColor: '#FECACA' }]}>
+                      <View style={styles.safetyBannerHeader}>
+                        <ShieldAlert size={20} color="#DC2626" />
+                        <Text style={[styles.safetyBannerTitle, { color: '#991B1B' }]}>⚠️ CONTAINS ALLERGENS</Text>
+                      </View>
+                      {Array.isArray((selectedDocument as any).allergens) && (selectedDocument as any).allergens.length > 0 && (
+                        <View style={styles.allergenTagsRow}>
+                          {(selectedDocument as any).allergens.map((a: string, i: number) => (
+                            <View key={i} style={[styles.allergenTag, { backgroundColor: '#DC2626' }]}>
+                              <Text style={styles.allergenTagText}>{a}</Text>
+                            </View>
+                          ))}
+                        </View>
+                      )}
+                      {(selectedDocument as any).allergen_notes ? (
+                        <Text style={[styles.safetyBannerBody, { color: '#991B1B' }]}>{(selectedDocument as any).allergen_notes}</Text>
+                      ) : null}
+                    </View>
+                  )}
+
+                  {/* ── IDENTIFICATION ── */}
+                  <Text style={[styles.sectionHeading, { color: colors.text }]}>Identification</Text>
                   <View style={[styles.detailsList, { borderColor: colors.border }]}>
                     <View style={styles.detailRow}>
                       <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Product Name</Text>
@@ -578,6 +620,18 @@ export default function SDSIndexScreen() {
                       <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Manufacturer</Text>
                       <Text style={[styles.detailValue, { color: colors.text }]}>{selectedDocument.manufacturer || 'N/A'}</Text>
                     </View>
+                    {selectedDocument.manufacturer_phone && (
+                      <View style={styles.detailRow}>
+                        <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Manufacturer Phone</Text>
+                        <Text style={[styles.detailValue, { color: colors.text }]}>{selectedDocument.manufacturer_phone}</Text>
+                      </View>
+                    )}
+                    {selectedDocument.emergency_phone && (
+                      <View style={styles.detailRow}>
+                        <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Emergency Phone</Text>
+                        <Text style={[styles.detailValue, { color: '#DC2626', fontWeight: '700' as const }]}>{selectedDocument.emergency_phone}</Text>
+                      </View>
+                    )}
                     <View style={styles.detailRow}>
                       <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Status</Text>
                       <View style={[styles.statusBadgeLarge, { backgroundColor: getSDSStatusColor(selectedDocument.status || 'active') + '20' }]}>
@@ -586,6 +640,24 @@ export default function SDSIndexScreen() {
                         </Text>
                       </View>
                     </View>
+                    {selectedDocument.cas_number && (
+                      <View style={styles.detailRow}>
+                        <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>CAS Number</Text>
+                        <Text style={[styles.detailValue, { color: colors.text }]}>{selectedDocument.cas_number}</Text>
+                      </View>
+                    )}
+                    {selectedDocument.un_number && (
+                      <View style={styles.detailRow}>
+                        <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>UN Number</Text>
+                        <Text style={[styles.detailValue, { color: colors.text }]}>{selectedDocument.un_number}</Text>
+                      </View>
+                    )}
+                    {selectedDocument.physical_state && (
+                      <View style={styles.detailRow}>
+                        <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Physical State</Text>
+                        <Text style={[styles.detailValue, { color: colors.text }]}>{selectedDocument.physical_state}</Text>
+                      </View>
+                    )}
                     {selectedDocument.issue_date && (
                       <View style={styles.detailRow}>
                         <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Issue Date</Text>
@@ -598,25 +670,259 @@ export default function SDSIndexScreen() {
                         <Text style={[styles.detailValue, { color: colors.text }]}>{formatDate(selectedDocument.expiration_date)}</Text>
                       </View>
                     )}
-                    {selectedDocument.cas_number && (
-                      <View style={styles.detailRow}>
-                        <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>CAS Number</Text>
-                        <Text style={[styles.detailValue, { color: colors.text }]}>{selectedDocument.cas_number}</Text>
-                      </View>
-                    )}
-                    {selectedDocument.signal_word && (
-                      <View style={styles.detailRow}>
-                        <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Signal Word</Text>
-                        <Text style={[styles.detailValue, { color: colors.text }]}>{selectedDocument.signal_word.toUpperCase()}</Text>
-                      </View>
-                    )}
-                    {selectedDocument.physical_state && (
-                      <View style={styles.detailRow}>
-                        <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Physical State</Text>
-                        <Text style={[styles.detailValue, { color: colors.text }]}>{selectedDocument.physical_state}</Text>
-                      </View>
-                    )}
                   </View>
+
+                  {/* ── HAZARD CLASSIFICATION ── */}
+                  {(selectedDocument.signal_word || (selectedDocument.hazard_statements && selectedDocument.hazard_statements.length > 0) || (selectedDocument.ghs_pictograms && selectedDocument.ghs_pictograms.length > 0)) && (
+                    <>
+                      <Text style={[styles.sectionHeading, { color: colors.text }]}>Hazard Classification</Text>
+                      <View style={[styles.detailsList, { borderColor: colors.border }]}>
+                        {selectedDocument.signal_word && (
+                          <View style={styles.detailRow}>
+                            <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Signal Word</Text>
+                            <View style={[styles.statusBadgeLarge, {
+                              backgroundColor: selectedDocument.signal_word === 'danger' ? '#DC262620' : selectedDocument.signal_word === 'warning' ? '#F59E0B20' : '#10B98120',
+                            }]}>
+                              <Text style={{
+                                color: selectedDocument.signal_word === 'danger' ? '#DC2626' : selectedDocument.signal_word === 'warning' ? '#D97706' : '#10B981',
+                                fontWeight: '700' as const,
+                                fontSize: 13,
+                                textTransform: 'uppercase' as const,
+                              }}>
+                                {selectedDocument.signal_word}
+                              </Text>
+                            </View>
+                          </View>
+                        )}
+                        {selectedDocument.ghs_pictograms && selectedDocument.ghs_pictograms.length > 0 && (
+                          <View style={styles.detailRow}>
+                            <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>GHS Pictograms</Text>
+                            <View style={{ flex: 1, flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
+                              {selectedDocument.ghs_pictograms.map((p: string, i: number) => (
+                                <View key={i} style={[styles.allergenTag, { backgroundColor: '#F59E0B' }]}>
+                                  <Text style={styles.allergenTagText}>{p}</Text>
+                                </View>
+                              ))}
+                            </View>
+                          </View>
+                        )}
+                        {selectedDocument.hazard_class && selectedDocument.hazard_class.length > 0 && (
+                          <View style={styles.detailRow}>
+                            <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Hazard Class</Text>
+                            <Text style={[styles.detailValue, { color: colors.text }]}>{selectedDocument.hazard_class.join(', ')}</Text>
+                          </View>
+                        )}
+                        {selectedDocument.hazard_statements && selectedDocument.hazard_statements.length > 0 && (
+                          <View style={[styles.detailRowStacked]}>
+                            <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Hazard Statements</Text>
+                            {selectedDocument.hazard_statements.map((h: string, i: number) => (
+                              <Text key={i} style={[styles.detailValue, { color: '#DC2626', marginTop: 2 }]}>• {h}</Text>
+                            ))}
+                          </View>
+                        )}
+                        {selectedDocument.precautionary_statements && selectedDocument.precautionary_statements.length > 0 && (
+                          <View style={[styles.detailRowStacked]}>
+                            <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Precautionary Statements</Text>
+                            {selectedDocument.precautionary_statements.map((p: string, i: number) => (
+                              <Text key={i} style={[styles.detailValue, { color: colors.text, marginTop: 2 }]}>• {p}</Text>
+                            ))}
+                          </View>
+                        )}
+                      </View>
+                    </>
+                  )}
+
+                  {/* ── HEALTH HAZARDS ── */}
+                  {(selectedDocument.health_hazards || selectedDocument.routes_of_exposure?.length || selectedDocument.symptoms_of_exposure) && (
+                    <>
+                      <Text style={[styles.sectionHeading, { color: colors.text }]}>Health Hazards</Text>
+                      <View style={[styles.detailsList, { borderColor: colors.border }]}>
+                        {selectedDocument.health_hazards && (
+                          <View style={styles.detailRowStacked}>
+                            <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Health Effects</Text>
+                            <Text style={[styles.detailValue, { color: colors.text, marginTop: 2 }]}>{selectedDocument.health_hazards}</Text>
+                          </View>
+                        )}
+                        {selectedDocument.routes_of_exposure && selectedDocument.routes_of_exposure.length > 0 && (
+                          <View style={styles.detailRow}>
+                            <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Routes of Exposure</Text>
+                            <Text style={[styles.detailValue, { color: colors.text }]}>{selectedDocument.routes_of_exposure.join(', ')}</Text>
+                          </View>
+                        )}
+                        {selectedDocument.symptoms_of_exposure && (
+                          <View style={styles.detailRowStacked}>
+                            <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Symptoms</Text>
+                            <Text style={[styles.detailValue, { color: colors.text, marginTop: 2 }]}>{selectedDocument.symptoms_of_exposure}</Text>
+                          </View>
+                        )}
+                      </View>
+                    </>
+                  )}
+
+                  {/* ── FIRST AID ── */}
+                  {(selectedDocument.first_aid_inhalation || selectedDocument.first_aid_skin || selectedDocument.first_aid_eye || selectedDocument.first_aid_ingestion) && (
+                    <>
+                      <Text style={[styles.sectionHeading, { color: colors.text }]}>First Aid Measures</Text>
+                      <View style={[styles.detailsList, { borderColor: '#10B98140' }]}>
+                        {selectedDocument.first_aid_inhalation && (
+                          <View style={styles.detailRowStacked}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                              <Wind size={14} color="#10B981" />
+                              <Text style={[styles.detailLabel, { color: '#10B981', fontWeight: '600' as const }]}>Inhalation</Text>
+                            </View>
+                            <Text style={[styles.detailValue, { color: colors.text, marginTop: 4 }]}>{selectedDocument.first_aid_inhalation}</Text>
+                          </View>
+                        )}
+                        {selectedDocument.first_aid_skin && (
+                          <View style={styles.detailRowStacked}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                              <Hand size={14} color="#10B981" />
+                              <Text style={[styles.detailLabel, { color: '#10B981', fontWeight: '600' as const }]}>Skin Contact</Text>
+                            </View>
+                            <Text style={[styles.detailValue, { color: colors.text, marginTop: 4 }]}>{selectedDocument.first_aid_skin}</Text>
+                          </View>
+                        )}
+                        {selectedDocument.first_aid_eye && (
+                          <View style={styles.detailRowStacked}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                              <Glasses size={14} color="#10B981" />
+                              <Text style={[styles.detailLabel, { color: '#10B981', fontWeight: '600' as const }]}>Eye Contact</Text>
+                            </View>
+                            <Text style={[styles.detailValue, { color: colors.text, marginTop: 4 }]}>{selectedDocument.first_aid_eye}</Text>
+                          </View>
+                        )}
+                        {selectedDocument.first_aid_ingestion && (
+                          <View style={styles.detailRowStacked}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                              <Droplets size={14} color="#10B981" />
+                              <Text style={[styles.detailLabel, { color: '#10B981', fontWeight: '600' as const }]}>Ingestion</Text>
+                            </View>
+                            <Text style={[styles.detailValue, { color: colors.text, marginTop: 4 }]}>{selectedDocument.first_aid_ingestion}</Text>
+                          </View>
+                        )}
+                      </View>
+                    </>
+                  )}
+
+                  {/* ── PPE REQUIREMENTS ── */}
+                  {selectedDocument.ppe_requirements && Object.keys(selectedDocument.ppe_requirements).length > 0 && (
+                    <>
+                      <Text style={[styles.sectionHeading, { color: colors.text }]}>PPE Requirements</Text>
+                      <View style={[styles.detailsList, { borderColor: '#3B82F640' }]}>
+                        {Object.entries(selectedDocument.ppe_requirements as Record<string, any>).map(([key, val]) => (
+                          <View key={key} style={styles.detailRow}>
+                            <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>{key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</Text>
+                            <Text style={[styles.detailValue, { color: colors.text }]}>{typeof val === 'string' ? val : JSON.stringify(val)}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    </>
+                  )}
+
+                  {/* ── HANDLING & STORAGE ── */}
+                  {(selectedDocument.handling_precautions || selectedDocument.storage_requirements) && (
+                    <>
+                      <Text style={[styles.sectionHeading, { color: colors.text }]}>Handling & Storage</Text>
+                      <View style={[styles.detailsList, { borderColor: colors.border }]}>
+                        {selectedDocument.handling_precautions && (
+                          <View style={styles.detailRowStacked}>
+                            <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Handling Precautions</Text>
+                            <Text style={[styles.detailValue, { color: colors.text, marginTop: 2 }]}>{selectedDocument.handling_precautions}</Text>
+                          </View>
+                        )}
+                        {selectedDocument.storage_requirements && (
+                          <View style={styles.detailRowStacked}>
+                            <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Storage Requirements</Text>
+                            <Text style={[styles.detailValue, { color: colors.text, marginTop: 2 }]}>{selectedDocument.storage_requirements}</Text>
+                          </View>
+                        )}
+                      </View>
+                    </>
+                  )}
+
+                  {/* ── EMERGENCY / SPILL ── */}
+                  {(selectedDocument.spill_procedures || selectedDocument.fire_extinguishing_media || selectedDocument.fire_fighting_procedures) && (
+                    <>
+                      <Text style={[styles.sectionHeading, { color: colors.text }]}>Emergency Procedures</Text>
+                      <View style={[styles.detailsList, { borderColor: '#EF444440' }]}>
+                        {selectedDocument.spill_procedures && (
+                          <View style={styles.detailRowStacked}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                              <Droplets size={14} color="#F59E0B" />
+                              <Text style={[styles.detailLabel, { color: '#D97706', fontWeight: '600' as const }]}>Spill / Leak Procedures</Text>
+                            </View>
+                            <Text style={[styles.detailValue, { color: colors.text, marginTop: 4 }]}>{selectedDocument.spill_procedures}</Text>
+                          </View>
+                        )}
+                        {selectedDocument.fire_extinguishing_media && (
+                          <View style={styles.detailRowStacked}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                              <Flame size={14} color="#EF4444" />
+                              <Text style={[styles.detailLabel, { color: '#DC2626', fontWeight: '600' as const }]}>Fire Extinguishing Media</Text>
+                            </View>
+                            <Text style={[styles.detailValue, { color: colors.text, marginTop: 4 }]}>{selectedDocument.fire_extinguishing_media}</Text>
+                          </View>
+                        )}
+                        {selectedDocument.fire_fighting_procedures && (
+                          <View style={styles.detailRowStacked}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                              <Flame size={14} color="#EF4444" />
+                              <Text style={[styles.detailLabel, { color: '#DC2626', fontWeight: '600' as const }]}>Fire Fighting Procedures</Text>
+                            </View>
+                            <Text style={[styles.detailValue, { color: colors.text, marginTop: 4 }]}>{selectedDocument.fire_fighting_procedures}</Text>
+                          </View>
+                        )}
+                      </View>
+                    </>
+                  )}
+
+                  {/* ── LOCATION & DEPARTMENT ── */}
+                  {((selectedDocument.location_used && selectedDocument.location_used.length > 0) || (selectedDocument.department_codes && selectedDocument.department_codes.length > 0)) && (
+                    <>
+                      <Text style={[styles.sectionHeading, { color: colors.text }]}>Location & Department</Text>
+                      <View style={[styles.detailsList, { borderColor: colors.border }]}>
+                        {selectedDocument.location_used && selectedDocument.location_used.length > 0 && (
+                          <View style={styles.detailRow}>
+                            <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Locations Used</Text>
+                            <Text style={[styles.detailValue, { color: colors.text }]}>{selectedDocument.location_used.join(', ')}</Text>
+                          </View>
+                        )}
+                        {selectedDocument.department_codes && selectedDocument.department_codes.length > 0 && (
+                          <View style={styles.detailRow}>
+                            <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Departments</Text>
+                            <Text style={[styles.detailValue, { color: colors.text }]}>{selectedDocument.department_codes.join(', ')}</Text>
+                          </View>
+                        )}
+                      </View>
+                    </>
+                  )}
+
+                  {/* ── DISPOSAL ── */}
+                  {selectedDocument.disposal_methods && (
+                    <>
+                      <Text style={[styles.sectionHeading, { color: colors.text }]}>Disposal</Text>
+                      <View style={[styles.detailsList, { borderColor: colors.border }]}>
+                        <View style={styles.detailRowStacked}>
+                          <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Disposal Methods</Text>
+                          <Text style={[styles.detailValue, { color: colors.text, marginTop: 2 }]}>{selectedDocument.disposal_methods}</Text>
+                        </View>
+                      </View>
+                    </>
+                  )}
+
+                  {/* ── NOTES ── */}
+                  {selectedDocument.notes && (
+                    <>
+                      <Text style={[styles.sectionHeading, { color: colors.text }]}>Notes</Text>
+                      <View style={[styles.detailsList, { borderColor: colors.border }]}>
+                        <View style={styles.detailRowStacked}>
+                          <Text style={[styles.detailValue, { color: colors.text }]}>{selectedDocument.notes}</Text>
+                        </View>
+                      </View>
+                    </>
+                  )}
+
+                  <View style={{ height: 20 }} />
                 </ScrollView>
 
                 <View style={[styles.detailFooter, { borderTopColor: colors.border }]}>
@@ -1141,5 +1447,58 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '600' as const,
+  },
+  sectionHeading: {
+    fontSize: 15,
+    fontWeight: '700' as const,
+    marginTop: 20,
+    marginBottom: 8,
+    paddingHorizontal: 4,
+  },
+  detailRowStacked: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.05)',
+  },
+  safetyBanner: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 14,
+    marginTop: 12,
+  },
+  safetyBannerHeader: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 8,
+    marginBottom: 8,
+  },
+  safetyBannerTitle: {
+    fontSize: 15,
+    fontWeight: '800' as const,
+    letterSpacing: 0.5,
+  },
+  safetyBannerBody: {
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 4,
+  },
+  allergenTagsRow: {
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    gap: 6,
+    marginBottom: 4,
+  },
+  allergenTag: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  allergenTagText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '700' as const,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.3,
   },
 });
