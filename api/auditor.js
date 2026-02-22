@@ -632,12 +632,21 @@ async function loadConnectedRecords(ncr) {
   var h = '';
 
   try {
-    // 1. Find task feed post linked to this NCR via form_links
-    var formLinks = await sb.from('task_feed_form_links').select('*').eq('organization_id', session.organization_id).eq('form_type', 'ncr').eq('form_number', ncr.ncr_number);
+    // 1. Find task feed post linked to this NCR via form_links (search by both form_number and form_id)
+    var formLinks = await sb.from('task_feed_form_links').select('*').eq('form_type', 'ncr').or('form_number.eq.' + ncr.ncr_number + ',form_id.eq.' + ncr.id);
     var links = (formLinks.data || []);
 
-    if (links.length > 0) {
-      var postIds = links.map(function(l) { return l.post_id; });
+    // Also check department tasks that reference this NCR directly
+    var deptRefResp = await sb.from('task_feed_department_tasks').select('post_id').or('module_reference_id.eq.' + ncr.id + ',module_history_id.eq.' + ncr.id);
+    var deptRefPosts = (deptRefResp.data || []).map(function(d) { return d.post_id; });
+
+    // Merge post IDs from both sources
+    var allPostIds = {};
+    links.forEach(function(l) { allPostIds[l.post_id] = true; });
+    deptRefPosts.forEach(function(pid) { if (pid) allPostIds[pid] = true; });
+    var postIds = Object.keys(allPostIds);
+
+    if (postIds.length > 0) {
 
       // 2. Fetch the task feed posts
       var postsResp = await sb.from('task_feed_posts').select('*').in('id', postIds);
@@ -738,7 +747,7 @@ async function loadConnectedRecords(ncr) {
       }
     }
 
-    if (links.length === 0 && holdTags.length === 0) {
+    if (postIds.length === 0 && holdTags.length === 0) {
       h = '<div style="color:var(--text3);font-size:13px;text-align:center;padding:20px">No connected records found. This NCR may have been created independently.</div>';
     }
 
