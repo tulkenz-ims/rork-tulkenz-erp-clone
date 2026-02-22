@@ -444,6 +444,9 @@ async function loadModule(el, key) {
     // Special rendering for NCR records
     if (key === 'ncr_records') { currentNCRData = data; renderNCRList(data); return; }
 
+    // Special rendering for SDS records
+    if (key === 'sds_records') { renderSDSList(data); return; }
+
     // Default rendering for other modules
     var h = '<input type="text" class="search-bar" placeholder="Search records..."/>';
     for (var i = 0; i < data.length; i++) {
@@ -792,7 +795,159 @@ async function loadConnectedRecords(ncr) {
   container.innerHTML = h;
 }
 
-// ── Generic Field Renderer (for non-NCR modules) ──
+// ── SDS Document List ──
+function renderSDSList(data) {
+  var body = document.getElementById('mainBody');
+  var h = '<input type="text" class="search-bar" placeholder="Search SDS documents..."/>';
+
+  for (var i = 0; i < data.length; i++) {
+    var rec = data[i];
+    var name = rec.product_name || rec.sds_number || 'Untitled SDS';
+    var mfg = rec.manufacturer || '';
+    var cas = rec.cas_number || '';
+    var status = rec.status || 'active';
+    var statusColor = status === 'active' ? '#10B981' : status === 'expired' ? '#EF4444' : '#F59E0B';
+    var hasAllergens = rec.contains_allergens === true;
+    var allergenList = rec.allergens || '';
+    var signalWord = rec.signal_word && rec.signal_word !== 'none' && rec.signal_word !== 'N/A' ? rec.signal_word : '';
+    var revDate = rec.revision_date ? new Date(rec.revision_date).toLocaleDateString() : '';
+    var hasFile = rec.file_url && rec.file_url.length > 10;
+
+    var searchData = (name + ' ' + mfg + ' ' + cas + ' ' + allergenList + ' ' + (rec.sds_number || '')).toLowerCase();
+
+    h += '<div class="record-card" data-search="' + esc(searchData) + '">';
+    h += '<div class="record-head" style="padding:14px 16px">';
+    h += '<div style="flex:1">';
+    h += '<h4 style="margin:0;font-size:15px">' + esc(name) + '</h4>';
+    if (mfg) h += '<div style="font-size:12px;color:var(--text3);margin-top:2px">' + esc(mfg) + '</div>';
+    h += '</div>';
+    h += '<div style="display:flex;align-items:center;gap:8px">';
+    if (hasAllergens) h += '<span style="background:#FEF2F2;color:#DC2626;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600">ALLERGEN</span>';
+    if (signalWord) h += '<span style="background:' + (signalWord.toLowerCase() === 'danger' ? '#FEE2E2' : '#FEF3C7') + ';color:' + (signalWord.toLowerCase() === 'danger' ? '#DC2626' : '#D97706') + ';padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600">' + esc(signalWord.toUpperCase()) + '</span>';
+    h += '<span style="background:' + statusColor + '22;color:' + statusColor + ';padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600">' + esc(status.charAt(0).toUpperCase() + status.slice(1)) + '</span>';
+    if (revDate) h += '<span class="rh-date">' + revDate + '</span>';
+    h += '</div>';
+    h += '<span class="rh-arrow">&#9654;</span></div>';
+    h += '<div class="record-body" style="padding:0">' + renderSDSDetail(rec) + '</div>';
+    h += '</div>';
+  }
+
+  body.innerHTML = h;
+}
+
+function renderSDSDetail(rec) {
+  var h = '';
+  var v = function(val) { return (val !== null && val !== undefined && val !== '' && val !== 'N/A') ? esc(String(val)) : null; };
+
+  // ── PDF Link / QR Code row ──
+  if (rec.file_url) {
+    var pdfName = rec.file_url.split('/').pop() || 'SDS Document';
+    h += '<div style="padding:14px 16px;border-bottom:2px solid var(--border);display:flex;align-items:center;gap:14px;background:rgba(59,130,246,0.06)">';
+    h += '<img src="https://api.qrserver.com/v1/create-qr-code/?size=64x64&data=' + encodeURIComponent(rec.file_url) + '" alt="QR" style="width:64px;height:64px;border-radius:6px;border:1px solid var(--border)" />';
+    h += '<div style="flex:1;min-width:0">';
+    h += '<div style="font-weight:700;font-size:14px;color:var(--text1)">Safety Data Sheet (PDF)</div>';
+    h += '<div style="font-size:11px;color:var(--text3);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(decodeURIComponent(pdfName)) + '</div>';
+    h += '</div>';
+    h += '<a href="' + esc(rec.file_url) + '" target="_blank" rel="noopener" style="background:var(--accent);color:#fff;padding:8px 20px;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap">View PDF</a>';
+    h += '</div>';
+  }
+
+  // ── Document Info Grid (compact, 2-column) ──
+  h += '<div style="display:grid;grid-template-columns:1fr 1fr">';
+  h += sdsCell('Product Name', rec.product_name);
+  h += sdsCell('SDS Number', rec.sds_number);
+  h += sdsCell('Manufacturer', rec.manufacturer);
+  h += sdsCell('Mfg Phone', rec.manufacturer_phone);
+  h += sdsCell('Emergency Phone', rec.emergency_phone);
+  h += sdsCell('CAS Number', rec.cas_number);
+  h += sdsCell('Status', rec.status ? rec.status.charAt(0).toUpperCase() + rec.status.slice(1) : 'N/A');
+  h += sdsCell('Revision Date', rec.revision_date ? new Date(rec.revision_date).toLocaleDateString() : null);
+  h += sdsCell('Location', rec.location_used || rec.storage_location);
+  h += sdsCell('Primary Dept', rec.primary_department);
+  h += '</div>';
+
+  // ── Signal Word (if present) ──
+  var signalWord = rec.signal_word && rec.signal_word !== 'none' && rec.signal_word !== 'N/A' ? rec.signal_word : null;
+  if (signalWord) {
+    var swColor = signalWord.toLowerCase() === 'danger' ? '#DC2626' : '#D97706';
+    var swBg = signalWord.toLowerCase() === 'danger' ? 'rgba(220,38,38,0.08)' : 'rgba(217,119,6,0.08)';
+    h += '<div style="padding:8px 16px;border-bottom:1px solid var(--border);background:' + swBg + ';display:flex;align-items:center;gap:8px">';
+    h += '<span style="font-weight:600;font-size:12px;color:var(--text2)">Signal Word:</span>';
+    h += '<span style="font-weight:800;font-size:14px;color:' + swColor + ';letter-spacing:0.5px">' + esc(signalWord.toUpperCase()) + '</span>';
+    h += '</div>';
+  }
+
+  // ── Allergen Section (only if relevant) ──
+  if (rec.contains_allergens === true || v(rec.allergens) || rec.allergen_isolation_required === true) {
+    h += '<div style="padding:8px 12px;background:rgba(220,38,38,0.12);font-weight:700;font-size:12px;color:#DC2626;letter-spacing:0.3px;border-bottom:1px solid var(--border)">&#9888;&#65039; ALLERGEN INFORMATION</div>';
+    h += '<div style="display:grid;grid-template-columns:1fr 1fr">';
+    h += sdsCell('Contains Allergens', rec.contains_allergens ? 'Yes' : 'No', rec.contains_allergens ? '#DC2626' : null);
+    h += sdsCell('Allergens', rec.allergens);
+    h += sdsCell('Allergen Notes', rec.allergen_notes);
+    h += sdsCell('Isolation Required', rec.allergen_isolation_required === true ? 'Yes' : rec.allergen_isolation_required === false ? 'No' : null, rec.allergen_isolation_required ? '#DC2626' : null);
+    if (v(rec.allergen_isolation_notes)) h += sdsCell('Isolation Notes', rec.allergen_isolation_notes);
+    h += '</div>';
+  }
+
+  // ── Storage & Handling (only if data exists) ──
+  var hasStorage = v(rec.storage_location) || v(rec.approved_storage_areas) || v(rec.restricted_areas) || v(rec.storage_requirements) || v(rec.handling_precautions);
+  if (hasStorage) {
+    h += '<div style="padding:8px 12px;background:rgba(139,92,246,0.08);font-weight:700;font-size:12px;color:#8B5CF6;letter-spacing:0.3px;border-bottom:1px solid var(--border)">STORAGE &amp; HANDLING</div>';
+    h += '<div style="display:grid;grid-template-columns:1fr 1fr">';
+    h += sdsCell('Storage Location', rec.storage_location);
+    h += sdsCell('Approved Areas', rec.approved_storage_areas);
+    h += sdsCell('Restricted Areas', rec.restricted_areas);
+    if (v(rec.storage_requirements)) h += sdsCell('Storage Req.', rec.storage_requirements);
+    if (v(rec.handling_precautions)) h += sdsCell('Handling', rec.handling_precautions);
+    h += '</div>';
+  }
+
+  // ── PPE (compact) ──
+  var ppeStr = '';
+  if (rec.ppe_requirements && typeof rec.ppe_requirements === 'object') {
+    var ppeKeys = Object.keys(rec.ppe_requirements);
+    for (var pi = 0; pi < ppeKeys.length; pi++) { if (rec.ppe_requirements[ppeKeys[pi]]) { if (ppeStr) ppeStr += ', '; ppeStr += ppeKeys[pi].replace(/_/g,' ').replace(/\b\w/g, function(c){return c.toUpperCase();}); } }
+  }
+  if (ppeStr) {
+    h += '<div style="padding:8px 16px;border-bottom:1px solid var(--border);display:flex;align-items:baseline;gap:8px">';
+    h += '<span style="font-weight:600;font-size:12px;color:var(--text2);white-space:nowrap">PPE Required:</span>';
+    h += '<span style="font-size:13px;color:var(--text1)">' + esc(ppeStr) + '</span>';
+    h += '</div>';
+  }
+
+  // ── Notes (if present) ──
+  if (v(rec.notes)) {
+    h += '<div style="padding:10px 16px;border-bottom:1px solid var(--border);background:rgba(245,158,11,0.05)">';
+    h += '<div style="font-weight:600;font-size:11px;color:var(--text3);margin-bottom:4px">NOTES</div>';
+    h += '<div style="font-size:13px;color:var(--text1);line-height:1.4">' + esc(rec.notes) + '</div>';
+    h += '</div>';
+  }
+
+  // ── Admin footer row ──
+  h += '<div style="padding:8px 16px;display:flex;gap:16px;flex-wrap:wrap;font-size:11px;color:var(--text3)">';
+  if (rec.approved_for_use === true) h += '<span>&#10003; Approved for Use</span>';
+  if (rec.approved_by) h += '<span>Approved by: ' + esc(rec.approved_by) + '</span>';
+  if (rec.reviewed_by) h += '<span>Reviewed by: ' + esc(rec.reviewed_by) + '</span>';
+  if (rec.last_reviewed_date) h += '<span>Last Review: ' + new Date(rec.last_reviewed_date).toLocaleDateString() + '</span>';
+  if (rec.next_review_date) h += '<span>Next Review: ' + new Date(rec.next_review_date).toLocaleDateString() + '</span>';
+  if (rec.version) h += '<span>v' + esc(rec.version) + '</span>';
+  h += '</div>';
+
+  return h;
+}
+
+function sdsCell(label, val, highlight) {
+  var display = (val !== null && val !== undefined && val !== '' && val !== 'N/A') ? esc(String(val)) : null;
+  if (!display) return '';
+  var style = highlight ? 'font-weight:700;color:' + highlight : 'color:var(--text1)';
+  return '<div style="padding:6px 12px;border-bottom:1px solid var(--border);border-right:1px solid var(--border)">'
+    + '<div style="font-size:10px;font-weight:600;color:var(--text3);margin-bottom:1px">' + label + '</div>'
+    + '<div style="font-size:13px;' + style + '">' + display + '</div>'
+    + '</div>';
+}
+
+
+// ── Generic Field Renderer (for non-NCR/SDS modules) ──
 function renderFields(rec) {
   var h = '';
   var keys = Object.keys(rec);
