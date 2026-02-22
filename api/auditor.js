@@ -12,7 +12,7 @@ module.exports = (req, res) => {
 
 function getHTML() {
   var SB_URL = 'https://xaqztozcnkpmgytnnjlj.supabase.co';
-  var SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhhcXp0b3pjbmtwbWd5dG5uamxqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzcwNTczMjgsImV4cCI6MjA1MjYzMzMyOH0.jgbhMH3m2LRlMVMRdxEvOvvPqZjScAsPMqHbpnMTMHg';
+  var SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhhcXp0b3pjbmtwbWd5dG5uamxqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgxNjI2NDAsImV4cCI6MjA4MzczODY0MH0.lL90-qamWRs8GXCvA-F7QcKiPx1WYUMs5OUjUi_1CjU';
 
   // Use plain string concat to avoid template literal escaping nightmares
   var html = [];
