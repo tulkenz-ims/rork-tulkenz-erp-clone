@@ -315,8 +315,8 @@ async function validateToken() {
     try {
       await sb.from('audit_access_log').insert({
         session_id: s.id, organization_id: s.organization_id,
-        action: 'portal_opened', resource_type: 'portal',
-        user_agent: navigator.userAgent, accessed_at: now.toISOString()
+        module: 'portal', action: 'portal_opened', resource_type: 'portal',
+        user_agent: navigator.userAgent
       });
       await sb.from('audit_sessions').update({
         last_accessed_at: now.toISOString(),
@@ -401,8 +401,8 @@ async function loadModule(el, key) {
   try {
     await sb.from('audit_access_log').insert({
       session_id: session.id, organization_id: session.organization_id,
-      action: 'module_viewed', resource_type: key,
-      module: key, user_agent: navigator.userAgent, accessed_at: new Date().toISOString()
+      module: key, action: 'module_viewed', resource_type: key,
+      user_agent: navigator.userAgent
     });
   } catch(e) {}
 
