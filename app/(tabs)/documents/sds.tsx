@@ -840,6 +840,46 @@ export default function SDSIndexScreen() {
                     </>
                   )}
 
+                  {/* ── STORAGE LOCATION & ALLERGEN ISOLATION ── */}
+                  {((selectedDocument as any).storage_location || (selectedDocument as any).approved_storage_areas?.length > 0 || (selectedDocument as any).allergen_isolation_required) && (
+                    <>
+                      <Text style={[styles.sectionHeading, { color: colors.text }]}>Storage Location & Allergen Isolation</Text>
+                      <View style={[styles.detailsList, { borderColor: (selectedDocument as any).allergen_isolation_required ? '#DC262640' : colors.border }]}>
+                        {(selectedDocument as any).storage_location && (
+                          <View style={styles.detailRow}>
+                            <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Storage Location</Text>
+                            <Text style={[styles.detailValue, { color: colors.text }]}>{(selectedDocument as any).storage_location}</Text>
+                          </View>
+                        )}
+                        {(selectedDocument as any).approved_storage_areas && (selectedDocument as any).approved_storage_areas.length > 0 && (
+                          <View style={styles.detailRow}>
+                            <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Approved Storage Areas</Text>
+                            <Text style={[styles.detailValue, { color: colors.text }]}>{(selectedDocument as any).approved_storage_areas.join(', ')}</Text>
+                          </View>
+                        )}
+                        {(selectedDocument as any).restricted_areas && (selectedDocument as any).restricted_areas.length > 0 && (
+                          <View style={styles.detailRow}>
+                            <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Restricted Areas</Text>
+                            <Text style={[styles.detailValue, { color: '#DC2626', fontWeight: '600' as const }]}>{(selectedDocument as any).restricted_areas.join(', ')}</Text>
+                          </View>
+                        )}
+                        {(selectedDocument as any).allergen_isolation_required && (
+                          <View style={[styles.detailRowStacked, { backgroundColor: '#FEF2F2' }]}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                              <ShieldAlert size={14} color="#DC2626" />
+                              <Text style={[styles.detailLabel, { color: '#DC2626', fontWeight: '700' as const }]}>ALLERGEN ISOLATION REQUIRED</Text>
+                            </View>
+                            {(selectedDocument as any).allergen_isolation_notes ? (
+                              <Text style={[styles.detailValue, { color: '#991B1B', marginTop: 4 }]}>{(selectedDocument as any).allergen_isolation_notes}</Text>
+                            ) : (
+                              <Text style={[styles.detailValue, { color: '#991B1B', marginTop: 4 }]}>This product requires allergen isolation procedures per facility allergen control plan.</Text>
+                            )}
+                          </View>
+                        )}
+                      </View>
+                    </>
+                  )}
+
                   {/* ── EMERGENCY / SPILL ── */}
                   {(selectedDocument.spill_procedures || selectedDocument.fire_extinguishing_media || selectedDocument.fire_fighting_procedures) && (
                     <>
