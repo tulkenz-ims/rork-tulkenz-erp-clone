@@ -795,6 +795,24 @@ async function loadConnectedRecords(ncr) {
   container.innerHTML = h;
 }
 
+// ── SDS Binder Reference Builder ──
+function buildSdsBinderRef(department, masterNumber) {
+  if (!masterNumber && masterNumber !== 0) return null;
+  var deptMap = {
+    'maintenance': 'MAINT',
+    'production': 'PROD',
+    'sanitation': 'SAN',
+    'quality': 'QUAL',
+    'safety': 'SAFETY',
+    'warehouse': 'WH',
+    'shipping': 'SHIP',
+    'receiving': 'REC'
+  };
+  var dept = department ? department.toLowerCase().trim() : '';
+  var prefix = deptMap[dept] || (department ? department.toUpperCase().substring(0, 5) : 'SDS');
+  return prefix + ' SDS #' + masterNumber;
+}
+
 // ── SDS Document List ──
 function renderSDSList(data) {
   var body = document.getElementById('mainBody');
@@ -813,12 +831,13 @@ function renderSDSList(data) {
     var revDate = rec.revision_date ? new Date(rec.revision_date).toLocaleDateString() : '';
     var hasFile = rec.file_url && rec.file_url.length > 10;
 
-    var searchData = (name + ' ' + mfg + ' ' + cas + ' ' + allergenList + ' ' + (rec.sds_number || '') + ' ' + (rec.primary_department || '') + ' ' + (rec.approved_by || '')).toLowerCase();
+    var searchData = (name + ' ' + mfg + ' ' + cas + ' ' + allergenList + ' ' + (rec.sds_number || '') + ' ' + (rec.primary_department || '') + ' ' + (rec.approved_by || '') + ' ' + (buildSdsBinderRef(rec.primary_department, rec.sds_master_number) || '')).toLowerCase();
 
     h += '<div class="record-card" data-search="' + esc(searchData) + '">';
     h += '<div class="record-head" style="padding:14px 16px">';
     h += '<div style="flex:1">';
-    if (rec.sds_number) h += '<div style="font-size:11px;font-weight:700;color:var(--accent);letter-spacing:0.3px;margin-bottom:2px">' + esc(rec.sds_number) + '</div>';
+    var binderRef = buildSdsBinderRef(rec.primary_department, rec.sds_master_number);
+    if (binderRef) h += '<div style="font-size:11px;font-weight:700;color:var(--accent);letter-spacing:0.3px;margin-bottom:2px">' + esc(binderRef) + '</div>';
     h += '<h4 style="margin:0;font-size:15px">' + esc(name) + '</h4>';
     var subParts = [];
     if (rec.primary_department) subParts.push(rec.primary_department);
@@ -846,7 +865,7 @@ function renderSDSDetail(rec) {
   // ── PDF Link / QR Code row ──
   if (rec.file_url) {
     var pdfName = rec.file_url.split('/').pop() || 'SDS Document';
-    var sdsLabel = rec.sds_number || 'SDS Document';
+    var sdsLabel = buildSdsBinderRef(rec.primary_department, rec.sds_master_number) || rec.sds_number || 'SDS Document';
     h += '<div style="padding:14px 16px;border-bottom:2px solid var(--border);display:flex;align-items:center;gap:14px;background:rgba(59,130,246,0.06)">';
     h += '<img src="https://api.qrserver.com/v1/create-qr-code/?size=64x64&data=' + encodeURIComponent(rec.file_url) + '" alt="QR" style="width:64px;height:64px;border-radius:6px;border:1px solid var(--border)" />';
     h += '<div style="flex:1;min-width:0">';
@@ -860,7 +879,8 @@ function renderSDSDetail(rec) {
   // ── Document Info Grid (compact, 2-column) ──
   h += '<div style="display:grid;grid-template-columns:1fr 1fr">';
   h += sdsCell('Product Name', rec.product_name);
-  h += sdsCell('SDS Number', rec.sds_number);
+  h += sdsCell('Binder Ref', buildSdsBinderRef(rec.primary_department, rec.sds_master_number));
+  h += sdsCell('Vendor Revision', rec.sds_number);
   h += sdsCell('Manufacturer', rec.manufacturer);
   h += sdsCell('Mfg Phone', rec.manufacturer_phone);
   h += sdsCell('Emergency Phone', rec.emergency_phone);
