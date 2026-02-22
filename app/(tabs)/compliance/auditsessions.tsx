@@ -34,6 +34,7 @@ import {
   Activity,
   Lock,
   FileText,
+  Send,
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useUser } from '@/contexts/UserContext';
@@ -49,6 +50,7 @@ import {
 } from '@/hooks/useAuditSessions';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
+import { supabase } from '@/lib/supabase';
 
 // ── Status config ──
 
@@ -110,9 +112,13 @@ export default function AuditPortalAdmin() {
   const [accessLog, setAccessLog] = useState<AuditAccessLogEntry[]>([]);
   const [loadingLog, setLoadingLog] = useState(false);
   const [createdToken, setCreatedToken] = useState('');
+  const [createdSessionId, setCreatedSessionId] = useState('');
   const [tokenVisible, setTokenVisible] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [revokeReason, setRevokeReason] = useState('');
+  const [sendingEmail, setSendingEmail] = useState(false);
+  const [emailSent, setEmailSent] = useState(false);
+  const [detailTokenVisible, setDetailTokenVisible] = useState(false);
 
   // ── Create form state ──
   const [form, setForm] = useState({
@@ -215,6 +221,7 @@ export default function AuditPortalAdmin() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
       setCreatedToken(result.access_token);
+      setCreatedSessionId(result.id);
       setShowCreateModal(false);
       resetForm();
       setShowTokenModal(true);
@@ -253,6 +260,8 @@ export default function AuditPortalAdmin() {
   const openDetail = useCallback(async (session: AuditSession) => {
     setSelectedSession(session);
     setShowDetailModal(true);
+    setDetailTokenVisible(false);
+    setEmailSent(false);
     setLoadingLog(true);
     try {
       const log = await fetchAccessLog(session.id);
@@ -271,6 +280,39 @@ export default function AuditPortalAdmin() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     Alert.alert('Copied', 'Portal link copied to clipboard.');
   }, [getPortalUrl]);
+
+  // ── Copy token only ──
+  const copyToken = useCallback(async (token: string) => {
+    await Clipboard.setStringAsync(token);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    Alert.alert('Copied', 'Access token copied to clipboard.');
+  }, []);
+
+  // ── Send email to auditor ──
+  const sendEmailToAuditor = useCallback(async (sessionId: string) => {
+    setSendingEmail(true);
+    setEmailSent(false);
+    try {
+      const { data, error } = await supabase.rpc('send_auditor_portal_email', {
+        p_session_id: sessionId,
+      });
+      if (error) throw error;
+      const result = data as any;
+      if (result?.success) {
+        setEmailSent(true);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        Alert.alert('Email Sent', result.message || 'Portal access email sent to auditor.');
+        refetch();
+      } else {
+        Alert.alert('Email Failed', result?.error || 'Unable to send email. Check Resend configuration.');
+      }
+    } catch (err: any) {
+      console.error('Send email error:', err);
+      Alert.alert('Email Error', err.message || 'Failed to send email. Ensure Resend API key is configured in app_secrets.');
+    } finally {
+      setSendingEmail(false);
+    }
+  }, [refetch]);
 
   // ── Format date ──
   const fmtDate = (iso: string | null) => {
@@ -565,7 +607,7 @@ export default function AuditPortalAdmin() {
               </Pressable>
             </View>
 
-            <View style={{ flexDirection: 'row', gap: 12, marginTop: 16 }}>
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
               <Pressable
                 style={[s.tokenBtn, { backgroundColor: '#8B5CF6' }]}
                 onPress={() => copyLink(createdToken)}
@@ -573,9 +615,23 @@ export default function AuditPortalAdmin() {
                 <Copy size={16} color="#FFF" />
                 <Text style={s.tokenBtnText}>Copy Link</Text>
               </Pressable>
+              {form.auditor_email || createdSessionId ? (
+                <Pressable
+                  style={[s.tokenBtn, { backgroundColor: '#10B981', opacity: sendingEmail ? 0.6 : 1 }]}
+                  onPress={() => {
+                    if (createdSessionId) sendEmailToAuditor(createdSessionId);
+                  }}
+                  disabled={sendingEmail}
+                >
+                  {sendingEmail
+                    ? <ActivityIndicator size="small" color="#FFF" />
+                    : <Send size={16} color="#FFF" />}
+                  <Text style={s.tokenBtnText}>{emailSent ? 'Sent ✓' : 'Send Email'}</Text>
+                </Pressable>
+              ) : null}
               <Pressable
                 style={[s.tokenBtn, { backgroundColor: colors.border }]}
-                onPress={() => { setShowTokenModal(false); setCreatedToken(''); setTokenVisible(false); }}
+                onPress={() => { setShowTokenModal(false); setCreatedToken(''); setCreatedSessionId(''); setTokenVisible(false); setEmailSent(false); }}
               >
                 <Text style={[s.tokenBtnText, { color: colors.text }]}>Done</Text>
               </Pressable>
@@ -681,24 +737,101 @@ export default function AuditPortalAdmin() {
                 })}
               </View>
 
-              {/* Actions */}
+              {/* Access Token & Actions */}
               {selectedSession.status === 'active' && (
-                <View style={{ gap: 10, marginTop: 8 }}>
-                  <Pressable
-                    style={[s.actionBtn, { backgroundColor: '#8B5CF6' }]}
-                    onPress={() => copyLink(selectedSession.access_token)}
-                  >
-                    <Copy size={16} color="#FFF" />
-                    <Text style={s.actionBtnText}>Copy Portal Link</Text>
-                  </Pressable>
-                  <Pressable
-                    style={[s.actionBtn, { backgroundColor: '#EF4444' }]}
-                    onPress={() => { setRevokeReason(''); setShowRevokeModal(true); }}
-                  >
-                    <XCircle size={16} color="#FFF" />
-                    <Text style={s.actionBtnText}>Revoke Access</Text>
-                  </Pressable>
-                </View>
+                <>
+                  <Text style={[s.sectionTitle, { color: colors.text, marginTop: 20 }]}>Access Token</Text>
+                  <View style={[s.detailCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                      <View style={{ flex: 1, backgroundColor: colors.background, borderRadius: 8, padding: 10, borderWidth: 1, borderColor: colors.border }}>
+                        <Text selectable style={{ fontSize: 12, fontFamily: 'monospace', color: colors.text }}>
+                          {detailTokenVisible ? selectedSession.access_token : '•'.repeat(32)}
+                        </Text>
+                      </View>
+                      <Pressable onPress={() => setDetailTokenVisible(!detailTokenVisible)}>
+                        {detailTokenVisible
+                          ? <EyeOff size={18} color={colors.textSecondary} />
+                          : <Eye size={18} color={colors.textSecondary} />}
+                      </Pressable>
+                    </View>
+
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                      <Pressable
+                        style={[s.actionBtn, { backgroundColor: '#6C5CE7', flex: 1 }]}
+                        onPress={() => copyToken(selectedSession.access_token)}
+                      >
+                        <Copy size={14} color="#FFF" />
+                        <Text style={s.actionBtnText}>Copy Token</Text>
+                      </Pressable>
+                      <Pressable
+                        style={[s.actionBtn, { backgroundColor: '#8B5CF6', flex: 1 }]}
+                        onPress={() => copyLink(selectedSession.access_token)}
+                      >
+                        <Link2 size={14} color="#FFF" />
+                        <Text style={s.actionBtnText}>Copy Link</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+
+                  <Text style={[s.sectionTitle, { color: colors.text, marginTop: 20 }]}>Send to Auditor</Text>
+                  <View style={[s.detailCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                      <Mail size={14} color={colors.textSecondary} />
+                      <Text style={{ fontSize: 14, color: colors.text, flex: 1 }}>
+                        {selectedSession.auditor_email || 'No email on file'}
+                      </Text>
+                    </View>
+
+                    {selectedSession.email_sent_at && (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10, backgroundColor: '#D1FAE5', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6 }}>
+                        <CheckCircle size={12} color="#065F46" />
+                        <Text style={{ fontSize: 12, color: '#065F46' }}>
+                          Sent {fmtDateTime(selectedSession.email_sent_at)}
+                          {(selectedSession.email_sent_count || 0) > 1 ? ` (${selectedSession.email_sent_count}×)` : ''}
+                        </Text>
+                      </View>
+                    )}
+
+                    <Pressable
+                      style={[s.actionBtn, {
+                        backgroundColor: selectedSession.auditor_email ? '#10B981' : colors.border,
+                        opacity: sendingEmail ? 0.6 : 1,
+                      }]}
+                      onPress={() => {
+                        if (!selectedSession.auditor_email) {
+                          Alert.alert('No Email', 'This session has no auditor email address.');
+                          return;
+                        }
+                        Alert.alert(
+                          'Send Portal Access',
+                          `Send access token and portal link to ${selectedSession.auditor_email}?`,
+                          [
+                            { text: 'Cancel', style: 'cancel' },
+                            { text: 'Send Email', onPress: () => sendEmailToAuditor(selectedSession.id) },
+                          ]
+                        );
+                      }}
+                      disabled={sendingEmail || !selectedSession.auditor_email}
+                    >
+                      {sendingEmail
+                        ? <ActivityIndicator size="small" color="#FFF" />
+                        : <Send size={14} color={selectedSession.auditor_email ? '#FFF' : colors.textTertiary} />}
+                      <Text style={[s.actionBtnText, { color: selectedSession.auditor_email ? '#FFF' : colors.textTertiary }]}>
+                        {sendingEmail ? 'Sending...' : selectedSession.email_sent_at ? 'Resend Email' : 'Send Email to Auditor'}
+                      </Text>
+                    </Pressable>
+                  </View>
+
+                  <View style={{ marginTop: 16 }}>
+                    <Pressable
+                      style={[s.actionBtn, { backgroundColor: '#EF4444' }]}
+                      onPress={() => { setRevokeReason(''); setShowRevokeModal(true); }}
+                    >
+                      <XCircle size={16} color="#FFF" />
+                      <Text style={s.actionBtnText}>Revoke Access</Text>
+                    </Pressable>
+                  </View>
+                </>
               )}
 
               {/* Revoke info */}
