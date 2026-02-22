@@ -1,5 +1,6 @@
 // api/auditor.js
 // Vercel Serverless Function — TulKenz OPS Auditor Portal
+// SQF Edition 10 Structure: 4 Sections + GMP Module 11
 // URL: /api/auditor?token=xxxx
 
 module.exports = (req, res) => {
@@ -39,7 +40,7 @@ function getHTML() {
 function getCSS() {
   return [
     '*{margin:0;padding:0;box-sizing:border-box}',
-    ':root{--bg:#0F0E17;--surface:#1A1926;--surface2:#252336;--border:#2E2C42;--primary:#6C5CE7;--primary-glow:#6C5CE740;--accent:#A78BFA;--text:#FFFFFE;--text2:#A7A4C2;--text3:#6B6890;--success:#10B981;--warning:#F59E0B;--danger:#EF4444;--font:"DM Sans",system-ui,-apple-system,sans-serif}',
+    ':root{--bg:#0F0E17;--surface:#1A1926;--surface2:#252336;--border:#2E2C42;--primary:#6C5CE7;--primary-glow:#6C5CE740;--accent:#A78BFA;--text:#FFFFFE;--text1:#FFFFFE;--text2:#A7A4C2;--text3:#6B6890;--success:#10B981;--warning:#F59E0B;--danger:#EF4444;--font:"DM Sans",system-ui,-apple-system,sans-serif}',
     'html,body{height:100%;font-family:var(--font);background:var(--bg);color:var(--text);overflow:hidden}',
     'a{color:var(--accent);text-decoration:none}',
 
@@ -61,18 +62,31 @@ function getCSS() {
     // Portal layout
     '#portalScreen{display:none;height:100%;overflow:hidden}',
     '.portal-wrap{display:flex;height:100%}',
-    '.sidebar{width:280px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;overflow:hidden}',
+    '.sidebar{width:300px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;overflow:hidden}',
     '.sidebar-head{padding:20px 20px 16px;border-bottom:1px solid var(--border)}',
     '.sidebar-brand{font-size:18px;font-weight:800;letter-spacing:-0.3px}',
     '.sidebar-brand span{color:var(--primary)}',
     '.sidebar-badge{display:inline-flex;align-items:center;gap:4px;background:var(--primary);color:#fff;font-size:10px;font-weight:700;padding:3px 8px;border-radius:6px;margin-top:6px;letter-spacing:0.5px}',
     '.sidebar-session{padding:16px 20px;border-bottom:1px solid var(--border);font-size:12px;color:var(--text2);line-height:1.6}',
     '.sidebar-session strong{color:var(--text);font-weight:600}',
-    '.sidebar-nav{flex:1;overflow-y:auto;padding:12px 0}',
-    '.nav-section{padding:4px 20px;font-size:10px;font-weight:700;color:var(--text3);letter-spacing:1px;text-transform:uppercase;margin-top:12px;margin-bottom:4px}',
-    '.nav-item{display:flex;align-items:center;gap:10px;padding:10px 20px;font-size:13px;font-weight:500;color:var(--text2);cursor:pointer;transition:all .15s;border-left:3px solid transparent}',
+    '.sidebar-nav{flex:1;overflow-y:auto;padding:8px 0}',
+    '.nav-section{padding:10px 20px 6px;font-size:10px;font-weight:700;color:var(--text3);letter-spacing:1px;text-transform:uppercase;margin-top:6px}',
+    '.nav-group{margin-bottom:2px}',
+    '.nav-group-head{display:flex;align-items:center;gap:8px;padding:8px 20px;font-size:12px;font-weight:700;color:var(--text2);cursor:pointer;transition:all .15s;user-select:none}',
+    '.nav-group-head:hover{color:var(--text);background:var(--surface2)}',
+    '.nav-group-head .ng-arrow{font-size:10px;transition:transform .2s;color:var(--text3)}',
+    '.nav-group.open .ng-arrow{transform:rotate(90deg)}',
+    '.nav-group-head .ng-icon{width:18px;text-align:center;font-size:14px}',
+    '.nav-group-head .ng-label{flex:1}',
+    '.nav-group-head .ng-sqf{font-size:9px;color:var(--text3);font-weight:600;background:var(--surface2);padding:1px 6px;border-radius:4px}',
+    '.nav-group-items{display:none;padding:2px 0 4px 0}',
+    '.nav-group.open .nav-group-items{display:block}',
+    '.nav-item{display:flex;align-items:center;gap:10px;padding:8px 20px 8px 44px;font-size:12px;font-weight:500;color:var(--text3);cursor:pointer;transition:all .15s;border-left:3px solid transparent}',
     '.nav-item:hover{background:var(--surface2);color:var(--text)}',
     '.nav-item.active{background:#6C5CE712;color:var(--primary);border-left-color:var(--primary);font-weight:600}',
+    '.nav-item .ni-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}',
+    '.nav-item-top{padding-left:20px;font-size:13px;font-weight:500;color:var(--text2)}',
+    '.nav-item-top.active{color:var(--primary);font-weight:600}',
     '.nav-icon{width:18px;text-align:center;font-size:14px}',
     '.sidebar-foot{padding:16px 20px;border-top:1px solid var(--border)}',
     '.exit-btn{width:100%;padding:10px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;color:var(--text2);font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer;transition:all .2s}',
@@ -89,12 +103,29 @@ function getCSS() {
     '.overview-welcome{background:linear-gradient(135deg,var(--primary),#8B5CF6);border-radius:16px;padding:28px 32px;margin-bottom:24px;color:#fff}',
     '.overview-welcome h2{font-size:22px;font-weight:700;margin-bottom:6px}',
     '.overview-welcome p{opacity:.85;font-size:14px;line-height:1.5}',
-    '.module-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}',
-    '.module-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:20px;cursor:pointer;transition:all .2s}',
-    '.module-card:hover{border-color:var(--primary);transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,.3)}',
-    '.mc-icon{font-size:24px;margin-bottom:10px}',
-    '.mc-name{font-size:14px;font-weight:600;margin-bottom:2px}',
-    '.mc-desc{font-size:11px;color:var(--text2)}',
+    '.overview-welcome .ow-edition{display:inline-flex;align-items:center;gap:4px;background:rgba(255,255,255,.2);padding:3px 10px;border-radius:6px;font-size:11px;font-weight:700;margin-top:10px}',
+    '.section-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;margin-bottom:16px;overflow:hidden;transition:all .2s}',
+    '.section-card:hover{border-color:var(--primary)}',
+    '.sc-head{padding:16px 20px;display:flex;align-items:center;gap:14px;cursor:pointer}',
+    '.sc-num{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;color:#fff;flex-shrink:0}',
+    '.sc-info{flex:1}',
+    '.sc-name{font-size:15px;font-weight:700}',
+    '.sc-desc{font-size:12px;color:var(--text2);margin-top:2px}',
+    '.sc-arrow{color:var(--text3);font-size:14px}',
+    '.sc-modules{border-top:1px solid var(--border);padding:8px 12px;display:flex;flex-wrap:wrap;gap:8px}',
+    '.sc-mod{font-size:11px;padding:4px 10px;border-radius:6px;background:var(--surface2);color:var(--text2);cursor:pointer;transition:all .15s}',
+    '.sc-mod:hover{background:var(--primary);color:#fff}',
+    '.sc-mod .sm-count{font-weight:700;margin-left:4px}',
+
+    // Placeholder
+    '.placeholder-view{text-align:center;padding:60px 28px}',
+    '.ph-icon{font-size:48px;margin-bottom:16px;opacity:.5}',
+    '.ph-title{font-size:18px;font-weight:700;color:var(--text);margin-bottom:8px}',
+    '.ph-desc{font-size:14px;color:var(--text2);max-width:480px;margin:0 auto 24px}',
+    '.ph-items{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:20px;max-width:500px;margin:0 auto;text-align:left}',
+    '.ph-items h4{font-size:13px;font-weight:700;color:var(--accent);margin-bottom:12px}',
+    '.ph-item{display:flex;align-items:center;gap:8px;padding:6px 0;font-size:13px;color:var(--text2)}',
+    '.ph-item .phi-dot{width:6px;height:6px;border-radius:50%;background:var(--text3);flex-shrink:0}',
 
     // Search & records
     '.search-bar{width:100%;padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-radius:12px;color:var(--text);font-family:var(--font);font-size:14px;outline:none;margin-bottom:16px;transition:border .2s}',
@@ -213,13 +244,12 @@ function getCSS() {
 
     // Responsive
     '@media(max-width:768px){',
-    '  .sidebar{width:260px;position:fixed;left:-280px;top:0;bottom:0;z-index:100;transition:left .3s}',
+    '  .sidebar{width:280px;position:fixed;left:-300px;top:0;bottom:0;z-index:100;transition:left .3s}',
     '  .sidebar.open{left:0}',
     '  .sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99}',
     '  .sidebar-overlay.show{display:block}',
     '  .mobile-hamburger{display:flex!important}',
     '  .main-body{padding:16px}',
-    '  .module-grid{grid-template-columns:1fr 1fr}',
     '  .record-field{flex-direction:column;gap:2px}',
     '  .rf-label{width:auto}',
     '  .token-card{padding:32px 24px}',
@@ -286,7 +316,72 @@ function getJS() {
   return `
 var sb = supabase.createClient(SB_URL, SB_KEY);
 var session = null;
-var currentNCRData = null; // store NCR list for detail navigation
+var currentNCRData = null;
+
+// ════════════════════════════════════════════════════════════════
+// SQF EDITION 10 — FOUR SECTIONS + GMP
+// ════════════════════════════════════════════════════════════════
+var SECTIONS = [
+  { id:'s1', num:'1', name:'Management & Culture', sqf:'2.1', color:'#6C5CE7', icon:'\\uD83C\\uDFDB\\uFE0F',
+    desc:'Management commitment, food safety policy, food safety culture plan',
+    modules:[
+      {key:'_ph_policy',      name:'Food Safety Policy',      sqf:'2.1.1', ph:true, phIcon:'\\uD83D\\uDCC3', phDesc:'Documented food safety policy, management commitment statement, and organizational chart.', phItems:['Food safety policy statement','Management commitment documentation','Organizational chart with food safety roles','SQF practitioner designation','Management review records']},
+      {key:'_ph_culture',     name:'Food Safety Culture Plan', sqf:'2.1.2', ph:true, phIcon:'\\uD83C\\uDF1F', phDesc:'Measurable objectives for building a positive food safety culture across the facility.', phItems:['Culture plan objectives & KPIs','Employee engagement surveys','Food safety communication records','Culture assessment results','Leadership involvement evidence']},
+      {key:'_ph_mgmt_review', name:'Management Review',        sqf:'2.1.3', ph:true, phIcon:'\\uD83D\\uDCCA', phDesc:'Regular management reviews of the food safety system effectiveness.', phItems:['Management review meeting minutes','System effectiveness assessments','Resource allocation decisions','Improvement action items','Review frequency documentation']},
+    ]
+  },
+  { id:'s2', num:'2', name:'Food Safety System', sqf:'2.2–2.4', color:'#EF4444', icon:'\\u2622\\uFE0F',
+    desc:'HACCP, allergen management, chemical hazards, supplier approval, environmental monitoring',
+    modules:[
+      {key:'sds_records',     name:'SDS / Chemical Hazards', sqf:'2.3.1', table:'sds_records'},
+      {key:'_allergen_view',  name:'Allergen Management',    sqf:'2.8.1', special:'allergen'},
+      {key:'vendor_approvals',name:'Approved Suppliers',     sqf:'2.3.4', table:'vendor_approvals'},
+      {key:'environmental_monitoring',name:'Environmental Monitoring',sqf:'2.4.8',table:'environmental_monitoring'},
+      {key:'_ph_haccp',       name:'HACCP Plan',             sqf:'2.4.1', ph:true, phIcon:'\\u26A0\\uFE0F', phDesc:'Hazard analysis, critical control points, and food safety plans.', phItems:['Hazard analysis worksheets','CCP determination records','Critical limits & monitoring procedures','Corrective action procedures','HACCP plan validation records','Flow diagrams & process descriptions']},
+    ]
+  },
+  { id:'s3', num:'3', name:'Verification & Improvement', sqf:'2.5–2.6', color:'#10B981', icon:'\\u2705',
+    desc:'Document control, NCR/CAPA, internal audits, traceability, validation',
+    modules:[
+      {key:'documents',       name:'Document Control',        sqf:'2.2.1', special:'doc_dashboard'},
+      {key:'ncr_records',     name:'NCR / Corrective Actions',sqf:'2.5.3', table:'ncr_records'},
+      {key:'audit_findings',  name:'Internal Audits',         sqf:'2.5.4', table:'audit_findings'},
+      {key:'_ph_traceability',name:'Traceability & Recall',   sqf:'2.6.1', ph:true, phIcon:'\\uD83D\\uDD0D', phDesc:'Product identification, traceability system, mock recall records.', phItems:['Traceability system documentation','Mock recall test results & timing','Lot coding / date coding procedures','Receiving & shipping trace records','Withdrawal & recall procedure','SQFI & CB notification procedures']},
+      {key:'backup_verification_log',name:'Backup Verification',sqf:'2.2.3',table:'backup_verification_log'},
+    ]
+  },
+  { id:'s4', num:'4', name:'Support Programs', sqf:'2.7–2.9', color:'#F59E0B', icon:'\\uD83C\\uDF93',
+    desc:'Training, food defense, food fraud, change management',
+    modules:[
+      {key:'training_records',name:'Training Records',         sqf:'2.9.1', table:'training_records'},
+      {key:'_ph_food_defense',name:'Food Defense & Fraud',     sqf:'2.7.1', ph:true, phIcon:'\\uD83D\\uDEE1\\uFE0F', phDesc:'Site security, vulnerability assessments, food fraud mitigation.', phItems:['Food defense plan','Vulnerability assessment (CARVER+Shock or equivalent)','Food fraud mitigation plan','Economically motivated adulteration assessment','Site security measures documentation','Visitor & contractor access controls']},
+      {key:'_ph_change_mgmt', name:'Change Management',        sqf:'2.3.5', ph:true, phIcon:'\\uD83D\\uDD04', phDesc:'Documented procedures for managing process, personnel, and equipment changes.', phItems:['Change management procedure','Change request & approval records','Risk assessment for changes','Post-change verification records','Communication of changes to affected personnel']},
+    ]
+  },
+  { id:'gmp', num:'11', name:'GMP — Good Manufacturing Practices', sqf:'Module 11', color:'#8B5CF6', icon:'\\uD83C\\uDFED',
+    desc:'Facility, equipment, hygiene, sanitation, maintenance, pest control',
+    modules:[
+      {key:'pm_schedules',    name:'Preventive Maintenance',   sqf:'11.2.8', table:'pm_schedules'},
+      {key:'work_orders',     name:'Work Orders',              sqf:'11.2.8', table:'work_orders'},
+      {key:'inspections',     name:'Facility Inspections',     sqf:'11.2.1', table:'inspections'},
+      {key:'_ph_sanitation',  name:'Sanitation & Cleaning',    sqf:'11.2.6', ph:true, phIcon:'\\uD83E\\uDDF9', phDesc:'Master sanitation schedule, cleaning verification, pre-op inspections.', phItems:['Master sanitation schedule','Pre-operational inspection records','Cleaning chemical approvals','Sanitation SOP library','ATP / swab verification records','Clean-in-place (CIP) logs']},
+      {key:'_ph_pest',        name:'Pest Control',             sqf:'11.2.4', ph:true, phIcon:'\\uD83D\\uDC1B', phDesc:'Integrated pest management program and monitoring.', phItems:['IPM program documentation','Pest control operator contract & license','Trap map and inspection logs','Pest activity trend reports','Corrective actions for pest findings']},
+    ]
+  },
+];
+
+// Build flat lookup
+var MODULE_MAP = {};
+var ALL_MODULES = [];
+for (var si = 0; si < SECTIONS.length; si++) {
+  var sec = SECTIONS[si];
+  for (var mi = 0; mi < sec.modules.length; mi++) {
+    var m = sec.modules[mi];
+    m._section = sec;
+    MODULE_MAP[m.key] = m;
+    ALL_MODULES.push(m);
+  }
+}
 
 var HIDDEN_FIELDS = ['id','organization_id','created_by_id','performed_by_id','verified_by_id',
   'pin','pin_hash','password','token','token_hash','access_token','access_token_hash',
@@ -294,30 +389,19 @@ var HIDDEN_FIELDS = ['id','organization_id','created_by_id','performed_by_id','v
   'reviewed_by_id','submitted_by_id','completed_by_id','updated_by_id',
   'facility_id','capa_id','form_style','form_version','template_id','template_snapshot'];
 
-var MODULES = [
-  {key:'ncr_records',name:'NCR / Corrective Actions',icon:'\\u26A0\\uFE0F',sqf:'2.5.3',desc:'Non-conformance reports and CAPA'},
-  {key:'sds_records',name:'SDS Documents',icon:'\\uD83E\\uDDEA',sqf:'2.6.1',desc:'Safety Data Sheets and chemical registry'},
-  {key:'documents',name:'Document Control',icon:'\\uD83D\\uDCC4',sqf:'2.3.2',desc:'Controlled documents and records'},
-  {key:'training_records',name:'Training Records',icon:'\\uD83C\\uDF93',sqf:'2.9.2',desc:'Employee training and competency'},
-  {key:'pm_schedules',name:'Preventive Maintenance',icon:'\\uD83D\\uDD27',sqf:'11.2.8',desc:'Equipment PM schedules'},
-  {key:'work_orders',name:'Work Orders',icon:'\\uD83D\\uDCCB',sqf:'11.2.8',desc:'Maintenance work orders'},
-  {key:'audit_findings',name:'Audit Findings',icon:'\\uD83D\\uDD0D',sqf:'2.5.1',desc:'Internal and external audit findings'},
-  {key:'inspections',name:'Inspections',icon:'\\u2705',sqf:'2.5.4',desc:'Facility and equipment inspections'},
-  {key:'vendor_approvals',name:'Approved Suppliers',icon:'\\uD83E\\uDD1D',sqf:'4.3.1',desc:'Vendor approval and monitoring'},
-  {key:'environmental_monitoring',name:'Environmental Monitoring',icon:'\\uD83C\\uDF21\\uFE0F',sqf:'11.2.5',desc:'Environmental monitoring data'},
-  {key:'backup_verification_log',name:'Backup Verification',icon:'\\uD83D\\uDCBE',sqf:'2.4.5',desc:'Data backup and recovery log'}
-];
-
 var SEVERITY_MAP = {minor:'Minor',major:'Major',critical:'Critical'};
 var STATUS_MAP = {open:'Open',investigation:'Investigation',containment:'Containment',root_cause:'Root Cause',corrective_action:'Corrective Action',verification:'Verification',closed:'Closed',rejected:'Rejected'};
 
-// Event delegation
+// ── Event delegation ──
 document.addEventListener('click', function(e) {
   var t = e.target.closest('[data-action]');
   if (!t) {
     var rh = e.target.closest('.record-head');
     if (rh) { rh.parentElement.classList.toggle('open'); return; }
     if (e.target.id === 'sidebarOverlay') { toggleSidebar(); return; }
+    // Nav group toggle
+    var gh = e.target.closest('.nav-group-head');
+    if (gh) { gh.parentElement.classList.toggle('open'); return; }
     return;
   }
   var action = t.dataset.action;
@@ -329,24 +413,23 @@ document.addEventListener('click', function(e) {
   else if (action === 'module') loadModule(t, t.dataset.key);
   else if (action === 'module-card') {
     var navEl = document.querySelector('[data-key="' + t.dataset.key + '"]');
-    if (navEl) loadModule(navEl, t.dataset.key);
+    if (navEl) { navEl.closest('.nav-group').classList.add('open'); loadModule(navEl, t.dataset.key); }
   }
   else if (action === 'ncr-detail') showNCRDetail(t.dataset.id);
   else if (action === 'back-to-ncr-list') loadModule(document.querySelector('[data-key="ncr_records"]'), 'ncr_records');
+  else if (action === 'open-section') {
+    var secId = t.dataset.section;
+    var grp = document.querySelector('.nav-group[data-section="' + secId + '"]');
+    if (grp) { grp.classList.add('open'); var first = grp.querySelector('.nav-item'); if (first) { loadModule(first, first.dataset.key); } }
+  }
 });
 
 document.addEventListener('input', function(e) {
   if (e.target.classList.contains('search-bar')) {
     var q = e.target.value.toLowerCase();
-    var cards = document.querySelectorAll('.record-card,.ncr-card');
-    for (var i = 0; i < cards.length; i++) {
-      cards[i].style.display = (cards[i].dataset.search || '').indexOf(q) >= 0 ? '' : 'none';
-    }
+    var cards = e.target.parentElement ? e.target.parentElement.querySelectorAll('[data-search]') : document.querySelectorAll('[data-search]');
+    for (var i = 0; i < cards.length; i++) { cards[i].style.display = cards[i].dataset.search.indexOf(q) >= 0 ? '' : 'none'; }
   }
-});
-
-document.addEventListener('keydown', function(e) {
-  if (e.target.id === 'tokenInput' && e.key === 'Enter') validateToken();
 });
 
 document.getElementById('tokenBtn').setAttribute('data-action', 'validate');
@@ -383,25 +466,38 @@ async function validateToken() {
     if (s.valid_until && new Date(s.valid_until) < now) { err.textContent = 'This session has expired.'; btn.disabled = false; btn.textContent = 'Access Portal'; return; }
     session = s;
     try {
-      var logResp = await sb.from('audit_access_log').insert({ session_id: s.id, organization_id: s.organization_id, module: 'portal', action: 'portal_opened', resource_type: 'portal', user_agent: navigator.userAgent });
-      if (logResp.error) console.warn('Access log error:', logResp.error);
+      await sb.from('audit_access_log').insert({ session_id: s.id, organization_id: s.organization_id, module: 'portal', action: 'portal_opened', resource_type: 'portal', user_agent: navigator.userAgent });
       await sb.from('audit_sessions').update({ last_accessed_at: now.toISOString(), access_count: (s.access_count || 0) + 1 }).eq('id', s.id);
     } catch(e) { console.warn('Log error:', e); }
     showPortal();
   } catch(e) { console.error(e); err.textContent = 'Connection error.'; btn.disabled = false; btn.textContent = 'Access Portal'; }
 }
 
-// ── Portal ──
+// ══════════════════════════════════════════════
+// PORTAL — Sidebar with SQF Ed10 Sections
+// ══════════════════════════════════════════════
 function showPortal() {
   document.getElementById('tokenScreen').style.display = 'none';
   document.getElementById('portalScreen').style.display = 'block';
   document.getElementById('sessionInfo').innerHTML = '<strong>' + esc(session.session_name || 'Audit Session') + '</strong><br/>Type: ' + esc(session.audit_type || 'SQF') + '<br/>' + (session.certification_body ? 'CB: ' + esc(session.certification_body) + '<br/>' : '') + (session.valid_until ? 'Expires: ' + new Date(session.valid_until).toLocaleDateString() : 'No expiration');
+
   var nav = document.getElementById('sidebarNav');
-  var h = '<div class="nav-item active" data-action="overview"><span class="nav-icon">&#127968;</span> Overview</div>';
-  h += '<div class="nav-section">SQF Modules</div>';
-  for (var i = 0; i < MODULES.length; i++) { var m = MODULES[i]; h += '<div class="nav-item" data-action="module" data-key="' + m.key + '"><span class="nav-icon">' + m.icon + '</span> ' + m.name + '</div>'; }
-  h += '<div class="nav-section">Security</div>';
-  h += '<div class="nav-item" data-action="security"><span class="nav-icon">&#128737;&#65039;</span> Security Controls</div>';
+  var h = '<div class="nav-item nav-item-top active" data-action="overview"><span class="nav-icon">&#127968;</span> Overview</div>';
+
+  for (var si = 0; si < SECTIONS.length; si++) {
+    var sec = SECTIONS[si];
+    h += '<div class="nav-group" data-section="' + sec.id + '">';
+    h += '<div class="nav-group-head"><span class="ng-arrow">&#9654;</span><span class="ng-icon">' + sec.icon + '</span><span class="ng-label">' + sec.name + '</span><span class="ng-sqf">' + sec.sqf + '</span></div>';
+    h += '<div class="nav-group-items">';
+    for (var mi = 0; mi < sec.modules.length; mi++) {
+      var m = sec.modules[mi];
+      h += '<div class="nav-item" data-action="module" data-key="' + m.key + '"><span class="ni-dot" style="background:' + sec.color + '"></span>' + m.name + '</div>';
+    }
+    h += '</div></div>';
+  }
+
+  h += '<div class="nav-section">System</div>';
+  h += '<div class="nav-item nav-item-top" data-action="security"><span class="nav-icon">&#128737;&#65039;</span> Security Controls</div>';
   nav.innerHTML = h;
   showOverview(nav.querySelector('.nav-item'));
 }
@@ -409,40 +505,67 @@ function showPortal() {
 function setActive(el) { var items = document.querySelectorAll('.nav-item'); for (var i = 0; i < items.length; i++) items[i].classList.remove('active'); if (el) el.classList.add('active'); document.getElementById('sidebar').classList.remove('open'); document.getElementById('sidebarOverlay').classList.remove('show'); }
 function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); document.getElementById('sidebarOverlay').classList.toggle('show'); }
 
+// ══════════════════════════════════════════════
+// OVERVIEW — SQF Ed10 Section Cards
+// ══════════════════════════════════════════════
 function showOverview(el) {
   setActive(el);
-  document.getElementById('mainTitle').textContent = 'Overview';
-  document.getElementById('mainCount').textContent = '';
+  document.getElementById('mainTitle').textContent = 'Audit Overview';
+  document.getElementById('mainCount').textContent = 'SQF Edition 10';
   var body = document.getElementById('mainBody');
-  var h = '<div class="overview-welcome"><h2>Welcome to the Auditor Portal</h2><p>You have read-only access to facility records for this audit session. Select a module from the sidebar or below to review records. All access is logged for compliance.</p></div>';
-  h += '<div class="module-grid">';
-  for (var i = 0; i < MODULES.length; i++) { var m = MODULES[i]; h += '<div class="module-card" data-action="module-card" data-key="' + m.key + '"><div class="mc-icon">' + m.icon + '</div><div class="mc-name">' + m.name + '</div><div class="mc-desc">SQF ' + m.sqf + '</div></div>'; }
-  h += '</div>';
+
+  var h = '<div class="overview-welcome"><h2>Welcome to the Auditor Portal</h2><p>Read-only access to facility records organized by SQF Edition 10 structure. All access is logged for compliance. Select a section below or use the sidebar to navigate.</p><div class="ow-edition">&#128220; SQF Food Safety Code — Edition 10 &bull; Food Manufacturing</div></div>';
+
+  for (var si = 0; si < SECTIONS.length; si++) {
+    var sec = SECTIONS[si];
+    h += '<div class="section-card">';
+    h += '<div class="sc-head" data-action="open-section" data-section="' + sec.id + '">';
+    h += '<div class="sc-num" style="background:' + sec.color + '">' + sec.num + '</div>';
+    h += '<div class="sc-info"><div class="sc-name">' + sec.name + '</div><div class="sc-desc">' + sec.desc + '</div></div>';
+    h += '<div class="sc-arrow">&#9654;</div>';
+    h += '</div>';
+    h += '<div class="sc-modules">';
+    for (var mi = 0; mi < sec.modules.length; mi++) {
+      var m = sec.modules[mi];
+      h += '<div class="sc-mod" data-action="module-card" data-key="' + m.key + '">' + m.name + ' <span style="opacity:.5">' + m.sqf + '</span></div>';
+    }
+    h += '</div></div>';
+  }
+
   body.innerHTML = h;
 }
 
-// ── Load Module ──
+// ══════════════════════════════════════════════
+// LOAD MODULE — Routes to correct renderer
+// ══════════════════════════════════════════════
 async function loadModule(el, key) {
   setActive(el);
-  var mod = null;
-  for (var i = 0; i < MODULES.length; i++) { if (MODULES[i].key === key) mod = MODULES[i]; }
-  document.getElementById('mainTitle').textContent = mod ? mod.name : key;
-  document.getElementById('mainCount').textContent = 'Loading...';
+  var mod = MODULE_MAP[key];
+  if (!mod) return;
+
+  var secLabel = mod._section ? mod._section.num + '.' : '';
+  document.getElementById('mainTitle').textContent = mod.name;
+  document.getElementById('mainCount').textContent = 'SQF ' + mod.sqf;
   var body = document.getElementById('mainBody');
   body.innerHTML = '<div style="text-align:center;padding:60px"><span class="spinner"></span></div>';
 
   try { await sb.from('audit_access_log').insert({ session_id: session.id, organization_id: session.organization_id, module: key, action: 'module_viewed', resource_type: key, user_agent: navigator.userAgent }); } catch(e) {}
 
-  // Special rendering: Document Control summary dashboard
-  if (key === 'documents') { await renderDocumentDashboard(body); return; }
+  // Placeholder modules
+  if (mod.ph) { renderPlaceholder(body, mod); return; }
 
+  // Special renderers
+  if (mod.special === 'doc_dashboard') { await renderDocumentDashboard(body); return; }
+  if (mod.special === 'allergen') { await renderAllergenView(body); return; }
+
+  // Data-driven modules
   try {
-    var resp = await sb.from(key).select('*').eq('organization_id', session.organization_id).order('created_at', { ascending: false }).limit(200);
+    var resp = await sb.from(mod.table || key).select('*').eq('organization_id', session.organization_id).order('created_at', { ascending: false }).limit(200);
     if (resp.error) throw resp.error;
     var data = resp.data || [];
-    document.getElementById('mainCount').textContent = data.length + ' records';
+    document.getElementById('mainCount').textContent = 'SQF ' + mod.sqf + ' \\u2022 ' + data.length + ' records';
 
-    if (data.length === 0) { body.innerHTML = '<div class="empty-state"><div class="es-icon">&#128237;</div><p>No records found.</p></div>'; return; }
+    if (data.length === 0) { body.innerHTML = '<div class="empty-state"><div class="es-icon">&#128237;</div><p>No records found in <strong>' + mod.name + '</strong>.</p></div>'; return; }
 
     // Special rendering for NCR records
     if (key === 'ncr_records') { currentNCRData = data; renderNCRList(data); return; }
@@ -466,7 +589,93 @@ async function loadModule(el, key) {
   }
 }
 
-// ── NCR List ──
+// ══════════════════════════════════════════════
+// PLACEHOLDER MODULE VIEW
+// ══════════════════════════════════════════════
+function renderPlaceholder(body, mod) {
+  var h = '<div class="placeholder-view">';
+  h += '<div class="ph-icon">' + (mod.phIcon || '&#128196;') + '</div>';
+  h += '<div class="ph-title">' + esc(mod.name) + '</div>';
+  h += '<div class="ph-desc">' + esc(mod.phDesc || 'This module is structured and ready for documentation.') + '</div>';
+  h += '<div class="ph-items">';
+  h += '<h4>SQF ' + esc(mod.sqf) + ' \\u2014 Required Documentation</h4>';
+  if (mod.phItems) {
+    for (var i = 0; i < mod.phItems.length; i++) {
+      h += '<div class="ph-item"><span class="phi-dot"></span>' + esc(mod.phItems[i]) + '</div>';
+    }
+  }
+  h += '</div></div>';
+  body.innerHTML = h;
+  document.getElementById('mainCount').textContent = 'SQF ' + mod.sqf + ' \\u2022 Framework Ready';
+}
+
+// ══════════════════════════════════════════════
+// ALLERGEN MANAGEMENT VIEW
+// ══════════════════════════════════════════════
+async function renderAllergenView(body) {
+  body.innerHTML = '<div style="text-align:center;padding:60px"><span class="spinner"></span></div>';
+
+  var resp = await sb.from('sds_records').select('id, product_name, manufacturer, primary_department, sds_master_number, contains_allergens, allergens, allergen_notes, allergen_isolation_required, allergen_isolation_notes, status').eq('organization_id', session.organization_id);
+  var all = resp.data || [];
+  var allergenRecords = all.filter(function(r) { return r.contains_allergens === true || (r.allergens && r.allergens.length > 0); });
+  var isolationRequired = allergenRecords.filter(function(r) { return r.allergen_isolation_required === true; });
+
+  document.getElementById('mainCount').textContent = 'SQF 2.8.1 \\u2022 ' + allergenRecords.length + ' allergen chemicals';
+
+  var h = '';
+
+  // Summary stats
+  h += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">';
+  h += statCard(all.length, 'Total Chemicals', '#4A90A4');
+  h += statCard(allergenRecords.length, 'Contain Allergens', '#DC2626');
+  h += statCard(isolationRequired.length, 'Isolation Required', '#EF4444');
+  h += statCard(all.length - allergenRecords.length, 'Allergen-Free', '#10B981');
+  h += '</div>';
+
+  if (allergenRecords.length === 0) {
+    h += '<div class="empty-state"><div class="es-icon">&#9989;</div><p>No chemicals flagged as containing allergens.</p></div>';
+    body.innerHTML = h;
+    return;
+  }
+
+  h += '<input type="text" class="search-bar" placeholder="Search allergen records..."/>';
+
+  for (var i = 0; i < allergenRecords.length; i++) {
+    var rec = allergenRecords[i];
+    var name = rec.product_name || 'Unknown Chemical';
+    var binderRef = buildSdsBinderRef(rec.primary_department, rec.sds_master_number);
+    var searchStr = (name + ' ' + (rec.allergens || '') + ' ' + (rec.primary_department || '') + ' ' + (binderRef || '')).toLowerCase();
+
+    h += '<div class="record-card" data-search="' + esc(searchStr) + '">';
+    h += '<div class="record-head" style="padding:14px 16px">';
+    h += '<div style="flex:1">';
+    if (binderRef) h += '<div style="font-size:11px;font-weight:700;color:var(--accent);letter-spacing:0.3px;margin-bottom:2px">' + esc(binderRef) + '</div>';
+    h += '<h4 style="margin:0;font-size:15px">' + esc(name) + '</h4>';
+    if (rec.manufacturer) h += '<div style="font-size:12px;color:var(--text3);margin-top:2px">' + esc(rec.manufacturer) + '</div>';
+    h += '</div>';
+    h += '<div style="display:flex;gap:6px;align-items:center">';
+    h += '<span style="background:#FEF2F2;color:#DC2626;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600">ALLERGEN</span>';
+    if (rec.allergen_isolation_required) h += '<span style="background:#FEE2E2;color:#DC2626;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600">ISOLATION</span>';
+    h += '</div>';
+    h += '<span class="rh-arrow">&#9654;</span></div>';
+
+    h += '<div class="record-body" style="padding:12px 16px;border-top:1px solid var(--border)">';
+    h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:1px">';
+    h += sdsCell('Allergens', rec.allergens);
+    h += sdsCell('Department', rec.primary_department);
+    h += sdsCell('Allergen Notes', rec.allergen_notes);
+    h += sdsCell('Isolation Required', rec.allergen_isolation_required ? 'Yes' : 'No', rec.allergen_isolation_required ? '#DC2626' : null);
+    if (rec.allergen_isolation_notes) h += sdsCell('Isolation Notes', rec.allergen_isolation_notes);
+    h += sdsCell('Status', rec.status);
+    h += '</div></div></div>';
+  }
+
+  body.innerHTML = h;
+}
+
+// ══════════════════════════════════════════════
+// NCR LIST
+// ══════════════════════════════════════════════
 function renderNCRList(data) {
   var body = document.getElementById('mainBody');
   var h = '<input type="text" class="search-bar" placeholder="Search NCRs by number, description, status..."/>';
@@ -480,43 +689,37 @@ function renderNCRList(data) {
     h += '<div class="ncr-badges">';
     h += '<span class="badge badge-' + sev + '">' + (SEVERITY_MAP[sev] || sev) + '</span>';
     h += '<span class="badge badge-' + stat + '">' + (STATUS_MAP[stat] || fmtSnake(stat)) + '</span>';
-    if (ncr.originator_pin_verified) h += '<span class="badge" style="background:#ECFDF5;color:#059669">&#9989; Signed</span>';
+    if (ncr.capa_required) h += '<span class="badge" style="background:#EDE9FE;color:#7C3AED">CAPA</span>';
     h += '</div></div>';
   }
   body.innerHTML = h;
 }
 
-// ── NCR Detail View ──
+// ══════════════════════════════════════════════
+// NCR DETAIL — Paper Form + Connected Records
+// ══════════════════════════════════════════════
 async function showNCRDetail(ncrId) {
   var ncr = null;
   if (currentNCRData) { for (var i = 0; i < currentNCRData.length; i++) { if (currentNCRData[i].id === ncrId) { ncr = currentNCRData[i]; break; } } }
   if (!ncr) return;
 
   document.getElementById('mainTitle').textContent = ncr.ncr_number || 'NCR Detail';
-  document.getElementById('mainCount').textContent = '';
+  document.getElementById('mainCount').textContent = 'SQF 2.5.3';
   var body = document.getElementById('mainBody');
 
-  // Log detail view
   try { await sb.from('audit_access_log').insert({ session_id: session.id, organization_id: session.organization_id, module: 'ncr_records', action: 'record_viewed', resource_type: 'ncr_records', resource_id: ncr.id, resource_name: ncr.ncr_number, user_agent: navigator.userAgent }); } catch(e) {}
 
   var h = '<div data-action="back-to-ncr-list" class="back-btn">&#8592; Back to NCR List</div>';
-
-  // Paper form
   h += renderPaperForm(ncr);
-
-  // Connected records - show loading
   h += '<div class="connected-section"><div class="connected-title">&#128279; Connected Records &amp; Event Chain</div>';
   h += '<div id="connectedRecords"><div style="text-align:center;padding:30px"><span class="spinner"></span> Loading connected records...</div></div></div>';
   body.innerHTML = h;
-
-  // Fetch connected records
   loadConnectedRecords(ncr);
 }
 
 // ── Paper Form Render ──
 function renderPaperForm(ncr) {
   var h = '<div class="paper-form">';
-  // Header
   h += '<div class="pf-header">';
   h += '<div class="pf-header-logo"><div class="pf-logo-box">LOGO</div><div class="pf-logo-cap">YOUR LOGO HERE</div></div>';
   h += '<div class="pf-header-info">';
@@ -527,52 +730,37 @@ function renderPaperForm(ncr) {
   h += '</div>';
   h += '<div class="pf-header-meta"><span class="pf-meta-text">Form Style: ' + esc(ncr.form_style || 'Standard') + '</span><span class="pf-meta-text">Version: ' + esc(ncr.form_version || '1.0') + '</span><span class="pf-meta-text">Date: ' + esc(ncr.discovered_date || '') + '</span></div>';
   h += '</div>';
-
-  // Title bar
   h += '<div class="pf-title-bar"><h2>Non-Conformance Report (NCR)</h2></div>';
   h += '<div class="pf-form-num">Automated Form Number: ' + esc(ncr.ncr_number || '') + '</div>';
-
-  // Badges
   h += '<div class="pf-badges">';
   h += '<span class="badge badge-' + (ncr.status || 'open') + '">' + (STATUS_MAP[ncr.status] || fmtSnake(ncr.status)) + '</span>';
   h += '<span class="badge badge-' + (ncr.severity || 'minor') + '">' + (SEVERITY_MAP[ncr.severity] || fmtSnake(ncr.severity)) + '</span>';
   h += '</div>';
 
-  // Section 1: General Information
   h += '<div class="pf-section"><span class="pf-section-label">Section 1:</span><span class="pf-section-title">General Information</span></div>';
-
-  // Project info
   h += '<div class="pf-sub-header">Project Information</div>';
   h += '<div class="pf-row"><div class="pf-label" style="width:100px">Package</div><div class="pf-value">' + esc(ncr.project_package || 'N/A') + '</div>';
   h += '<div class="pf-label" style="width:130px">Item / Component No</div><div class="pf-value">' + esc(ncr.item_component_no || 'N/A') + '</div>';
   h += '<div class="pf-label" style="width:150px">Specification Ref No</div><div class="pf-value">' + esc(ncr.specification_reference_no || 'N/A') + '</div></div>';
-
-  // Contractor info
   h += '<div class="pf-sub-header">Contractor Information</div>';
   h += '<div class="pf-row"><div class="pf-label" style="width:80px">Location</div><div class="pf-value">' + esc(ncr.contractor_location || 'N/A') + '</div>';
   h += '<div class="pf-label" style="width:100px">Person in Charge</div><div class="pf-value">' + esc(ncr.contractor_person_in_charge || 'N/A') + '</div>';
   h += '<div class="pf-label" style="width:60px">Phone</div><div class="pf-value">' + esc(ncr.contractor_phone || 'N/A') + '</div>';
   h += '<div class="pf-label" style="width:50px">Email</div><div class="pf-value">' + esc(ncr.contractor_email || 'N/A') + '</div></div>';
-
-  // Supplier info
   h += '<div class="pf-sub-header">Supplier Information</div>';
   h += '<div class="pf-row"><div class="pf-label" style="width:80px">Location</div><div class="pf-value">' + esc(ncr.supplier_location || 'N/A') + '</div>';
   h += '<div class="pf-label" style="width:100px">Person in Charge</div><div class="pf-value">' + esc(ncr.supplier_person_in_charge || 'N/A') + '</div>';
   h += '<div class="pf-label" style="width:60px">Phone</div><div class="pf-value">' + esc(ncr.supplier_phone || 'N/A') + '</div>';
   h += '<div class="pf-label" style="width:50px">Email</div><div class="pf-value">' + esc(ncr.supplier_email || 'N/A') + '</div></div>';
 
-  // Section 2: Non-Conformity Details
   h += '<div class="pf-section"><span class="pf-section-label">Section 2:</span><span class="pf-section-title">Non-Conformity Details</span></div>';
   h += '<div class="pf-row"><div class="pf-label" style="width:140px">Description of Non-Conformity</div><div class="pf-value" style="min-height:48px;white-space:pre-wrap">' + esc(ncr.description || 'N/A') + '</div></div>';
   h += '<div class="pf-row"><div class="pf-label" style="width:140px">Non-Conformity Category</div><div class="pf-value">' + esc(ncr.non_conformity_category || 'N/A') + '</div></div>';
   h += '<div class="pf-row"><div class="pf-label" style="width:140px">Recommendation by Originator</div><div class="pf-value" style="min-height:48px;white-space:pre-wrap">' + esc(ncr.recommendation_by_originator || 'N/A') + '</div></div>';
-
-  // Time delay
   h += '<div class="pf-row"><div class="pf-label" style="width:140px">Project Time Delay?</div><div class="pf-value"><strong>' + (ncr.project_time_delay ? 'Yes' : 'No') + '</strong>';
-  if (ncr.project_time_delay && ncr.expected_delay_estimate) h += ' &#8212; Expected: ' + esc(ncr.expected_delay_estimate);
+  if (ncr.project_time_delay && ncr.expected_delay_estimate) h += ' \\u2014 Expected: ' + esc(ncr.expected_delay_estimate);
   h += '</div></div>';
 
-  // Product info (if present)
   if (ncr.product_name || ncr.lot_number || ncr.location) {
     h += '<div class="pf-sub-header">Product / Location Details</div>';
     h += '<div class="pf-row">';
@@ -582,7 +770,6 @@ function renderPaperForm(ncr) {
     h += '</div>';
   }
 
-  // Containment / Corrective / Root Cause
   if (ncr.containment_actions || ncr.root_cause || ncr.corrective_actions || ncr.preventive_actions) {
     h += '<div class="pf-section"><span class="pf-section-label">Investigation &amp; Actions</span></div>';
     if (ncr.containment_actions) h += '<div class="pf-row"><div class="pf-label" style="width:140px">Containment Actions</div><div class="pf-value" style="white-space:pre-wrap">' + esc(ncr.containment_actions) + '</div></div>';
@@ -592,15 +779,13 @@ function renderPaperForm(ncr) {
     if (ncr.preventive_actions) h += '<div class="pf-row"><div class="pf-label" style="width:140px">Preventive Actions</div><div class="pf-value" style="white-space:pre-wrap">' + esc(ncr.preventive_actions) + '</div></div>';
   }
 
-  // Section 3: Contractors response
   h += '<div class="pf-section"><span class="pf-section-label">Section 3:</span><span class="pf-section-title">Response by Contractors Involved</span></div>';
   h += '<div class="pf-row"><div class="pf-label" style="width:140px">Contractors Involved</div><div class="pf-value">' + esc((ncr.contractors_involved || []).join(', ') || 'N/A') + '</div></div>';
   h += '<div class="pf-row"><div class="pf-label" style="width:140px">Outcome of Investigation</div><div class="pf-value" style="min-height:48px;white-space:pre-wrap">' + esc(ncr.outcome_of_investigation || 'N/A') + '</div></div>';
 
-  // Originator Signature
   h += '<div class="pf-section"><span class="pf-section-label">Originator Signature</span></div>';
   if (ncr.originator_pin_verified && ncr.originator_signature_stamp) {
-    h += '<div class="pf-row"><div class="pf-label" style="width:140px">Signature Status</div><div class="pf-value"><div class="pf-sig-verified">&#9989; VERIFIED &#8212; Signed via PPN</div></div></div>';
+    h += '<div class="pf-row"><div class="pf-label" style="width:140px">Signature Status</div><div class="pf-value"><div class="pf-sig-verified">&#9989; VERIFIED \\u2014 Signed via PPN</div></div></div>';
     h += '<div class="pf-row"><div class="pf-label" style="width:140px">Originator</div><div class="pf-value">' + esc(ncr.originator_name || 'N/A') + '</div>';
     h += '<div class="pf-label" style="width:80px">Department</div><div class="pf-value">' + esc(ncr.originator_department_code || 'N/A') + '</div>';
     h += '<div class="pf-label" style="width:60px">Initials</div><div class="pf-value">' + esc(ncr.originator_initials || 'N/A') + '</div></div>';
@@ -610,7 +795,6 @@ function renderPaperForm(ncr) {
     h += '<div class="pf-row"><div class="pf-label" style="width:140px">Signature Status</div><div class="pf-value"><div class="pf-sig-unverified">&#10060; NOT SIGNED</div></div></div>';
   }
 
-  // Disposition
   if (ncr.disposition || ncr.customer_notified !== null) {
     h += '<div class="pf-section"><span class="pf-section-label">Disposition &amp; Closure</span></div>';
     h += '<div class="pf-row"><div class="pf-label" style="width:140px">Disposition</div><div class="pf-value">' + esc(ncr.disposition || 'N/A') + '</div>';
@@ -622,88 +806,52 @@ function renderPaperForm(ncr) {
     }
   }
 
-  // Timestamps
   h += '<div class="pf-section"><span class="pf-section-label">Record Metadata</span></div>';
   h += '<div class="pf-row"><div class="pf-label" style="width:140px">Created</div><div class="pf-value">' + fmtDate(ncr.created_at) + '</div>';
   h += '<div class="pf-label" style="width:100px">Last Updated</div><div class="pf-value">' + fmtDate(ncr.updated_at) + '</div></div>';
-
-  h += '</div>'; // close paper-form
+  h += '</div>';
   return h;
 }
 
-// ── Connected Records ──
+// ══════════════════════════════════════════════
+// CONNECTED RECORDS
+// ══════════════════════════════════════════════
 async function loadConnectedRecords(ncr) {
   var container = document.getElementById('connectedRecords');
   if (!container) return;
   var h = '';
 
-  console.log('=== Loading connected records for NCR ===');
-  console.log('NCR ID:', ncr.id);
-  console.log('NCR Number:', ncr.ncr_number);
-  console.log('Org ID:', session.organization_id);
-
   try {
-    // 1. Search form links by form_number
-    console.log('Step 1: Searching task_feed_form_links...');
     var formLinks1 = await sb.from('task_feed_form_links').select('*').eq('form_number', ncr.ncr_number);
-    console.log('form_links by form_number:', formLinks1.data ? formLinks1.data.length + ' found' : 'error', formLinks1.error);
-
-    // Also search by form_id (matches both form_type='ncr' and 'Non-Conformance Report (NCR)')
     var formLinks2 = await sb.from('task_feed_form_links').select('*').eq('form_id', ncr.id);
-    console.log('form_links by form_id:', formLinks2.data ? formLinks2.data.length + ' found' : 'error', formLinks2.error);
-
-    // Merge results
     var allLinks = (formLinks1.data || []).concat(formLinks2.data || []);
     var seenPostIds = {};
     var links = [];
     for (var li = 0; li < allLinks.length; li++) {
       if (!seenPostIds[allLinks[li].post_id]) { seenPostIds[allLinks[li].post_id] = true; links.push(allLinks[li]); }
     }
-    console.log('Merged unique links:', links.length);
 
-    // 2. Check department tasks that reference this NCR
-    console.log('Step 2: Searching task_feed_department_tasks...');
     var deptRef1 = await sb.from('task_feed_department_tasks').select('post_id').eq('module_reference_id', ncr.id);
-    console.log('dept tasks by module_reference_id:', deptRef1.data ? deptRef1.data.length + ' found' : 'error', deptRef1.error);
-
     var deptRef2 = await sb.from('task_feed_department_tasks').select('post_id').eq('module_history_id', ncr.id);
-    console.log('dept tasks by module_history_id:', deptRef2.data ? deptRef2.data.length + ' found' : 'error', deptRef2.error);
 
-    // Merge all post IDs
     var postIdMap = {};
     links.forEach(function(l) { postIdMap[l.post_id] = true; });
     (deptRef1.data || []).forEach(function(d) { if (d.post_id) postIdMap[d.post_id] = true; });
     (deptRef2.data || []).forEach(function(d) { if (d.post_id) postIdMap[d.post_id] = true; });
     var postIds = Object.keys(postIdMap);
-    console.log('Total unique post IDs found:', postIds.length, postIds);
 
     if (postIds.length > 0) {
-
-      // 2. Fetch the task feed posts
-      console.log('Step 3: Fetching task_feed_posts for IDs:', postIds);
       var postsResp = await sb.from('task_feed_posts').select('*').in('id', postIds);
-      console.log('Posts found:', postsResp.data ? postsResp.data.length : 'error', postsResp.error);
       var posts = postsResp.data || [];
-
-      // 3. Fetch department tasks for these posts
-      console.log('Step 4: Fetching department tasks...');
       var deptResp = await sb.from('task_feed_department_tasks').select('*').in('post_id', postIds).order('created_at', { ascending: true });
-      console.log('Dept tasks found:', deptResp.data ? deptResp.data.length : 'error', deptResp.error);
       var deptTasks = deptResp.data || [];
-
-      // 4. Fetch production hold log
-      console.log('Step 5: Fetching production hold log...');
       var holdLogResp = await sb.from('production_hold_log').select('*').in('post_id', postIds).order('created_at', { ascending: true });
-      console.log('Hold logs found:', holdLogResp.data ? holdLogResp.data.length : 'error', holdLogResp.error);
       var holdLogs = holdLogResp.data || [];
 
-      // Render task feed posts
       for (var p = 0; p < posts.length; p++) {
         var post = posts[p];
         h += '<div style="margin-bottom:20px">';
         h += '<h3 style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:12px">&#128196; Task Feed Post: ' + esc(post.post_number || '') + '</h3>';
-
-        // Post summary card
         h += '<div class="tl-card" style="margin-bottom:16px;border-left:3px solid var(--primary)">';
         h += '<div class="tl-card-head"><span class="tl-card-title">' + esc(post.template_name || 'Incident Post') + '</span><span class="tl-card-time">' + fmtDate(post.created_at) + '</span></div>';
         h += '<div class="tl-card-body">';
@@ -718,7 +866,6 @@ async function loadConnectedRecords(ncr) {
         if (post.notes) h += '<div class="tl-card-field"><span class="tl-field-label">Notes</span><span class="tl-field-value">' + esc(post.notes) + '</span></div>';
         h += '</div></div>';
 
-        // Department Responses
         var postDepts = deptTasks.filter(function(d) { return d.post_id === post.id; });
         if (postDepts.length > 0) {
           h += '<h4 style="font-size:14px;font-weight:600;color:var(--text);margin:12px 0 8px">&#127970; Department Responses (' + postDepts.length + ')</h4>';
@@ -738,7 +885,6 @@ async function loadConnectedRecords(ncr) {
           }
         }
 
-        // Production Hold Log
         var postHolds = holdLogs.filter(function(hl) { return hl.post_id === post.id; });
         if (postHolds.length > 0) {
           h += '<h4 style="font-size:14px;font-weight:600;color:var(--text);margin:12px 0 8px">&#128721; Production Hold Log (' + postHolds.length + ' entries)</h4>';
@@ -764,10 +910,7 @@ async function loadConnectedRecords(ncr) {
       h += '<div style="color:var(--text3);font-size:13px;margin-bottom:16px">No linked Task Feed posts found for this NCR.</div>';
     }
 
-    // 5. Hold Tags linked directly to NCR
-    console.log('Step 6: Fetching hold tags for NCR ID:', ncr.id);
     var holdTagResp = await sb.from('hold_tags').select('*').eq('ncr_id', ncr.id);
-    console.log('Hold tags found:', holdTagResp.data ? holdTagResp.data.length : 'error', holdTagResp.error);
     var holdTags = holdTagResp.data || [];
     if (holdTags.length > 0) {
       h += '<h3 style="font-size:15px;font-weight:700;color:var(--text);margin:16px 0 12px">&#127991;&#65039; Hold Tags (' + holdTags.length + ')</h3>';
@@ -798,11 +941,12 @@ async function loadConnectedRecords(ncr) {
   container.innerHTML = h;
 }
 
-// ── Document Control Dashboard ──
+// ══════════════════════════════════════════════
+// DOCUMENT CONTROL DASHBOARD
+// ══════════════════════════════════════════════
 async function renderDocumentDashboard(body) {
   body.innerHTML = '<div style="text-align:center;padding:60px"><span class="spinner"></span></div>';
 
-  // Pull counts from sds_records
   var sdsResp = await sb.from('sds_records').select('id, status, contains_allergens, primary_department, sds_master_number, signal_word').eq('organization_id', session.organization_id);
   var sdsData = sdsResp.data || [];
   var sdsActive = sdsData.filter(function(r) { return r.status === 'active'; }).length;
@@ -810,7 +954,6 @@ async function renderDocumentDashboard(body) {
   var sdsAllergen = sdsData.filter(function(r) { return r.contains_allergens === true; }).length;
   var sdsDanger = sdsData.filter(function(r) { return r.signal_word && r.signal_word.toLowerCase() === 'danger'; }).length;
 
-  // Count by department
   var deptCounts = {};
   for (var i = 0; i < sdsData.length; i++) {
     var dept = sdsData[i].primary_department || 'Unassigned';
@@ -818,11 +961,9 @@ async function renderDocumentDashboard(body) {
   }
 
   var totalDocs = sdsData.length;
-  document.getElementById('mainCount').textContent = totalDocs + ' total documents';
+  document.getElementById('mainCount').textContent = 'SQF 2.2.1 \\u2022 ' + totalDocs + ' total documents';
 
   var h = '';
-
-  // ── Summary Stat Cards ──
   h += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">';
   h += statCard(totalDocs, 'Total Docs', '#4A90A4');
   h += statCard(sdsData.length, 'SDS Sheets', '#10B981');
@@ -830,7 +971,6 @@ async function renderDocumentDashboard(body) {
   h += statCard(0, 'Certifications', '#6B7280');
   h += '</div>';
 
-  // ── Second row: status breakdown ──
   h += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px">';
   h += statCard(sdsActive, 'Active', '#10B981');
   h += statCard(sdsExpired, 'Expired', '#EF4444');
@@ -838,37 +978,37 @@ async function renderDocumentDashboard(body) {
   h += statCard(sdsDanger, 'Danger', '#F59E0B');
   h += '</div>';
 
-  // ── Document Categories ──
+  // Document Categories
   h += '<div style="border-radius:12px;border:1px solid var(--border);overflow:hidden;margin-bottom:20px">';
   h += '<div style="padding:12px 16px;background:rgba(74,144,164,0.1);font-weight:700;font-size:13px;color:#4A90A4;border-bottom:1px solid var(--border)">Document Categories</div>';
 
   var categories = [
-    {name: 'SDS Sheets', count: sdsData.length, icon: '&#129514;', color: '#10B981', desc: 'Safety Data Sheets — chemical registry, allergens, hazard info', hasData: true, moduleKey: 'sds_records'},
-    {name: 'SOPs', count: 0, icon: '&#128203;', color: '#3B82F6', desc: 'Standard Operating Procedures', hasData: false},
-    {name: 'OPLs', count: 0, icon: '&#128218;', color: '#8B5CF6', desc: 'One Point Lessons — visual training aids', hasData: false},
-    {name: 'Policies', count: 0, icon: '&#128220;', color: '#F59E0B', desc: 'Company policies and guidelines', hasData: false},
-    {name: 'Work Instructions', count: 0, icon: '&#128295;', color: '#06B6D4', desc: 'Step-by-step task procedures', hasData: false},
-    {name: 'Specifications', count: 0, icon: '&#128200;', color: '#EC4899', desc: 'Product and material specifications', hasData: false},
-    {name: 'Certifications', count: 0, icon: '&#127942;', color: '#10B981', desc: 'Facility and personnel certifications', hasData: false},
+    {name:'SDS Sheets',count:sdsData.length,icon:'&#129514;',color:'#10B981',desc:'Safety Data Sheets — chemical registry, allergens, hazard info',nav:'sds_records'},
+    {name:'SOPs',count:0,icon:'&#128203;',color:'#3B82F6',desc:'Standard Operating Procedures'},
+    {name:'OPLs',count:0,icon:'&#128218;',color:'#8B5CF6',desc:'One Point Lessons — visual training aids'},
+    {name:'Policies',count:0,icon:'&#128220;',color:'#F59E0B',desc:'Company policies and guidelines'},
+    {name:'Work Instructions',count:0,icon:'&#128295;',color:'#06B6D4',desc:'Step-by-step task procedures'},
+    {name:'Specifications',count:0,icon:'&#128200;',color:'#EC4899',desc:'Product and material specifications'},
+    {name:'Certifications',count:0,icon:'&#127942;',color:'#10B981',desc:'Facility and personnel certifications'},
   ];
 
   for (var ci = 0; ci < categories.length; ci++) {
     var cat = categories[ci];
     var countColor = cat.count > 0 ? cat.color : 'var(--text3)';
-    var clickAttr = cat.hasData && cat.moduleKey ? ' data-nav="' + cat.moduleKey + '"' : '';
-    h += '<div' + clickAttr + ' style="display:flex;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border);' + (cat.hasData ? 'cursor:pointer' : '') + '">';
+    var clickAttr = cat.nav ? ' data-nav="' + cat.nav + '"' : '';
+    h += '<div' + clickAttr + ' style="display:flex;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border);' + (cat.nav ? 'cursor:pointer' : '') + '">';
     h += '<span style="font-size:20px;margin-right:12px;width:28px;text-align:center">' + cat.icon + '</span>';
     h += '<div style="flex:1">';
     h += '<div style="font-weight:600;font-size:14px;color:var(--text1)">' + cat.name + '</div>';
     h += '<div style="font-size:11px;color:var(--text3);margin-top:1px">' + cat.desc + '</div>';
     h += '</div>';
     h += '<span style="font-weight:700;font-size:18px;color:' + countColor + ';margin-right:8px">' + cat.count + '</span>';
-    if (cat.hasData) h += '<span style="color:var(--text3);font-size:12px">&#9654;</span>';
+    if (cat.nav) h += '<span style="color:var(--text3);font-size:12px">&#9654;</span>';
     h += '</div>';
   }
   h += '</div>';
 
-  // ── SDS by Department breakdown ──
+  // SDS by Department
   var deptKeys = Object.keys(deptCounts).sort();
   if (deptKeys.length > 0) {
     h += '<div style="border-radius:12px;border:1px solid var(--border);overflow:hidden;margin-bottom:20px">';
@@ -886,21 +1026,19 @@ async function renderDocumentDashboard(body) {
     h += '</div>';
   }
 
-  // ── Compliance note ──
   h += '<div style="border-radius:12px;border:1px solid var(--border);padding:16px;background:rgba(16,185,129,0.05)">';
-  h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="font-size:16px">&#9989;</span><span style="font-weight:700;font-size:13px;color:#10B981">SQF 2.3.2 — Document Control</span></div>';
+  h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="font-size:16px">&#9989;</span><span style="font-weight:700;font-size:13px;color:#10B981">SQF 2.2.1 \\u2014 Document Control</span></div>';
   h += '<div style="font-size:12px;color:var(--text2);line-height:1.5">All documents are centrally managed with version control, access tracking, and department-level organization. SDS documents include QR codes for instant access and are linked to allergen and hazard classification systems.</div>';
   h += '</div>';
 
   body.innerHTML = h;
 
-  // Click delegation for category navigation
   body.addEventListener('click', function(e) {
     var el = e.target.closest('[data-nav]');
     if (el) {
       var navKey = el.getAttribute('data-nav');
       var navEl = document.querySelector('[data-key="' + navKey + '"]');
-      if (navEl) navEl.click();
+      if (navEl) { navEl.closest('.nav-group').classList.add('open'); navEl.click(); }
     }
   });
 }
@@ -912,25 +1050,20 @@ function statCard(num, label, color) {
     + '</div>';
 }
 
-// ── SDS Binder Reference Builder ──
+// ══════════════════════════════════════════════
+// SDS BINDER REFERENCE
+// ══════════════════════════════════════════════
 function buildSdsBinderRef(department, masterNumber) {
   if (!masterNumber && masterNumber !== 0) return null;
-  var deptMap = {
-    'maintenance': 'MAINT',
-    'production': 'PROD',
-    'sanitation': 'SAN',
-    'quality': 'QUAL',
-    'safety': 'SAFETY',
-    'warehouse': 'WH',
-    'shipping': 'SHIP',
-    'receiving': 'REC'
-  };
+  var deptMap = {'maintenance':'MAINT','production':'PROD','sanitation':'SAN','quality':'QUAL','safety':'SAFETY','warehouse':'WH','shipping':'SHIP','receiving':'REC'};
   var dept = department ? department.toLowerCase().trim() : '';
   var prefix = deptMap[dept] || (department ? department.toUpperCase().substring(0, 5) : 'SDS');
   return prefix + ' SDS #' + masterNumber;
 }
 
-// ── SDS Document List ──
+// ══════════════════════════════════════════════
+// SDS DOCUMENT LIST
+// ══════════════════════════════════════════════
 function renderSDSList(data) {
   var body = document.getElementById('mainBody');
   var h = '<input type="text" class="search-bar" placeholder="Search SDS documents..."/>';
@@ -939,16 +1072,13 @@ function renderSDSList(data) {
     var rec = data[i];
     var name = rec.product_name || rec.sds_number || 'Untitled SDS';
     var mfg = rec.manufacturer || '';
-    var cas = rec.cas_number || '';
     var status = rec.status || 'active';
     var statusColor = status === 'active' ? '#10B981' : status === 'expired' ? '#EF4444' : '#F59E0B';
     var hasAllergens = rec.contains_allergens === true;
-    var allergenList = rec.allergens || '';
     var signalWord = rec.signal_word && rec.signal_word !== 'none' && rec.signal_word !== 'N/A' ? rec.signal_word : '';
     var revDate = rec.revision_date ? new Date(rec.revision_date).toLocaleDateString() : '';
-    var hasFile = rec.file_url && rec.file_url.length > 10;
 
-    var searchData = (name + ' ' + mfg + ' ' + cas + ' ' + allergenList + ' ' + (rec.sds_number || '') + ' ' + (rec.primary_department || '') + ' ' + (rec.approved_by || '') + ' ' + (buildSdsBinderRef(rec.primary_department, rec.sds_master_number) || '')).toLowerCase();
+    var searchData = (name + ' ' + mfg + ' ' + (rec.cas_number || '') + ' ' + (rec.allergens || '') + ' ' + (rec.sds_number || '') + ' ' + (rec.primary_department || '') + ' ' + (buildSdsBinderRef(rec.primary_department, rec.sds_master_number) || '')).toLowerCase();
 
     h += '<div class="record-card" data-search="' + esc(searchData) + '">';
     h += '<div class="record-head" style="padding:14px 16px">';
@@ -959,7 +1089,7 @@ function renderSDSList(data) {
     var subParts = [];
     if (rec.primary_department) subParts.push(rec.primary_department);
     if (rec.approved_by) subParts.push('Approved by: ' + rec.approved_by);
-    if (subParts.length) h += '<div style="font-size:12px;color:var(--text3);margin-top:2px">' + esc(subParts.join(' · ')) + '</div>';
+    if (subParts.length) h += '<div style="font-size:12px;color:var(--text3);margin-top:2px">' + esc(subParts.join(' \\u00B7 ')) + '</div>';
     h += '</div>';
     h += '<div style="display:flex;align-items:center;gap:8px">';
     if (hasAllergens) h += '<span style="background:#FEF2F2;color:#DC2626;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600">ALLERGEN</span>';
@@ -979,7 +1109,6 @@ function renderSDSDetail(rec) {
   var h = '';
   var v = function(val) { return (val !== null && val !== undefined && val !== '' && val !== 'N/A') ? esc(String(val)) : null; };
 
-  // ── PDF Link / QR Code row ──
   if (rec.file_url) {
     var pdfName = rec.file_url.split('/').pop() || 'SDS Document';
     var sdsLabel = buildSdsBinderRef(rec.primary_department, rec.sds_master_number) || rec.sds_number || 'SDS Document';
@@ -993,35 +1122,38 @@ function renderSDSDetail(rec) {
     h += '</div>';
   }
 
-  // ── Document Info Grid (compact, 2-column) ──
   h += '<div style="display:grid;grid-template-columns:1fr 1fr">';
   h += sdsCell('Product Name', rec.product_name);
   h += sdsCell('Binder Ref', buildSdsBinderRef(rec.primary_department, rec.sds_master_number));
   h += sdsCell('Vendor Revision', rec.sds_number);
   h += sdsCell('Manufacturer', rec.manufacturer);
-  h += sdsCell('Mfg Phone', rec.manufacturer_phone);
-  h += sdsCell('Emergency Phone', rec.emergency_phone);
   h += sdsCell('CAS Number', rec.cas_number);
-  h += sdsCell('Status', rec.status ? rec.status.charAt(0).toUpperCase() + rec.status.slice(1) : 'N/A');
+  h += sdsCell('Department', rec.primary_department);
   h += sdsCell('Revision Date', rec.revision_date ? new Date(rec.revision_date).toLocaleDateString() : null);
-  h += sdsCell('Location', rec.location_used || rec.storage_location);
-  h += sdsCell('Primary Dept', rec.primary_department);
-  h += sdsCell('Approved By', rec.approved_by);
-  h += sdsCell('Approved For Use', rec.approved_for_use === true ? 'Yes' : rec.approved_for_use === false ? 'No' : null);
+  h += sdsCell('Expiration Date', rec.expiration_date ? new Date(rec.expiration_date).toLocaleDateString() : null);
+  h += sdsCell('Status', rec.status);
   h += '</div>';
 
-  // ── Signal Word (if present) ──
-  var signalWord = rec.signal_word && rec.signal_word !== 'none' && rec.signal_word !== 'N/A' ? rec.signal_word : null;
-  if (signalWord) {
-    var swColor = signalWord.toLowerCase() === 'danger' ? '#DC2626' : '#D97706';
-    var swBg = signalWord.toLowerCase() === 'danger' ? 'rgba(220,38,38,0.08)' : 'rgba(217,119,6,0.08)';
-    h += '<div style="padding:8px 16px;border-bottom:1px solid var(--border);background:' + swBg + ';display:flex;align-items:center;gap:8px">';
-    h += '<span style="font-weight:600;font-size:12px;color:var(--text2)">Signal Word:</span>';
-    h += '<span style="font-weight:800;font-size:14px;color:' + swColor + ';letter-spacing:0.5px">' + esc(signalWord.toUpperCase()) + '</span>';
+  // Hazard info
+  var signalWord = rec.signal_word && rec.signal_word !== 'none' && rec.signal_word !== 'N/A' ? rec.signal_word : '';
+  if (v(rec.ghs_classification) || v(rec.hazard_categories) || signalWord) {
+    h += '<div style="padding:8px 12px;background:rgba(245,158,11,0.08);font-weight:700;font-size:12px;color:#F59E0B;letter-spacing:0.3px;border-bottom:1px solid var(--border)">HAZARD CLASSIFICATION</div>';
+    h += '<div style="display:grid;grid-template-columns:1fr 1fr">';
+    h += sdsCell('GHS Classification', rec.ghs_classification);
+    h += sdsCell('Hazard Categories', rec.hazard_categories);
+    h += sdsCell('Hazard Statements', rec.hazard_statements);
+    h += sdsCell('Precautionary Statements', rec.precautionary_statements);
     h += '</div>';
+    if (signalWord) {
+      var swColor = signalWord.toLowerCase() === 'danger' ? '#DC2626' : '#D97706';
+      h += '<div style="padding:8px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px">';
+      h += '<span style="font-weight:600;font-size:12px;color:var(--text2)">Signal Word:</span>';
+      h += '<span style="font-weight:800;font-size:14px;color:' + swColor + ';letter-spacing:0.5px">' + esc(signalWord.toUpperCase()) + '</span>';
+      h += '</div>';
+    }
   }
 
-  // ── Allergen Section (only if relevant) ──
+  // Allergen section
   if (rec.contains_allergens === true || v(rec.allergens) || rec.allergen_isolation_required === true) {
     h += '<div style="padding:8px 12px;background:rgba(220,38,38,0.12);font-weight:700;font-size:12px;color:#DC2626;letter-spacing:0.3px;border-bottom:1px solid var(--border)">&#9888;&#65039; ALLERGEN INFORMATION</div>';
     h += '<div style="display:grid;grid-template-columns:1fr 1fr">';
@@ -1033,7 +1165,7 @@ function renderSDSDetail(rec) {
     h += '</div>';
   }
 
-  // ── Storage & Handling (only if data exists) ──
+  // Storage & Handling
   var hasStorage = v(rec.storage_location) || v(rec.approved_storage_areas) || v(rec.restricted_areas) || v(rec.storage_requirements) || v(rec.handling_precautions);
   if (hasStorage) {
     h += '<div style="padding:8px 12px;background:rgba(139,92,246,0.08);font-weight:700;font-size:12px;color:#8B5CF6;letter-spacing:0.3px;border-bottom:1px solid var(--border)">STORAGE &amp; HANDLING</div>';
@@ -1046,11 +1178,11 @@ function renderSDSDetail(rec) {
     h += '</div>';
   }
 
-  // ── PPE (compact) ──
+  // PPE
   var ppeStr = '';
   if (rec.ppe_requirements && typeof rec.ppe_requirements === 'object') {
     var ppeKeys = Object.keys(rec.ppe_requirements);
-    for (var pi = 0; pi < ppeKeys.length; pi++) { if (rec.ppe_requirements[ppeKeys[pi]]) { if (ppeStr) ppeStr += ', '; ppeStr += ppeKeys[pi].replace(/_/g,' ').replace(/\b\w/g, function(c){return c.toUpperCase();}); } }
+    for (var pi = 0; pi < ppeKeys.length; pi++) { if (rec.ppe_requirements[ppeKeys[pi]]) { if (ppeStr) ppeStr += ', '; ppeStr += ppeKeys[pi].replace(/_/g,' ').replace(/\\b\\w/g, function(c){return c.toUpperCase();}); } }
   }
   if (ppeStr) {
     h += '<div style="padding:8px 16px;border-bottom:1px solid var(--border);display:flex;align-items:baseline;gap:8px">';
@@ -1059,7 +1191,7 @@ function renderSDSDetail(rec) {
     h += '</div>';
   }
 
-  // ── Notes (if present) ──
+  // Notes
   if (v(rec.notes)) {
     h += '<div style="padding:10px 16px;border-bottom:1px solid var(--border);background:rgba(245,158,11,0.05)">';
     h += '<div style="font-weight:600;font-size:11px;color:var(--text3);margin-bottom:4px">NOTES</div>';
@@ -1067,7 +1199,7 @@ function renderSDSDetail(rec) {
     h += '</div>';
   }
 
-  // ── Admin footer row ──
+  // Admin footer
   h += '<div style="padding:8px 16px;display:flex;gap:16px;flex-wrap:wrap;font-size:11px;color:var(--text3)">';
   if (rec.approved_for_use === true) h += '<span>&#10003; Approved for Use</span>';
   if (rec.approved_by) h += '<span>Approved by: ' + esc(rec.approved_by) + '</span>';
@@ -1090,8 +1222,9 @@ function sdsCell(label, val, highlight) {
     + '</div>';
 }
 
-
-// ── Generic Field Renderer (for non-NCR/SDS modules) ──
+// ══════════════════════════════════════════════
+// GENERIC FIELD RENDERER
+// ══════════════════════════════════════════════
 function renderFields(rec) {
   var h = '';
   var keys = Object.keys(rec);
@@ -1121,7 +1254,9 @@ function formatLabel(k) {
   return k.replace(/_/g, ' ').replace(/\\b\\w/g, function(c) { return c.toUpperCase(); });
 }
 
-// ── Security Controls ──
+// ══════════════════════════════════════════════
+// SECURITY CONTROLS
+// ══════════════════════════════════════════════
 function showSecurity(el) {
   setActive(el);
   document.getElementById('mainTitle').textContent = 'Document Security Controls';
