@@ -12,7 +12,7 @@ module.exports = (req, res) => {
 
 function getHTML() {
   var SB_URL = 'https://xaqztozcnkpmgytnnjlj.supabase.co';
-  var SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhhcXp0b3pjbmtwbWd5dG5uamxqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgxNjI2NDAsImV4cCI6MjA4MzczODY0MH0.lL90-qamWRs8GXCvA-F7QcKiPx1WYUMs5OUjUi_1CjU';
+  var SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhhcXp0b3pjbmtwbWd5dG5uamxqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzcwNTczMjgsImV4cCI6MjA1MjYzMzMyOH0.jgbhMH3m2LRlMVMRdxEvOvvPqZjScAsPMqHbpnMTMHg';
 
   // Use plain string concat to avoid template literal escaping nightmares
   var html = [];
@@ -316,7 +316,7 @@ async function validateToken() {
       await sb.from('audit_access_log').insert({
         session_id: s.id, organization_id: s.organization_id,
         action: 'portal_opened', resource_type: 'portal',
-        details: { user_agent: navigator.userAgent, timestamp: now.toISOString() }
+        user_agent: navigator.userAgent, accessed_at: now.toISOString()
       });
       await sb.from('audit_sessions').update({
         last_accessed_at: now.toISOString(),
@@ -402,7 +402,7 @@ async function loadModule(el, key) {
     await sb.from('audit_access_log').insert({
       session_id: session.id, organization_id: session.organization_id,
       action: 'module_viewed', resource_type: key,
-      details: { module: key, timestamp: new Date().toISOString() }
+      module: key, user_agent: navigator.userAgent, accessed_at: new Date().toISOString()
     });
   } catch(e) {}
 
