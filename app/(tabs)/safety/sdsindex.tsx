@@ -236,6 +236,11 @@ export default function SDSMasterIndexScreen() {
     contains_allergens: false,
     allergens: [] as string[],
     allergen_notes: '',
+    allergen_isolation_required: false,
+    allergen_isolation_notes: '',
+    storage_location: '',
+    approved_storage_areas: [] as string[],
+    restricted_areas: [] as string[],
   });
   const [isUploading, setIsUploading] = useState(false);
 
@@ -369,6 +374,11 @@ export default function SDSMasterIndexScreen() {
       contains_allergens: false,
       allergens: [],
       allergen_notes: '',
+      allergen_isolation_required: false,
+      allergen_isolation_notes: '',
+      storage_location: '',
+      approved_storage_areas: [],
+      restricted_areas: [],
     });
     setEditingEntry(null);
     setDuplicateMatches([]);
@@ -419,6 +429,11 @@ export default function SDSMasterIndexScreen() {
       contains_allergens: formData.contains_allergens,
       allergens: formData.allergens,
       allergen_notes: formData.allergen_notes || null,
+      allergen_isolation_required: formData.allergen_isolation_required,
+      allergen_isolation_notes: formData.allergen_isolation_notes || null,
+      storage_location: formData.storage_location || null,
+      approved_storage_areas: formData.approved_storage_areas,
+      restricted_areas: formData.restricted_areas,
       status: 'active',
       version: '1.0',
       approved_for_use: true,
@@ -456,6 +471,11 @@ export default function SDSMasterIndexScreen() {
       contains_allergens: entry.contains_allergens || false,
       allergens: entry.allergens || [],
       allergen_notes: entry.allergen_notes || '',
+      allergen_isolation_required: entry.allergen_isolation_required || false,
+      allergen_isolation_notes: entry.allergen_isolation_notes || '',
+      storage_location: entry.storage_location || '',
+      approved_storage_areas: entry.approved_storage_areas || [],
+      restricted_areas: entry.restricted_areas || [],
     });
     setShowAddModal(true);
   };
@@ -658,6 +678,14 @@ export default function SDSMasterIndexScreen() {
                 </View>
               ) : null;
             })}
+          </View>
+        )}
+
+        {/* Allergen Isolation warning */}
+        {entry.allergen_isolation_required && (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8, backgroundColor: '#DC262610', paddingHorizontal: 8, paddingVertical: 5, borderRadius: 6 }}>
+            <AlertTriangle size={12} color="#B91C1C" />
+            <Text style={{ fontSize: 10, fontWeight: '700', color: '#B91C1C', letterSpacing: 0.5 }}>ALLERGEN ISOLATION REQUIRED</Text>
           </View>
         )}
 
@@ -1219,6 +1247,66 @@ export default function SDSMasterIndexScreen() {
                   numberOfLines={2}
                   textAlignVertical="top"
                 />
+
+                <Text style={[styles.inputLabel, { color: '#DC2626', marginTop: 12 }]}>Allergen Isolation Required?</Text>
+                <Text style={[styles.sectionDesc, { color: colors.textSecondary, marginBottom: 6 }]}>
+                  Does this chemical require allergen isolation, dedicated storage, and special handling procedures?
+                </Text>
+                <View style={styles.allergenToggleRow}>
+                  <Pressable
+                    style={[
+                      styles.allergenToggle,
+                      {
+                        backgroundColor: !formData.allergen_isolation_required ? '#10B98120' : colors.surface,
+                        borderColor: !formData.allergen_isolation_required ? '#10B981' : colors.border,
+                      },
+                    ]}
+                    onPress={() => setFormData(prev => ({ ...prev, allergen_isolation_required: false, allergen_isolation_notes: '' }))}
+                  >
+                    <Check size={14} color={!formData.allergen_isolation_required ? '#10B981' : colors.textSecondary} />
+                    <Text style={[styles.allergenToggleText, { color: !formData.allergen_isolation_required ? '#10B981' : colors.textSecondary }]}>
+                      No Isolation Needed
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    style={[
+                      styles.allergenToggle,
+                      {
+                        backgroundColor: formData.allergen_isolation_required ? '#DC262620' : colors.surface,
+                        borderColor: formData.allergen_isolation_required ? '#DC2626' : colors.border,
+                      },
+                    ]}
+                    onPress={() => setFormData(prev => ({ ...prev, allergen_isolation_required: true }))}
+                  >
+                    <AlertTriangle size={14} color={formData.allergen_isolation_required ? '#DC2626' : colors.textSecondary} />
+                    <Text style={[styles.allergenToggleText, { color: formData.allergen_isolation_required ? '#DC2626' : colors.textSecondary }]}>
+                      Isolation Required
+                    </Text>
+                  </Pressable>
+                </View>
+                {formData.allergen_isolation_required && (
+                  <>
+                    <Text style={[styles.inputLabel, { color: colors.text }]}>Isolation Procedures / Notes</Text>
+                    <TextInput
+                      style={[styles.textArea, { backgroundColor: '#FEF2F2', borderColor: '#DC262640', color: colors.text }]}
+                      placeholder="e.g., Chemical/Lubricant allergen isolation, storage, and use procedures are mandatory for this product..."
+                      placeholderTextColor={colors.textSecondary}
+                      value={formData.allergen_isolation_notes}
+                      onChangeText={(text) => setFormData(prev => ({ ...prev, allergen_isolation_notes: text }))}
+                      multiline
+                      numberOfLines={3}
+                      textAlignVertical="top"
+                    />
+                    <Text style={[styles.inputLabel, { color: colors.text }]}>Restricted Areas (where this chemical must NOT be stored/used)</Text>
+                    <TextInput
+                      style={[styles.input, { backgroundColor: '#FEF2F2', borderColor: '#DC262640', color: colors.text }]}
+                      placeholder="e.g., Main production floor, Allergen-free lines (comma separated)"
+                      placeholderTextColor={colors.textSecondary}
+                      value={formData.restricted_areas.join(', ')}
+                      onChangeText={(text) => setFormData(prev => ({ ...prev, restricted_areas: text.split(',').map(s => s.trim()).filter(Boolean) }))}
+                    />
+                  </>
+                )}
               </>
             )}
 
@@ -1245,6 +1333,24 @@ export default function SDSMasterIndexScreen() {
                 </Pressable>
               ))}
             </View>
+
+            <Text style={[styles.inputLabel, { color: colors.text }]}>Physical Storage Location</Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
+              placeholder="e.g., Chemical Room 2, Maintenance Crib, Allergen Cabinet A"
+              placeholderTextColor={colors.textSecondary}
+              value={formData.storage_location}
+              onChangeText={(text) => setFormData(prev => ({ ...prev, storage_location: text }))}
+            />
+
+            <Text style={[styles.inputLabel, { color: colors.text }]}>Approved Storage Areas</Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
+              placeholder="e.g., Chemical Room 2, Allergen Cabinet A (comma separated)"
+              placeholderTextColor={colors.textSecondary}
+              value={formData.approved_storage_areas.join(', ')}
+              onChangeText={(text) => setFormData(prev => ({ ...prev, approved_storage_areas: text.split(',').map(s => s.trim()).filter(Boolean) }))}
+            />
 
             {/* Dates */}
             <View style={styles.twoCol}>
@@ -1395,6 +1501,22 @@ export default function SDSMasterIndexScreen() {
                       {selectedEntry.allergen_notes && (
                         <Text style={styles.allergenDetailNotes}>{selectedEntry.allergen_notes}</Text>
                       )}
+                      {selectedEntry.allergen_isolation_required && (
+                        <View style={{ marginTop: 10, padding: 10, backgroundColor: '#DC262610', borderRadius: 8, borderWidth: 1, borderColor: '#DC262630' }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                            <AlertTriangle size={14} color="#DC2626" />
+                            <Text style={{ fontSize: 12, fontWeight: '700', color: '#DC2626', letterSpacing: 0.5 }}>ALLERGEN ISOLATION REQUIRED</Text>
+                          </View>
+                          {selectedEntry.allergen_isolation_notes ? (
+                            <Text style={{ fontSize: 12, color: '#991B1B' }}>{selectedEntry.allergen_isolation_notes}</Text>
+                          ) : (
+                            <Text style={{ fontSize: 12, color: '#991B1B' }}>This product requires allergen isolation procedures per facility allergen control plan.</Text>
+                          )}
+                          {selectedEntry.restricted_areas && selectedEntry.restricted_areas.length > 0 && (
+                            <Text style={{ fontSize: 12, color: '#DC2626', fontWeight: '600', marginTop: 6 }}>Restricted Areas: {selectedEntry.restricted_areas.join(', ')}</Text>
+                          )}
+                        </View>
+                      )}
                     </View>
                   ) : (
                     <View style={[styles.allergenDetailSection, { backgroundColor: '#F0FDF4', borderColor: '#10B98130' }]}>
@@ -1402,6 +1524,24 @@ export default function SDSMasterIndexScreen() {
                         <Check size={18} color="#10B981" />
                         <Text style={[styles.allergenDetailTitle, { color: '#10B981' }]}>No Known Allergens</Text>
                       </View>
+                    </View>
+                  )}
+
+                  {/* Storage Location */}
+                  {(selectedEntry.storage_location || (selectedEntry.approved_storage_areas && selectedEntry.approved_storage_areas.length > 0)) && (
+                    <View style={[styles.allergenDetailSection, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                      {selectedEntry.storage_location && (
+                        <View style={[styles.detailListRow, { paddingVertical: 0, paddingBottom: 4 }]}>
+                          <Text style={[styles.detailListLabel, { color: colors.textSecondary }]}>Storage Location</Text>
+                          <Text style={[styles.detailListValue, { color: colors.text }]}>{selectedEntry.storage_location}</Text>
+                        </View>
+                      )}
+                      {selectedEntry.approved_storage_areas && selectedEntry.approved_storage_areas.length > 0 && (
+                        <View style={[styles.detailListRow, { paddingVertical: 0, paddingTop: 4 }]}>
+                          <Text style={[styles.detailListLabel, { color: colors.textSecondary }]}>Approved Areas</Text>
+                          <Text style={[styles.detailListValue, { color: colors.text }]}>{selectedEntry.approved_storage_areas.join(', ')}</Text>
+                        </View>
+                      )}
                     </View>
                   )}
                 </ScrollView>
