@@ -84,6 +84,29 @@ const LABEL_BG = '#F5F6F7';
 const WHITE = '#FFFFFF';
 
 // ============================================================
+// PAPER CELL INPUT — MOVED OUTSIDE COMPONENT TO PREVENT RE-RENDER / FOCUS LOSS
+// ============================================================
+
+const PaperCellInput = React.memo(({ value, onChangeText, placeholder, multiline, keyboardType }: {
+  value: string;
+  onChangeText: (text: string) => void;
+  placeholder?: string;
+  multiline?: boolean;
+  keyboardType?: 'default' | 'phone-pad' | 'email-address';
+}) => (
+  <TextInput
+    style={[{ fontSize: 12, color: '#333', flex: 1, padding: 0, margin: 0 }, multiline && { minHeight: 56, textAlignVertical: 'top' as const }]}
+    placeholder={placeholder || ''}
+    placeholderTextColor="#AAAAAA"
+    value={value}
+    onChangeText={onChangeText}
+    multiline={multiline}
+    keyboardType={keyboardType || 'default'}
+    autoCapitalize={keyboardType === 'email-address' ? 'none' : 'sentences'}
+  />
+));
+
+// ============================================================
 // COMPONENT
 // ============================================================
 
@@ -161,9 +184,9 @@ export default function NCRScreen() {
   // HELPERS
   // ============================================================
 
-  const updateForm = (field: string, value: any) => {
+  const updateForm = useCallback((field: string, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
-  };
+  }, []);
 
   const resetForm = () => {
     setFormData({
@@ -209,39 +232,35 @@ export default function NCRScreen() {
   const isOldStyle = (ncr: NCRRecord) => !ncr.form_style || ncr.form_style !== 'paper';
 
   // ============================================================
-  // SUBMIT
+  // VALIDATION
   // ============================================================
 
   const validateAllFields = (): string[] => {
     const missing: string[] = [];
-    // Section 1 — Project Information
     if (!formData.project_package.trim()) missing.push('Package');
     if (!formData.item_component_no.trim()) missing.push('Item / Component No');
     if (!formData.specification_reference_no.trim()) missing.push('Specification Reference No');
-    // Section 1 — Contractor Information
     if (!formData.contractor_location.trim()) missing.push('Contractor Location');
     if (!formData.contractor_person_in_charge.trim()) missing.push('Contractor Person in Charge');
     if (!formData.contractor_phone.trim()) missing.push('Contractor Phone');
     if (!formData.contractor_email.trim()) missing.push('Contractor Email');
-    // Section 1 — Supplier Information
     if (!formData.supplier_location.trim()) missing.push('Supplier Location');
     if (!formData.supplier_person_in_charge.trim()) missing.push('Supplier Person in Charge');
     if (!formData.supplier_phone.trim()) missing.push('Supplier Phone');
     if (!formData.supplier_email.trim()) missing.push('Supplier Email');
-    // Section 2 — Non-Conformity Details
     if (!formData.description.trim()) missing.push('Description of Non-Conformity');
     if (!formData.non_conformity_category.trim()) missing.push('Non-Conformity Category');
     if (!formData.recommendation_by_originator.trim()) missing.push('Recommendation by Originator');
-    // Time delay — if yes, estimate is required
     if (formData.project_time_delay && !formData.expected_delay_estimate.trim()) missing.push('Expected Delay Estimate');
-    // PPN Signature
     if (!isSignatureVerified(originatorSignature)) missing.push('Originator Signature (PPN)');
-    // Contractors involved
     if (!formData.contractors_involved_text.trim()) missing.push('Contractors Involved');
-    // Section 3
     if (!formData.outcome_of_investigation.trim()) missing.push('Outcome of Investigation');
     return missing;
   };
+
+  // ============================================================
+  // SUBMIT
+  // ============================================================
 
   const handleSubmit = useCallback(async () => {
     const missing = validateAllFields();
@@ -355,27 +374,11 @@ export default function NCRScreen() {
   }, [updateNCR, user]);
 
   // ============================================================
-  // PAPER FORM CELL HELPERS
+  // READ-ONLY CELL VALUE
   // ============================================================
 
-  const CellInput = ({ field, placeholder, multiline, keyboardType }: {
-    field: string; placeholder?: string; multiline?: boolean;
-    keyboardType?: 'default' | 'phone-pad' | 'email-address';
-  }) => (
-    <TextInput
-      style={[p.cellValue, { color: '#333' }, multiline && { minHeight: 56, textAlignVertical: 'top' }]}
-      placeholder={placeholder || ''}
-      placeholderTextColor="#AAAAAA"
-      value={(formData as any)[field]}
-      onChangeText={(text) => updateForm(field, text)}
-      multiline={multiline}
-      keyboardType={keyboardType || 'default'}
-      autoCapitalize={keyboardType === 'email-address' ? 'none' : 'sentences'}
-    />
-  );
-
   const CellValue = ({ text }: { text: string }) => (
-    <Text style={[p.cellValue, { color: colors.text }]}>{text || '\u2014'}</Text>
+    <Text style={[p.cellValue, { color: '#333' }]}>{text || '\u2014'}</Text>
   );
 
   // ============================================================
@@ -400,11 +403,11 @@ export default function NCRScreen() {
           </View>
           <View style={p.headerInfoRow}>
             <Text style={p.headerInfoLabel}>Project:</Text>
-            <Text style={p.headerInfoValue}>\u2014</Text>
+            <Text style={p.headerInfoValue}>{'\u2014'}</Text>
           </View>
           <View style={p.headerInfoRow}>
             <Text style={p.headerInfoLabel}>Team:</Text>
-            <Text style={p.headerInfoValue}>\u2014</Text>
+            <Text style={p.headerInfoValue}>{'\u2014'}</Text>
           </View>
         </View>
         <View style={p.headerFarRight}>
@@ -436,35 +439,35 @@ export default function NCRScreen() {
 
       <View style={p.tableRow}>
         <View style={[p.labelCell, { flex: 0.7 }]}><Text style={p.label}>Package</Text></View>
-        <View style={[p.valueCell, { flex: 1 }]}><CellInput field="project_package" /></View>
+        <View style={[p.valueCell, { flex: 1 }]}><PaperCellInput value={formData.project_package} onChangeText={(t) => updateForm('project_package', t)} /></View>
         <View style={[p.labelCell, { flex: 1.2 }]}><Text style={p.label}>Item / Component No:</Text></View>
-        <View style={[p.valueCell, { flex: 1 }]}><CellInput field="item_component_no" /></View>
+        <View style={[p.valueCell, { flex: 1 }]}><PaperCellInput value={formData.item_component_no} onChangeText={(t) => updateForm('item_component_no', t)} /></View>
         <View style={[p.labelCell, { flex: 1.3 }]}><Text style={p.label}>Specification Reference No:</Text></View>
-        <View style={[p.valueCell, { flex: 1 }]}><CellInput field="specification_reference_no" /></View>
+        <View style={[p.valueCell, { flex: 1 }]}><PaperCellInput value={formData.specification_reference_no} onChangeText={(t) => updateForm('specification_reference_no', t)} /></View>
       </View>
 
       <View style={p.subHeaderRow}><Text style={p.subHeaderLabel}>Contractor Information:</Text></View>
       <View style={p.tableRow}>
         <View style={[p.labelCell, { width: 65 }]}><Text style={p.label}>Location:</Text></View>
-        <View style={[p.valueCell, { flex: 1.2 }]}><CellInput field="contractor_location" /></View>
+        <View style={[p.valueCell, { flex: 1.2 }]}><PaperCellInput value={formData.contractor_location} onChangeText={(t) => updateForm('contractor_location', t)} /></View>
         <View style={[p.labelCell, { width: 95 }]}><Text style={p.label}>Person in charge:</Text></View>
-        <View style={[p.valueCell, { flex: 1 }]}><CellInput field="contractor_person_in_charge" /></View>
+        <View style={[p.valueCell, { flex: 1 }]}><PaperCellInput value={formData.contractor_person_in_charge} onChangeText={(t) => updateForm('contractor_person_in_charge', t)} /></View>
         <View style={[p.labelCell, { width: 50 }]}><Text style={p.label}>Phone:</Text></View>
-        <View style={[p.valueCell, { flex: 1 }]}><CellInput field="contractor_phone" keyboardType="phone-pad" /></View>
+        <View style={[p.valueCell, { flex: 1 }]}><PaperCellInput value={formData.contractor_phone} onChangeText={(t) => updateForm('contractor_phone', t)} keyboardType="phone-pad" /></View>
         <View style={[p.labelCell, { width: 45 }]}><Text style={p.label}>Email:</Text></View>
-        <View style={[p.valueCell, { flex: 1 }]}><CellInput field="contractor_email" keyboardType="email-address" /></View>
+        <View style={[p.valueCell, { flex: 1 }]}><PaperCellInput value={formData.contractor_email} onChangeText={(t) => updateForm('contractor_email', t)} keyboardType="email-address" /></View>
       </View>
 
       <View style={p.subHeaderRow}><Text style={p.subHeaderLabel}>Supplier Information:</Text></View>
       <View style={p.tableRow}>
         <View style={[p.labelCell, { width: 65 }]}><Text style={p.label}>Location:</Text></View>
-        <View style={[p.valueCell, { flex: 1.2 }]}><CellInput field="supplier_location" /></View>
+        <View style={[p.valueCell, { flex: 1.2 }]}><PaperCellInput value={formData.supplier_location} onChangeText={(t) => updateForm('supplier_location', t)} /></View>
         <View style={[p.labelCell, { width: 95 }]}><Text style={p.label}>Person in charge:</Text></View>
-        <View style={[p.valueCell, { flex: 1 }]}><CellInput field="supplier_person_in_charge" /></View>
+        <View style={[p.valueCell, { flex: 1 }]}><PaperCellInput value={formData.supplier_person_in_charge} onChangeText={(t) => updateForm('supplier_person_in_charge', t)} /></View>
         <View style={[p.labelCell, { width: 50 }]}><Text style={p.label}>Phone:</Text></View>
-        <View style={[p.valueCell, { flex: 1 }]}><CellInput field="supplier_phone" keyboardType="phone-pad" /></View>
+        <View style={[p.valueCell, { flex: 1 }]}><PaperCellInput value={formData.supplier_phone} onChangeText={(t) => updateForm('supplier_phone', t)} keyboardType="phone-pad" /></View>
         <View style={[p.labelCell, { width: 45 }]}><Text style={p.label}>Email:</Text></View>
-        <View style={[p.valueCell, { flex: 1 }]}><CellInput field="supplier_email" keyboardType="email-address" /></View>
+        <View style={[p.valueCell, { flex: 1 }]}><PaperCellInput value={formData.supplier_email} onChangeText={(t) => updateForm('supplier_email', t)} keyboardType="email-address" /></View>
       </View>
 
       {/* ===== SECTION 2: Non-Conformity Details ===== */}
@@ -475,7 +478,7 @@ export default function NCRScreen() {
 
       <View style={p.tableRow}>
         <View style={[p.labelCell, { width: 120 }]}><Text style={p.label}>Description of{'\n'}non-conformity</Text></View>
-        <View style={[p.valueCell, { flex: 1 }]}><CellInput field="description" placeholder="Describe the non-conformance..." multiline /></View>
+        <View style={[p.valueCell, { flex: 1 }]}><PaperCellInput value={formData.description} onChangeText={(t) => updateForm('description', t)} placeholder="Describe the non-conformance..." multiline /></View>
       </View>
 
       <View style={p.tableRow}>
@@ -485,12 +488,12 @@ export default function NCRScreen() {
 
       <View style={p.tableRow}>
         <View style={[p.labelCell, { width: 120 }]}><Text style={p.label}>Non-{'\n'}Conformity{'\n'}Category</Text></View>
-        <View style={[p.valueCell, { flex: 1 }]}><CellInput field="non_conformity_category" /></View>
+        <View style={[p.valueCell, { flex: 1 }]}><PaperCellInput value={formData.non_conformity_category} onChangeText={(t) => updateForm('non_conformity_category', t)} /></View>
       </View>
 
       <View style={p.tableRow}>
         <View style={[p.labelCell, { width: 120 }]}><Text style={p.label}>Recommend-{'\n'}ation by{'\n'}Originator:</Text></View>
-        <View style={[p.valueCell, { flex: 1 }]}><CellInput field="recommendation_by_originator" multiline /></View>
+        <View style={[p.valueCell, { flex: 1 }]}><PaperCellInput value={formData.recommendation_by_originator} onChangeText={(t) => updateForm('recommendation_by_originator', t)} multiline /></View>
       </View>
 
       {/* Time delay question */}
@@ -510,7 +513,7 @@ export default function NCRScreen() {
             <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6 }}>
               <Text style={[p.label, { marginRight: 6 }]}>If yes, expected estimate:</Text>
               <TextInput
-                style={[p.inlineInput, { color: colors.text }]}
+                style={[p.inlineInput, { color: '#333' }]}
                 placeholder="e.g. 1 day"
                 placeholderTextColor="#AAAAAA"
                 value={formData.expected_delay_estimate}
@@ -539,7 +542,7 @@ export default function NCRScreen() {
       {/* Select contractors involved */}
       <View style={p.tableRow}>
         <View style={[p.labelCell, { width: 120 }]}><Text style={p.label}>Select{'\n'}contractors{'\n'}involved:</Text></View>
-        <View style={[p.valueCell, { flex: 1 }]}><CellInput field="contractors_involved_text" placeholder="Comma-separated names" /></View>
+        <View style={[p.valueCell, { flex: 1 }]}><PaperCellInput value={formData.contractors_involved_text} onChangeText={(t) => updateForm('contractors_involved_text', t)} placeholder="Comma-separated names" /></View>
       </View>
 
       {/* ===== SECTION 3: Response by contractors ===== */}
@@ -550,7 +553,7 @@ export default function NCRScreen() {
 
       <View style={p.tableRow}>
         <View style={[p.labelCell, { width: 120 }]}><Text style={p.label}>Outcome of{'\n'}investigation{'\n'}into cause of{'\n'}non-{'\n'}conformance</Text></View>
-        <View style={[p.valueCell, { flex: 1 }]}><CellInput field="outcome_of_investigation" multiline /></View>
+        <View style={[p.valueCell, { flex: 1 }]}><PaperCellInput value={formData.outcome_of_investigation} onChangeText={(t) => updateForm('outcome_of_investigation', t)} multiline /></View>
       </View>
     </View>
   );
@@ -560,7 +563,6 @@ export default function NCRScreen() {
   // ============================================================
 
   const renderPaperDetail = (ncr: NCRRecord) => {
-    // Rebuild a SignatureVerification object from stored fields for display
     const existingSig: SignatureVerification | null = ncr.originator_pin_verified && ncr.originator_signature_stamp
       ? {
           employeeId: ncr.originator_employee_id || '',
@@ -575,38 +577,22 @@ export default function NCRScreen() {
     return (
       <ScrollView style={s.modalContent}>
         <View style={p.form}>
-
-          {/* Header */}
           <View style={p.headerBar}>
-            <View style={p.headerLeft}>
-              <View style={p.logoBadge}><Text style={p.logoText}>LOGO</Text></View>
-              <Text style={p.logoCaption}>YOUR LOGO GOES HERE</Text>
-            </View>
+            <View style={p.headerLeft}><View style={p.logoBadge}><Text style={p.logoText}>LOGO</Text></View><Text style={p.logoCaption}>YOUR LOGO GOES HERE</Text></View>
             <View style={p.headerRight}>
               <View style={p.headerInfoRow}><Text style={p.headerInfoLabel}>Organization:</Text><Text style={p.headerInfoValue}>Admin Organization</Text></View>
               <View style={p.headerInfoRow}><Text style={p.headerInfoLabel}>NCR Number:</Text><Text style={p.headerInfoValue}>{ncr.ncr_number}</Text></View>
             </View>
-            <View style={p.headerFarRight}>
-              <Text style={p.headerSmall}>Form Style: Paper</Text>
-              <Text style={p.headerSmall}>Version: {ncr.form_version || '1.0'}</Text>
-              <Text style={p.headerSmall}>{ncr.discovered_date}</Text>
-            </View>
+            <View style={p.headerFarRight}><Text style={p.headerSmall}>Form Style: Paper</Text><Text style={p.headerSmall}>Version: {ncr.form_version || '1.0'}</Text><Text style={p.headerSmall}>{ncr.discovered_date}</Text></View>
           </View>
-
           <View style={p.titleBar}><Text style={p.titleText}>Non-Conformance Report (NCR)</Text></View>
           <View style={p.autoNumRow}><Text style={p.autoNumText}>Automated Form Number: {ncr.ncr_number}</Text></View>
 
-          {/* Status + Severity badges */}
           <View style={{ flexDirection: 'row', padding: 8, gap: 8, backgroundColor: '#FAFAFA', borderBottomWidth: 1, borderBottomColor: FORM_BORDER }}>
-            <View style={[s.badge, { backgroundColor: STATUS_CONFIG[ncr.status].color + '20' }]}>
-              <Text style={[s.badgeText, { color: STATUS_CONFIG[ncr.status].color }]}>{STATUS_CONFIG[ncr.status].label}</Text>
-            </View>
-            <View style={[s.badge, { backgroundColor: SEVERITY_CONFIG[ncr.severity].bgColor }]}>
-              <Text style={[s.badgeText, { color: SEVERITY_CONFIG[ncr.severity].color }]}>{SEVERITY_CONFIG[ncr.severity].label}</Text>
-            </View>
+            <View style={[s.badge, { backgroundColor: STATUS_CONFIG[ncr.status].color + '20' }]}><Text style={[s.badgeText, { color: STATUS_CONFIG[ncr.status].color }]}>{STATUS_CONFIG[ncr.status].label}</Text></View>
+            <View style={[s.badge, { backgroundColor: SEVERITY_CONFIG[ncr.severity].bgColor }]}><Text style={[s.badgeText, { color: SEVERITY_CONFIG[ncr.severity].color }]}>{SEVERITY_CONFIG[ncr.severity].label}</Text></View>
           </View>
 
-          {/* Section 1 */}
           <View style={p.sectionRow}><Text style={p.sectionLabel}>Section 1:</Text><Text style={p.sectionTitle}>General Information:</Text></View>
           <View style={p.subHeaderRow}><Text style={p.subHeaderLabel}>Project Information:</Text></View>
           <View style={p.tableRow}>
@@ -642,26 +628,12 @@ export default function NCRScreen() {
             <View style={[p.valueCell, { flex: 1 }]}><CellValue text={ncr.supplier_email || ''} /></View>
           </View>
 
-          {/* Section 2 */}
           <View style={p.sectionRow}><Text style={p.sectionLabel}>Section 2:</Text><Text style={p.sectionTitle}>Non-Conformity Details:</Text></View>
-          <View style={p.tableRow}>
-            <View style={[p.labelCell, { width: 120 }]}><Text style={p.label}>Description of{'\n'}non-conformity</Text></View>
-            <View style={[p.valueCell, { flex: 1 }]}><CellValue text={ncr.description || ''} /></View>
-          </View>
-          <View style={p.tableRow}>
-            <View style={[p.labelCell, { width: 120 }]}><Text style={p.label}>Photos and{'\n'}videos</Text></View>
-            <View style={[p.valueCell, { flex: 1 }]}><Text style={[p.cellValue, { color: '#888', fontStyle: 'italic' }]}>{ncr.photos_and_videos?.length ? `${ncr.photos_and_videos.length} attached` : 'None'}</Text></View>
-          </View>
-          <View style={p.tableRow}>
-            <View style={[p.labelCell, { width: 120 }]}><Text style={p.label}>Non-{'\n'}Conformity{'\n'}Category</Text></View>
-            <View style={[p.valueCell, { flex: 1 }]}><CellValue text={ncr.non_conformity_category || ''} /></View>
-          </View>
-          <View style={p.tableRow}>
-            <View style={[p.labelCell, { width: 120 }]}><Text style={p.label}>Recommend-{'\n'}ation by{'\n'}Originator:</Text></View>
-            <View style={[p.valueCell, { flex: 1 }]}><CellValue text={ncr.recommendation_by_originator || ''} /></View>
-          </View>
+          <View style={p.tableRow}><View style={[p.labelCell, { width: 120 }]}><Text style={p.label}>Description of{'\n'}non-conformity</Text></View><View style={[p.valueCell, { flex: 1 }]}><CellValue text={ncr.description || ''} /></View></View>
+          <View style={p.tableRow}><View style={[p.labelCell, { width: 120 }]}><Text style={p.label}>Photos and{'\n'}videos</Text></View><View style={[p.valueCell, { flex: 1 }]}><Text style={[p.cellValue, { color: '#888', fontStyle: 'italic' }]}>{ncr.photos_and_videos?.length ? `${ncr.photos_and_videos.length} attached` : 'None'}</Text></View></View>
+          <View style={p.tableRow}><View style={[p.labelCell, { width: 120 }]}><Text style={p.label}>Non-{'\n'}Conformity{'\n'}Category</Text></View><View style={[p.valueCell, { flex: 1 }]}><CellValue text={ncr.non_conformity_category || ''} /></View></View>
+          <View style={p.tableRow}><View style={[p.labelCell, { width: 120 }]}><Text style={p.label}>Recommend-{'\n'}ation by{'\n'}Originator:</Text></View><View style={[p.valueCell, { flex: 1 }]}><CellValue text={ncr.recommendation_by_originator || ''} /></View></View>
 
-          {/* Time delay */}
           <View style={p.tableRow}>
             <View style={[p.labelCell, { width: 65 }]}><Text style={p.label}>Question:</Text></View>
             <View style={[p.valueCell, { flex: 1 }]}>
@@ -673,43 +645,25 @@ export default function NCRScreen() {
             </View>
           </View>
 
-          {/* Originator Signature — shows the PPN stamp read-only */}
           <View style={p.tableRow}>
             <View style={[p.labelCell, { width: 120 }]}><Text style={p.label}>Originator{'\n'}Signature</Text></View>
             <View style={[p.valueCell, { flex: 1, paddingVertical: 8 }]}>
               {existingSig ? (
-                <PinSignatureCapture
-                  onVerified={() => {}}
-                  formLabel="NCR \u2014 Originator Signature"
-                  existingVerification={existingSig}
-                  accentColor="#4A90A4"
-                />
+                <PinSignatureCapture onVerified={() => {}} formLabel="NCR \u2014 Originator Signature" existingVerification={existingSig} accentColor="#4A90A4" />
               ) : ncr.originator_signature_stamp ? (
-                <View style={p.stampRow}>
-                  <CheckCircle size={14} color="#059669" />
-                  <Text style={p.stampText}>{ncr.originator_signature_stamp}</Text>
-                </View>
+                <View style={p.stampRow}><CheckCircle size={14} color="#059669" /><Text style={p.stampText}>{ncr.originator_signature_stamp}</Text></View>
               ) : (
                 <Text style={[p.cellValue, { color: '#EF4444' }]}>Not signed</Text>
               )}
             </View>
           </View>
 
-          {/* Contractors involved */}
-          <View style={p.tableRow}>
-            <View style={[p.labelCell, { width: 120 }]}><Text style={p.label}>Select{'\n'}contractors{'\n'}involved:</Text></View>
-            <View style={[p.valueCell, { flex: 1 }]}><CellValue text={ncr.contractors_involved?.join(', ') || ''} /></View>
-          </View>
+          <View style={p.tableRow}><View style={[p.labelCell, { width: 120 }]}><Text style={p.label}>Select{'\n'}contractors{'\n'}involved:</Text></View><View style={[p.valueCell, { flex: 1 }]}><CellValue text={ncr.contractors_involved?.join(', ') || ''} /></View></View>
 
-          {/* Section 3 */}
           <View style={p.sectionRow}><Text style={p.sectionLabel}>Section 3:</Text><Text style={p.sectionTitle}>Response by contractors involved:</Text></View>
-          <View style={p.tableRow}>
-            <View style={[p.labelCell, { width: 120 }]}><Text style={p.label}>Outcome of{'\n'}investigation{'\n'}into cause of{'\n'}non-{'\n'}conformance</Text></View>
-            <View style={[p.valueCell, { flex: 1 }]}><CellValue text={ncr.outcome_of_investigation || ''} /></View>
-          </View>
+          <View style={p.tableRow}><View style={[p.labelCell, { width: 120 }]}><Text style={p.label}>Outcome of{'\n'}investigation{'\n'}into cause of{'\n'}non-{'\n'}conformance</Text></View><View style={[p.valueCell, { flex: 1 }]}><CellValue text={ncr.outcome_of_investigation || ''} /></View></View>
         </View>
 
-        {/* Status update */}
         <Text style={[s.sectionTitle, { color: colors.text, marginTop: 16 }]}>Update Status</Text>
         <View style={s.statusRow}>
           {(['open', 'investigation', 'containment', 'root_cause', 'corrective_action', 'verification', 'closed'] as NCRStatus[]).map(status => {
@@ -735,7 +689,7 @@ export default function NCRScreen() {
     <ScrollView style={s.modalContent}>
       <View style={[s.banner, { backgroundColor: '#FEF3C7', borderColor: '#F59E0B' }]}>
         <Lock size={16} color="#92400E" />
-        <Text style={{ color: '#92400E', fontSize: 13, fontWeight: '600', marginLeft: 8 }}>Historical NCR \u2014 Read Only</Text>
+        <Text style={{ color: '#92400E', fontSize: 13, fontWeight: '600', marginLeft: 8 }}>Historical NCR {'\u2014'} Read Only</Text>
       </View>
       <View style={[s.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <View style={s.detailRow}><Text style={[s.detailLabel, { color: colors.textSecondary }]}>Status</Text><View style={[s.badge, { backgroundColor: STATUS_CONFIG[ncr.status].color + '20' }]}><Text style={[s.badgeText, { color: STATUS_CONFIG[ncr.status].color }]}>{STATUS_CONFIG[ncr.status].label}</Text></View></View>
@@ -764,15 +718,12 @@ export default function NCRScreen() {
     <SafeAreaView style={[s.container, { backgroundColor: colors.background }]} edges={['top']}>
       <ScrollView style={s.scroll} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}>
         <View style={s.content}>
-
-          {/* Page Header */}
           <View style={[s.pageHeader, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <View style={[s.iconCircle, { backgroundColor: colors.primary + '15' }]}><AlertCircle size={28} color={colors.primary} /></View>
             <Text style={[s.pageTitle, { color: colors.text }]}>Non-Conformance Reports</Text>
             <Text style={[s.pageSub, { color: colors.textSecondary }]}>{ncrs.length} total NCRs</Text>
           </View>
 
-          {/* Stats */}
           <View style={s.statsRow}>
             {[
               { label: 'Open', val: stats.open, c: '#3B82F6' },
@@ -787,13 +738,11 @@ export default function NCRScreen() {
             ))}
           </View>
 
-          {/* Search */}
           <View style={[s.searchBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <Search size={18} color={colors.textSecondary} />
             <TextInput style={[s.searchInput, { color: colors.text }]} placeholder="Search NCRs..." placeholderTextColor={colors.textTertiary} value={searchQuery} onChangeText={setSearchQuery} />
           </View>
 
-          {/* Filter chips */}
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.filterScroll}>
             <Pressable style={[s.filterChip, { borderColor: !statusFilter ? colors.primary : colors.border }, !statusFilter && { backgroundColor: colors.primary + '15' }]} onPress={() => setStatusFilter('')}>
               <Text style={[s.filterText, { color: !statusFilter ? colors.primary : colors.textSecondary }]}>All</Text>
@@ -805,13 +754,11 @@ export default function NCRScreen() {
             ))}
           </ScrollView>
 
-          {/* New NCR button */}
           <Pressable style={[s.addBtn, { backgroundColor: colors.primary }]} onPress={() => { resetForm(); setOriginatorSignature(null); setShowAddModal(true); }}>
             <Plus size={20} color="#FFF" />
             <Text style={s.addBtnText}>New NCR</Text>
           </Pressable>
 
-          {/* List */}
           {isLoadingNCRs ? (
             <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 32 }} />
           ) : filteredNCRs.length === 0 ? (
@@ -866,7 +813,6 @@ export default function NCRScreen() {
               onClear={() => { setLinkedPostId(null); setLinkedPostNumber(null); }}
             />
 
-            {/* Severity + Type */}
             <View style={[s.metaBox, { borderColor: colors.border, backgroundColor: colors.surface }]}>
               <View style={{ flex: 1 }}>
                 <Text style={[s.metaLabel, { color: colors.textSecondary }]}>Severity</Text>
@@ -919,165 +865,40 @@ export default function NCRScreen() {
 // ============================================================
 
 const p = StyleSheet.create({
-  form: {
-    borderWidth: 1,
-    borderColor: FORM_BORDER,
-    borderRadius: 4,
-    overflow: 'hidden',
-    marginTop: 12,
-    backgroundColor: WHITE,
-  },
-  headerBar: {
-    flexDirection: 'row',
-    borderBottomWidth: 1,
-    borderBottomColor: FORM_BORDER,
-    backgroundColor: WHITE,
-  },
-  headerLeft: {
-    width: 90,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRightWidth: 1,
-    borderRightColor: FORM_BORDER,
-    paddingVertical: 8,
-  },
-  logoBadge: {
-    width: 40,
-    height: 40,
-    borderRadius: 6,
-    backgroundColor: '#4A90A4',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  form: { borderWidth: 1, borderColor: FORM_BORDER, borderRadius: 4, overflow: 'hidden', marginTop: 12, backgroundColor: WHITE },
+  headerBar: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: FORM_BORDER, backgroundColor: WHITE },
+  headerLeft: { width: 90, alignItems: 'center', justifyContent: 'center', borderRightWidth: 1, borderRightColor: FORM_BORDER, paddingVertical: 8 },
+  logoBadge: { width: 40, height: 40, borderRadius: 6, backgroundColor: '#4A90A4', alignItems: 'center', justifyContent: 'center' },
   logoText: { color: '#FFF', fontSize: 9, fontWeight: '700' },
   logoCaption: { fontSize: 7, color: '#888', marginTop: 2, textAlign: 'center' },
-  headerRight: {
-    flex: 1,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    justifyContent: 'center',
-    borderRightWidth: 1,
-    borderRightColor: FORM_BORDER,
-  },
+  headerRight: { flex: 1, paddingHorizontal: 8, paddingVertical: 6, justifyContent: 'center', borderRightWidth: 1, borderRightColor: FORM_BORDER },
   headerInfoRow: { flexDirection: 'row', marginBottom: 2 },
   headerInfoLabel: { fontSize: 10, fontWeight: '600', color: '#555', width: 80 },
   headerInfoValue: { fontSize: 10, color: '#333', flex: 1 },
-  headerFarRight: {
-    width: 110,
-    paddingHorizontal: 6,
-    paddingVertical: 6,
-    justifyContent: 'center',
-  },
+  headerFarRight: { width: 110, paddingHorizontal: 6, paddingVertical: 6, justifyContent: 'center' },
   headerSmall: { fontSize: 9, color: '#777', marginBottom: 1 },
-  titleBar: {
-    backgroundColor: FORM_HEADER_BG,
-    paddingVertical: 8,
-    alignItems: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: FORM_BORDER,
-  },
-  titleText: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '700',
-    letterSpacing: 0.3,
-  },
-  autoNumRow: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderBottomWidth: 1,
-    borderBottomColor: FORM_BORDER,
-    backgroundColor: '#FAFAFA',
-  },
+  titleBar: { backgroundColor: FORM_HEADER_BG, paddingVertical: 8, alignItems: 'center', borderBottomWidth: 1, borderBottomColor: FORM_BORDER },
+  titleText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700', letterSpacing: 0.3 },
+  autoNumRow: { paddingHorizontal: 10, paddingVertical: 4, borderBottomWidth: 1, borderBottomColor: FORM_BORDER, backgroundColor: '#FAFAFA' },
   autoNumText: { fontSize: 10, color: '#777' },
-  sectionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: SECTION_BG,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderBottomWidth: 1,
-    borderBottomColor: FORM_BORDER,
-    gap: 6,
-  },
+  sectionRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: SECTION_BG, paddingHorizontal: 10, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: FORM_BORDER, gap: 6 },
   sectionLabel: { fontSize: 12, fontWeight: '700', color: '#1B4F72' },
   sectionTitle: { fontSize: 12, fontWeight: '600', color: '#1B4F72' },
-  subHeaderRow: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderBottomWidth: 1,
-    borderBottomColor: FORM_BORDER,
-    backgroundColor: '#F0F6FB',
-  },
+  subHeaderRow: { paddingHorizontal: 10, paddingVertical: 5, borderBottomWidth: 1, borderBottomColor: FORM_BORDER, backgroundColor: '#F0F6FB' },
   subHeaderLabel: { fontSize: 11, fontWeight: '600', color: '#2C3E50', fontStyle: 'italic' },
-  tableRow: {
-    flexDirection: 'row',
-    borderBottomWidth: 1,
-    borderBottomColor: FORM_BORDER,
-    minHeight: 36,
-  },
-  labelCell: {
-    backgroundColor: LABEL_BG,
-    justifyContent: 'center',
-    paddingHorizontal: 6,
-    paddingVertical: 4,
-    borderRightWidth: 1,
-    borderRightColor: FORM_BORDER,
-  },
-  label: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#444',
-  },
-  valueCell: {
-    backgroundColor: WHITE,
-    justifyContent: 'center',
-    paddingHorizontal: 6,
-    paddingVertical: 4,
-    borderRightWidth: 1,
-    borderRightColor: FORM_BORDER,
-  },
-  cellValue: {
-    fontSize: 12,
-    color: '#333',
-  },
-  radioBox: {
-    paddingHorizontal: 14,
-    paddingVertical: 4,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: FORM_BORDER,
-    marginLeft: 6,
-    backgroundColor: WHITE,
-  },
-  radioBoxActive: {
-    borderColor: '#059669',
-    backgroundColor: '#ECFDF5',
-  },
-  radioBoxActiveNo: {
-    borderColor: '#3B82F6',
-    backgroundColor: '#EFF6FF',
-  },
+  tableRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: FORM_BORDER, minHeight: 36 },
+  labelCell: { backgroundColor: LABEL_BG, justifyContent: 'center', paddingHorizontal: 6, paddingVertical: 4, borderRightWidth: 1, borderRightColor: FORM_BORDER },
+  label: { fontSize: 11, fontWeight: '600', color: '#444' },
+  valueCell: { backgroundColor: WHITE, justifyContent: 'center', paddingHorizontal: 6, paddingVertical: 4, borderRightWidth: 1, borderRightColor: FORM_BORDER },
+  cellValue: { fontSize: 12, color: '#333' },
+  radioBox: { paddingHorizontal: 14, paddingVertical: 4, borderRadius: 4, borderWidth: 1, borderColor: FORM_BORDER, marginLeft: 6, backgroundColor: WHITE },
+  radioBoxActive: { borderColor: '#059669', backgroundColor: '#ECFDF5' },
+  radioBoxActiveNo: { borderColor: '#3B82F6', backgroundColor: '#EFF6FF' },
   radioText: { fontSize: 12, color: '#555' },
   radioTextActive: { fontWeight: '700', color: '#111' },
-  inlineInput: {
-    fontSize: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#DDD',
-    paddingVertical: 2,
-    paddingHorizontal: 4,
-  },
-  stampRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 4,
-  },
-  stampText: {
-    fontSize: 12,
-    color: '#059669',
-    fontWeight: '600',
-  },
+  inlineInput: { fontSize: 12, borderBottomWidth: 1, borderBottomColor: '#DDD', paddingVertical: 2, paddingHorizontal: 4 },
+  stampRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 4 },
+  stampText: { fontSize: 12, color: '#059669', fontWeight: '600' },
 });
 
 // ============================================================
