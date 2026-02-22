@@ -31,6 +31,7 @@ import TaskFeedPostLinker from '@/components/TaskFeedPostLinker';
 import { useLinkFormToPost } from '@/hooks/useTaskFeedFormLinks';
 import PinSignatureCapture, { isSignatureVerified } from '@/components/PinSignatureCapture';
 import { SignatureVerification } from '@/hooks/usePinSignature';
+import { supabase } from '@/lib/supabase';
 
 // ============================================================
 // CONFIGS
@@ -330,14 +331,26 @@ export default function NCRScreen() {
       await createNCR(ncrData);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-      if (linkedPostId) {
+      if (linkedPostId && linkedPostNumber) {
         try {
+          // Query the newly created NCR to get its UUID
+          const { data: newNcr } = await supabase
+            .from('ncr_records')
+            .select('id')
+            .eq('ncr_number', ncrNumber)
+            .single();
+
+          const ncrId = newNcr?.id || ncrNumber; // fallback to ncrNumber if query fails
+
           await linkFormMutation.mutateAsync({
             postId: linkedPostId,
+            postNumber: linkedPostNumber,
             formType: 'ncr',
+            formId: ncrId,
             formTitle: title,
             formNumber: ncrNumber,
           });
+          console.log('[NCR] Linked NCR', ncrNumber, 'to post', linkedPostNumber);
         } catch (e) { console.warn('[NCR] Link failed:', e); }
       }
 
@@ -350,7 +363,7 @@ export default function NCRScreen() {
     } finally {
       setIsSubmitting(false);
     }
-  }, [formData, originatorSignature, createNCR, generateNCRNumber, user, linkedPostId, linkFormMutation]);
+  }, [formData, originatorSignature, createNCR, generateNCRNumber, user, linkedPostId, linkedPostNumber, linkFormMutation]);
 
   // ============================================================
   // STATUS CHANGE
