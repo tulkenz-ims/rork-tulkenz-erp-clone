@@ -631,33 +631,64 @@ async function loadConnectedRecords(ncr) {
   if (!container) return;
   var h = '';
 
+  console.log('=== Loading connected records for NCR ===');
+  console.log('NCR ID:', ncr.id);
+  console.log('NCR Number:', ncr.ncr_number);
+  console.log('Org ID:', session.organization_id);
+
   try {
-    // 1. Find task feed post linked to this NCR via form_links (search by both form_number and form_id)
-    var formLinks = await sb.from('task_feed_form_links').select('*').eq('form_type', 'ncr').or('form_number.eq.' + ncr.ncr_number + ',form_id.eq.' + ncr.id);
-    var links = (formLinks.data || []);
+    // 1. Search form links by form_number
+    console.log('Step 1: Searching task_feed_form_links...');
+    var formLinks1 = await sb.from('task_feed_form_links').select('*').eq('form_number', ncr.ncr_number);
+    console.log('form_links by form_number:', formLinks1.data ? formLinks1.data.length + ' found' : 'error', formLinks1.error);
 
-    // Also check department tasks that reference this NCR directly
-    var deptRefResp = await sb.from('task_feed_department_tasks').select('post_id').or('module_reference_id.eq.' + ncr.id + ',module_history_id.eq.' + ncr.id);
-    var deptRefPosts = (deptRefResp.data || []).map(function(d) { return d.post_id; });
+    // Also search by form_id (matches both form_type='ncr' and 'Non-Conformance Report (NCR)')
+    var formLinks2 = await sb.from('task_feed_form_links').select('*').eq('form_id', ncr.id);
+    console.log('form_links by form_id:', formLinks2.data ? formLinks2.data.length + ' found' : 'error', formLinks2.error);
 
-    // Merge post IDs from both sources
-    var allPostIds = {};
-    links.forEach(function(l) { allPostIds[l.post_id] = true; });
-    deptRefPosts.forEach(function(pid) { if (pid) allPostIds[pid] = true; });
-    var postIds = Object.keys(allPostIds);
+    // Merge results
+    var allLinks = (formLinks1.data || []).concat(formLinks2.data || []);
+    var seenPostIds = {};
+    var links = [];
+    for (var li = 0; li < allLinks.length; li++) {
+      if (!seenPostIds[allLinks[li].post_id]) { seenPostIds[allLinks[li].post_id] = true; links.push(allLinks[li]); }
+    }
+    console.log('Merged unique links:', links.length);
+
+    // 2. Check department tasks that reference this NCR
+    console.log('Step 2: Searching task_feed_department_tasks...');
+    var deptRef1 = await sb.from('task_feed_department_tasks').select('post_id').eq('module_reference_id', ncr.id);
+    console.log('dept tasks by module_reference_id:', deptRef1.data ? deptRef1.data.length + ' found' : 'error', deptRef1.error);
+
+    var deptRef2 = await sb.from('task_feed_department_tasks').select('post_id').eq('module_history_id', ncr.id);
+    console.log('dept tasks by module_history_id:', deptRef2.data ? deptRef2.data.length + ' found' : 'error', deptRef2.error);
+
+    // Merge all post IDs
+    var postIdMap = {};
+    links.forEach(function(l) { postIdMap[l.post_id] = true; });
+    (deptRef1.data || []).forEach(function(d) { if (d.post_id) postIdMap[d.post_id] = true; });
+    (deptRef2.data || []).forEach(function(d) { if (d.post_id) postIdMap[d.post_id] = true; });
+    var postIds = Object.keys(postIdMap);
+    console.log('Total unique post IDs found:', postIds.length, postIds);
 
     if (postIds.length > 0) {
 
       // 2. Fetch the task feed posts
+      console.log('Step 3: Fetching task_feed_posts for IDs:', postIds);
       var postsResp = await sb.from('task_feed_posts').select('*').in('id', postIds);
+      console.log('Posts found:', postsResp.data ? postsResp.data.length : 'error', postsResp.error);
       var posts = postsResp.data || [];
 
       // 3. Fetch department tasks for these posts
+      console.log('Step 4: Fetching department tasks...');
       var deptResp = await sb.from('task_feed_department_tasks').select('*').in('post_id', postIds).order('created_at', { ascending: true });
+      console.log('Dept tasks found:', deptResp.data ? deptResp.data.length : 'error', deptResp.error);
       var deptTasks = deptResp.data || [];
 
       // 4. Fetch production hold log
+      console.log('Step 5: Fetching production hold log...');
       var holdLogResp = await sb.from('production_hold_log').select('*').in('post_id', postIds).order('created_at', { ascending: true });
+      console.log('Hold logs found:', holdLogResp.data ? holdLogResp.data.length : 'error', holdLogResp.error);
       var holdLogs = holdLogResp.data || [];
 
       // Render task feed posts
@@ -728,7 +759,9 @@ async function loadConnectedRecords(ncr) {
     }
 
     // 5. Hold Tags linked directly to NCR
+    console.log('Step 6: Fetching hold tags for NCR ID:', ncr.id);
     var holdTagResp = await sb.from('hold_tags').select('*').eq('ncr_id', ncr.id);
+    console.log('Hold tags found:', holdTagResp.data ? holdTagResp.data.length : 'error', holdTagResp.error);
     var holdTags = holdTagResp.data || [];
     if (holdTags.length > 0) {
       h += '<h3 style="font-size:15px;font-weight:700;color:var(--text);margin:16px 0 12px">&#127991;&#65039; Hold Tags (' + holdTags.length + ')</h3>';
