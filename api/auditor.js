@@ -433,6 +433,9 @@ async function loadModule(el, key) {
 
   try { await sb.from('audit_access_log').insert({ session_id: session.id, organization_id: session.organization_id, module: key, action: 'module_viewed', resource_type: key, user_agent: navigator.userAgent }); } catch(e) {}
 
+  // Special rendering: Document Control summary dashboard
+  if (key === 'documents') { await renderDocumentDashboard(body); return; }
+
   try {
     var resp = await sb.from(key).select('*').eq('organization_id', session.organization_id).order('created_at', { ascending: false }).limit(200);
     if (resp.error) throw resp.error;
@@ -793,6 +796,120 @@ async function loadConnectedRecords(ncr) {
   }
 
   container.innerHTML = h;
+}
+
+// ── Document Control Dashboard ──
+async function renderDocumentDashboard(body) {
+  body.innerHTML = '<div style="text-align:center;padding:60px"><span class="spinner"></span></div>';
+
+  // Pull counts from sds_records
+  var sdsResp = await sb.from('sds_records').select('id, status, contains_allergens, primary_department, sds_master_number, signal_word').eq('organization_id', session.organization_id);
+  var sdsData = sdsResp.data || [];
+  var sdsActive = sdsData.filter(function(r) { return r.status === 'active'; }).length;
+  var sdsExpired = sdsData.filter(function(r) { return r.status === 'expired'; }).length;
+  var sdsAllergen = sdsData.filter(function(r) { return r.contains_allergens === true; }).length;
+  var sdsDanger = sdsData.filter(function(r) { return r.signal_word && r.signal_word.toLowerCase() === 'danger'; }).length;
+
+  // Count by department
+  var deptCounts = {};
+  for (var i = 0; i < sdsData.length; i++) {
+    var dept = sdsData[i].primary_department || 'Unassigned';
+    deptCounts[dept] = (deptCounts[dept] || 0) + 1;
+  }
+
+  var totalDocs = sdsData.length;
+  document.getElementById('mainCount').textContent = totalDocs + ' total documents';
+
+  var h = '';
+
+  // ── Summary Stat Cards ──
+  h += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">';
+  h += statCard(totalDocs, 'Total Docs', '#4A90A4');
+  h += statCard(sdsData.length, 'SDS Sheets', '#10B981');
+  h += statCard(0, 'SOPs', '#6B7280');
+  h += statCard(0, 'Certifications', '#6B7280');
+  h += '</div>';
+
+  // ── Second row: status breakdown ──
+  h += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px">';
+  h += statCard(sdsActive, 'Active', '#10B981');
+  h += statCard(sdsExpired, 'Expired', '#EF4444');
+  h += statCard(sdsAllergen, 'Allergen', '#DC2626');
+  h += statCard(sdsDanger, 'Danger', '#F59E0B');
+  h += '</div>';
+
+  // ── Document Categories ──
+  h += '<div style="border-radius:12px;border:1px solid var(--border);overflow:hidden;margin-bottom:20px">';
+  h += '<div style="padding:12px 16px;background:rgba(74,144,164,0.1);font-weight:700;font-size:13px;color:#4A90A4;border-bottom:1px solid var(--border)">Document Categories</div>';
+
+  var categories = [
+    {name: 'SDS Sheets', count: sdsData.length, icon: '&#129514;', color: '#10B981', desc: 'Safety Data Sheets — chemical registry, allergens, hazard info', hasData: true, moduleKey: 'sds_records'},
+    {name: 'SOPs', count: 0, icon: '&#128203;', color: '#3B82F6', desc: 'Standard Operating Procedures', hasData: false},
+    {name: 'OPLs', count: 0, icon: '&#128218;', color: '#8B5CF6', desc: 'One Point Lessons — visual training aids', hasData: false},
+    {name: 'Policies', count: 0, icon: '&#128220;', color: '#F59E0B', desc: 'Company policies and guidelines', hasData: false},
+    {name: 'Work Instructions', count: 0, icon: '&#128295;', color: '#06B6D4', desc: 'Step-by-step task procedures', hasData: false},
+    {name: 'Specifications', count: 0, icon: '&#128200;', color: '#EC4899', desc: 'Product and material specifications', hasData: false},
+    {name: 'Certifications', count: 0, icon: '&#127942;', color: '#10B981', desc: 'Facility and personnel certifications', hasData: false},
+  ];
+
+  for (var ci = 0; ci < categories.length; ci++) {
+    var cat = categories[ci];
+    var countColor = cat.count > 0 ? cat.color : 'var(--text3)';
+    var clickAttr = cat.hasData && cat.moduleKey ? ' data-nav="' + cat.moduleKey + '"' : '';
+    h += '<div' + clickAttr + ' style="display:flex;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border);' + (cat.hasData ? 'cursor:pointer' : '') + '">';
+    h += '<span style="font-size:20px;margin-right:12px;width:28px;text-align:center">' + cat.icon + '</span>';
+    h += '<div style="flex:1">';
+    h += '<div style="font-weight:600;font-size:14px;color:var(--text1)">' + cat.name + '</div>';
+    h += '<div style="font-size:11px;color:var(--text3);margin-top:1px">' + cat.desc + '</div>';
+    h += '</div>';
+    h += '<span style="font-weight:700;font-size:18px;color:' + countColor + ';margin-right:8px">' + cat.count + '</span>';
+    if (cat.hasData) h += '<span style="color:var(--text3);font-size:12px">&#9654;</span>';
+    h += '</div>';
+  }
+  h += '</div>';
+
+  // ── SDS by Department breakdown ──
+  var deptKeys = Object.keys(deptCounts).sort();
+  if (deptKeys.length > 0) {
+    h += '<div style="border-radius:12px;border:1px solid var(--border);overflow:hidden;margin-bottom:20px">';
+    h += '<div style="padding:12px 16px;background:rgba(139,92,246,0.1);font-weight:700;font-size:13px;color:#8B5CF6;border-bottom:1px solid var(--border)">SDS by Department</div>';
+    for (var di = 0; di < deptKeys.length; di++) {
+      var dk = deptKeys[di];
+      var dc = deptCounts[dk];
+      var pct = Math.round((dc / sdsData.length) * 100);
+      h += '<div style="display:flex;align-items:center;padding:10px 16px;border-bottom:1px solid var(--border);gap:12px">';
+      h += '<div style="flex:1;font-size:13px;font-weight:600;color:var(--text1);text-transform:capitalize">' + esc(dk) + '</div>';
+      h += '<div style="width:120px;height:6px;background:var(--border);border-radius:3px;overflow:hidden"><div style="width:' + pct + '%;height:100%;background:#8B5CF6;border-radius:3px"></div></div>';
+      h += '<span style="font-weight:700;font-size:14px;color:var(--text1);min-width:28px;text-align:right">' + dc + '</span>';
+      h += '</div>';
+    }
+    h += '</div>';
+  }
+
+  // ── Compliance note ──
+  h += '<div style="border-radius:12px;border:1px solid var(--border);padding:16px;background:rgba(16,185,129,0.05)">';
+  h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="font-size:16px">&#9989;</span><span style="font-weight:700;font-size:13px;color:#10B981">SQF 2.3.2 — Document Control</span></div>';
+  h += '<div style="font-size:12px;color:var(--text2);line-height:1.5">All documents are centrally managed with version control, access tracking, and department-level organization. SDS documents include QR codes for instant access and are linked to allergen and hazard classification systems.</div>';
+  h += '</div>';
+
+  body.innerHTML = h;
+
+  // Click delegation for category navigation
+  body.addEventListener('click', function(e) {
+    var el = e.target.closest('[data-nav]');
+    if (el) {
+      var navKey = el.getAttribute('data-nav');
+      var navEl = document.querySelector('[data-key="' + navKey + '"]');
+      if (navEl) navEl.click();
+    }
+  });
+}
+
+function statCard(num, label, color) {
+  return '<div style="border-radius:10px;border:1px solid var(--border);padding:16px;text-align:center;background:' + color + '0A">'
+    + '<div style="font-size:28px;font-weight:800;color:' + color + '">' + num + '</div>'
+    + '<div style="font-size:11px;font-weight:600;color:var(--text3);margin-top:2px">' + label + '</div>'
+    + '</div>';
 }
 
 // ── SDS Binder Reference Builder ──
