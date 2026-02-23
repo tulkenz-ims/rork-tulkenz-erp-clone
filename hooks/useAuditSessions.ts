@@ -6,7 +6,7 @@ import { useOrganization } from '@/contexts/OrganizationContext';
 
 // ── Types ──────────────────────────────────────────────────────
 
-export type AuditType = 'sqf' | 'brcgs' | 'fssc' | 'internal' | 'regulatory' | 'customer' | 'other';
+export type AuditType = 'sqf' | 'brcgs' | 'fssc' | 'internal' | 'regulatory' | 'customer' | 'fda' | 'osha' | 'esg' | 'other';
 export type AuditSessionStatus = 'active' | 'expired' | 'revoked';
 
 export interface AuditSession {
@@ -142,6 +142,9 @@ export const AUDIT_TYPE_LABELS: Record<AuditType, string> = {
   internal: 'Internal',
   regulatory: 'Regulatory',
   customer: 'Customer',
+  fda: 'FDA / FSMA',
+  osha: 'OSHA',
+  esg: 'ESG',
   other: 'Other',
 };
 
