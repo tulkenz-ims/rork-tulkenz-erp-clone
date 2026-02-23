@@ -67,6 +67,9 @@ const AUDIT_TYPES: { value: AuditType; label: string }[] = [
   { value: 'internal', label: 'Internal' },
   { value: 'regulatory', label: 'Regulatory' },
   { value: 'customer', label: 'Customer' },
+  { value: 'fda', label: 'FDA / FSMA' },
+  { value: 'osha', label: 'OSHA' },
+  { value: 'esg', label: 'ESG' },
   { value: 'other', label: 'Other' },
 ];
 
