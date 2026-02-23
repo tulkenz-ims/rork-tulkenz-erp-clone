@@ -710,6 +710,148 @@ var AUDIT_TYPES = {
       },
     ]
   },
+
+  // ═══════════════════════════════════════
+  // FDA / FSMA — 21 CFR 117 Structure
+  // ═══════════════════════════════════════
+  fda: {
+    label: 'FDA / FSMA Inspection', badge: 'FDA Food Safety Modernization Act \u2022 21 CFR 117',
+    sections: [
+      { id:'f1', num:'1', name:'Food Safety Plan & Preventive Controls', sqf:'21 CFR 117 Subpart C', color:'#EF4444', icon:'\u26A0\uFE0F',
+        desc:'Hazard analysis, preventive controls, allergen controls, sanitation controls, recall plan',
+        modules:[
+          {key:'sds_records',     name:'Chemical Hazard Controls', sqf:'\u00A7117.135', table:'sds_records'},
+          {key:'_allergen_view',  name:'Allergen Controls',       sqf:'\u00A7117.135(c)', special:'allergen'},
+          {key:'environmental_monitoring',name:'Environmental Monitoring',sqf:'\u00A7117.165',table:'environmental_monitoring'},
+          {key:'_ph_fda_fsp',     name:'Written Food Safety Plan', sqf:'\u00A7117.126', ph:true, phIcon:'\uD83D\uDCD1', phDesc:'Written food safety plan including hazard analysis and preventive controls.', phItems:['Hazard analysis (biological, chemical, physical, radiological)','Process preventive controls','Allergen preventive controls','Sanitation preventive controls','Supply-chain preventive controls','Recall plan']},
+          {key:'_ph_fda_pc',      name:'Process Controls & CCPs', sqf:'\u00A7117.135(b)', ph:true, phIcon:'\uD83C\uDFAF', phDesc:'Process parameters, critical limits, and monitoring procedures for identified hazards.', phItems:['Process preventive controls documentation','Critical limits for each control','Monitoring procedures & frequencies','Corrective action procedures','Verification activities']},
+        ]
+      },
+      { id:'f2', num:'2', name:'Current Good Manufacturing Practices', sqf:'21 CFR 117 Subpart B', color:'#3B82F6', icon:'\uD83C\uDFED',
+        desc:'Personnel, plant & grounds, sanitary operations, equipment, production controls',
+        modules:[
+          {key:'pm_schedules',    name:'Equipment Maintenance',   sqf:'\u00A7117.40', table:'pm_schedules'},
+          {key:'work_orders',     name:'Work Orders',             sqf:'\u00A7117.40', table:'work_orders'},
+          {key:'inspections',     name:'Facility Inspections',    sqf:'\u00A7117.35', table:'inspections'},
+          {key:'_ph_fda_sani',    name:'Sanitary Operations',     sqf:'\u00A7117.35', ph:true, phIcon:'\uD83E\uDDF9', phDesc:'Cleaning and sanitizing of food-contact surfaces, utensils, and equipment.', phItems:['Sanitation SOPs','Pre-operational inspection records','Cleaning schedules & verification','Chemical concentration testing logs','Personnel hygiene procedures']},
+          {key:'_ph_fda_pest',    name:'Pest Control',            sqf:'\u00A7117.35(c)', ph:true, phIcon:'\uD83D\uDC1B', phDesc:'Exclusion of pests from all areas of the food plant.', phItems:['Pest management contract','Trap placement map','Pest activity logs','Corrective actions for findings','Pesticide application records']},
+        ]
+      },
+      { id:'f3', num:'3', name:'Supply Chain & Traceability', sqf:'21 CFR 117 Subpart G / 21 CFR 1 Subpart S', color:'#F59E0B', icon:'\uD83D\uDE9A',
+        desc:'Supplier verification, FSVP, food traceability (FSMA 204), supply-chain controls',
+        modules:[
+          {key:'vendor_approvals',name:'Supplier Verification',   sqf:'\u00A7117.405', table:'vendor_approvals'},
+          {key:'_ph_fda_fsvp',    name:'Foreign Supplier Verification', sqf:'21 CFR 1 Subpart L', ph:true, phIcon:'\uD83C\uDF10', phDesc:'Risk-based verification that foreign suppliers meet U.S. safety standards.', phItems:['Importer identification','Hazard analysis per food/supplier','Supplier verification activities','Corrective action records','Reevaluation documentation']},
+          {key:'_ph_fda_trace',   name:'Food Traceability (FSMA 204)', sqf:'21 CFR 1 Subpart S', ph:true, phIcon:'\uD83D\uDD17', phDesc:'Additional traceability records for foods on the Food Traceability List.', phItems:['Key Data Elements (KDEs) per Critical Tracking Event','Traceability lot codes','Receiving records with KDEs','Shipping records with KDEs','Traceability plan documentation','Sortable, searchable electronic records']},
+        ]
+      },
+      { id:'f4', num:'4', name:'Verification & Recordkeeping', sqf:'21 CFR 117 Subpart F', color:'#10B981', icon:'\u2705',
+        desc:'Verification activities, corrective actions, records, recall procedures, training',
+        modules:[
+          {key:'documents',       name:'Document Control',        sqf:'\u00A7117.305', special:'doc_dashboard'},
+          {key:'ncr_records',     name:'Corrective Actions',      sqf:'\u00A7117.150', table:'ncr_records'},
+          {key:'audit_findings',  name:'Verification Activities', sqf:'\u00A7117.155', table:'audit_findings'},
+          {key:'training_records',name:'Training & Qualification', sqf:'\u00A7117.4', table:'training_records'},
+          {key:'backup_verification_log',name:'Backup Verification',sqf:'\u00A7117.305(e)',table:'backup_verification_log'},
+          {key:'_ph_fda_recall',  name:'Recall Plan',             sqf:'\u00A7117.139', ph:true, phIcon:'\uD83D\uDEA8', phDesc:'Written plan for recalling food that may be adulterated or misbranded.', phItems:['Recall initiation procedures','Product identification & coding','Notification procedures (FDA, customers, public)','Effectiveness check procedures','Mock recall test results','Distribution records for traceability']},
+        ]
+      },
+    ]
+  },
+
+  // ═══════════════════════════════════════
+  // OSHA — 29 CFR 1910 Food Manufacturing
+  // ═══════════════════════════════════════
+  osha: {
+    label: 'OSHA Safety Inspection', badge: 'OSHA 29 CFR 1910 \u2022 General Industry \u2022 Food Manufacturing',
+    sections: [
+      { id:'o1', num:'1', name:'Hazardous Energy Control (LOTO)', sqf:'29 CFR 1910.147', color:'#EF4444', icon:'\u26A1',
+        desc:'Lockout/tagout \u2014 #1 most cited standard in food manufacturing',
+        modules:[
+          {key:'pm_schedules',    name:'Equipment LOTO Schedules', sqf:'1910.147(c)(4)', table:'pm_schedules'},
+          {key:'work_orders',     name:'Maintenance Work Orders',  sqf:'1910.147(d)', table:'work_orders'},
+          {key:'training_records',name:'LOTO Training Records',    sqf:'1910.147(c)(7)', table:'training_records'},
+          {key:'_ph_osha_loto',   name:'LOTO Program',             sqf:'1910.147(c)(1)', ph:true, phIcon:'\uD83D\uDD12', phDesc:'Energy control program with machine-specific procedures and periodic inspections.', phItems:['Written energy control program','Machine-specific LOTO procedures','Periodic inspection records (annual minimum)','Employee training certifications','Authorized/affected employee lists','Group lockout procedures']},
+        ]
+      },
+      { id:'o2', num:'2', name:'Machine Guarding & Equipment', sqf:'29 CFR 1910.212\u2013219', color:'#F59E0B', icon:'\u2699\uFE0F',
+        desc:'Machine guarding, point-of-operation protection, mechanical power transmission',
+        modules:[
+          {key:'inspections',     name:'Equipment Safety Inspections', sqf:'1910.212', table:'inspections'},
+          {key:'_ph_osha_guard',  name:'Machine Guarding Program', sqf:'1910.212(a)', ph:true, phIcon:'\uD83D\uDEE1\uFE0F', phDesc:'Guard requirements for all machines with parts, functions, or processes that may cause injury.', phItems:['Machine guarding inventory & assessments','Point-of-operation guard documentation','Power transmission apparatus guarding','Mechanical power press inspections (1910.217)','Abrasive wheel machinery guards (1910.215)','Guarding deficiency correction records']},
+          {key:'_ph_osha_robot',  name:'Robotics & Automation Safety', sqf:'1910.212(a)(3)', ph:true, phIcon:'\uD83E\uDD16', phDesc:'Safety measures for automated equipment, conveyors, and robotic systems.', phItems:['Risk assessments for automated equipment','Safety sensor / light curtain documentation','Emergency stop testing records','Perimeter guarding verification','Collaborative robot safety assessments']},
+        ]
+      },
+      { id:'o3', num:'3', name:'HazCom & Chemical Safety', sqf:'29 CFR 1910.1200', color:'#8B5CF6', icon:'\uD83E\uDDEA',
+        desc:'Hazard communication, SDS management, GHS labeling, chemical exposure',
+        modules:[
+          {key:'sds_records',     name:'Safety Data Sheets',       sqf:'1910.1200(g)', table:'sds_records'},
+          {key:'_allergen_view',  name:'Chemical Allergen Hazards', sqf:'1910.1200(d)', special:'allergen'},
+          {key:'_ph_osha_hazcom', name:'HazCom Written Program',   sqf:'1910.1200(e)', ph:true, phIcon:'\uD83D\uDCDD', phDesc:'Written hazard communication program with chemical inventory and labeling procedures.', phItems:['Written HazCom program','Chemical inventory list','Container labeling procedures (GHS)','SDS accessibility & maintenance plan','Employee HazCom training records','Non-routine task chemical procedures']},
+          {key:'_ph_osha_expo',   name:'Exposure Monitoring',      sqf:'1910.1000', ph:true, phIcon:'\uD83C\uDF21\uFE0F', phDesc:'Air monitoring and exposure assessments for permissible exposure limits (PELs).', phItems:['Air monitoring records','PEL compliance assessments','Engineering controls documentation','Respiratory protection program (if applicable)','Medical surveillance records']},
+        ]
+      },
+      { id:'o4', num:'4', name:'General Safety & Health', sqf:'29 CFR 1910 Subparts D\u2013I', color:'#10B981', icon:'\uD83E\uDDBA',
+        desc:'Walking surfaces, exits, PPE, electrical, fire protection, emergency action plans',
+        modules:[
+          {key:'_ph_osha_walk',   name:'Walking & Working Surfaces', sqf:'1910.22\u201330', ph:true, phIcon:'\u26A0\uFE0F', phDesc:'Floor maintenance, aisles, stairs, ladders, fall protection.', phItems:['Floor condition inspection records','Housekeeping program documentation','Portable ladder inspection logs','Fixed ladder/stairway compliance','Fall protection assessments','Walking surface hazard corrections']},
+          {key:'_ph_osha_ppe',    name:'Personal Protective Equipment', sqf:'1910.132\u2013138', ph:true, phIcon:'\uD83E\uDDE4', phDesc:'PPE hazard assessments, selection, training, and maintenance.', phItems:['PPE hazard assessment (written certification)','PPE selection documentation','Employee PPE training records','PPE inspection & replacement logs','Hearing conservation program (if >85 dBA)','Respiratory protection program (if applicable)']},
+          {key:'_ph_osha_fire',   name:'Fire Protection & Egress',  sqf:'1910.34\u201339 / 1910.155\u2013165', ph:true, phIcon:'\uD83D\uDD25', phDesc:'Emergency exits, fire extinguishers, sprinkler systems, emergency plans.', phItems:['Emergency action plan','Fire prevention plan','Fire extinguisher inspection logs (monthly)','Sprinkler system inspection records','Exit route & signage compliance','Evacuation drill records']},
+          {key:'_ph_osha_elec',   name:'Electrical Safety',         sqf:'1910.301\u2013399', ph:true, phIcon:'\u26A1', phDesc:'Electrical safety in the workplace including arc flash and GFCI.', phItems:['Electrical safety program','Arc flash hazard analysis','GFCI testing records','Panel labeling & clearance compliance','Electrical equipment inspection logs']},
+        ]
+      },
+      { id:'o5', num:'5', name:'Recordkeeping & Incident Mgmt', sqf:'29 CFR 1904', color:'#3B82F6', icon:'\uD83D\uDCCB',
+        desc:'OSHA 300 logs, incident reporting, corrective actions, injury tracking',
+        modules:[
+          {key:'ncr_records',     name:'Incident / NCR Records',   sqf:'1904.29', table:'ncr_records'},
+          {key:'documents',       name:'Document Control',         sqf:'1904.33', special:'doc_dashboard'},
+          {key:'audit_findings',  name:'Safety Audit Findings',    sqf:'1904.35', table:'audit_findings'},
+          {key:'backup_verification_log',name:'Backup Verification',sqf:'1904.33(a)',table:'backup_verification_log'},
+          {key:'_ph_osha_300',    name:'OSHA 300 Log',             sqf:'1904.29\u201332', ph:true, phIcon:'\uD83D\uDCC5', phDesc:'Log of work-related injuries and illnesses, annual summary, and reporting.', phItems:['OSHA Form 300 \u2014 Log of Injuries & Illnesses','OSHA Form 300A \u2014 Annual Summary (posted Feb 1\u2013Apr 30)','OSHA Form 301 \u2014 Incident Reports','Severe injury reporting (8hr/24hr rule)','5-year retention of all 300 forms','Electronic submission records (if 250+ employees)']},
+        ]
+      },
+    ]
+  },
+
+  // ═══════════════════════════════════════
+  // ESG — Environmental, Social, Governance
+  // ═══════════════════════════════════════
+  esg: {
+    label: 'ESG Audit', badge: 'Environmental, Social & Governance \u2022 Sustainability Reporting',
+    sections: [
+      { id:'e1', num:'E', name:'Environmental', sqf:'GRI 300 Series', color:'#10B981', icon:'\uD83C\uDF3F',
+        desc:'Water, waste, energy, emissions, chemical management, environmental compliance',
+        modules:[
+          {key:'sds_records',     name:'Chemical Inventory',       sqf:'GRI 306', table:'sds_records'},
+          {key:'_ph_esg_water',   name:'Water Management',         sqf:'GRI 303', ph:true, phIcon:'\uD83D\uDCA7', phDesc:'Water withdrawal, consumption, discharge, and quality management.', phItems:['Water usage tracking by source','Wastewater discharge permits & monitoring','Water recycling/reuse metrics','Water efficiency targets & progress','Water quality testing records','Spill prevention & response plans']},
+          {key:'_ph_esg_waste',   name:'Waste & Recycling',        sqf:'GRI 306', ph:true, phIcon:'\u267B\uFE0F', phDesc:'Waste generation, recycling programs, landfill diversion, and food waste reduction.', phItems:['Waste generation by category (hazardous/non-hazardous)','Recycling rate metrics & targets','Food waste reduction program','Waste hauler certifications','Hazardous waste manifests','Landfill diversion rates']},
+          {key:'_ph_esg_energy',  name:'Energy & Emissions',       sqf:'GRI 302/305', ph:true, phIcon:'\u26A1', phDesc:'Energy consumption, renewable energy, GHG emissions (Scope 1, 2, 3).', phItems:['Energy consumption by source','Scope 1 emissions (direct)','Scope 2 emissions (purchased electricity)','Scope 3 emissions (value chain)','Energy efficiency targets & progress','Renewable energy usage & goals']},
+          {key:'_ph_esg_comply',  name:'Environmental Compliance', sqf:'GRI 307', ph:true, phIcon:'\uD83D\uDCDC', phDesc:'Regulatory compliance, permits, violations, and corrective actions.', phItems:['Environmental permits & licenses','Regulatory inspection records','Violation history & corrective actions','Air quality permits (if applicable)','Environmental management system documentation']},
+        ]
+      },
+      { id:'e2', num:'S', name:'Social', sqf:'GRI 400 Series', color:'#3B82F6', icon:'\uD83E\uDDD1\u200D\uD83E\uDD1D\u200D\uD83E\uDDD1',
+        desc:'Worker health & safety, labor practices, training, diversity, community impact',
+        modules:[
+          {key:'ncr_records',     name:'Safety Incidents',         sqf:'GRI 403', table:'ncr_records'},
+          {key:'training_records',name:'Training & Development',   sqf:'GRI 404', table:'training_records'},
+          {key:'_ph_esg_health',  name:'Worker Health & Safety',   sqf:'GRI 403', ph:true, phIcon:'\u2695\uFE0F', phDesc:'Occupational health management system, injury rates, wellness programs.', phItems:['OHS management system documentation','TRIR (Total Recordable Incident Rate)','DART Rate (Days Away, Restricted, Transferred)','Workers compensation metrics','Wellness program participation','Return-to-work program records']},
+          {key:'_ph_esg_labor',   name:'Labor Practices',          sqf:'GRI 401\u2013402', ph:true, phIcon:'\u2696\uFE0F', phDesc:'Employment practices, labor rights, benefits, and working conditions.', phItems:['Employee demographics & turnover rates','Benefits program documentation','Working hours & overtime tracking','Minimum wage compliance','Grievance mechanism records','Labor law compliance documentation']},
+          {key:'_ph_esg_diversity',name:'Diversity & Inclusion',   sqf:'GRI 405\u2013406', ph:true, phIcon:'\uD83C\uDF08', phDesc:'Workforce diversity, equal opportunity, and non-discrimination.', phItems:['Workforce diversity metrics (gender, age, ethnicity)','Pay equity analysis','Anti-discrimination policy','Equal opportunity hiring practices','D&I training records','Harassment reporting & resolution']},
+        ]
+      },
+      { id:'e3', num:'G', name:'Governance', sqf:'GRI 200 Series', color:'#8B5CF6', icon:'\uD83C\uDFDB\uFE0F',
+        desc:'Ethics, compliance, transparency, anti-corruption, supply chain responsibility',
+        modules:[
+          {key:'documents',       name:'Document Control',         sqf:'GRI 102', special:'doc_dashboard'},
+          {key:'vendor_approvals',name:'Supply Chain Assessment',  sqf:'GRI 308/414', table:'vendor_approvals'},
+          {key:'audit_findings',  name:'Compliance Audits',        sqf:'GRI 205\u2013206', table:'audit_findings'},
+          {key:'backup_verification_log',name:'Data Integrity',    sqf:'GRI 102-56', table:'backup_verification_log'},
+          {key:'_ph_esg_ethics',  name:'Ethics & Anti-Corruption', sqf:'GRI 205', ph:true, phIcon:'\uD83D\uDCDC', phDesc:'Business ethics, anti-corruption policies, whistleblower protections.', phItems:['Code of conduct / ethics policy','Anti-corruption policy & training','Whistleblower protection program','Conflicts of interest disclosures','Ethics hotline records','Board oversight documentation']},
+          {key:'_ph_esg_report',  name:'ESG Reporting & Disclosure', sqf:'GRI 102', ph:true, phIcon:'\uD83D\uDCCA', phDesc:'Sustainability reporting frameworks and stakeholder communication.', phItems:['Annual sustainability/ESG report','GRI Content Index','UN SDG alignment mapping','Stakeholder engagement records','Materiality assessment','Third-party verification/assurance']},
+        ]
+      },
+    ]
+  },
 };
 
 // ── Dynamic audit structure loader ──
@@ -727,8 +869,12 @@ function loadAuditStructure(auditType) {
     activeAuditType = AUDIT_TYPES.fssc;
   } else if (t.indexOf('brcgs') >= 0 || t.indexOf('brc') >= 0) {
     activeAuditType = AUDIT_TYPES.brcgs;
-  } else if (t.indexOf('regulatory') >= 0 || t.indexOf('fda') >= 0 || t.indexOf('fsma') >= 0) {
+  } else if (t.indexOf('regulatory') >= 0 || t.indexOf('fsma') >= 0) {
     activeAuditType = AUDIT_TYPES.regulatory;
+  } else if (t.indexOf('osha') >= 0 || t.indexOf('safety inspection') >= 0) {
+    activeAuditType = AUDIT_TYPES.osha;
+  } else if (t.indexOf('esg') >= 0 || t.indexOf('sustainability') >= 0) {
+    activeAuditType = AUDIT_TYPES.esg;
   } else if (t.indexOf('customer') >= 0) {
     activeAuditType = AUDIT_TYPES.customer;
   } else if (t.indexOf('internal') >= 0) {
