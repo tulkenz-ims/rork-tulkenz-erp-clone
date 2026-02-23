@@ -319,193 +319,393 @@ var session = null;
 var currentNCRData = null;
 
 // ════════════════════════════════════════════════════════════════
-// MULTI-AUDIT SUPPORT — SQF, FDA/FSMA, OSHA, ESG
+// MULTI-AUDIT SUPPORT — 7 Audit Types
+// SQF | BRCGS | FSSC 22000 | Internal | Regulatory | Customer | Other
 // ════════════════════════════════════════════════════════════════
 var AUDIT_TYPES = {
-  // ── SQF Edition 10 ──
+
+  // ═══════════════════════════════════════
+  // SQF — Edition 10 (4 Sections + GMP)
+  // ═══════════════════════════════════════
   sqf: {
-    label: 'SQF Edition 10', badge: 'SQF Food Safety Code — Edition 10 \\u2022 Food Manufacturing',
+    label: 'SQF Edition 10', badge: 'SQF Food Safety Code \u2014 Edition 10 \u2022 Food Manufacturing',
     sections: [
-      { id:'s1', num:'1', name:'Management & Culture', sqf:'2.1', color:'#6C5CE7', icon:'\\uD83C\\uDFDB\\uFE0F',
+      { id:'s1', num:'1', name:'Management & Culture', sqf:'2.1', color:'#6C5CE7', icon:'\uD83C\uDFDB\uFE0F',
         desc:'Management commitment, food safety policy, food safety culture plan',
         modules:[
-          {key:'_ph_sqf_policy',  name:'Food Safety Policy',      sqf:'2.1.1', ph:true, phIcon:'\\uD83D\\uDCC3', phDesc:'Documented food safety policy, management commitment statement, and organizational chart.', phItems:['Food safety policy statement','Management commitment documentation','Organizational chart with food safety roles','SQF practitioner designation','Management review records']},
-          {key:'_ph_sqf_culture', name:'Food Safety Culture Plan', sqf:'2.1.2', ph:true, phIcon:'\\uD83C\\uDF1F', phDesc:'Measurable objectives for building a positive food safety culture across the facility.', phItems:['Culture plan objectives & KPIs','Employee engagement surveys','Food safety communication records','Culture assessment results','Leadership involvement evidence']},
-          {key:'_ph_sqf_mgmt',    name:'Management Review',        sqf:'2.1.3', ph:true, phIcon:'\\uD83D\\uDCCA', phDesc:'Regular management reviews of the food safety system effectiveness.', phItems:['Management review meeting minutes','System effectiveness assessments','Resource allocation decisions','Improvement action items','Review frequency documentation']},
+          {key:'_ph_sqf_policy',  name:'Food Safety Policy',      sqf:'2.1.1', ph:true, phIcon:'\uD83D\uDCC3', phDesc:'Documented food safety policy, management commitment statement, and organizational chart.', phItems:['Food safety policy statement','Management commitment documentation','Organizational chart with food safety roles','SQF practitioner designation','Management review records']},
+          {key:'_ph_sqf_culture', name:'Food Safety Culture Plan', sqf:'2.1.2', ph:true, phIcon:'\uD83C\uDF1F', phDesc:'Measurable objectives for building a positive food safety culture across the facility.', phItems:['Culture plan objectives & KPIs','Employee engagement surveys','Food safety communication records','Culture assessment results','Leadership involvement evidence']},
+          {key:'_ph_sqf_mgmt',    name:'Management Review',        sqf:'2.1.3', ph:true, phIcon:'\uD83D\uDCCA', phDesc:'Regular management reviews of the food safety system effectiveness.', phItems:['Management review meeting minutes','System effectiveness assessments','Resource allocation decisions','Improvement action items','Review frequency documentation']},
         ]
       },
-      { id:'s2', num:'2', name:'Food Safety System', sqf:'2.2\\u20132.4', color:'#EF4444', icon:'\\u2622\\uFE0F',
+      { id:'s2', num:'2', name:'Food Safety System', sqf:'2.2\u20132.4', color:'#EF4444', icon:'\u2622\uFE0F',
         desc:'HACCP, allergen management, chemical hazards, supplier approval, environmental monitoring',
         modules:[
           {key:'sds_records',     name:'SDS / Chemical Hazards', sqf:'2.3.1', table:'sds_records'},
           {key:'_allergen_view',  name:'Allergen Management',    sqf:'2.8.1', special:'allergen'},
           {key:'vendor_approvals',name:'Approved Suppliers',     sqf:'2.3.4', table:'vendor_approvals'},
           {key:'environmental_monitoring',name:'Environmental Monitoring',sqf:'2.4.8',table:'environmental_monitoring'},
-          {key:'_ph_sqf_haccp',   name:'HACCP Plan',             sqf:'2.4.1', ph:true, phIcon:'\\u26A0\\uFE0F', phDesc:'Hazard analysis, critical control points, and food safety plans.', phItems:['Hazard analysis worksheets','CCP determination records','Critical limits & monitoring procedures','Corrective action procedures','HACCP plan validation records','Flow diagrams & process descriptions']},
+          {key:'_ph_sqf_haccp',   name:'HACCP Plan',             sqf:'2.4.1', ph:true, phIcon:'\u26A0\uFE0F', phDesc:'Hazard analysis, critical control points, and food safety plans.', phItems:['Hazard analysis worksheets','CCP determination records','Critical limits & monitoring procedures','Corrective action procedures','HACCP plan validation records','Flow diagrams & process descriptions']},
         ]
       },
-      { id:'s3', num:'3', name:'Verification & Improvement', sqf:'2.5\\u20132.6', color:'#10B981', icon:'\\u2705',
+      { id:'s3', num:'3', name:'Verification & Improvement', sqf:'2.5\u20132.6', color:'#10B981', icon:'\u2705',
         desc:'Document control, NCR/CAPA, internal audits, traceability, validation',
         modules:[
           {key:'documents',       name:'Document Control',        sqf:'2.2.1', special:'doc_dashboard'},
           {key:'ncr_records',     name:'NCR / Corrective Actions',sqf:'2.5.3', table:'ncr_records'},
           {key:'audit_findings',  name:'Internal Audits',         sqf:'2.5.4', table:'audit_findings'},
-          {key:'_ph_sqf_trace',   name:'Traceability & Recall',   sqf:'2.6.1', ph:true, phIcon:'\\uD83D\\uDD0D', phDesc:'Product identification, traceability system, mock recall records.', phItems:['Traceability system documentation','Mock recall test results & timing','Lot coding / date coding procedures','Receiving & shipping trace records','Withdrawal & recall procedure','SQFI & CB notification procedures']},
+          {key:'_ph_sqf_trace',   name:'Traceability & Recall',   sqf:'2.6.1', ph:true, phIcon:'\uD83D\uDD0D', phDesc:'Product identification, traceability system, mock recall records.', phItems:['Traceability system documentation','Mock recall test results & timing','Lot coding / date coding procedures','Receiving & shipping trace records','Withdrawal & recall procedure','SQFI & CB notification procedures']},
           {key:'backup_verification_log',name:'Backup Verification',sqf:'2.2.3',table:'backup_verification_log'},
         ]
       },
-      { id:'s4', num:'4', name:'Support Programs', sqf:'2.7\\u20132.9', color:'#F59E0B', icon:'\\uD83C\\uDF93',
+      { id:'s4', num:'4', name:'Support Programs', sqf:'2.7\u20132.9', color:'#F59E0B', icon:'\uD83C\uDF93',
         desc:'Training, food defense, food fraud, change management',
         modules:[
           {key:'training_records',name:'Training Records',         sqf:'2.9.1', table:'training_records'},
-          {key:'_ph_sqf_defense', name:'Food Defense & Fraud',     sqf:'2.7.1', ph:true, phIcon:'\\uD83D\\uDEE1\\uFE0F', phDesc:'Site security, vulnerability assessments, food fraud mitigation.', phItems:['Food defense plan','Vulnerability assessment (CARVER+Shock or equivalent)','Food fraud mitigation plan','Economically motivated adulteration assessment','Site security measures documentation','Visitor & contractor access controls']},
-          {key:'_ph_sqf_change',  name:'Change Management',        sqf:'2.3.5', ph:true, phIcon:'\\uD83D\\uDD04', phDesc:'Documented procedures for managing process, personnel, and equipment changes.', phItems:['Change management procedure','Change request & approval records','Risk assessment for changes','Post-change verification records','Communication of changes to affected personnel']},
+          {key:'_ph_sqf_defense', name:'Food Defense & Fraud',     sqf:'2.7.1', ph:true, phIcon:'\uD83D\uDEE1\uFE0F', phDesc:'Site security, vulnerability assessments, food fraud mitigation.', phItems:['Food defense plan','Vulnerability assessment (CARVER+Shock or equivalent)','Food fraud mitigation plan','Economically motivated adulteration assessment','Site security measures documentation','Visitor & contractor access controls']},
+          {key:'_ph_sqf_change',  name:'Change Management',        sqf:'2.3.5', ph:true, phIcon:'\uD83D\uDD04', phDesc:'Documented procedures for managing process, personnel, and equipment changes.', phItems:['Change management procedure','Change request & approval records','Risk assessment for changes','Post-change verification records','Communication of changes to affected personnel']},
         ]
       },
-      { id:'gmp', num:'11', name:'GMP \\u2014 Good Manufacturing Practices', sqf:'Module 11', color:'#8B5CF6', icon:'\\uD83C\\uDFED',
+      { id:'gmp', num:'11', name:'GMP \u2014 Good Manufacturing Practices', sqf:'Module 11', color:'#8B5CF6', icon:'\uD83C\uDFED',
         desc:'Facility, equipment, hygiene, sanitation, maintenance, pest control',
         modules:[
           {key:'pm_schedules',    name:'Preventive Maintenance',   sqf:'11.2.8', table:'pm_schedules'},
           {key:'work_orders',     name:'Work Orders',              sqf:'11.2.8', table:'work_orders'},
           {key:'inspections',     name:'Facility Inspections',     sqf:'11.2.1', table:'inspections'},
-          {key:'_ph_sqf_sanit',   name:'Sanitation & Cleaning',    sqf:'11.2.6', ph:true, phIcon:'\\uD83E\\uDDF9', phDesc:'Master sanitation schedule, cleaning verification, pre-op inspections.', phItems:['Master sanitation schedule','Pre-operational inspection records','Cleaning chemical approvals','Sanitation SOP library','ATP / swab verification records','Clean-in-place (CIP) logs']},
-          {key:'_ph_sqf_pest',    name:'Pest Control',             sqf:'11.2.4', ph:true, phIcon:'\\uD83D\\uDC1B', phDesc:'Integrated pest management program and monitoring.', phItems:['IPM program documentation','Pest control operator contract & license','Trap map and inspection logs','Pest activity trend reports','Corrective actions for pest findings']},
+          {key:'_ph_sqf_sanit',   name:'Sanitation & Cleaning',    sqf:'11.2.6', ph:true, phIcon:'\uD83E\uDDF9', phDesc:'Master sanitation schedule, cleaning verification, pre-op inspections.', phItems:['Master sanitation schedule','Pre-operational inspection records','Cleaning chemical approvals','Sanitation SOP library','ATP / swab verification records','Clean-in-place (CIP) logs']},
+          {key:'_ph_sqf_pest',    name:'Pest Control',             sqf:'11.2.4', ph:true, phIcon:'\uD83D\uDC1B', phDesc:'Integrated pest management program and monitoring.', phItems:['IPM program documentation','Pest control operator contract & license','Trap map and inspection logs','Pest activity trend reports','Corrective actions for pest findings']},
         ]
       },
     ]
   },
 
-  // ── FDA / FSMA ──
-  fda: {
-    label: 'FDA / FSMA Inspection', badge: 'FDA Food Safety Modernization Act \\u2022 21 CFR 117',
+  // ═══════════════════════════════════════
+  // BRCGS — Issue 9 (9 Sections)
+  // ═══════════════════════════════════════
+  brcgs: {
+    label: 'BRCGS Issue 9', badge: 'BRCGS Global Standard for Food Safety \u2022 Issue 9',
     sections: [
-      { id:'f1', num:'1', name:'Food Safety Plan & Preventive Controls', sqf:'21 CFR 117 Subpart C', color:'#EF4444', icon:'\\u26A0\\uFE0F',
-        desc:'Hazard analysis, preventive controls, allergen controls, sanitation controls, supply-chain controls',
+      { id:'b1', num:'1', name:'Senior Management Commitment', sqf:'Clause 1', color:'#6C5CE7', icon:'\uD83C\uDFDB\uFE0F',
+        desc:'Management commitment, food safety policy, organizational structure, food safety culture',
         modules:[
-          {key:'_ph_fda_fsp',     name:'Written Food Safety Plan', sqf:'\\u00A7117.126', ph:true, phIcon:'\\uD83D\\uDCD1', phDesc:'Written food safety plan including hazard analysis and preventive controls.', phItems:['Hazard analysis (biological, chemical, physical, radiological)','Process preventive controls','Allergen preventive controls','Sanitation preventive controls','Supply-chain preventive controls','Recall plan']},
-          {key:'sds_records',     name:'Chemical Hazard Controls', sqf:'\\u00A7117.135', table:'sds_records'},
-          {key:'_allergen_view',  name:'Allergen Controls',        sqf:'\\u00A7117.135(c)', special:'allergen'},
-          {key:'environmental_monitoring',name:'Environmental Monitoring',sqf:'\\u00A7117.165',table:'environmental_monitoring'},
-          {key:'_ph_fda_pc',      name:'Process Controls & CCPs',  sqf:'\\u00A7117.135(b)', ph:true, phIcon:'\\uD83C\\uDFAF', phDesc:'Process parameters, critical limits, and monitoring procedures for identified hazards.', phItems:['Process preventive controls documentation','Critical limits for each control','Monitoring procedures & frequencies','Corrective action procedures','Verification activities']},
+          {key:'_ph_brc_policy',  name:'Food Safety & Quality Policy', sqf:'1.1.1', ph:true, phIcon:'\uD83D\uDCC3', phDesc:'Documented policy signed by senior management demonstrating commitment.', phItems:['Signed food safety & quality policy','Organizational chart with food safety responsibilities','Food safety culture plan with measurable objectives','Management commitment evidence','Communication of policy to all staff']},
+          {key:'_ph_brc_culture', name:'Food Safety Culture',    sqf:'1.1.2', ph:true, phIcon:'\uD83C\uDF1F', phDesc:'Plan for development and continuing improvement of food safety and quality culture.', phItems:['Culture development plan','Employee engagement activities','Food safety communication records','Behavioral observation records','Culture assessment & measurement']},
+          {key:'_ph_brc_review',  name:'Management Review',      sqf:'1.1.10', ph:true, phIcon:'\uD83D\uDCCA', phDesc:'Annual management review of the food safety and quality system.', phItems:['Management review meeting minutes','Previous audit action plans','Customer complaints analysis','Incident & corrective action review','Resource requirements assessment']},
         ]
       },
-      { id:'f2', num:'2', name:'Current Good Manufacturing Practices', sqf:'21 CFR 117 Subpart B', color:'#3B82F6', icon:'\\uD83C\\uDFED',
-        desc:'Personnel, plant & grounds, sanitary operations, equipment & utensils, production controls',
+      { id:'b2', num:'2', name:'Food Safety Plan \u2014 HACCP', sqf:'Clause 2', color:'#EF4444', icon:'\u26A0\uFE0F',
+        desc:'HACCP team, prerequisite programmes, hazard analysis, critical control points',
         modules:[
-          {key:'pm_schedules',    name:'Equipment Maintenance',    sqf:'\\u00A7117.40', table:'pm_schedules'},
-          {key:'work_orders',     name:'Work Orders',              sqf:'\\u00A7117.40', table:'work_orders'},
-          {key:'inspections',     name:'Facility Inspections',     sqf:'\\u00A7117.35', table:'inspections'},
-          {key:'_ph_fda_sani',    name:'Sanitary Operations',      sqf:'\\u00A7117.35', ph:true, phIcon:'\\uD83E\\uDDF9', phDesc:'Cleaning and sanitizing of food-contact surfaces, utensils, and equipment.', phItems:['Sanitation SOPs','Pre-operational inspection records','Cleaning schedules and verification','Chemical concentration testing logs','Personnel hygiene procedures']},
-          {key:'_ph_fda_pest',    name:'Pest Control',             sqf:'\\u00A7117.35(c)', ph:true, phIcon:'\\uD83D\\uDC1B', phDesc:'Exclusion of pests from all areas of the food plant.', phItems:['Pest management contract','Trap placement map','Pest activity logs','Corrective actions for findings','Pesticide application records']},
+          {key:'_ph_brc_haccp',   name:'HACCP Plan',             sqf:'2.7\u20132.14', ph:true, phIcon:'\u26A0\uFE0F', phDesc:'Codex Alimentarius-based HACCP plan with flow diagrams and hazard analysis.', phItems:['HACCP team & qualifications','Product descriptions & intended use','Process flow diagrams (verified on-site)','Hazard analysis worksheets','CCP determination & critical limits','Monitoring & corrective action procedures','HACCP plan validation & review records']},
+          {key:'sds_records',     name:'Chemical Hazard Controls', sqf:'2.8', table:'sds_records'},
+          {key:'_allergen_view',  name:'Allergen Hazard Analysis', sqf:'2.8 / 5.3', special:'allergen'},
         ]
       },
-      { id:'f3', num:'3', name:'Supply Chain & Traceability', sqf:'21 CFR 117 Subpart G / 21 CFR 1 Subpart S', color:'#F59E0B', icon:'\\uD83D\\uDE9A',
-        desc:'Supplier verification, foreign supplier programs, food traceability (FSMA 204)',
+      { id:'b3', num:'3', name:'Food Safety & Quality Management', sqf:'Clause 3', color:'#10B981', icon:'\u2705',
+        desc:'Document control, specifications, corrective actions, traceability, complaints, incident management',
         modules:[
-          {key:'vendor_approvals',name:'Supplier Verification',    sqf:'\\u00A7117.405', table:'vendor_approvals'},
-          {key:'_ph_fda_fsvp',    name:'Foreign Supplier Verification', sqf:'21 CFR 1 Subpart L', ph:true, phIcon:'\\uD83C\\uDF10', phDesc:'Risk-based verification that foreign suppliers produce food meeting U.S. safety standards.', phItems:['Importer identification','Hazard analysis per food/supplier','Supplier verification activities','Corrective action records','Reevaluation documentation']},
-          {key:'_ph_fda_trace',   name:'Food Traceability (FSMA 204)', sqf:'21 CFR 1 Subpart S', ph:true, phIcon:'\\uD83D\\uDD17', phDesc:'Additional traceability records for foods on the Food Traceability List.', phItems:['Key Data Elements (KDEs) per Critical Tracking Event','Traceability lot codes','Receiving records with KDEs','Shipping records with KDEs','Traceability plan documentation','Sortable, searchable electronic records']},
+          {key:'documents',       name:'Document Control',        sqf:'3.2', special:'doc_dashboard'},
+          {key:'ncr_records',     name:'Corrective & Preventive Actions', sqf:'3.7', table:'ncr_records'},
+          {key:'audit_findings',  name:'Internal Audits',         sqf:'3.4', table:'audit_findings'},
+          {key:'vendor_approvals',name:'Approved Suppliers',      sqf:'3.5.1', table:'vendor_approvals'},
+          {key:'_ph_brc_trace',   name:'Traceability & Recall',   sqf:'3.9', ph:true, phIcon:'\uD83D\uDD0D', phDesc:'Full traceability through all stages, mock recall testing.', phItems:['Traceability system documentation','Raw material to finished product trace','Mock recall test results (< 4 hours target)','Mass balance reconciliation','Customer notification procedures','Recall effectiveness checks']},
+          {key:'backup_verification_log',name:'Backup Verification',sqf:'3.2',table:'backup_verification_log'},
         ]
       },
-      { id:'f4', num:'4', name:'Verification & Recordkeeping', sqf:'21 CFR 117 Subpart F', color:'#10B981', icon:'\\u2705',
+      { id:'b4', num:'4', name:'Site Standards', sqf:'Clause 4', color:'#F59E0B', icon:'\uD83C\uDFED',
+        desc:'Facility layout, utilities, equipment, maintenance, hygiene, contamination control, pest management',
+        modules:[
+          {key:'pm_schedules',    name:'Preventive Maintenance',  sqf:'4.7', table:'pm_schedules'},
+          {key:'work_orders',     name:'Work Orders',             sqf:'4.7', table:'work_orders'},
+          {key:'inspections',     name:'Facility Inspections',    sqf:'4.1\u20134.4', table:'inspections'},
+          {key:'environmental_monitoring',name:'Environmental Monitoring',sqf:'4.11.7',table:'environmental_monitoring'},
+          {key:'_ph_brc_clean',   name:'Cleaning & Sanitation',   sqf:'4.11', ph:true, phIcon:'\uD83E\uDDF9', phDesc:'Cleaning procedures, cleaning-in-place, environmental monitoring.', phItems:['Cleaning schedules & procedures','Pre-operational cleaning checks','CIP validation records','Environmental swabbing programme','ATP verification results','Cleaning chemical approvals']},
+          {key:'_ph_brc_pest',    name:'Pest Control',            sqf:'4.14', ph:true, phIcon:'\uD83D\uDC1B', phDesc:'Pest management programme with competent provider.', phItems:['Pest control contract & competency','Site pest control map','Inspection frequency & records','Trend analysis of pest activity','Proofing & corrective actions','Pesticide storage & application records']},
+        ]
+      },
+      { id:'b5', num:'5', name:'Product Control', sqf:'Clause 5', color:'#3B82F6', icon:'\uD83D\uDCE6',
+        desc:'Product design, allergen management, provenance, packaging, product inspection & testing',
+        modules:[
+          {key:'_allergen_view',  name:'Allergen Management',     sqf:'5.3', special:'allergen'},
+          {key:'sds_records',     name:'Chemical Controls (Packaging)', sqf:'5.4', table:'sds_records'},
+          {key:'_ph_brc_design',  name:'Product Development',     sqf:'5.1', ph:true, phIcon:'\uD83D\uDD2C', phDesc:'Product design, development and approval procedures including HACCP review.', phItems:['Product development procedures','Trial & validation records','Labelling review & approval','Shelf life testing & determination','Allergen assessment per product','Customer approval records']},
+          {key:'_ph_brc_inspect', name:'Product Inspection & Testing', sqf:'5.5', ph:true, phIcon:'\uD83E\uDDEA', phDesc:'In-process and finished product testing programmes.', phItems:['Testing schedules & protocols','Microbiological testing results','Chemical residue testing','Foreign body detection verification','Release criteria & hold procedures','Laboratory accreditation records']},
+        ]
+      },
+      { id:'b6', num:'6', name:'Process Control', sqf:'Clause 6', color:'#8B5CF6', icon:'\u2699\uFE0F',
+        desc:'Control of operations, labelling, quantity control, calibration',
+        modules:[
+          {key:'_ph_brc_ops',     name:'Control of Operations',   sqf:'6.1', ph:true, phIcon:'\uD83D\uDCCB', phDesc:'Documented procedures and work instructions for key processes.', phItems:['Process specifications & procedures','Start-up & changeover checks','Control of non-conforming product','Rework procedures & records','Quantity / weight control checks']},
+          {key:'_ph_brc_label',   name:'Labelling Control',       sqf:'6.2', ph:true, phIcon:'\uD83C\uDFF7\uFE0F', phDesc:'Label management including allergen declarations and regulatory compliance.', phItems:['Label approval procedures','Label verification checks','Allergen declaration accuracy','Country-specific regulatory compliance','Label change management','Artwork approval records']},
+          {key:'_ph_brc_cal',     name:'Calibration & Measurement', sqf:'6.4', ph:true, phIcon:'\uD83D\uDCCF', phDesc:'Calibration of measuring and monitoring equipment.', phItems:['Calibration schedule & equipment list','Calibration certificates','Out-of-calibration investigation records','Reference standards traceability','Metal detector / X-ray verification logs']},
+        ]
+      },
+      { id:'b7', num:'7', name:'Personnel', sqf:'Clause 7', color:'#EC4899', icon:'\uD83E\uDDD1\u200D\uD83C\uDFED',
+        desc:'Training, personal hygiene, protective clothing, medical screening, food handlers',
+        modules:[
+          {key:'training_records',name:'Training Records',        sqf:'7.1', table:'training_records'},
+          {key:'_ph_brc_hygiene', name:'Personal Hygiene',        sqf:'7.2\u20137.4', ph:true, phIcon:'\uD83E\uDDF4', phDesc:'Hygiene standards, protective clothing, medical screening, access controls.', phItems:['Hygiene rules & signage','Protective clothing procedures','Jewellery & personal items policy','Medical screening & fitness to work','Visitor & contractor controls','Hand washing compliance monitoring']},
+        ]
+      },
+      { id:'b8', num:'8', name:'High-Risk / High-Care Zones', sqf:'Clause 8', color:'#DC2626', icon:'\u2622\uFE0F',
+        desc:'Requirements for production areas handling high-risk, high-care, or ambient high-care products',
+        modules:[
+          {key:'_ph_brc_zones',   name:'Zone Controls',           sqf:'8.1\u20138.5', ph:true, phIcon:'\uD83D\uDEA7', phDesc:'Segregation, environmental controls, and operational requirements for high-risk zones.', phItems:['Zone layout & segregation plans','Air handling & positive pressure records','Changing procedures between zones','Environmental monitoring programme','Equipment dedication records','Visitor & contractor zone protocols']},
+        ]
+      },
+      { id:'b9', num:'9', name:'Traded Products', sqf:'Clause 9', color:'#78716C', icon:'\uD83D\uDE9A',
+        desc:'Requirements for traded goods not manufactured on site',
+        modules:[
+          {key:'_ph_brc_traded',  name:'Traded Product Controls', sqf:'9.1\u20139.4', ph:true, phIcon:'\uD83D\uDCE5', phDesc:'Approval, inspection, and traceability of traded/distributed products.', phItems:['Supplier approval for traded goods','Product specification verification','Inspection on receipt records','Traceability of traded products','Allergen management for traded goods','Customer information & labelling']},
+        ]
+      },
+    ]
+  },
+
+  // ═══════════════════════════════════════
+  // FSSC 22000 — ISO 22000 + PRPs (10-Clause)
+  // ═══════════════════════════════════════
+  fssc: {
+    label: 'FSSC 22000', badge: 'FSSC 22000 Version 6 \u2022 ISO 22000:2018 + Sector PRPs',
+    sections: [
+      { id:'fc1', num:'4\u20135', name:'Context & Leadership', sqf:'ISO 22000 Cl. 4\u20135', color:'#6C5CE7', icon:'\uD83C\uDFDB\uFE0F',
+        desc:'Context of the organization, leadership commitment, food safety policy, roles & responsibilities',
+        modules:[
+          {key:'_ph_fssc_ctx',    name:'Context & Interested Parties', sqf:'Cl. 4.1\u20134.3', ph:true, phIcon:'\uD83C\uDF10', phDesc:'Understanding the organization, interested parties, and scope of the FSMS.', phItems:['Scope of the FSMS','Internal & external issues analysis','Interested parties & their requirements','FSMS scope documentation','Organizational context review records']},
+          {key:'_ph_fssc_lead',   name:'Leadership & Policy',    sqf:'Cl. 5.1\u20135.3', ph:true, phIcon:'\uD83D\uDCC3', phDesc:'Management commitment, food safety policy, organizational roles and responsibilities.', phItems:['Food safety policy (signed)','Roles, responsibilities & authorities','Management commitment evidence','FSMS resource allocation','Communication of policy to all levels']},
+          {key:'documents',       name:'Document Control',        sqf:'Cl. 7.5', special:'doc_dashboard'},
+        ]
+      },
+      { id:'fc2', num:'6\u20137', name:'Planning & Support', sqf:'ISO 22000 Cl. 6\u20137', color:'#3B82F6', icon:'\uD83D\uDCCB',
+        desc:'Risk-based planning, objectives, resources, competence, communication, documented information',
+        modules:[
+          {key:'training_records',name:'Competence & Training',   sqf:'Cl. 7.2', table:'training_records'},
+          {key:'_ph_fssc_plan',   name:'Planning & Risk',         sqf:'Cl. 6.1\u20136.3', ph:true, phIcon:'\uD83C\uDFAF', phDesc:'Actions to address risks and opportunities, food safety objectives and planning.', phItems:['Risk & opportunity assessment','Food safety objectives & targets','Planning of changes','Emergency preparedness & response','Management of resources']},
+          {key:'_ph_fssc_comm',   name:'Communication',           sqf:'Cl. 7.4', ph:true, phIcon:'\uD83D\uDCE2', phDesc:'External and internal communication procedures for food safety.', phItems:['External communication procedures (customers, authorities, suppliers)','Internal communication records','Regulatory communication logs','Supply chain communication evidence','Emergency communication protocols']},
+          {key:'backup_verification_log',name:'Backup Verification',sqf:'Cl. 7.5',table:'backup_verification_log'},
+        ]
+      },
+      { id:'fc3', num:'8', name:'Operations', sqf:'ISO 22000 Cl. 8', color:'#EF4444', icon:'\u26A0\uFE0F',
+        desc:'PRPs, traceability, hazard analysis, HACCP plan, control of hazards, allergen management',
+        modules:[
+          {key:'sds_records',     name:'Chemical Hazard Controls', sqf:'Cl. 8.5.2', table:'sds_records'},
+          {key:'_allergen_view',  name:'Allergen Management',     sqf:'Cl. 8.5.1 / ISO/TS 22002-1', special:'allergen'},
+          {key:'vendor_approvals',name:'Supplier Controls',       sqf:'Cl. 8.5.1.5', table:'vendor_approvals'},
+          {key:'environmental_monitoring',name:'Environmental Monitoring',sqf:'Cl. 8.5.1.3',table:'environmental_monitoring'},
+          {key:'_ph_fssc_prp',    name:'Prerequisite Programmes (PRPs)', sqf:'Cl. 8.2 / ISO/TS 22002-1', ph:true, phIcon:'\uD83C\uDFED', phDesc:'Sector-specific PRPs per ISO/TS 22002-1 for food manufacturing.', phItems:['Construction & layout of buildings','Layout of premises & workspace','Utilities (air, water, energy)','Waste disposal procedures','Equipment suitability & maintenance','Management of purchased materials','Cross-contamination prevention measures','Cleaning & sanitizing programmes','Pest control programme','Personnel hygiene & facilities']},
+          {key:'_ph_fssc_haccp',  name:'Hazard Analysis & CCP Plan', sqf:'Cl. 8.5', ph:true, phIcon:'\u26A0\uFE0F', phDesc:'Hazard analysis, determination of CCPs and OPRPs, control measures validation.', phItems:['Hazard analysis worksheets','CCP determination & decision trees','Critical limits & monitoring','OPRP management programmes','Validation of control measures','Flow diagrams (verified on-floor)']},
+          {key:'_ph_fssc_trace',  name:'Traceability & Recall',   sqf:'Cl. 8.3 / 8.9.5', ph:true, phIcon:'\uD83D\uDD0D', phDesc:'Traceability system and product withdrawal/recall procedures.', phItems:['Traceability system documentation','Lot identification procedures','Mock recall results (annual)','Withdrawal & recall procedures','Authority notification procedures','Effectiveness evaluation records']},
+        ]
+      },
+      { id:'fc4', num:'8', name:'Site Standards & PRPs', sqf:'ISO/TS 22002-1', color:'#F59E0B', icon:'\uD83C\uDFED',
+        desc:'Facility, equipment, maintenance, sanitation, pest control \u2014 PRP implementation',
+        modules:[
+          {key:'pm_schedules',    name:'Preventive Maintenance',  sqf:'ISO/TS 22002-1 Cl. 8', table:'pm_schedules'},
+          {key:'work_orders',     name:'Work Orders',             sqf:'ISO/TS 22002-1 Cl. 8', table:'work_orders'},
+          {key:'inspections',     name:'Facility Inspections',    sqf:'ISO/TS 22002-1 Cl. 4\u20135', table:'inspections'},
+          {key:'_ph_fssc_clean',  name:'Cleaning & Sanitizing',   sqf:'ISO/TS 22002-1 Cl. 11', ph:true, phIcon:'\uD83E\uDDF9', phDesc:'Cleaning and sanitizing programmes for premises and equipment.', phItems:['Cleaning schedules & procedures','Pre-op inspection records','Chemical approval & concentration testing','CIP validation records','Environmental swab programme','Cleaning effectiveness verification']},
+          {key:'_ph_fssc_pest',   name:'Pest Control',            sqf:'ISO/TS 22002-1 Cl. 12', ph:true, phIcon:'\uD83D\uDC1B', phDesc:'Pest management programme including prevention, detection, and eradication.', phItems:['Pest control programme & contract','Bait station / trap map','Inspection & trend reports','Corrective actions for findings','Pesticide application records','Proofing measures documentation']},
+        ]
+      },
+      { id:'fc5', num:'9\u201310', name:'Performance & Improvement', sqf:'ISO 22000 Cl. 9\u201310', color:'#10B981', icon:'\u2705',
+        desc:'Monitoring, internal audit, management review, nonconformity, corrective action, continual improvement',
+        modules:[
+          {key:'ncr_records',     name:'Nonconformity & Corrective Actions', sqf:'Cl. 10.1', table:'ncr_records'},
+          {key:'audit_findings',  name:'Internal Audits',         sqf:'Cl. 9.2', table:'audit_findings'},
+          {key:'_ph_fssc_mgmt',   name:'Management Review',      sqf:'Cl. 9.3', ph:true, phIcon:'\uD83D\uDCCA', phDesc:'Top management review of the FSMS at planned intervals.', phItems:['Management review meeting minutes','Status of actions from previous reviews','Changes in internal/external issues','FSMS performance information','Audit results & customer feedback','Improvement opportunities & decisions']},
+          {key:'_ph_fssc_improve',name:'Continual Improvement',   sqf:'Cl. 10.2\u201310.3', ph:true, phIcon:'\uD83D\uDE80', phDesc:'Updating the FSMS and driving continual improvement.', phItems:['FSMS update records','Improvement project tracking','Trend analysis of nonconformities','Food safety system effectiveness review','Innovation & improvement initiatives']},
+        ]
+      },
+    ]
+  },
+
+  // ═══════════════════════════════════════
+  // INTERNAL — Internal Audit Structure
+  // ═══════════════════════════════════════
+  internal: {
+    label: 'Internal Audit', badge: 'Internal Food Safety & Quality Audit',
+    sections: [
+      { id:'i1', num:'1', name:'Management System Review', sqf:'Internal', color:'#6C5CE7', icon:'\uD83C\uDFDB\uFE0F',
+        desc:'Policy, management commitment, document control, management review, food safety culture',
+        modules:[
+          {key:'documents',       name:'Document Control',        sqf:'Internal', special:'doc_dashboard'},
+          {key:'backup_verification_log',name:'Backup Verification',sqf:'Internal',table:'backup_verification_log'},
+          {key:'_ph_int_policy',  name:'Policy & Commitment',     sqf:'Internal', ph:true, phIcon:'\uD83D\uDCC3', phDesc:'Review of food safety policy, management commitment, and culture initiatives.', phItems:['Food safety policy review','Management commitment evidence','Food safety culture plan progress','Management review meeting records','Resource allocation assessment']},
+        ]
+      },
+      { id:'i2', num:'2', name:'Food Safety & HACCP', sqf:'Internal', color:'#EF4444', icon:'\u26A0\uFE0F',
+        desc:'HACCP plan review, hazard analysis, allergen management, chemical controls, environmental monitoring',
+        modules:[
+          {key:'sds_records',     name:'Chemical Hazard Controls', sqf:'Internal', table:'sds_records'},
+          {key:'_allergen_view',  name:'Allergen Management',     sqf:'Internal', special:'allergen'},
+          {key:'environmental_monitoring',name:'Environmental Monitoring',sqf:'Internal',table:'environmental_monitoring'},
+          {key:'_ph_int_haccp',   name:'HACCP Plan Review',       sqf:'Internal', ph:true, phIcon:'\u26A0\uFE0F', phDesc:'Annual review of HACCP plan accuracy and effectiveness.', phItems:['HACCP plan current & accurate','Flow diagrams verified on-floor','Hazard analysis up to date','CCP monitoring records complete','Corrective actions documented','Validation records current']},
+        ]
+      },
+      { id:'i3', num:'3', name:'Corrective Actions & Verification', sqf:'Internal', color:'#10B981', icon:'\u2705',
+        desc:'NCR/CAPA review, audit findings follow-up, traceability testing, trend analysis',
+        modules:[
+          {key:'ncr_records',     name:'NCR / CAPA Review',       sqf:'Internal', table:'ncr_records'},
+          {key:'audit_findings',  name:'Previous Audit Follow-up', sqf:'Internal', table:'audit_findings'},
+          {key:'_ph_int_trace',   name:'Traceability Exercise',   sqf:'Internal', ph:true, phIcon:'\uD83D\uDD0D', phDesc:'Mock recall or traceability exercise to test system effectiveness.', phItems:['Mock recall test execution','Time to complete trace','Forward & backward traceability','Mass balance reconciliation','Notification procedure test','Corrective actions from exercise']},
+        ]
+      },
+      { id:'i4', num:'4', name:'Site Standards & GMP', sqf:'Internal', color:'#F59E0B', icon:'\uD83C\uDFED',
+        desc:'Facility condition, equipment maintenance, sanitation, pest control, hygiene',
+        modules:[
+          {key:'pm_schedules',    name:'Preventive Maintenance',  sqf:'Internal', table:'pm_schedules'},
+          {key:'work_orders',     name:'Work Orders',             sqf:'Internal', table:'work_orders'},
+          {key:'inspections',     name:'Facility Inspections',    sqf:'Internal', table:'inspections'},
+          {key:'_ph_int_clean',   name:'Sanitation Review',       sqf:'Internal', ph:true, phIcon:'\uD83E\uDDF9', phDesc:'Review of cleaning programme effectiveness and pre-op results.', phItems:['Master sanitation schedule adherence','Pre-op inspection results','ATP / swab trend analysis','CIP validation status','Chemical usage & approvals','Sanitation corrective actions']},
+        ]
+      },
+      { id:'i5', num:'5', name:'Personnel & Training', sqf:'Internal', color:'#3B82F6', icon:'\uD83C\uDF93',
+        desc:'Training completeness, competency assessments, supplier management, food defense',
+        modules:[
+          {key:'training_records',name:'Training Records',        sqf:'Internal', table:'training_records'},
+          {key:'vendor_approvals',name:'Supplier Management',     sqf:'Internal', table:'vendor_approvals'},
+          {key:'_ph_int_defense', name:'Food Defense Review',     sqf:'Internal', ph:true, phIcon:'\uD83D\uDEE1\uFE0F', phDesc:'Annual review of food defense plan and vulnerability assessments.', phItems:['Food defense plan currency','Vulnerability assessment update','Security measures verification','Visitor & contractor controls','Food fraud mitigation review','Employee awareness assessment']},
+        ]
+      },
+    ]
+  },
+
+  // ═══════════════════════════════════════
+  // REGULATORY — FDA / FSMA / State / Local
+  // ═══════════════════════════════════════
+  regulatory: {
+    label: 'Regulatory Inspection', badge: 'Regulatory Compliance \u2022 FDA / FSMA / State / Local',
+    sections: [
+      { id:'r1', num:'1', name:'Food Safety Plan & Preventive Controls', sqf:'21 CFR 117 Subpart C', color:'#EF4444', icon:'\u26A0\uFE0F',
+        desc:'Hazard analysis, preventive controls, allergen controls, sanitation controls, recall plan',
+        modules:[
+          {key:'sds_records',     name:'Chemical Hazard Controls', sqf:'\u00A7117.135', table:'sds_records'},
+          {key:'_allergen_view',  name:'Allergen Controls',       sqf:'\u00A7117.135(c)', special:'allergen'},
+          {key:'environmental_monitoring',name:'Environmental Monitoring',sqf:'\u00A7117.165',table:'environmental_monitoring'},
+          {key:'_ph_reg_fsp',     name:'Written Food Safety Plan', sqf:'\u00A7117.126', ph:true, phIcon:'\uD83D\uDCD1', phDesc:'Written food safety plan including hazard analysis and preventive controls.', phItems:['Hazard analysis (biological, chemical, physical, radiological)','Process preventive controls','Allergen preventive controls','Sanitation preventive controls','Supply-chain preventive controls','Recall plan']},
+          {key:'_ph_reg_pc',      name:'Process Controls & CCPs', sqf:'\u00A7117.135(b)', ph:true, phIcon:'\uD83C\uDFAF', phDesc:'Process parameters, critical limits, and monitoring procedures.', phItems:['Process preventive controls documentation','Critical limits for each control','Monitoring procedures & frequencies','Corrective action procedures','Verification activities']},
+        ]
+      },
+      { id:'r2', num:'2', name:'Current Good Manufacturing Practices', sqf:'21 CFR 117 Subpart B', color:'#3B82F6', icon:'\uD83C\uDFED',
+        desc:'Personnel, plant & grounds, sanitary operations, equipment, production controls',
+        modules:[
+          {key:'pm_schedules',    name:'Equipment Maintenance',   sqf:'\u00A7117.40', table:'pm_schedules'},
+          {key:'work_orders',     name:'Work Orders',             sqf:'\u00A7117.40', table:'work_orders'},
+          {key:'inspections',     name:'Facility Inspections',    sqf:'\u00A7117.35', table:'inspections'},
+          {key:'_ph_reg_sani',    name:'Sanitary Operations',     sqf:'\u00A7117.35', ph:true, phIcon:'\uD83E\uDDF9', phDesc:'Cleaning and sanitizing of food-contact surfaces, utensils, and equipment.', phItems:['Sanitation SOPs','Pre-operational inspection records','Cleaning schedules & verification','Chemical concentration testing logs','Personnel hygiene procedures']},
+          {key:'_ph_reg_pest',    name:'Pest Control',            sqf:'\u00A7117.35(c)', ph:true, phIcon:'\uD83D\uDC1B', phDesc:'Exclusion of pests from all areas of the food plant.', phItems:['Pest management contract','Trap placement map','Pest activity logs','Corrective actions for findings','Pesticide application records']},
+        ]
+      },
+      { id:'r3', num:'3', name:'Supply Chain & Traceability', sqf:'21 CFR 117 Subpart G / 21 CFR 1 Subpart S', color:'#F59E0B', icon:'\uD83D\uDE9A',
+        desc:'Supplier verification, FSVP, food traceability (FSMA 204), supply-chain controls',
+        modules:[
+          {key:'vendor_approvals',name:'Supplier Verification',   sqf:'\u00A7117.405', table:'vendor_approvals'},
+          {key:'_ph_reg_fsvp',    name:'Foreign Supplier Verification', sqf:'21 CFR 1 Subpart L', ph:true, phIcon:'\uD83C\uDF10', phDesc:'Risk-based verification that foreign suppliers meet U.S. safety standards.', phItems:['Importer identification','Hazard analysis per food/supplier','Supplier verification activities','Corrective action records','Reevaluation documentation']},
+          {key:'_ph_reg_trace',   name:'Food Traceability (FSMA 204)', sqf:'21 CFR 1 Subpart S', ph:true, phIcon:'\uD83D\uDD17', phDesc:'Additional traceability records for foods on the Food Traceability List.', phItems:['Key Data Elements (KDEs) per Critical Tracking Event','Traceability lot codes','Receiving records with KDEs','Shipping records with KDEs','Traceability plan documentation','Sortable, searchable electronic records']},
+        ]
+      },
+      { id:'r4', num:'4', name:'Verification & Recordkeeping', sqf:'21 CFR 117 Subpart F', color:'#10B981', icon:'\u2705',
         desc:'Verification activities, corrective actions, records, recall procedures, training',
         modules:[
-          {key:'documents',       name:'Document Control',         sqf:'\\u00A7117.305', special:'doc_dashboard'},
-          {key:'ncr_records',     name:'Corrective Actions',       sqf:'\\u00A7117.150', table:'ncr_records'},
-          {key:'audit_findings',  name:'Verification Activities',  sqf:'\\u00A7117.155', table:'audit_findings'},
-          {key:'training_records',name:'Training & Qualification', sqf:'\\u00A7117.4', table:'training_records'},
-          {key:'backup_verification_log',name:'Backup Verification',sqf:'\\u00A7117.305(e)',table:'backup_verification_log'},
-          {key:'_ph_fda_recall',  name:'Recall Plan',              sqf:'\\u00A7117.139', ph:true, phIcon:'\\uD83D\\uDEA8', phDesc:'Written plan for recalling food that may be adulterated or misbranded.', phItems:['Recall initiation procedures','Product identification & coding','Notification procedures (FDA, customers, public)','Effectiveness check procedures','Mock recall test results','Distribution records for traceability']},
+          {key:'documents',       name:'Document Control',        sqf:'\u00A7117.305', special:'doc_dashboard'},
+          {key:'ncr_records',     name:'Corrective Actions',      sqf:'\u00A7117.150', table:'ncr_records'},
+          {key:'audit_findings',  name:'Verification Activities', sqf:'\u00A7117.155', table:'audit_findings'},
+          {key:'training_records',name:'Training & Qualification', sqf:'\u00A7117.4', table:'training_records'},
+          {key:'backup_verification_log',name:'Backup Verification',sqf:'\u00A7117.305(e)',table:'backup_verification_log'},
+          {key:'_ph_reg_recall',  name:'Recall Plan',             sqf:'\u00A7117.139', ph:true, phIcon:'\uD83D\uDEA8', phDesc:'Written plan for recalling food that may be adulterated or misbranded.', phItems:['Recall initiation procedures','Product identification & coding','Notification procedures (FDA, customers, public)','Effectiveness check procedures','Mock recall test results','Distribution records for traceability']},
         ]
       },
     ]
   },
 
-  // ── OSHA ──
-  osha: {
-    label: 'OSHA Safety Inspection', badge: 'OSHA 29 CFR 1910 \\u2022 General Industry Standards \\u2022 Food Manufacturing',
+  // ═══════════════════════════════════════
+  // CUSTOMER — Retailer / Brand Audit
+  // ═══════════════════════════════════════
+  customer: {
+    label: 'Customer Audit', badge: 'Customer / Retailer Audit \u2022 Supplier Qualification',
     sections: [
-      { id:'o1', num:'1', name:'Hazardous Energy Control (LOTO)', sqf:'29 CFR 1910.147', color:'#EF4444', icon:'\\u26A1',
-        desc:'Lockout/tagout — #1 most cited standard in food manufacturing',
+      { id:'c1', num:'1', name:'Quality Management System', sqf:'Customer', color:'#6C5CE7', icon:'\uD83D\uDCCB',
+        desc:'Document control, management commitment, organizational structure, change management',
         modules:[
-          {key:'pm_schedules',    name:'Equipment LOTO Schedules', sqf:'1910.147(c)(4)', table:'pm_schedules'},
-          {key:'work_orders',     name:'Maintenance Work Orders',  sqf:'1910.147(d)', table:'work_orders'},
-          {key:'_ph_osha_loto',   name:'LOTO Program',             sqf:'1910.147(c)(1)', ph:true, phIcon:'\\uD83D\\uDD12', phDesc:'Energy control program with machine-specific procedures and periodic inspections.', phItems:['Written energy control program','Machine-specific LOTO procedures','Periodic inspection records (annual minimum)','Employee training certifications','Authorized/affected employee lists','Group lockout procedures']},
-          {key:'training_records',name:'LOTO Training Records',    sqf:'1910.147(c)(7)', table:'training_records'},
+          {key:'documents',       name:'Document Control',        sqf:'Customer', special:'doc_dashboard'},
+          {key:'backup_verification_log',name:'Backup Verification',sqf:'Customer',table:'backup_verification_log'},
+          {key:'_ph_cust_qms',    name:'Quality Management Overview', sqf:'Customer', ph:true, phIcon:'\uD83C\uDFDB\uFE0F', phDesc:'Quality management system documentation and organizational commitment.', phItems:['Quality & food safety policy','Organizational chart','Management review records','Change management procedures','Continuous improvement programme','Customer complaint trending']},
         ]
       },
-      { id:'o2', num:'2', name:'Machine Guarding & Equipment', sqf:'29 CFR 1910.212\\u2013219', color:'#F59E0B', icon:'\\u2699\\uFE0F',
-        desc:'Machine guarding, point-of-operation protection, mechanical power transmission',
+      { id:'c2', num:'2', name:'Food Safety & HACCP', sqf:'Customer', color:'#EF4444', icon:'\u26A0\uFE0F',
+        desc:'HACCP plan, allergen programme, chemical controls, environmental monitoring',
         modules:[
-          {key:'inspections',     name:'Equipment Safety Inspections', sqf:'1910.212', table:'inspections'},
-          {key:'_ph_osha_guard',  name:'Machine Guarding Program', sqf:'1910.212(a)', ph:true, phIcon:'\\uD83D\\uDEE1\\uFE0F', phDesc:'Guard requirements for all machines with parts, functions, or processes that may cause injury.', phItems:['Machine guarding inventory & assessments','Point-of-operation guard documentation','Power transmission apparatus guarding','Mechanical power press inspections (1910.217)','Abrasive wheel machinery guards (1910.215)','Guarding deficiency correction records']},
-          {key:'_ph_osha_robot',  name:'Robotics & Automation Safety', sqf:'1910.212(a)(3)', ph:true, phIcon:'\\uD83E\\uDD16', phDesc:'Safety measures for automated equipment, conveyors, and robotic systems.', phItems:['Risk assessments for automated equipment','Safety sensor / light curtain documentation','Emergency stop testing records','Perimeter guarding verification','Collaborative robot safety assessments']},
+          {key:'sds_records',     name:'Chemical Controls',       sqf:'Customer', table:'sds_records'},
+          {key:'_allergen_view',  name:'Allergen Programme',      sqf:'Customer', special:'allergen'},
+          {key:'environmental_monitoring',name:'Environmental Monitoring',sqf:'Customer',table:'environmental_monitoring'},
+          {key:'_ph_cust_haccp',  name:'HACCP & Food Safety Plan', sqf:'Customer', ph:true, phIcon:'\u26A0\uFE0F', phDesc:'HACCP plan review including flow diagrams and hazard analysis.', phItems:['Current HACCP plan','Flow diagrams verified on-floor','Hazard analysis worksheets','CCP monitoring records','Corrective action procedures','Validation & verification records']},
         ]
       },
-      { id:'o3', num:'3', name:'HazCom & Chemical Safety', sqf:'29 CFR 1910.1200', color:'#8B5CF6', icon:'\\uD83E\\uDDEA',
-        desc:'Hazard communication, SDS management, GHS labeling, chemical exposure',
+      { id:'c3', num:'3', name:'Facility & Operations', sqf:'Customer', color:'#F59E0B', icon:'\uD83C\uDFED',
+        desc:'Facility condition, maintenance, sanitation, pest control, production controls',
         modules:[
-          {key:'sds_records',     name:'Safety Data Sheets',       sqf:'1910.1200(g)', table:'sds_records'},
-          {key:'_allergen_view',  name:'Chemical Allergen Hazards', sqf:'1910.1200(d)', special:'allergen'},
-          {key:'_ph_osha_hazcom', name:'HazCom Written Program',   sqf:'1910.1200(e)', ph:true, phIcon:'\\uD83D\\uDCDD', phDesc:'Written hazard communication program with chemical inventory and labeling procedures.', phItems:['Written HazCom program','Chemical inventory list','Container labeling procedures (GHS)','SDS accessibility & maintenance plan','Employee HazCom training records','Non-routine task chemical procedures']},
-          {key:'_ph_osha_expo',   name:'Exposure Monitoring',      sqf:'1910.1000', ph:true, phIcon:'\\uD83C\\uDF21\\uFE0F', phDesc:'Air monitoring and exposure assessments for permissible exposure limits (PELs).', phItems:['Air monitoring records','PEL compliance assessments','Engineering controls documentation','Respiratory protection program (if applicable)','Medical surveillance records']},
+          {key:'pm_schedules',    name:'Preventive Maintenance',  sqf:'Customer', table:'pm_schedules'},
+          {key:'work_orders',     name:'Work Orders',             sqf:'Customer', table:'work_orders'},
+          {key:'inspections',     name:'Facility Inspections',    sqf:'Customer', table:'inspections'},
+          {key:'_ph_cust_sani',   name:'Sanitation & Hygiene',    sqf:'Customer', ph:true, phIcon:'\uD83E\uDDF9', phDesc:'Cleaning programmes, hygiene practices, and facility condition.', phItems:['Master sanitation schedule','Pre-operational inspections','Personnel hygiene programme','Cleaning verification records','Hand washing & GMP compliance','Facility condition assessment']},
+          {key:'_ph_cust_pest',   name:'Pest Control',            sqf:'Customer', ph:true, phIcon:'\uD83D\uDC1B', phDesc:'Pest management programme and trending.', phItems:['Pest control contract','Site map with bait stations','Activity trend reports','Corrective action records','Proofing measures']},
         ]
       },
-      { id:'o4', num:'4', name:'General Safety & Health', sqf:'29 CFR 1910 Subparts D\\u2013I', color:'#10B981', icon:'\\uD83E\\uDDBA',
-        desc:'Walking surfaces, exits, PPE, electrical, fire protection, emergency action plans',
+      { id:'c4', num:'4', name:'Supplier & Traceability', sqf:'Customer', color:'#3B82F6', icon:'\uD83D\uDE9A',
+        desc:'Supplier approval, incoming inspection, traceability, recall readiness',
         modules:[
-          {key:'_ph_osha_walk',   name:'Walking & Working Surfaces', sqf:'1910.22\\u201330', ph:true, phIcon:'\\u26A0\\uFE0F', phDesc:'Floor maintenance, aisles, stairs, ladders, fall protection.', phItems:['Floor condition inspection records','Housekeeping program documentation','Portable ladder inspection logs','Fixed ladder/stairway compliance','Fall protection assessments','Walking surface hazard corrections']},
-          {key:'_ph_osha_ppe',    name:'Personal Protective Equipment', sqf:'1910.132\\u2013138', ph:true, phIcon:'\\uD83E\\uDDE4', phDesc:'PPE hazard assessments, selection, training, and maintenance.', phItems:['PPE hazard assessment (written certification)','PPE selection documentation','Employee PPE training records','PPE inspection & replacement logs','Hearing conservation program (if >85 dBA)','Respiratory protection program (if applicable)']},
-          {key:'_ph_osha_fire',   name:'Fire Protection & Egress',  sqf:'1910.34\\u201339 / 1910.155\\u2013165', ph:true, phIcon:'\\uD83D\\uDD25', phDesc:'Emergency exits, fire extinguishers, sprinkler systems, emergency plans.', phItems:['Emergency action plan','Fire prevention plan','Fire extinguisher inspection logs (monthly)','Sprinkler system inspection records','Exit route & signage compliance','Evacuation drill records']},
-          {key:'_ph_osha_elec',   name:'Electrical Safety',         sqf:'1910.301\\u2013399', ph:true, phIcon:'\\u26A1', phDesc:'Electrical safety in the workplace including arc flash and GFCI.', phItems:['Electrical safety program','Arc flash hazard analysis','GFCI testing records','Panel labeling & clearance compliance','Electrical equipment inspection logs']},
+          {key:'vendor_approvals',name:'Supplier Approval',       sqf:'Customer', table:'vendor_approvals'},
+          {key:'_ph_cust_trace',  name:'Traceability & Recall',   sqf:'Customer', ph:true, phIcon:'\uD83D\uDD0D', phDesc:'Traceability system and recall readiness demonstration.', phItems:['Traceability system demonstration','Forward & backward trace test','Mock recall test results & timing','Customer notification procedures','Product hold & release procedures','Distribution records']},
         ]
       },
-      { id:'o5', num:'5', name:'Recordkeeping & Incident Mgmt', sqf:'29 CFR 1904', color:'#3B82F6', icon:'\\uD83D\\uDCCB',
-        desc:'OSHA 300 logs, incident reporting, corrective actions, injury tracking',
+      { id:'c5', num:'5', name:'Corrective Actions & Training', sqf:'Customer', color:'#10B981', icon:'\u2705',
+        desc:'NCR/CAPA management, training programme, previous audit follow-up',
         modules:[
-          {key:'ncr_records',     name:'Incident / NCR Records',   sqf:'1904.29', table:'ncr_records'},
-          {key:'documents',       name:'Document Control',         sqf:'1904.33', special:'doc_dashboard'},
-          {key:'_ph_osha_300',    name:'OSHA 300 Log',             sqf:'1904.29\\u201332', ph:true, phIcon:'\\uD83D\\uDCC5', phDesc:'Log of work-related injuries and illnesses, annual summary, and reporting.', phItems:['OSHA Form 300 \\u2014 Log of Injuries & Illnesses','OSHA Form 300A \\u2014 Annual Summary (posted Feb 1\\u2013Apr 30)','OSHA Form 301 \\u2014 Incident Reports','Severe injury reporting (8hr/24hr rule)','5-year retention of all 300 forms','Electronic submission records (if 250+ employees)']},
-          {key:'audit_findings',  name:'Safety Audit Findings',    sqf:'1904.35', table:'audit_findings'},
-          {key:'backup_verification_log',name:'Backup Verification',sqf:'1904.33(a)',table:'backup_verification_log'},
+          {key:'ncr_records',     name:'Corrective Actions',      sqf:'Customer', table:'ncr_records'},
+          {key:'audit_findings',  name:'Previous Audit Follow-up', sqf:'Customer', table:'audit_findings'},
+          {key:'training_records',name:'Training Records',        sqf:'Customer', table:'training_records'},
+          {key:'_ph_cust_spec',   name:'Product Specifications',  sqf:'Customer', ph:true, phIcon:'\uD83D\uDCE6', phDesc:'Product specifications, labelling accuracy, and customer-specific requirements.', phItems:['Product specification compliance','Label accuracy verification','Customer-specific requirements checklist','Finished product testing records','Certificate of Analysis (COA) records','Shelf life validation']},
         ]
       },
     ]
   },
 
-  // ── ESG ──
-  esg: {
-    label: 'ESG Audit', badge: 'Environmental, Social & Governance \\u2022 Sustainability Reporting',
+  // ═══════════════════════════════════════
+  // OTHER — Generic / Custom Audit
+  // ═══════════════════════════════════════
+  other: {
+    label: 'Other Audit', badge: 'Custom Audit \u2022 All Modules Available',
     sections: [
-      { id:'e1', num:'E', name:'Environmental', sqf:'GRI 300 Series', color:'#10B981', icon:'\\uD83C\\uDF3F',
-        desc:'Water, waste, energy, emissions, chemical management, environmental compliance',
+      { id:'x1', num:'1', name:'Documentation & Management', sqf:'General', color:'#6C5CE7', icon:'\uD83D\uDCCB',
+        desc:'Document control, backup verification, management system overview',
         modules:[
-          {key:'sds_records',     name:'Chemical Inventory',       sqf:'GRI 306', table:'sds_records'},
-          {key:'_ph_esg_water',   name:'Water Management',         sqf:'GRI 303', ph:true, phIcon:'\\uD83D\\uDCA7', phDesc:'Water withdrawal, consumption, discharge, and quality management.', phItems:['Water usage tracking by source','Wastewater discharge permits & monitoring','Water recycling/reuse metrics','Water efficiency targets & progress','Water quality testing records','Spill prevention & response plans']},
-          {key:'_ph_esg_waste',   name:'Waste & Recycling',        sqf:'GRI 306', ph:true, phIcon:'\\u267B\\uFE0F', phDesc:'Waste generation, recycling programs, landfill diversion, and food waste reduction.', phItems:['Waste generation by category (hazardous/non-hazardous)','Recycling rate metrics & targets','Food waste reduction program','Waste hauler certifications','Hazardous waste manifests','Landfill diversion rates']},
-          {key:'_ph_esg_energy',  name:'Energy & Emissions',       sqf:'GRI 302/305', ph:true, phIcon:'\\u26A1', phDesc:'Energy consumption, renewable energy, GHG emissions (Scope 1, 2, 3).', phItems:['Energy consumption by source','Scope 1 emissions (direct)','Scope 2 emissions (purchased electricity)','Scope 3 emissions (value chain)','Energy efficiency targets & progress','Renewable energy usage & goals']},
-          {key:'_ph_esg_comply',  name:'Environmental Compliance', sqf:'GRI 307', ph:true, phIcon:'\\uD83D\\uDCDC', phDesc:'Regulatory compliance, permits, violations, and corrective actions.', phItems:['Environmental permits & licenses','Regulatory inspection records','Violation history & corrective actions','Air quality permits (if applicable)','Environmental management system documentation']},
+          {key:'documents',       name:'Document Control',        sqf:'General', special:'doc_dashboard'},
+          {key:'backup_verification_log',name:'Backup Verification',sqf:'General',table:'backup_verification_log'},
         ]
       },
-      { id:'e2', num:'S', name:'Social', sqf:'GRI 400 Series', color:'#3B82F6', icon:'\\uD83E\\uDDD1\\u200D\\uD83E\\uDD1D\\u200D\\uD83E\\uDDD1',
-        desc:'Worker health & safety, labor practices, training, diversity, community impact',
+      { id:'x2', num:'2', name:'Food Safety & Chemical Controls', sqf:'General', color:'#EF4444', icon:'\u26A0\uFE0F',
+        desc:'SDS records, allergen management, chemical controls, environmental monitoring',
         modules:[
-          {key:'ncr_records',     name:'Safety Incidents',         sqf:'GRI 403', table:'ncr_records'},
-          {key:'training_records',name:'Training & Development',   sqf:'GRI 404', table:'training_records'},
-          {key:'_ph_esg_health',  name:'Worker Health & Safety',   sqf:'GRI 403', ph:true, phIcon:'\\u2695\\uFE0F', phDesc:'Occupational health management system, injury rates, wellness programs.', phItems:['OHS management system documentation','TRIR (Total Recordable Incident Rate)','DART Rate (Days Away, Restricted, Transferred)','Workers compensation metrics','Wellness program participation','Return-to-work program records']},
-          {key:'_ph_esg_labor',   name:'Labor Practices',          sqf:'GRI 401\\u2013402', ph:true, phIcon:'\\u2696\\uFE0F', phDesc:'Employment practices, labor rights, benefits, and working conditions.', phItems:['Employee demographics & turnover rates','Benefits program documentation','Working hours & overtime tracking','Minimum wage compliance','Grievance mechanism records','Labor law compliance documentation']},
-          {key:'_ph_esg_diversity',name:'Diversity & Inclusion',   sqf:'GRI 405\\u2013406', ph:true, phIcon:'\\uD83C\\uDF08', phDesc:'Workforce diversity, equal opportunity, and non-discrimination.', phItems:['Workforce diversity metrics (gender, age, ethnicity)','Pay equity analysis','Anti-discrimination policy','Equal opportunity hiring practices','D&I training records','Harassment reporting & resolution']},
+          {key:'sds_records',     name:'SDS / Chemical Records',  sqf:'General', table:'sds_records'},
+          {key:'_allergen_view',  name:'Allergen Management',     sqf:'General', special:'allergen'},
+          {key:'environmental_monitoring',name:'Environmental Monitoring',sqf:'General',table:'environmental_monitoring'},
         ]
       },
-      { id:'e3', num:'G', name:'Governance', sqf:'GRI 200 Series', color:'#8B5CF6', icon:'\\uD83C\\uDFDB\\uFE0F',
-        desc:'Ethics, compliance, transparency, anti-corruption, supply chain responsibility',
+      { id:'x3', num:'3', name:'Corrective Actions & Audits', sqf:'General', color:'#10B981', icon:'\u2705',
+        desc:'NCR/CAPA records, audit findings, training records',
         modules:[
-          {key:'documents',       name:'Document Control',         sqf:'GRI 102', special:'doc_dashboard'},
-          {key:'vendor_approvals',name:'Supply Chain Assessment',  sqf:'GRI 308/414', table:'vendor_approvals'},
-          {key:'audit_findings',  name:'Compliance Audits',        sqf:'GRI 205\\u2013206', table:'audit_findings'},
-          {key:'_ph_esg_ethics',  name:'Ethics & Anti-Corruption', sqf:'GRI 205', ph:true, phIcon:'\\uD83D\\uDCDC', phDesc:'Business ethics, anti-corruption policies, whistleblower protections.', phItems:['Code of conduct / ethics policy','Anti-corruption policy & training','Whistleblower protection program','Conflicts of interest disclosures','Ethics hotline records','Board oversight documentation']},
-          {key:'_ph_esg_report',  name:'ESG Reporting & Disclosure', sqf:'GRI 102', ph:true, phIcon:'\\uD83D\\uDCCA', phDesc:'Sustainability reporting frameworks and stakeholder communication.', phItems:['Annual sustainability/ESG report','GRI Content Index','UN SDG alignment mapping','Stakeholder engagement records','Materiality assessment','Third-party verification/assurance']},
-          {key:'backup_verification_log',name:'Data Integrity',    sqf:'GRI 102-56', table:'backup_verification_log'},
+          {key:'ncr_records',     name:'NCR / Corrective Actions', sqf:'General', table:'ncr_records'},
+          {key:'audit_findings',  name:'Audit Findings',          sqf:'General', table:'audit_findings'},
+          {key:'training_records',name:'Training Records',        sqf:'General', table:'training_records'},
+        ]
+      },
+      { id:'x4', num:'4', name:'Facility & Maintenance', sqf:'General', color:'#F59E0B', icon:'\uD83C\uDFED',
+        desc:'Preventive maintenance, work orders, facility inspections, supplier approvals',
+        modules:[
+          {key:'pm_schedules',    name:'Preventive Maintenance',  sqf:'General', table:'pm_schedules'},
+          {key:'work_orders',     name:'Work Orders',             sqf:'General', table:'work_orders'},
+          {key:'inspections',     name:'Facility Inspections',    sqf:'General', table:'inspections'},
+          {key:'vendor_approvals',name:'Supplier Approvals',      sqf:'General', table:'vendor_approvals'},
         ]
       },
     ]
@@ -520,10 +720,22 @@ var ALL_MODULES = [];
 
 function loadAuditStructure(auditType) {
   var t = (auditType || 'sqf').toLowerCase().trim();
-  if (t.indexOf('fda') >= 0 || t.indexOf('fsma') >= 0) activeAuditType = AUDIT_TYPES.fda;
-  else if (t.indexOf('osha') >= 0) activeAuditType = AUDIT_TYPES.osha;
-  else if (t.indexOf('esg') >= 0) activeAuditType = AUDIT_TYPES.esg;
-  else activeAuditType = AUDIT_TYPES.sqf;
+  // Match exact keys from audit_sessions.audit_type
+  if (AUDIT_TYPES[t]) {
+    activeAuditType = AUDIT_TYPES[t];
+  } else if (t.indexOf('fssc') >= 0 || t.indexOf('22000') >= 0) {
+    activeAuditType = AUDIT_TYPES.fssc;
+  } else if (t.indexOf('brcgs') >= 0 || t.indexOf('brc') >= 0) {
+    activeAuditType = AUDIT_TYPES.brcgs;
+  } else if (t.indexOf('regulatory') >= 0 || t.indexOf('fda') >= 0 || t.indexOf('fsma') >= 0) {
+    activeAuditType = AUDIT_TYPES.regulatory;
+  } else if (t.indexOf('customer') >= 0) {
+    activeAuditType = AUDIT_TYPES.customer;
+  } else if (t.indexOf('internal') >= 0) {
+    activeAuditType = AUDIT_TYPES.internal;
+  } else {
+    activeAuditType = AUDIT_TYPES[t] || AUDIT_TYPES.other;
+  }
 
   activeSections = activeAuditType.sections;
   MODULE_MAP = {};
@@ -538,7 +750,6 @@ function loadAuditStructure(auditType) {
     }
   }
 }
-
 var HIDDEN_FIELDS = ['id','organization_id','created_by_id','performed_by_id','verified_by_id',
   'pin','pin_hash','password','token','token_hash','access_token','access_token_hash',
   'discovered_by_id','closed_by_id','assigned_to_id','approved_by_id','rejected_by_id',
