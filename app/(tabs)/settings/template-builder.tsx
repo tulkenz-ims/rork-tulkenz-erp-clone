@@ -12,29 +12,6 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import {
-  X,
-  Check,
-  ChevronRight,
-  Plus,
-  Trash2,
-  Camera,
-  ClipboardList,
-  AlertTriangle,
-  ShoppingCart,
-  Layers,
-  Type,
-  AlignLeft,
-  List,
-  CheckSquare,
-  Hash,
-  Calendar,
-  HelpCircle,
-  Save,
-  Sparkles,
-  Info,
-} from 'lucide-react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Stack } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -45,7 +22,6 @@ import {
   useUpdateTaskFeedTemplate,
 } from '@/hooks/useTaskFeedTemplates';
 import {
-  TaskFeedTemplate,
   ButtonType,
   FieldType,
   FormField,
@@ -54,35 +30,22 @@ import {
   BUTTON_TYPE_LABELS,
   BUTTON_TYPE_COLORS,
   FIELD_TYPE_LABELS,
+  SuggestedForm,
 } from '@/types/taskFeedTemplates';
 import { DEPARTMENT_CODES, getDepartmentName, getDepartmentColor } from '@/constants/organizationCodes';
 import { PREBUILT_TEMPLATES, getPrebuiltTemplateList } from '@/constants/prebuiltTemplates';
-import { SuggestedForm } from '@/types/taskFeedTemplates';
 
-const BUTTON_TYPE_ICONS: Record<ButtonType, typeof ClipboardList> = {
-  add_task: ClipboardList,
-  report_issue: AlertTriangle,
-  request_purchase: ShoppingCart,
-};
-
-const FIELD_TYPE_ICONS: Record<FieldType, typeof Type> = {
-  dropdown: List,
-  text_input: Type,
-  text_area: AlignLeft,
-  radio: CheckSquare,
-  checkbox: CheckSquare,
-  number: Hash,
-  date: Calendar,
-};
+// ── Emoji replacements for all icons ──────────────────────────
+const BTN_EMOJI: Record<ButtonType, string> = { add_task: '📋', report_issue: '⚠️', request_purchase: '🛒' };
+const FIELD_EMOJI: Record<FieldType, string> = { dropdown: '▾', text_input: 'Aa', text_area: '¶', radio: '◉', checkbox: '☑', number: '#', date: '📅' };
 
 type WizardStep = 'basic' | 'departments' | 'fields' | 'settings' | 'preview';
-
-const STEPS: { key: WizardStep; label: string; shortLabel: string }[] = [
-  { key: 'basic', label: 'Basic Info', shortLabel: '1' },
-  { key: 'departments', label: 'Departments', shortLabel: '2' },
-  { key: 'fields', label: 'Form Fields', shortLabel: '3' },
-  { key: 'settings', label: 'Settings', shortLabel: '4' },
-  { key: 'preview', label: 'Preview', shortLabel: '5' },
+const STEPS: { key: WizardStep; label: string; n: string }[] = [
+  { key: 'basic', label: 'Basic Info', n: '1' },
+  { key: 'departments', label: 'Departments', n: '2' },
+  { key: 'fields', label: 'Form Fields', n: '3' },
+  { key: 'settings', label: 'Settings', n: '4' },
+  { key: 'preview', label: 'Preview', n: '5' },
 ];
 
 export default function TemplateBuilderScreen() {
@@ -91,14 +54,11 @@ export default function TemplateBuilderScreen() {
   const { id } = useLocalSearchParams<{ id?: string }>();
   const isEditing = !!id;
 
-  const { data: existingTemplate, isLoading: isLoadingTemplate } = useTaskFeedTemplateQuery(id || '', {
-    enabled: isEditing,
-  });
+  const { data: existingTemplate, isLoading: isLoadingTemplate } = useTaskFeedTemplateQuery(id || '', { enabled: isEditing });
 
   const [currentStep, setCurrentStep] = useState<WizardStep>('basic');
   const [showFieldModal, setShowFieldModal] = useState(false);
   const [editingFieldIndex, setEditingFieldIndex] = useState<number | null>(null);
-
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [buttonType, setButtonType] = useState<ButtonType>('add_task');
@@ -111,7 +71,6 @@ export default function TemplateBuilderScreen() {
   const [departmentFormSuggestions, setDepartmentFormSuggestions] = useState<Record<string, SuggestedForm[]>>({});
   const [showPrebuiltPicker, setShowPrebuiltPicker] = useState(!isEditing);
   const [selectedPrebuilt, setSelectedPrebuilt] = useState<string | null>(null);
-
   const [fieldLabel, setFieldLabel] = useState('');
   const [fieldType, setFieldType] = useState<FieldType>('text_input');
   const [fieldRequired, setFieldRequired] = useState(true);
@@ -121,14 +80,10 @@ export default function TemplateBuilderScreen() {
 
   useEffect(() => {
     if (existingTemplate && isEditing) {
-      setName(existingTemplate.name);
-      setDescription(existingTemplate.description || '');
-      setButtonType(existingTemplate.buttonType);
-      setTriggeringDepartment(existingTemplate.triggeringDepartment);
-      setAssignedDepartments(existingTemplate.assignedDepartments);
-      setFormFields(existingTemplate.formFields);
-      setPhotoRequired(existingTemplate.photoRequired);
-      setWorkflowRules(existingTemplate.workflowRules);
+      setName(existingTemplate.name); setDescription(existingTemplate.description || '');
+      setButtonType(existingTemplate.buttonType); setTriggeringDepartment(existingTemplate.triggeringDepartment);
+      setAssignedDepartments(existingTemplate.assignedDepartments); setFormFields(existingTemplate.formFields);
+      setPhotoRequired(existingTemplate.photoRequired); setWorkflowRules(existingTemplate.workflowRules);
       setIsProductionHold(existingTemplate.isProductionHold || false);
       setDepartmentFormSuggestions(existingTemplate.departmentFormSuggestions || {});
     }
@@ -137,590 +92,372 @@ export default function TemplateBuilderScreen() {
   const handleLoadPrebuilt = useCallback((prebuiltName: string) => {
     const config = PREBUILT_TEMPLATES[prebuiltName];
     if (!config) return;
-    setName(config.name);
-    setDescription(config.description || '');
-    setButtonType(config.buttonType);
-    setAssignedDepartments([...config.assignedDepartments]);
-    setFormFields([...(config.formFields || [])]);
-    setPhotoRequired(config.photoRequired);
-    setIsProductionHold(config.isProductionHold || false);
+    setName(config.name); setDescription(config.description || ''); setButtonType(config.buttonType);
+    setAssignedDepartments([...config.assignedDepartments]); setFormFields([...(config.formFields || [])]);
+    setPhotoRequired(config.photoRequired); setIsProductionHold(config.isProductionHold || false);
     setDepartmentFormSuggestions({ ...(config.departmentFormSuggestions || {}) });
-    setSelectedPrebuilt(prebuiltName);
-    setShowPrebuiltPicker(false);
+    setSelectedPrebuilt(prebuiltName); setShowPrebuiltPicker(false);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   }, []);
 
   const createMutation = useCreateTaskFeedTemplate({
-    onSuccess: () => {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert('Success', 'Template created successfully', [
-        { text: 'OK', onPress: () => router.back() },
-      ]);
-    },
-    onError: (error) => {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      Alert.alert('Error', `Failed to create template: ${errorMessage}`);
-    },
+    onSuccess: () => { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); Alert.alert('Success', 'Template created successfully', [{ text: 'OK', onPress: () => router.back() }]); },
+    onError: (e) => { Alert.alert('Error', `Failed: ${e instanceof Error ? e.message : 'Unknown'}`); },
   });
-
   const updateMutation = useUpdateTaskFeedTemplate({
-    onSuccess: () => {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert('Success', 'Template updated successfully', [
-        { text: 'OK', onPress: () => router.back() },
-      ]);
-    },
-    onError: (error) => {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      Alert.alert('Error', `Failed to update template: ${errorMessage}`);
-    },
+    onSuccess: () => { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); Alert.alert('Success', 'Template updated successfully', [{ text: 'OK', onPress: () => router.back() }]); },
+    onError: (e) => { Alert.alert('Error', `Failed: ${e instanceof Error ? e.message : 'Unknown'}`); },
   });
 
   const currentStepIndex = STEPS.findIndex((s) => s.key === currentStep);
-
   const canGoNext = useMemo(() => {
-    switch (currentStep) {
-      case 'basic': return name.trim().length > 0 && triggeringDepartment.length > 0;
-      case 'departments': return assignedDepartments.length > 0;
-      default: return true;
-    }
+    if (currentStep === 'basic') return name.trim().length > 0 && triggeringDepartment.length > 0;
+    if (currentStep === 'departments') return assignedDepartments.length > 0;
+    return true;
   }, [currentStep, name, triggeringDepartment, assignedDepartments]);
 
-  const handleNext = useCallback(() => {
-    const nextIndex = currentStepIndex + 1;
-    if (nextIndex < STEPS.length) { setCurrentStep(STEPS[nextIndex].key); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }
-  }, [currentStepIndex]);
-
-  const handleBack = useCallback(() => {
-    const prevIndex = currentStepIndex - 1;
-    if (prevIndex >= 0) { setCurrentStep(STEPS[prevIndex].key); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }
-  }, [currentStepIndex]);
+  const handleNext = useCallback(() => { const i = currentStepIndex + 1; if (i < STEPS.length) { setCurrentStep(STEPS[i].key); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); } }, [currentStepIndex]);
+  const handleBack = useCallback(() => { const i = currentStepIndex - 1; if (i >= 0) { setCurrentStep(STEPS[i].key); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); } }, [currentStepIndex]);
 
   const handleSave = useCallback(() => {
-    if (!name.trim()) { Alert.alert('Missing Information', 'Please enter a template name.'); return; }
-    if (!triggeringDepartment) { Alert.alert('Missing Information', 'Please select a triggering department.'); return; }
-    if (assignedDepartments.length === 0) { Alert.alert('Missing Information', 'Please select at least one assigned department.'); return; }
-    const templateData = { name: name.trim(), description: description.trim() || undefined, buttonType, triggeringDepartment, assignedDepartments, formFields, photoRequired, workflowRules, isProductionHold, departmentFormSuggestions };
-    if (isEditing && id) { updateMutation.mutate({ id, ...templateData }); } else { createMutation.mutate(templateData); }
+    if (!name.trim()) { Alert.alert('Missing', 'Enter a template name.'); return; }
+    if (!triggeringDepartment) { Alert.alert('Missing', 'Select a triggering department.'); return; }
+    if (assignedDepartments.length === 0) { Alert.alert('Missing', 'Select at least one department.'); return; }
+    const data = { name: name.trim(), description: description.trim() || undefined, buttonType, triggeringDepartment, assignedDepartments, formFields, photoRequired, workflowRules, isProductionHold, departmentFormSuggestions };
+    if (isEditing && id) { updateMutation.mutate({ id, ...data }); } else { createMutation.mutate(data); }
   }, [name, description, buttonType, triggeringDepartment, assignedDepartments, formFields, photoRequired, workflowRules, isEditing, id, createMutation, updateMutation, isProductionHold, departmentFormSuggestions]);
 
   const handleClose = useCallback(() => {
-    if (name || description || formFields.length > 0) {
-      Alert.alert('Discard Changes?', 'You have unsaved changes. Are you sure you want to leave?', [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: () => router.back() },
-      ]);
-    } else { router.back(); }
+    if (name || description || formFields.length > 0) { Alert.alert('Discard?', 'Unsaved changes will be lost.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Discard', style: 'destructive', onPress: () => router.back() }]); }
+    else { router.back(); }
   }, [name, description, formFields, router]);
 
-  const resetFieldForm = useCallback(() => {
-    setFieldLabel(''); setFieldType('text_input'); setFieldRequired(true); setFieldPlaceholder(''); setFieldOptions([]); setNewOptionValue(''); setEditingFieldIndex(null);
-  }, []);
+  const resetFieldForm = useCallback(() => { setFieldLabel(''); setFieldType('text_input'); setFieldRequired(true); setFieldPlaceholder(''); setFieldOptions([]); setNewOptionValue(''); setEditingFieldIndex(null); }, []);
   const handleAddField = useCallback(() => { resetFieldForm(); setShowFieldModal(true); }, [resetFieldForm]);
-  const handleEditField = useCallback((index: number) => {
-    const field = formFields[index];
-    setFieldLabel(field.label); setFieldType(field.fieldType); setFieldRequired(field.required); setFieldPlaceholder(field.placeholder || ''); setFieldOptions(field.options || []); setEditingFieldIndex(index); setShowFieldModal(true);
-  }, [formFields]);
+  const handleEditField = useCallback((i: number) => { const f = formFields[i]; setFieldLabel(f.label); setFieldType(f.fieldType); setFieldRequired(f.required); setFieldPlaceholder(f.placeholder || ''); setFieldOptions(f.options || []); setEditingFieldIndex(i); setShowFieldModal(true); }, [formFields]);
 
   const handleSaveField = useCallback(() => {
-    if (!fieldLabel.trim()) { Alert.alert('Missing Information', 'Please enter a field label.'); return; }
-    const needsOptions = ['dropdown', 'radio', 'checkbox'].includes(fieldType);
-    if (needsOptions && fieldOptions.length === 0) { Alert.alert('Missing Information', 'Please add at least one option for this field type.'); return; }
-    const newField: FormField = { id: editingFieldIndex !== null ? formFields[editingFieldIndex].id : `field-${Date.now()}`, label: fieldLabel.trim(), fieldType, required: fieldRequired, placeholder: fieldPlaceholder.trim() || undefined, options: needsOptions ? fieldOptions : undefined, sortOrder: editingFieldIndex !== null ? formFields[editingFieldIndex].sortOrder : formFields.length + 1 };
-    if (editingFieldIndex !== null) { const updated = [...formFields]; updated[editingFieldIndex] = newField; setFormFields(updated); } else { setFormFields([...formFields, newField]); }
-    setShowFieldModal(false); resetFieldForm(); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (!fieldLabel.trim()) { Alert.alert('Missing', 'Enter a field label.'); return; }
+    const needsOpts = ['dropdown', 'radio', 'checkbox'].includes(fieldType);
+    if (needsOpts && fieldOptions.length === 0) { Alert.alert('Missing', 'Add at least one option.'); return; }
+    const nf: FormField = { id: editingFieldIndex !== null ? formFields[editingFieldIndex].id : `field-${Date.now()}`, label: fieldLabel.trim(), fieldType, required: fieldRequired, placeholder: fieldPlaceholder.trim() || undefined, options: needsOpts ? fieldOptions : undefined, sortOrder: editingFieldIndex !== null ? formFields[editingFieldIndex].sortOrder : formFields.length + 1 };
+    if (editingFieldIndex !== null) { const u = [...formFields]; u[editingFieldIndex] = nf; setFormFields(u); } else { setFormFields([...formFields, nf]); }
+    setShowFieldModal(false); resetFieldForm();
   }, [fieldLabel, fieldType, fieldRequired, fieldPlaceholder, fieldOptions, editingFieldIndex, formFields, resetFieldForm]);
 
-  const handleDeleteField = useCallback((index: number) => {
-    Alert.alert('Delete Field', 'Are you sure you want to delete this field?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => { setFormFields(formFields.filter((_, i) => i !== index)); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); } },
-    ]);
-  }, [formFields]);
-
-  const handleAddOption = useCallback(() => {
-    if (!newOptionValue.trim()) return;
-    setFieldOptions([...fieldOptions, { value: newOptionValue.trim().toLowerCase().replace(/\s+/g, '_'), label: newOptionValue.trim() }]);
-    setNewOptionValue('');
-  }, [newOptionValue, fieldOptions]);
-  const handleRemoveOption = useCallback((index: number) => { setFieldOptions(fieldOptions.filter((_, i) => i !== index)); }, [fieldOptions]);
-  const toggleAssignedDepartment = useCallback((code: string) => { setAssignedDepartments((prev) => prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]); }, []);
+  const handleDeleteField = useCallback((i: number) => { Alert.alert('Delete?', 'Delete this field?', [{ text: 'Cancel', style: 'cancel' }, { text: 'Delete', style: 'destructive', onPress: () => setFormFields(formFields.filter((_, j) => j !== i)) }]); }, [formFields]);
+  const handleAddOption = useCallback(() => { if (!newOptionValue.trim()) return; setFieldOptions([...fieldOptions, { value: newOptionValue.trim().toLowerCase().replace(/\s+/g, '_'), label: newOptionValue.trim() }]); setNewOptionValue(''); }, [newOptionValue, fieldOptions]);
+  const handleRemoveOption = useCallback((i: number) => { setFieldOptions(fieldOptions.filter((_, j) => j !== i)); }, [fieldOptions]);
+  const toggleDept = useCallback((c: string) => { setAssignedDepartments((p) => p.includes(c) ? p.filter((x) => x !== c) : [...p, c]); }, []);
 
   const prebuiltList = useMemo(() => getPrebuiltTemplateList(), []);
-  const styles = createStyles(colors);
+  const s = createStyles(colors);
 
   if (isEditing && isLoadingTemplate) {
-    return (
-      <View style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}>
-        <Stack.Screen options={{ title: 'Edit Template' }} />
-        <Text style={{ color: colors.textSecondary, fontSize: 16 }}>Loading template...</Text>
-      </View>
-    );
+    return (<View style={[s.container, { justifyContent: 'center', alignItems: 'center' }]}><Stack.Screen options={{ title: 'Edit Template' }} /><Text style={{ color: colors.textSecondary, fontSize: 16 }}>Loading template...</Text></View>);
   }
 
-  const renderStepIndicator = () => (
-    <View style={styles.stepIndicator}>
-      {STEPS.map((step, index) => {
-        const isActive = index === currentStepIndex;
-        const isCompleted = index < currentStepIndex;
-        return (
-          <React.Fragment key={step.key}>
-            <TouchableOpacity
-              style={[styles.stepDot, isActive && { backgroundColor: colors.primary }, isCompleted && { backgroundColor: '#10B981' }, !isActive && !isCompleted && { backgroundColor: colors.border }]}
-              onPress={() => { if (isCompleted || isActive) setCurrentStep(step.key); }}
-            >
-              {isCompleted ? <Check size={12} color="#fff" /> : <Text style={[styles.stepDotText, { color: isActive ? '#fff' : colors.textSecondary }]}>{step.shortLabel}</Text>}
-            </TouchableOpacity>
-            {index < STEPS.length - 1 && <View style={[styles.stepLine, { backgroundColor: isCompleted ? '#10B981' : colors.border }]} />}
-          </React.Fragment>
-        );
-      })}
-    </View>
-  );
+  return (
+    <View style={s.container}>
+      <Stack.Screen options={{ title: isEditing ? 'Edit Template' : 'Create Template',
+        headerLeft: () => <TouchableOpacity onPress={handleClose} style={s.hdrBtn}><Text style={{ fontSize: 20, color: colors.text }}>✕</Text></TouchableOpacity>,
+        headerRight: () => <TouchableOpacity onPress={handleSave} style={s.hdrBtn} disabled={createMutation.isPending || updateMutation.isPending}><Text style={{ fontSize: 16, color: colors.primary, fontWeight: '700' }}>💾</Text></TouchableOpacity>,
+      }} />
 
-  const renderBasicStep = () => (
-    <View style={styles.stepContent}>
-      {!isEditing && (
-        <View style={styles.inputGroup}>
-          {showPrebuiltPicker ? (
-            <>
-              <View style={styles.prebuiltHeader}>
-                <Sparkles size={16} color="#F59E0B" />
-                <Text style={[styles.inputLabel, { color: colors.text, marginBottom: 0 }]}>Start from Pre-Built Template</Text>
-              </View>
-              <Text style={[styles.inputHint, { color: colors.textSecondary }]}>
-                These come pre-loaded with department assignments, form checklists, and production hold settings.
-              </Text>
-              <View style={styles.prebuiltGrid}>
-                {prebuiltList.map((pb) => (
-                  <TouchableOpacity key={pb.name} style={[styles.prebuiltCard, { backgroundColor: colors.surface, borderColor: selectedPrebuilt === pb.name ? '#F59E0B' : colors.border }]} onPress={() => handleLoadPrebuilt(pb.name)} activeOpacity={0.7}>
-                    <View style={styles.prebuiltCardTop}>
-                      <Text style={[styles.prebuiltName, { color: colors.text }]}>{pb.name}</Text>
-                      {pb.isProductionHold && (
-                        <View style={[styles.holdBadge, { backgroundColor: '#EF444420' }]}>
-                          <AlertTriangle size={8} color="#EF4444" />
-                          <Text style={styles.holdBadgeText}>HOLD</Text>
-                        </View>
-                      )}
-                    </View>
-                    <Text style={[styles.prebuiltDesc, { color: colors.textSecondary }]} numberOfLines={2}>{pb.description}</Text>
-                    <Text style={[styles.prebuiltMeta, { color: colors.textTertiary }]}>{pb.departmentCount} depts — {pb.buttonType === 'report_issue' ? 'Issue' : 'Task'}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-              <TouchableOpacity style={[styles.skipPrebuiltBtn, { borderColor: colors.border }]} onPress={() => setShowPrebuiltPicker(false)}>
-                <Text style={[styles.skipPrebuiltText, { color: colors.textSecondary }]}>or start from scratch</Text>
-              </TouchableOpacity>
-            </>
-          ) : (
-            <TouchableOpacity style={[styles.loadPrebuiltBtn, { backgroundColor: '#F59E0B15', borderColor: '#F59E0B60' }]} onPress={() => setShowPrebuiltPicker(true)}>
-              <Sparkles size={14} color="#F59E0B" />
-              <Text style={[styles.loadPrebuiltText, { color: '#F59E0B' }]}>{selectedPrebuilt ? `Loaded: ${selectedPrebuilt}` : 'Load from pre-built template'}</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      )}
-
-      <Text style={[styles.stepTitle, { color: colors.text }]}>Basic Information</Text>
-      <Text style={[styles.stepSubtitle, { color: colors.textSecondary }]}>Set up the template name and button type</Text>
-
-      <View style={styles.inputGroup}>
-        <Text style={[styles.inputLabel, { color: colors.text }]}>Template Name *</Text>
-        <TextInput style={[styles.textInput, { backgroundColor: colors.surface, color: colors.text }]} placeholder="e.g., Pre-OP, Equipment Failure" placeholderTextColor={colors.textTertiary} value={name} onChangeText={setName} />
-      </View>
-
-      <View style={styles.inputGroup}>
-        <Text style={[styles.inputLabel, { color: colors.text }]}>Description</Text>
-        <TextInput style={[styles.textInput, styles.textArea, { backgroundColor: colors.surface, color: colors.text }]} placeholder="Brief description of when to use this template" placeholderTextColor={colors.textTertiary} value={description} onChangeText={setDescription} multiline numberOfLines={3} textAlignVertical="top" />
-      </View>
-
-      <View style={styles.inputGroup}>
-        <Text style={[styles.inputLabel, { color: colors.text }]}>Button Type *</Text>
-        <View style={styles.buttonTypeGrid}>
-          {(Object.keys(BUTTON_TYPE_LABELS) as ButtonType[]).map((type) => {
-            const Icon = BUTTON_TYPE_ICONS[type]; const color = BUTTON_TYPE_COLORS[type]; const isSelected = buttonType === type;
-            return (
-              <TouchableOpacity key={type} style={[styles.buttonTypeOption, { backgroundColor: isSelected ? color + '20' : colors.surface, borderColor: isSelected ? color : colors.border }]} onPress={() => setButtonType(type)}>
-                <Icon size={24} color={isSelected ? color : colors.textSecondary} />
-                <Text style={[styles.buttonTypeLabel, { color: isSelected ? color : colors.text }]}>{BUTTON_TYPE_LABELS[type]}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      </View>
-
-      <View style={[styles.inputGroup, styles.toggleRow]}>
-        <View style={styles.toggleInfo}>
-          <View style={styles.toggleLabelRow}>
-            <AlertTriangle size={14} color={isProductionHold ? '#EF4444' : colors.textSecondary} />
-            <Text style={[styles.inputLabel, { color: colors.text, marginBottom: 0 }]}>Production Hold</Text>
-          </View>
-          <Text style={[styles.inputHint, { color: colors.textSecondary }]}>Line stops until departments clear the issue</Text>
-        </View>
-        <Switch value={isProductionHold} onValueChange={setIsProductionHold} trackColor={{ false: colors.border, true: '#EF444480' }} thumbColor={isProductionHold ? '#EF4444' : '#f4f3f4'} />
-      </View>
-
-      <View style={styles.inputGroup}>
-        <Text style={[styles.inputLabel, { color: colors.text }]}>Triggering Department *</Text>
-        <Text style={[styles.inputHint, { color: colors.textSecondary }]}>Which department can use this template?</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.deptScroll}>
-          {Object.values(DEPARTMENT_CODES).map((dept) => {
-            const isSelected = triggeringDepartment === dept.code;
-            return (
-              <TouchableOpacity key={dept.code} style={[styles.deptChip, { backgroundColor: isSelected ? dept.color : colors.surface, borderColor: dept.color }]} onPress={() => setTriggeringDepartment(dept.code)}>
-                <View style={[styles.deptDot, { backgroundColor: isSelected ? '#fff' : dept.color }]} />
-                <Text style={[styles.deptChipText, { color: isSelected ? '#fff' : colors.text }]}>{dept.name}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      </View>
-    </View>
-  );
-
-  const renderDepartmentsStep = () => (
-    <View style={styles.stepContent}>
-      <Text style={[styles.stepTitle, { color: colors.text }]}>Assigned Departments</Text>
-      <Text style={[styles.stepSubtitle, { color: colors.textSecondary }]}>Select which departments will receive tasks when this template is used</Text>
-      <View style={styles.deptGrid}>
-        {Object.values(DEPARTMENT_CODES).map((dept) => {
-          const isSelected = assignedDepartments.includes(dept.code);
+      {/* Step indicator */}
+      <View style={s.stepRow}>
+        {STEPS.map((step, i) => {
+          const active = i === currentStepIndex; const done = i < currentStepIndex;
           return (
-            <TouchableOpacity key={dept.code} style={[styles.deptCard, { backgroundColor: isSelected ? dept.color + '15' : colors.surface, borderColor: isSelected ? dept.color : colors.border }]} onPress={() => toggleAssignedDepartment(dept.code)}>
-              <View style={[styles.deptCardDot, { backgroundColor: dept.color }]} />
-              <Text style={[styles.deptCardName, { color: colors.text }]}>{dept.name}</Text>
-              <Text style={[styles.deptCardCode, { color: colors.textSecondary }]}>{dept.code}</Text>
-              {departmentFormSuggestions[dept.code]?.length > 0 && isSelected && (
-                <View style={[styles.formCountBadge, { backgroundColor: dept.color + '25' }]}>
-                  <Text style={[styles.formCountBadgeText, { color: dept.color }]}>{departmentFormSuggestions[dept.code].length} forms</Text>
-                </View>
-              )}
-              {isSelected && <View style={[styles.deptCardCheck, { backgroundColor: dept.color }]}><Check size={12} color="#fff" /></View>}
-            </TouchableOpacity>
+            <React.Fragment key={step.key}>
+              <TouchableOpacity style={[s.stepDot, active && { backgroundColor: colors.primary }, done && { backgroundColor: '#10B981' }, !active && !done && { backgroundColor: colors.border }]}
+                onPress={() => { if (done || active) setCurrentStep(step.key); }}>
+                <Text style={[s.stepDotText, { color: (active || done) ? '#fff' : colors.textSecondary }]}>{done ? '✓' : step.n}</Text>
+              </TouchableOpacity>
+              {i < STEPS.length - 1 && <View style={[s.stepLine, { backgroundColor: done ? '#10B981' : colors.border }]} />}
+            </React.Fragment>
           );
         })}
       </View>
-      <View style={[styles.selectedInfo, { backgroundColor: colors.surface }]}>
-        <Layers size={16} color={colors.primary} />
-        <Text style={[styles.selectedInfoText, { color: colors.text }]}>{assignedDepartments.length} department{assignedDepartments.length !== 1 ? 's' : ''} selected</Text>
-      </View>
-    </View>
-  );
 
-  const renderFieldsStep = () => (
-    <View style={styles.stepContent}>
-      <Text style={[styles.stepTitle, { color: colors.text }]}>Form Fields</Text>
-      <Text style={[styles.stepSubtitle, { color: colors.textSecondary }]}>Build the form users will fill out. Use dropdowns to standardize responses.</Text>
-      {formFields.length === 0 ? (
-        <View style={[styles.emptyFields, { backgroundColor: colors.surface }]}>
-          <Type size={32} color={colors.textTertiary} />
-          <Text style={[styles.emptyFieldsText, { color: colors.textSecondary }]}>No fields added yet</Text>
-          <TouchableOpacity style={[styles.addFieldButton, { backgroundColor: colors.primary }]} onPress={handleAddField}>
-            <Plus size={18} color="#fff" /><Text style={styles.addFieldButtonText}>Add Field</Text>
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <>
-          {formFields.map((field, index) => {
-            const FieldIcon = FIELD_TYPE_ICONS[field.fieldType];
-            return (
-              <View key={field.id} style={[styles.fieldCard, { backgroundColor: colors.surface }]}>
-                <View style={styles.fieldCardHeader}>
-                  <View style={[styles.fieldTypeIcon, { backgroundColor: colors.primary + '20' }]}><FieldIcon size={14} color={colors.primary} /></View>
-                  <View style={styles.fieldCardInfo}>
-                    <Text style={[styles.fieldCardLabel, { color: colors.text }]}>{field.label}{field.required && <Text style={{ color: colors.error }}> *</Text>}</Text>
-                    <Text style={[styles.fieldCardType, { color: colors.textSecondary }]}>{FIELD_TYPE_LABELS[field.fieldType]}{field.options && ` \u2022 ${field.options.length} options`}</Text>
-                  </View>
-                  <TouchableOpacity style={styles.fieldAction} onPress={() => handleEditField(index)}><Type size={16} color={colors.primary} /></TouchableOpacity>
-                  <TouchableOpacity style={styles.fieldAction} onPress={() => handleDeleteField(index)}><Trash2 size={16} color={colors.error} /></TouchableOpacity>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={100}>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 24 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+          <View style={s.stepContent}>
+
+            {/* ── STEP: BASIC ── */}
+            {currentStep === 'basic' && (<>
+              {!isEditing && (
+                <View style={{ marginBottom: 20 }}>
+                  {showPrebuiltPicker ? (<>
+                    <Text style={[s.label, { color: colors.text }]}>✨ Start from Pre-Built Template</Text>
+                    <Text style={[s.hint, { color: colors.textSecondary }]}>Pre-loaded with department assignments, form checklists, and production hold settings.</Text>
+                    <View style={{ gap: 8, marginTop: 8 }}>
+                      {prebuiltList.map((pb) => (
+                        <TouchableOpacity key={pb.name} style={[s.prebuiltCard, { backgroundColor: colors.surface, borderColor: selectedPrebuilt === pb.name ? '#F59E0B' : colors.border }]} onPress={() => handleLoadPrebuilt(pb.name)}>
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <Text style={[s.prebuiltName, { color: colors.text }]}>{pb.name}</Text>
+                            {pb.isProductionHold && <View style={[s.holdBadge, { backgroundColor: '#EF444420' }]}><Text style={{ fontSize: 8, fontWeight: '800', color: '#EF4444' }}>⚠ HOLD</Text></View>}
+                          </View>
+                          <Text style={{ fontSize: 12, color: colors.textSecondary }} numberOfLines={2}>{pb.description}</Text>
+                          <Text style={{ fontSize: 11, color: colors.textTertiary, marginTop: 2 }}>{pb.departmentCount} depts — {pb.buttonType === 'report_issue' ? 'Issue' : 'Task'}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                    <TouchableOpacity style={{ alignItems: 'center', paddingVertical: 10, borderTopWidth: 1, borderColor: colors.border, marginTop: 8 }} onPress={() => setShowPrebuiltPicker(false)}>
+                      <Text style={{ fontSize: 13, color: colors.textSecondary }}>or start from scratch</Text>
+                    </TouchableOpacity>
+                  </>) : (
+                    <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderRadius: 10, borderWidth: 1, borderColor: '#F59E0B60', backgroundColor: '#F59E0B15' }} onPress={() => setShowPrebuiltPicker(true)}>
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: '#F59E0B' }}>{selectedPrebuilt ? `✨ Loaded: ${selectedPrebuilt}` : '✨ Load from pre-built template'}</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              )}
+
+              <Text style={[s.stepTitle, { color: colors.text }]}>Basic Information</Text>
+              <View style={{ marginBottom: 20 }}>
+                <Text style={[s.label, { color: colors.text }]}>Template Name *</Text>
+                <TextInput style={[s.input, { backgroundColor: colors.surface, color: colors.text }]} placeholder="e.g., Pre-OP, Equipment Failure" placeholderTextColor={colors.textTertiary} value={name} onChangeText={setName} />
+              </View>
+              <View style={{ marginBottom: 20 }}>
+                <Text style={[s.label, { color: colors.text }]}>Description</Text>
+                <TextInput style={[s.input, { backgroundColor: colors.surface, color: colors.text, minHeight: 80, textAlignVertical: 'top' }]} placeholder="Brief description" placeholderTextColor={colors.textTertiary} value={description} onChangeText={setDescription} multiline numberOfLines={3} />
+              </View>
+              <View style={{ marginBottom: 20 }}>
+                <Text style={[s.label, { color: colors.text }]}>Button Type *</Text>
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  {(Object.keys(BUTTON_TYPE_LABELS) as ButtonType[]).map((t) => {
+                    const c = BUTTON_TYPE_COLORS[t]; const sel = buttonType === t;
+                    return (<TouchableOpacity key={t} style={{ flex: 1, padding: 16, borderRadius: 12, alignItems: 'center', borderWidth: 2, borderColor: sel ? c : colors.border, backgroundColor: sel ? c + '20' : colors.surface, gap: 4 }} onPress={() => setButtonType(t)}>
+                      <Text style={{ fontSize: 22 }}>{BTN_EMOJI[t]}</Text>
+                      <Text style={{ fontSize: 12, fontWeight: '600', color: sel ? c : colors.text, textAlign: 'center' }}>{BUTTON_TYPE_LABELS[t]}</Text>
+                    </TouchableOpacity>);
+                  })}
                 </View>
               </View>
-            );
-          })}
-          <TouchableOpacity style={[styles.addFieldOutline, { borderColor: colors.primary }]} onPress={handleAddField}>
-            <Plus size={18} color={colors.primary} /><Text style={[styles.addFieldOutlineText, { color: colors.primary }]}>Add Field</Text>
-          </TouchableOpacity>
-        </>
-      )}
-    </View>
-  );
-
-  const renderSettingsStep = () => (
-    <View style={styles.stepContent}>
-      <Text style={[styles.stepTitle, { color: colors.text }]}>Settings</Text>
-      <Text style={[styles.stepSubtitle, { color: colors.textSecondary }]}>Configure photo requirements and workflow rules</Text>
-      <View style={[styles.settingCard, { backgroundColor: colors.surface }]}>
-        <View style={styles.settingCardContent}>
-          <View style={[styles.settingIcon, { backgroundColor: '#F59E0B20' }]}><Camera size={20} color="#F59E0B" /></View>
-          <View style={styles.settingInfo}>
-            <Text style={[styles.settingLabel, { color: colors.text }]}>Photo Required</Text>
-            <Text style={[styles.settingHint, { color: colors.textSecondary }]}>Require users to attach a photo</Text>
-          </View>
-          <Switch value={photoRequired} onValueChange={setPhotoRequired} trackColor={{ false: colors.border, true: '#F59E0B' }} thumbColor="#fff" />
-        </View>
-      </View>
-      <View style={[styles.infoCard, { backgroundColor: colors.primary + '10' }]}>
-        <HelpCircle size={18} color={colors.primary} />
-        <Text style={[styles.infoCardText, { color: colors.primary }]}>Workflow rules (PASS/FAIL actions, alerts) will be available in a future update.</Text>
-      </View>
-    </View>
-  );
-
-  const renderPreviewStep = () => {
-    const ButtonIcon = BUTTON_TYPE_ICONS[buttonType];
-    const buttonColor = BUTTON_TYPE_COLORS[buttonType];
-    const triggerColor = getDepartmentColor(triggeringDepartment) || '#6B7280';
-    const triggerName = triggeringDepartment === 'any' ? 'Any Department' : getDepartmentName(triggeringDepartment);
-    return (
-      <View style={styles.stepContent}>
-        <Text style={[styles.stepTitle, { color: colors.text }]}>Preview</Text>
-        <Text style={[styles.stepSubtitle, { color: colors.textSecondary }]}>Review your template before saving</Text>
-        <View style={[styles.previewCard, { backgroundColor: colors.surface }]}>
-          <View style={styles.previewHeader}>
-            <View style={[styles.previewIconContainer, { backgroundColor: buttonColor + '20' }]}><ButtonIcon size={24} color={buttonColor} /></View>
-            <View style={styles.previewHeaderInfo}>
-              <Text style={[styles.previewName, { color: colors.text }]}>{name || 'Unnamed Template'}</Text>
-              {description ? <Text style={[styles.previewDescription, { color: colors.textSecondary }]}>{description}</Text> : null}
-            </View>
-          </View>
-          <View style={styles.previewSection}>
-            <Text style={[styles.previewSectionLabel, { color: colors.textSecondary }]}>Triggering Department</Text>
-            <View style={[styles.previewDeptBadge, { backgroundColor: triggerColor + '20' }]}><Text style={[styles.previewDeptText, { color: triggerColor }]}>{triggerName}</Text></View>
-          </View>
-          <View style={styles.previewSection}>
-            <Text style={[styles.previewSectionLabel, { color: colors.textSecondary }]}>Assigned Departments ({assignedDepartments.length})</Text>
-            <View style={styles.previewDeptList}>
-              {assignedDepartments.map((code) => { const dc = getDepartmentColor(code) || '#6B7280'; return (
-                <View key={code} style={[styles.previewDeptSmall, { backgroundColor: dc + '20' }]}><Text style={[styles.previewDeptSmallText, { color: dc }]}>{getDepartmentName(code)}</Text></View>
-              ); })}
-            </View>
-          </View>
-          <View style={styles.previewSection}>
-            <Text style={[styles.previewSectionLabel, { color: colors.textSecondary }]}>Form Fields ({formFields.length})</Text>
-            {formFields.map((field) => (
-              <View key={field.id} style={[styles.previewField, { backgroundColor: colors.background }]}>
-                <Text style={[styles.previewFieldLabel, { color: colors.text }]}>{field.label}{field.required && <Text style={{ color: colors.error }}> *</Text>}</Text>
-                <Text style={[styles.previewFieldType, { color: colors.textSecondary }]}>{FIELD_TYPE_LABELS[field.fieldType]}</Text>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[s.label, { color: colors.text, marginBottom: 0 }]}>{isProductionHold ? '🔴' : '⚪'} Production Hold</Text>
+                  <Text style={[s.hint, { color: colors.textSecondary }]}>Line stops until departments clear</Text>
+                </View>
+                <Switch value={isProductionHold} onValueChange={setIsProductionHold} trackColor={{ false: colors.border, true: '#EF444480' }} thumbColor={isProductionHold ? '#EF4444' : '#f4f3f4'} />
               </View>
-            ))}
-          </View>
-          <View style={styles.previewSection}>
-            <View style={styles.previewSettingRow}>
-              <Camera size={16} color={photoRequired ? '#F59E0B' : colors.textTertiary} />
-              <Text style={[styles.previewSettingText, { color: colors.text }]}>Photo {photoRequired ? 'Required' : 'Optional'}</Text>
-            </View>
-          </View>
-        </View>
-      </View>
-    );
-  };
+              <View style={{ marginBottom: 20 }}>
+                <Text style={[s.label, { color: colors.text }]}>Triggering Department *</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  {Object.values(DEPARTMENT_CODES).map((dept) => {
+                    const sel = triggeringDepartment === dept.code;
+                    return (<TouchableOpacity key={dept.code} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 14, borderRadius: 20, marginRight: 8, borderWidth: 1, borderColor: dept.color, backgroundColor: sel ? dept.color : colors.surface, gap: 8 }} onPress={() => setTriggeringDepartment(dept.code)}>
+                      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: sel ? '#fff' : dept.color }} />
+                      <Text style={{ fontSize: 13, fontWeight: '500', color: sel ? '#fff' : colors.text }}>{dept.name}</Text>
+                    </TouchableOpacity>);
+                  })}
+                </ScrollView>
+              </View>
+            </>)}
 
-  const renderCurrentStep = () => {
-    switch (currentStep) {
-      case 'basic': return renderBasicStep();
-      case 'departments': return renderDepartmentsStep();
-      case 'fields': return renderFieldsStep();
-      case 'settings': return renderSettingsStep();
-      case 'preview': return renderPreviewStep();
-      default: return null;
-    }
-  };
+            {/* ── STEP: DEPARTMENTS ── */}
+            {currentStep === 'departments' && (<>
+              <Text style={[s.stepTitle, { color: colors.text }]}>Assigned Departments</Text>
+              <Text style={[s.hint, { color: colors.textSecondary, marginBottom: 16 }]}>Select which departments receive tasks</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+                {Object.values(DEPARTMENT_CODES).map((dept) => {
+                  const sel = assignedDepartments.includes(dept.code);
+                  return (<TouchableOpacity key={dept.code} style={{ width: '48%', padding: 14, borderRadius: 12, borderWidth: 1, borderColor: sel ? dept.color : colors.border, backgroundColor: sel ? dept.color + '15' : colors.surface, position: 'relative' }} onPress={() => toggleDept(dept.code)}>
+                    <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: dept.color, marginBottom: 8 }} />
+                    <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text, marginBottom: 2 }}>{dept.name}</Text>
+                    <Text style={{ fontSize: 12, color: colors.textSecondary }}>{dept.code}</Text>
+                    {departmentFormSuggestions[dept.code]?.length > 0 && sel && (
+                      <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, marginTop: 4, backgroundColor: dept.color + '25' }}>
+                        <Text style={{ fontSize: 10, fontWeight: '700', color: dept.color }}>{departmentFormSuggestions[dept.code].length} forms</Text>
+                      </View>
+                    )}
+                    {sel && <View style={{ position: 'absolute', top: 10, right: 10, width: 20, height: 20, borderRadius: 10, backgroundColor: dept.color, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>✓</Text></View>}
+                  </TouchableOpacity>);
+                })}
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 10, marginTop: 16, backgroundColor: colors.surface, gap: 10 }}>
+                <Text style={{ fontSize: 14, fontWeight: '500', color: colors.text }}>{assignedDepartments.length} department{assignedDepartments.length !== 1 ? 's' : ''} selected</Text>
+              </View>
+            </>)}
 
-  return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <Stack.Screen options={{ title: isEditing ? 'Edit Template' : 'Create Template',
-        headerLeft: () => <TouchableOpacity onPress={handleClose} style={styles.headerButton}><X size={24} color={colors.text} /></TouchableOpacity>,
-        headerRight: () => <TouchableOpacity onPress={handleSave} style={styles.headerButton} disabled={createMutation.isPending || updateMutation.isPending}><Save size={24} color={colors.primary} /></TouchableOpacity>,
-      }} />
-      {renderStepIndicator()}
-      <KeyboardAvoidingView style={styles.content} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={100}>
-        <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-          {renderCurrentStep()}
+            {/* ── STEP: FIELDS ── */}
+            {currentStep === 'fields' && (<>
+              <Text style={[s.stepTitle, { color: colors.text }]}>Form Fields</Text>
+              {formFields.length === 0 ? (
+                <View style={{ padding: 32, borderRadius: 12, backgroundColor: colors.surface, alignItems: 'center', gap: 12 }}>
+                  <Text style={{ fontSize: 14, color: colors.textSecondary }}>No fields added yet</Text>
+                  <TouchableOpacity style={{ flexDirection: 'row', paddingVertical: 10, paddingHorizontal: 16, borderRadius: 8, backgroundColor: colors.primary, gap: 6 }} onPress={handleAddField}>
+                    <Text style={{ color: '#fff', fontSize: 14, fontWeight: '600' }}>+ Add Field</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (<>
+                {formFields.map((field, i) => (
+                  <View key={field.id} style={{ borderRadius: 12, padding: 12, marginBottom: 10, backgroundColor: colors.surface }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                      <View style={{ width: 28, height: 28, borderRadius: 6, backgroundColor: colors.primary + '20', alignItems: 'center', justifyContent: 'center' }}>
+                        <Text style={{ fontSize: 12, color: colors.primary, fontWeight: '700' }}>{FIELD_EMOJI[field.fieldType]}</Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text }}>{field.label}{field.required ? <Text style={{ color: '#EF4444' }}> *</Text> : null}</Text>
+                        <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>{FIELD_TYPE_LABELS[field.fieldType]}{field.options ? ` • ${field.options.length} options` : ''}</Text>
+                      </View>
+                      <TouchableOpacity style={{ padding: 6 }} onPress={() => handleEditField(i)}><Text style={{ color: colors.primary }}>✏️</Text></TouchableOpacity>
+                      <TouchableOpacity style={{ padding: 6 }} onPress={() => handleDeleteField(i)}><Text style={{ color: '#EF4444' }}>🗑</Text></TouchableOpacity>
+                    </View>
+                  </View>
+                ))}
+                <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 14, borderRadius: 12, borderWidth: 2, borderStyle: 'dashed', borderColor: colors.primary, gap: 8 }} onPress={handleAddField}>
+                  <Text style={{ fontSize: 14, fontWeight: '600', color: colors.primary }}>+ Add Field</Text>
+                </TouchableOpacity>
+              </>)}
+            </>)}
+
+            {/* ── STEP: SETTINGS ── */}
+            {currentStep === 'settings' && (<>
+              <Text style={[s.stepTitle, { color: colors.text }]}>Settings</Text>
+              <View style={{ borderRadius: 12, backgroundColor: colors.surface, marginBottom: 16 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', padding: 14, gap: 12 }}>
+                  <View style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: '#F59E0B20', alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={{ fontSize: 18 }}>📷</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 15, fontWeight: '600', color: colors.text }}>Photo Required</Text>
+                    <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 2 }}>Require users to attach a photo</Text>
+                  </View>
+                  <Switch value={photoRequired} onValueChange={setPhotoRequired} trackColor={{ false: colors.border, true: '#F59E0B' }} thumbColor="#fff" />
+                </View>
+              </View>
+            </>)}
+
+            {/* ── STEP: PREVIEW ── */}
+            {currentStep === 'preview' && (<>
+              <Text style={[s.stepTitle, { color: colors.text }]}>Preview</Text>
+              <View style={{ borderRadius: 14, padding: 16, backgroundColor: colors.surface }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+                  <View style={{ width: 48, height: 48, borderRadius: 12, backgroundColor: BUTTON_TYPE_COLORS[buttonType] + '20', alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={{ fontSize: 22 }}>{BTN_EMOJI[buttonType]}</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text }}>{name || 'Unnamed'}</Text>
+                    {description ? <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 4 }}>{description}</Text> : null}
+                  </View>
+                </View>
+                <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textSecondary, textTransform: 'uppercase', marginBottom: 8 }}>Trigger</Text>
+                <View style={{ alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, backgroundColor: (getDepartmentColor(triggeringDepartment) || '#6B7280') + '20', marginBottom: 16 }}>
+                  <Text style={{ fontSize: 14, fontWeight: '600', color: getDepartmentColor(triggeringDepartment) || '#6B7280' }}>{triggeringDepartment === 'any' ? 'Any Department' : getDepartmentName(triggeringDepartment)}</Text>
+                </View>
+                <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textSecondary, textTransform: 'uppercase', marginBottom: 8 }}>Assigned ({assignedDepartments.length})</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 16 }}>
+                  {assignedDepartments.map((c) => { const dc = getDepartmentColor(c) || '#6B7280'; return (
+                    <View key={c} style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, backgroundColor: dc + '20' }}><Text style={{ fontSize: 12, fontWeight: '500', color: dc }}>{getDepartmentName(c)}</Text></View>
+                  ); })}
+                </View>
+                <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textSecondary, textTransform: 'uppercase', marginBottom: 8 }}>Fields ({formFields.length})</Text>
+                {formFields.map((f) => (
+                  <View key={f.id} style={{ flexDirection: 'row', justifyContent: 'space-between', padding: 10, borderRadius: 8, marginBottom: 6, backgroundColor: colors.background }}>
+                    <Text style={{ fontSize: 14, fontWeight: '500', color: colors.text }}>{f.label}{f.required ? <Text style={{ color: '#EF4444' }}> *</Text> : null}</Text>
+                    <Text style={{ fontSize: 12, color: colors.textSecondary }}>{FIELD_TYPE_LABELS[f.fieldType]}</Text>
+                  </View>
+                ))}
+                <Text style={{ fontSize: 14, color: colors.text, marginTop: 8 }}>{photoRequired ? '📷 Photo Required' : '📷 Photo Optional'}</Text>
+              </View>
+            </>)}
+
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
-      <View style={[styles.footer, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
+
+      {/* Footer navigation */}
+      <View style={[s.footer, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
         {currentStepIndex > 0 ? (
-          <TouchableOpacity style={[styles.footerButton, { backgroundColor: colors.background }]} onPress={handleBack}><Text style={[styles.footerButtonText, { color: colors.text }]}>Back</Text></TouchableOpacity>
-        ) : <View style={styles.footerButton} />}
+          <TouchableOpacity style={[s.footerBtn, { backgroundColor: colors.background }]} onPress={handleBack}><Text style={{ fontSize: 15, fontWeight: '600', color: colors.text }}>Back</Text></TouchableOpacity>
+        ) : <View style={s.footerBtn} />}
         {currentStepIndex < STEPS.length - 1 ? (
-          <TouchableOpacity style={[styles.footerButton, styles.footerButtonPrimary, { backgroundColor: canGoNext ? colors.primary : colors.border }]} onPress={handleNext} disabled={!canGoNext}>
-            <Text style={[styles.footerButtonText, { color: canGoNext ? '#fff' : colors.textTertiary }]}>Next</Text>
-            <ChevronRight size={18} color={canGoNext ? '#fff' : colors.textTertiary} />
+          <TouchableOpacity style={[s.footerBtn, { backgroundColor: canGoNext ? colors.primary : colors.border }]} onPress={handleNext} disabled={!canGoNext}>
+            <Text style={{ fontSize: 15, fontWeight: '600', color: canGoNext ? '#fff' : colors.textTertiary }}>Next ›</Text>
           </TouchableOpacity>
         ) : (
-          <TouchableOpacity style={[styles.footerButton, styles.footerButtonPrimary, { backgroundColor: colors.primary }]} onPress={handleSave} disabled={createMutation.isPending || updateMutation.isPending}>
-            <Save size={18} color="#fff" />
-            <Text style={[styles.footerButtonText, { color: '#fff' }]}>{createMutation.isPending || updateMutation.isPending ? 'Saving...' : 'Save Template'}</Text>
+          <TouchableOpacity style={[s.footerBtn, { backgroundColor: colors.primary }]} onPress={handleSave} disabled={createMutation.isPending || updateMutation.isPending}>
+            <Text style={{ fontSize: 15, fontWeight: '600', color: '#fff' }}>{createMutation.isPending || updateMutation.isPending ? 'Saving...' : '💾 Save Template'}</Text>
           </TouchableOpacity>
         )}
       </View>
 
+      {/* Field editor modal */}
       <Modal visible={showFieldModal} animationType="slide" presentationStyle="pageSheet">
-        <SafeAreaView style={[styles.modalContainer, { backgroundColor: colors.background }]}>
-          <View style={[styles.modalHeader, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
-            <TouchableOpacity onPress={() => { setShowFieldModal(false); resetFieldForm(); }}><X size={24} color={colors.text} /></TouchableOpacity>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>{editingFieldIndex !== null ? 'Edit Field' : 'Add Field'}</Text>
-            <TouchableOpacity onPress={handleSaveField}><Check size={24} color={colors.primary} /></TouchableOpacity>
+        <View style={[s.container, { backgroundColor: colors.background }]}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface }}>
+            <TouchableOpacity onPress={() => { setShowFieldModal(false); resetFieldForm(); }}><Text style={{ fontSize: 20, color: colors.text }}>✕</Text></TouchableOpacity>
+            <Text style={{ fontSize: 17, fontWeight: '600', color: colors.text }}>{editingFieldIndex !== null ? 'Edit Field' : 'Add Field'}</Text>
+            <TouchableOpacity onPress={handleSaveField}><Text style={{ fontSize: 16, fontWeight: '700', color: colors.primary }}>✓ Save</Text></TouchableOpacity>
           </View>
-          <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
-            <View style={styles.inputGroup}>
-              <Text style={[styles.inputLabel, { color: colors.text }]}>Field Label *</Text>
-              <TextInput style={[styles.textInput, { backgroundColor: colors.surface, color: colors.text }]} placeholder="e.g., Location, Batch Number" placeholderTextColor={colors.textTertiary} value={fieldLabel} onChangeText={setFieldLabel} />
+          <ScrollView style={{ flex: 1, padding: 16 }} showsVerticalScrollIndicator={false}>
+            <View style={{ marginBottom: 20 }}>
+              <Text style={[s.label, { color: colors.text }]}>Field Label *</Text>
+              <TextInput style={[s.input, { backgroundColor: colors.surface, color: colors.text }]} placeholder="e.g., Location, Batch Number" placeholderTextColor={colors.textTertiary} value={fieldLabel} onChangeText={setFieldLabel} />
             </View>
-            <View style={styles.inputGroup}>
-              <Text style={[styles.inputLabel, { color: colors.text }]}>Field Type *</Text>
-              <View style={styles.fieldTypeGrid}>
-                {(Object.keys(FIELD_TYPE_LABELS) as FieldType[]).map((type) => {
-                  const Icon = FIELD_TYPE_ICONS[type]; const isSelected = fieldType === type;
-                  return (
-                    <TouchableOpacity key={type} style={[styles.fieldTypeOption, { backgroundColor: isSelected ? colors.primary + '20' : colors.surface, borderColor: isSelected ? colors.primary : colors.border }]} onPress={() => setFieldType(type)}>
-                      <Icon size={18} color={isSelected ? colors.primary : colors.textSecondary} />
-                      <Text style={[styles.fieldTypeLabel, { color: isSelected ? colors.primary : colors.text }]}>{FIELD_TYPE_LABELS[type]}</Text>
-                    </TouchableOpacity>
-                  );
+            <View style={{ marginBottom: 20 }}>
+              <Text style={[s.label, { color: colors.text }]}>Field Type *</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                {(Object.keys(FIELD_TYPE_LABELS) as FieldType[]).map((t) => {
+                  const sel = fieldType === t;
+                  return (<TouchableOpacity key={t} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 14, borderRadius: 10, borderWidth: 1, borderColor: sel ? colors.primary : colors.border, backgroundColor: sel ? colors.primary + '20' : colors.surface, gap: 8 }} onPress={() => setFieldType(t)}>
+                    <Text style={{ fontSize: 14, color: sel ? colors.primary : colors.textSecondary, fontWeight: '700' }}>{FIELD_EMOJI[t]}</Text>
+                    <Text style={{ fontSize: 13, fontWeight: '500', color: sel ? colors.primary : colors.text }}>{FIELD_TYPE_LABELS[t]}</Text>
+                  </TouchableOpacity>);
                 })}
               </View>
             </View>
-            <View style={[styles.settingRow, { backgroundColor: colors.surface }]}>
-              <Text style={[styles.settingRowLabel, { color: colors.text }]}>Required Field</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14, borderRadius: 12, marginBottom: 16, backgroundColor: colors.surface }}>
+              <Text style={{ fontSize: 15, fontWeight: '500', color: colors.text }}>Required Field</Text>
               <Switch value={fieldRequired} onValueChange={setFieldRequired} trackColor={{ false: colors.border, true: colors.primary }} thumbColor="#fff" />
             </View>
             {['text_input', 'text_area', 'number'].includes(fieldType) && (
-              <View style={styles.inputGroup}>
-                <Text style={[styles.inputLabel, { color: colors.text }]}>Placeholder Text</Text>
-                <TextInput style={[styles.textInput, { backgroundColor: colors.surface, color: colors.text }]} placeholder="Hint text shown in field" placeholderTextColor={colors.textTertiary} value={fieldPlaceholder} onChangeText={setFieldPlaceholder} />
+              <View style={{ marginBottom: 20 }}>
+                <Text style={[s.label, { color: colors.text }]}>Placeholder Text</Text>
+                <TextInput style={[s.input, { backgroundColor: colors.surface, color: colors.text }]} placeholder="Hint text" placeholderTextColor={colors.textTertiary} value={fieldPlaceholder} onChangeText={setFieldPlaceholder} />
               </View>
             )}
             {['dropdown', 'radio', 'checkbox'].includes(fieldType) && (
-              <View style={styles.inputGroup}>
-                <Text style={[styles.inputLabel, { color: colors.text }]}>Options *</Text>
-                <Text style={[styles.inputHint, { color: colors.textSecondary }]}>Add the choices users can select from</Text>
-                {fieldOptions.map((option, index) => (
-                  <View key={index} style={[styles.optionItem, { backgroundColor: colors.surface }]}>
-                    <Text style={[styles.optionLabel, { color: colors.text }]}>{option.label}</Text>
-                    <TouchableOpacity onPress={() => handleRemoveOption(index)}><X size={16} color={colors.error} /></TouchableOpacity>
+              <View style={{ marginBottom: 20 }}>
+                <Text style={[s.label, { color: colors.text }]}>Options *</Text>
+                {fieldOptions.map((o, i) => (
+                  <View key={i} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 12, borderRadius: 8, marginBottom: 8, backgroundColor: colors.surface }}>
+                    <Text style={{ fontSize: 14, color: colors.text }}>{o.label}</Text>
+                    <TouchableOpacity onPress={() => handleRemoveOption(i)}><Text style={{ color: '#EF4444' }}>✕</Text></TouchableOpacity>
                   </View>
                 ))}
-                <View style={styles.addOptionRow}>
-                  <TextInput style={[styles.textInput, styles.optionInput, { backgroundColor: colors.surface, color: colors.text }]} placeholder="New option" placeholderTextColor={colors.textTertiary} value={newOptionValue} onChangeText={setNewOptionValue} onSubmitEditing={handleAddOption} />
-                  <TouchableOpacity style={[styles.addOptionButton, { backgroundColor: colors.primary }]} onPress={handleAddOption}><Plus size={18} color="#fff" /></TouchableOpacity>
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <TextInput style={[s.input, { flex: 1, backgroundColor: colors.surface, color: colors.text }]} placeholder="New option" placeholderTextColor={colors.textTertiary} value={newOptionValue} onChangeText={setNewOptionValue} onSubmitEditing={handleAddOption} />
+                  <TouchableOpacity style={{ width: 44, height: 44, borderRadius: 10, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' }} onPress={handleAddOption}>
+                    <Text style={{ color: '#fff', fontSize: 18, fontWeight: '700' }}>+</Text>
+                  </TouchableOpacity>
                 </View>
               </View>
             )}
           </ScrollView>
-        </SafeAreaView>
+        </View>
       </Modal>
     </View>
   );
 }
 
-const createStyles = (colors: any) =>
-  StyleSheet.create({
-    container: { flex: 1 },
-    headerButton: { padding: 8 },
-    stepIndicator: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 16, paddingHorizontal: 24 },
-    stepDot: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-    stepDotText: { fontSize: 12, fontWeight: '600' as const },
-    stepLine: { width: 24, height: 2, marginHorizontal: 4 },
-    content: { flex: 1 },
-    scrollView: { flex: 1 },
-    scrollContent: { paddingBottom: 24 },
-    stepContent: { padding: 16 },
-    stepTitle: { fontSize: 22, fontWeight: '700' as const, marginBottom: 8 },
-    stepSubtitle: { fontSize: 14, lineHeight: 20, marginBottom: 24 },
-    inputGroup: { marginBottom: 20 },
-    inputLabel: { fontSize: 14, fontWeight: '600' as const, marginBottom: 8 },
-    inputHint: { fontSize: 13, marginBottom: 8 },
-    textInput: { borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15 },
-    textArea: { minHeight: 80, textAlignVertical: 'top' },
-    buttonTypeGrid: { flexDirection: 'row', gap: 10 },
-    buttonTypeOption: { flex: 1, padding: 16, borderRadius: 12, alignItems: 'center', borderWidth: 2, gap: 8 },
-    buttonTypeLabel: { fontSize: 12, fontWeight: '600' as const, textAlign: 'center' as const },
-    deptScroll: { marginTop: 8 },
-    deptChip: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 14, borderRadius: 20, marginRight: 8, borderWidth: 1, gap: 8 },
-    deptDot: { width: 8, height: 8, borderRadius: 4 },
-    deptChipText: { fontSize: 13, fontWeight: '500' as const },
-    deptGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-    deptCard: { width: '48%', padding: 14, borderRadius: 12, borderWidth: 1, position: 'relative' },
-    deptCardDot: { width: 12, height: 12, borderRadius: 6, marginBottom: 8 },
-    deptCardName: { fontSize: 14, fontWeight: '600' as const, marginBottom: 2 },
-    deptCardCode: { fontSize: 12 },
-    deptCardCheck: { position: 'absolute', top: 10, right: 10, width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-    selectedInfo: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 10, marginTop: 16, gap: 10 },
-    selectedInfoText: { fontSize: 14, fontWeight: '500' as const },
-    emptyFields: { padding: 32, borderRadius: 12, alignItems: 'center', gap: 12 },
-    emptyFieldsText: { fontSize: 14 },
-    addFieldButton: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 16, borderRadius: 8, gap: 6 },
-    addFieldButtonText: { color: '#fff', fontSize: 14, fontWeight: '600' as const },
-    fieldCard: { borderRadius: 12, padding: 12, marginBottom: 10 },
-    fieldCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-    fieldTypeIcon: { width: 28, height: 28, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
-    fieldCardInfo: { flex: 1 },
-    fieldCardLabel: { fontSize: 14, fontWeight: '600' as const },
-    fieldCardType: { fontSize: 12, marginTop: 2 },
-    fieldAction: { padding: 6 },
-    addFieldOutline: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 14, borderRadius: 12, borderWidth: 2, borderStyle: 'dashed', gap: 8 },
-    addFieldOutlineText: { fontSize: 14, fontWeight: '600' as const },
-    settingCard: { borderRadius: 12, marginBottom: 16 },
-    settingCardContent: { flexDirection: 'row', alignItems: 'center', padding: 14, gap: 12 },
-    settingIcon: { width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-    settingInfo: { flex: 1 },
-    settingLabel: { fontSize: 15, fontWeight: '600' as const },
-    settingHint: { fontSize: 13, marginTop: 2 },
-    infoCard: { flexDirection: 'row', alignItems: 'flex-start', padding: 14, borderRadius: 10, gap: 10 },
-    infoCardText: { flex: 1, fontSize: 13, lineHeight: 18 },
-    previewCard: { borderRadius: 14, padding: 16 },
-    previewHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: colors.border },
-    previewIconContainer: { width: 48, height: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-    previewHeaderInfo: { flex: 1 },
-    previewName: { fontSize: 18, fontWeight: '700' as const },
-    previewDescription: { fontSize: 13, marginTop: 4 },
-    previewSection: { marginBottom: 16 },
-    previewSectionLabel: { fontSize: 12, fontWeight: '600' as const, marginBottom: 8, textTransform: 'uppercase' as const },
-    previewDeptBadge: { alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
-    previewDeptText: { fontSize: 14, fontWeight: '600' as const },
-    previewDeptList: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-    previewDeptSmall: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 },
-    previewDeptSmallText: { fontSize: 12, fontWeight: '500' as const },
-    previewField: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 10, borderRadius: 8, marginBottom: 6 },
-    previewFieldLabel: { fontSize: 14, fontWeight: '500' as const },
-    previewFieldType: { fontSize: 12 },
-    previewSettingRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-    previewSettingText: { fontSize: 14 },
-    footer: { flexDirection: 'row', padding: 16, gap: 12, borderTopWidth: 1 },
-    footerButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 14, borderRadius: 12, gap: 6 },
-    footerButtonPrimary: {},
-    footerButtonText: { fontSize: 15, fontWeight: '600' as const },
-    modalContainer: { flex: 1 },
-    modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1 },
-    modalTitle: { fontSize: 17, fontWeight: '600' as const },
-    modalContent: { flex: 1, padding: 16 },
-    fieldTypeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-    fieldTypeOption: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 14, borderRadius: 10, borderWidth: 1, gap: 8 },
-    fieldTypeLabel: { fontSize: 13, fontWeight: '500' as const },
-    settingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14, borderRadius: 12, marginBottom: 16 },
-    settingRowLabel: { fontSize: 15, fontWeight: '500' as const },
-    optionItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 12, borderRadius: 8, marginBottom: 8 },
-    optionLabel: { fontSize: 14 },
-    addOptionRow: { flexDirection: 'row', gap: 10 },
-    optionInput: { flex: 1 },
-    addOptionButton: { width: 44, height: 44, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-    prebuiltHeader: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 8, marginBottom: 4 },
-    prebuiltGrid: { gap: 8, marginTop: 8 },
-    prebuiltCard: { borderWidth: 1, borderRadius: 12, padding: 12, gap: 4 },
-    prebuiltCardTop: { flexDirection: 'row' as const, justifyContent: 'space-between' as const, alignItems: 'center' as const },
-    prebuiltName: { fontSize: 14, fontWeight: '700' as const },
-    prebuiltDesc: { fontSize: 12 },
-    prebuiltMeta: { fontSize: 11, marginTop: 2 },
-    holdBadge: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 3, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
-    holdBadgeText: { fontSize: 8, fontWeight: '800' as const, color: '#EF4444' },
-    skipPrebuiltBtn: { alignItems: 'center' as const, paddingVertical: 10, borderTopWidth: 1, marginTop: 8 },
-    skipPrebuiltText: { fontSize: 13 },
-    loadPrebuiltBtn: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 8, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10, borderWidth: 1 },
-    loadPrebuiltText: { fontSize: 13, fontWeight: '600' as const },
-    toggleRow: { flexDirection: 'row' as const, justifyContent: 'space-between' as const, alignItems: 'center' as const },
-    toggleInfo: { flex: 1, gap: 2 },
-    toggleLabelRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 6 },
-    formCountBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, marginTop: 4 },
-    formCountBadgeText: { fontSize: 10, fontWeight: '700' as const },
-  });
+const createStyles = (colors: any) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background },
+  hdrBtn: { padding: 8 },
+  stepRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 16, paddingHorizontal: 24 },
+  stepDot: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  stepDotText: { fontSize: 12, fontWeight: '600' as const },
+  stepLine: { width: 24, height: 2, marginHorizontal: 4 },
+  stepContent: { padding: 16 },
+  stepTitle: { fontSize: 22, fontWeight: '700' as const, marginBottom: 16 },
+  label: { fontSize: 14, fontWeight: '600' as const, marginBottom: 8 },
+  hint: { fontSize: 13, marginBottom: 8 },
+  input: { borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15 },
+  prebuiltCard: { borderWidth: 1, borderRadius: 12, padding: 12, gap: 4 },
+  prebuiltName: { fontSize: 14, fontWeight: '700' as const },
+  holdBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  footer: { flexDirection: 'row', padding: 16, gap: 12, borderTopWidth: 1 },
+  footerBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 14, borderRadius: 12, gap: 6 },
+});
