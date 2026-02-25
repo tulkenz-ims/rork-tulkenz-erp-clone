@@ -39,9 +39,9 @@ const sf = (id: string, type: string, route: string, required = false): Suggeste
 const LOCATION_FIELD: FormField = {
   id: 'location',
   label: 'Location (Room/Area)',
-  fieldType: 'text_input',
+  fieldType: 'dropdown',
   required: true,
-  placeholder: 'e.g., Production Room 1, Cooler 3',
+  dynamicSource: 'locations',
 };
 
 const DESCRIPTION_FIELD: FormField = {
