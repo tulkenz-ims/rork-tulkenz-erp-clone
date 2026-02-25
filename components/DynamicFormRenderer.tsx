@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { FormField, FormFieldOption } from '@/types/taskFeedTemplates';
+import { useLocations } from '@/hooks/useLocations';
 
 interface DynamicFormRendererProps {
   fields: FormField[];
@@ -25,6 +26,26 @@ export default function DynamicFormRenderer({
   onDropdownPress,
 }: DynamicFormRendererProps) {
   const { colors } = useTheme();
+  const { data: locations = [] } = useLocations();
+
+  // Build dynamic options for location fields
+  const locationOptions: FormFieldOption[] = useMemo(() => {
+    return locations
+      .filter(l => l.status === 'active')
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map(loc => ({
+        value: loc.name,
+        label: loc.location_code ? `${loc.name} (${loc.location_code})` : loc.name,
+      }));
+  }, [locations]);
+
+  // Resolve options for a field — uses dynamic source if specified
+  const getFieldOptions = useCallback((field: FormField): FormFieldOption[] => {
+    if ((field as any).dynamicSource === 'locations' && locationOptions.length > 0) {
+      return locationOptions;
+    }
+    return field.options || [];
+  }, [locationOptions]);
 
   const sortedFields = [...fields].sort((a, b) => a.sortOrder - b.sortOrder);
 
@@ -45,7 +66,15 @@ export default function DynamicFormRenderer({
                 styles.dropdownButton,
                 { backgroundColor: colors.surface, borderColor: error ? '#EF4444' : colors.border },
               ]}
-              onPress={() => onDropdownPress?.(field)}
+              onPress={() => {
+                // Inject dynamic options so parent picker shows them
+                const resolvedOptions = getFieldOptions(field);
+                if (resolvedOptions.length > 0 && (!field.options || field.options.length === 0)) {
+                  onDropdownPress?.({ ...field, options: resolvedOptions });
+                } else {
+                  onDropdownPress?.(field);
+                }
+              }}
             >
               <Text
                 style={[
@@ -54,7 +83,7 @@ export default function DynamicFormRenderer({
                 ]}
               >
                 {value
-                  ? field.options?.find(o => o.value === value)?.label || value
+                  ? getFieldOptions(field).find(o => o.value === value)?.label || value
                   : field.placeholder || `Select ${field.label}`}
               </Text>
               <Text style={[styles.iconText, { color: colors.textSecondary }]}>▼</Text>
@@ -269,7 +298,7 @@ export default function DynamicFormRenderer({
       default:
         return null;
     }
-  }, [values, errors, colors, onChange, onDropdownPress]);
+  }, [values, errors, colors, onChange, onDropdownPress, getFieldOptions]);
 
   return (
     <View style={styles.container}>
