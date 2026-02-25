@@ -24,6 +24,7 @@ export interface FormField {
   defaultValue?: string | string[] | boolean;
   helpText?: string;
   sortOrder: number;
+  dynamicSource?: string;
 }
 
 export interface WorkflowRule {
