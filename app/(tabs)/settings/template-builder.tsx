@@ -443,8 +443,6 @@ if (isEditing && isLoadingTemplate) {
     </View>
   );
 
-  const prebuiltList = useMemo(() => getPrebuiltTemplateList(), []);
-
   const renderBasicStep = () => (
     <View style={styles.stepContent}>
       {/* Pre-built template picker */}
