@@ -1,513 +1,29 @@
-/**
- * PRE-BUILT TASK FEED TEMPLATE CONFIGURATIONS
- * 
- * Department Codes:
- *   1001 = Maintenance
- *   1002 = Sanitation
- *   1003 = Production
- *   1004 = Quality
- *   1005 = Safety
- *   1006 = HR
- *   1008 = Warehouse
- *   1009 = IT / Technology
- */
-
-import { CreateTemplateInput, SuggestedForm, FormField } from '@/types/taskFeedTemplates';
-
-// ── Department Code Constants ─────────────────────────────────
-const DEPT = {
-  MAINT: '1001',
-  SANI: '1002',
-  PROD: '1003',
-  QUAL: '1004',
-  SAFE: '1005',
-  HR: '1006',
-  WARE: '1008',
-  IT: '1009',
-} as const;
-
-const ALL_OPERATIONAL = [DEPT.QUAL, DEPT.SAFE, DEPT.SANI, DEPT.MAINT, DEPT.PROD];
-
-const sf = (id: string, type: string, route: string, required = false): SuggestedForm => ({
-  formId: id, formType: type, formRoute: route, required,
-});
-
-// ── Common Form Fields ────────────────────────────────────────
-const LOCATION_FIELD: FormField = {
-  id: 'location',
-  label: 'Location (Room/Area)',
-  fieldType: 'dropdown',
-  required: true,
-  options: [
-    { value: 'production_room_1', label: 'Production Room 1' },
-    { value: 'production_room_2', label: 'Production Room 2' },
-    { value: 'production_room_3', label: 'Production Room 3' },
-    { value: 'cooler_1', label: 'Cooler 1' },
-    { value: 'cooler_2', label: 'Cooler 2' },
-    { value: 'freezer', label: 'Freezer' },
-    { value: 'warehouse', label: 'Warehouse' },
-    { value: 'shipping', label: 'Shipping / Receiving' },
-    { value: 'dry_storage', label: 'Dry Storage' },
-    { value: 'chemical_room', label: 'Chemical Room' },
-    { value: 'breakroom', label: 'Break Room' },
-    { value: 'hallway', label: 'Hallway / Corridor' },
-    { value: 'exterior', label: 'Exterior / Loading Dock' },
-    { value: 'restroom', label: 'Restroom' },
-    { value: 'office', label: 'Office' },
-    { value: 'lab', label: 'Lab / QA Room' },
-    { value: 'other', label: 'Other' },
-  ],
-};
-
-const DESCRIPTION_FIELD: FormField = {
-  id: 'description',
-  label: 'Description',
-  fieldType: 'text_area',
-  required: true,
-  placeholder: 'Describe what happened...',
-};
-
-const SEVERITY_FIELD: FormField = {
-  id: 'severity',
-  label: 'Severity',
-  fieldType: 'dropdown',
-  required: true,
-  options: [
-    { value: 'low', label: 'Low — No product impact' },
-    { value: 'medium', label: 'Medium — Potential product impact' },
-    { value: 'high', label: 'High — Confirmed product impact' },
-    { value: 'critical', label: 'Critical — Immediate danger' },
-  ],
-};
-
-const PRODUCT_LINE_FIELD: FormField = {
-  id: 'production_line',
-  label: 'Production Line',
-  fieldType: 'dropdown',
-  required: true,
-  options: [
-    { value: 'line_1', label: 'Line 1' },
-    { value: 'line_2', label: 'Line 2' },
-    { value: 'line_3', label: 'Line 3' },
-    { value: 'line_4', label: 'Line 4' },
-    { value: 'line_5', label: 'Line 5' },
-    { value: 'packaging_1', label: 'Packaging Line 1' },
-    { value: 'packaging_2', label: 'Packaging Line 2' },
-    { value: 'not_applicable', label: 'N/A — Not a line issue' },
-  ],
-};
-
-const IMMEDIATE_ACTION_FIELD: FormField = {
-  id: 'immediate_action',
-  label: 'Immediate Action Taken',
-  fieldType: 'text_area',
-  required: true,
-  placeholder: 'What was done immediately?',
-};
-
-
-// ── FOREIGN MATERIAL ──────────────────────────────────────────
-export const FOREIGN_MATERIAL_TEMPLATE: CreateTemplateInput = {
-  name: 'Foreign Material',
-  description: 'Glass, plastic, metal, or other foreign material found in product or production area',
-  buttonType: 'report_issue',
-  triggeringDepartment: 'any',
-  assignedDepartments: ALL_OPERATIONAL,
-  photoRequired: true,
-  isProductionHold: true,
-  formFields: [
-    LOCATION_FIELD,
-    {
-      id: 'material_type',
-      label: 'Type of Foreign Material',
-      fieldType: 'dropdown',
-      required: true,
-      options: [
-        { value: 'glass', label: 'Glass' },
-        { value: 'metal', label: 'Metal' },
-        { value: 'plastic', label: 'Plastic (hard)' },
-        { value: 'plastic_soft', label: 'Plastic (soft/film)' },
-        { value: 'wood', label: 'Wood' },
-        { value: 'rubber', label: 'Rubber' },
-        { value: 'stone', label: 'Stone/Aggregate' },
-        { value: 'pest', label: 'Pest/Insect' },
-        { value: 'other', label: 'Other' },
-      ],
-    },
-    DESCRIPTION_FIELD,
-    SEVERITY_FIELD,
-    PRODUCT_LINE_FIELD,
-    IMMEDIATE_ACTION_FIELD,
-  ],
-  departmentFormSuggestions: {
-    [DEPT.QUAL]: [
-      sf('foreignmaterial', 'Foreign Material Investigation', '/(tabs)/quality/foreignmaterial', true),
-      sf('ncr', 'NCR', '/(tabs)/quality/ncr', true),
-      sf('holdrelease', 'Hold & Release', '/(tabs)/quality/holdrelease', true),
-      sf('roomhygienelog', 'Room Hygiene Log', '/(tabs)/quality/roomhygienelog'),
-    ],
-    [DEPT.SAFE]: [
-      sf('hazardid', 'Hazard Identification', '/(tabs)/safety/hazardid'),
-      sf('incidentreport', 'Incident Report', '/(tabs)/safety/incidentreport'),
-    ],
-    [DEPT.SANI]: [
-      sf('spillcleanup', 'Spill Cleanup', '/(tabs)/sanitation/spillcleanup'),
-      sf('equipmentcleaning', 'Equipment Cleaning', '/(tabs)/sanitation/equipmentcleaning'),
-    ],
-    [DEPT.MAINT]: [
-      sf('emergencywo', 'Emergency Work Order', '/(tabs)/cmms/work-orders/new', true),
-    ],
-    [DEPT.PROD]: [
-      sf('productionlinecheck', 'Production Line Check', '/(tabs)/quality/productionlinecheck'),
-    ],
-  },
-};
-
-// ── BROKEN GLOVE ──────────────────────────────────────────────
-export const BROKEN_GLOVE_TEMPLATE: CreateTemplateInput = {
-  name: 'Broken Glove',
-  description: 'Glove fragment found — potential foreign material contamination',
-  buttonType: 'report_issue',
-  triggeringDepartment: 'any',
-  assignedDepartments: ALL_OPERATIONAL,
-  photoRequired: true,
-  isProductionHold: true,
-  formFields: [
-    LOCATION_FIELD,
-    {
-      id: 'glove_type',
-      label: 'Glove Type',
-      fieldType: 'dropdown',
-      required: true,
-      options: [
-        { value: 'nitrile', label: 'Nitrile' },
-        { value: 'latex', label: 'Latex' },
-        { value: 'vinyl', label: 'Vinyl' },
-        { value: 'cut_resistant', label: 'Cut-Resistant' },
-        { value: 'other', label: 'Other' },
-      ],
-    },
-    {
-      id: 'fragment_found',
-      label: 'Was the missing fragment found?',
-      fieldType: 'radio',
-      required: true,
-      options: [
-        { value: 'yes', label: 'Yes — fragment recovered' },
-        { value: 'no', label: 'No — fragment missing' },
-      ],
-    },
-    DESCRIPTION_FIELD,
-    SEVERITY_FIELD,
-    PRODUCT_LINE_FIELD,
-    IMMEDIATE_ACTION_FIELD,
-  ],
-  departmentFormSuggestions: {
-    [DEPT.QUAL]: [
-      sf('foreignmaterial', 'Foreign Material Investigation', '/(tabs)/quality/foreignmaterial', true),
-      sf('ncr', 'NCR', '/(tabs)/quality/ncr', true),
-      sf('holdrelease', 'Hold & Release', '/(tabs)/quality/holdrelease', true),
-      sf('deviation', 'Deviation Report', '/(tabs)/quality/deviation'),
-    ],
-    [DEPT.SAFE]: [
-      sf('hazardid', 'Hazard Identification', '/(tabs)/safety/hazardid'),
-    ],
-    [DEPT.SANI]: [
-      sf('equipmentcleaning', 'Equipment Cleaning', '/(tabs)/sanitation/equipmentcleaning'),
-    ],
-    [DEPT.MAINT]: [
-      sf('conditionmonitoring', 'Condition Monitoring', '/(tabs)/cmms/condition'),
-    ],
-    [DEPT.PROD]: [
-      sf('productionlinecheck', 'Production Line Check', '/(tabs)/quality/productionlinecheck'),
-    ],
-  },
-};
-
-// ── EMPLOYEE INJURY ───────────────────────────────────────────
-export const EMPLOYEE_INJURY_TEMPLATE: CreateTemplateInput = {
-  name: 'Employee Injury',
-  description: 'Employee injured on the job — blood or bodily fluid contamination risk',
-  buttonType: 'report_issue',
-  triggeringDepartment: 'any',
-  assignedDepartments: ALL_OPERATIONAL,
-  photoRequired: false,
-  isProductionHold: true,
-  formFields: [
-    LOCATION_FIELD,
-    {
-      id: 'injury_type',
-      label: 'Type of Injury',
-      fieldType: 'dropdown',
-      required: true,
-      options: [
-        { value: 'cut', label: 'Cut / Laceration' },
-        { value: 'burn', label: 'Burn' },
-        { value: 'fall', label: 'Slip / Trip / Fall' },
-        { value: 'strain', label: 'Strain / Sprain' },
-        { value: 'crush', label: 'Crush / Caught-in' },
-        { value: 'chemical', label: 'Chemical Exposure' },
-        { value: 'other', label: 'Other' },
-      ],
-    },
-    {
-      id: 'blood_contact',
-      label: 'Blood or bodily fluid contact with product?',
-      fieldType: 'radio',
-      required: true,
-      options: [
-        { value: 'yes', label: 'Yes' },
-        { value: 'no', label: 'No' },
-        { value: 'unknown', label: 'Unknown — needs investigation' },
-      ],
-    },
-    DESCRIPTION_FIELD,
-    IMMEDIATE_ACTION_FIELD,
-  ],
-  departmentFormSuggestions: {
-    [DEPT.QUAL]: [
-      sf('foreignmaterial', 'Foreign Material Investigation', '/(tabs)/quality/foreignmaterial'),
-      sf('ncr', 'NCR', '/(tabs)/quality/ncr'),
-      sf('holdrelease', 'Hold & Release', '/(tabs)/quality/holdrelease'),
-    ],
-    [DEPT.SAFE]: [
-      sf('accidentinvestigation', 'Accident Investigation', '/(tabs)/safety/accidentinvestigation', true),
-      sf('firstaid', 'First Aid Log', '/(tabs)/safety/firstaid', true),
-      sf('incidentreport', 'Incident Report', '/(tabs)/safety/incidentreport', true),
-    ],
-    [DEPT.SANI]: [
-      sf('spillcleanup', 'Spill Cleanup', '/(tabs)/sanitation/spillcleanup', true),
-      sf('equipmentcleaning', 'Equipment Cleaning', '/(tabs)/sanitation/equipmentcleaning'),
-    ],
-    [DEPT.MAINT]: [
-      sf('emergencywo', 'Emergency Work Order', '/(tabs)/cmms/work-orders/new'),
-    ],
-    [DEPT.PROD]: [
-      sf('productionlinecheck', 'Production Line Check', '/(tabs)/quality/productionlinecheck'),
-    ],
-  },
-};
-
-// ── CHEMICAL SPILL ────────────────────────────────────────────
-export const CHEMICAL_SPILL_TEMPLATE: CreateTemplateInput = {
-  name: 'Chemical Spill',
-  description: 'Chemical spill in production or storage area',
-  buttonType: 'report_issue',
-  triggeringDepartment: 'any',
-  assignedDepartments: ALL_OPERATIONAL,
-  photoRequired: true,
-  isProductionHold: true,
-  formFields: [
-    LOCATION_FIELD,
-    {
-      id: 'chemical_name',
-      label: 'Chemical Name / Product',
-      fieldType: 'text_input',
-      required: true,
-      placeholder: 'Exact name from SDS or label',
-    },
-    {
-      id: 'spill_size',
-      label: 'Estimated Spill Size',
-      fieldType: 'dropdown',
-      required: true,
-      options: [
-        { value: 'small', label: 'Small — less than 1 gallon' },
-        { value: 'medium', label: 'Medium — 1-5 gallons' },
-        { value: 'large', label: 'Large — more than 5 gallons' },
-      ],
-    },
-    DESCRIPTION_FIELD,
-    SEVERITY_FIELD,
-    IMMEDIATE_ACTION_FIELD,
-  ],
-  departmentFormSuggestions: {
-    [DEPT.QUAL]: [
-      sf('ncr', 'NCR', '/(tabs)/quality/ncr'),
-      sf('holdrelease', 'Hold & Release', '/(tabs)/quality/holdrelease'),
-      sf('deviation', 'Deviation Report', '/(tabs)/quality/deviation'),
-    ],
-    [DEPT.SAFE]: [
-      sf('incidentreport', 'Incident Report', '/(tabs)/safety/incidentreport', true),
-      sf('hazardid', 'Hazard Identification', '/(tabs)/safety/hazardid', true),
-    ],
-    [DEPT.SANI]: [
-      sf('spillcleanup', 'Spill Cleanup', '/(tabs)/sanitation/spillcleanup', true),
-      sf('chemicals', 'Chemical Usage Log', '/(tabs)/sanitation/chemicals', true),
-      sf('equipmentcleaning', 'Equipment Cleaning', '/(tabs)/sanitation/equipmentcleaning'),
-    ],
-    [DEPT.MAINT]: [
-      sf('emergencywo', 'Emergency Work Order', '/(tabs)/cmms/work-orders/new'),
-    ],
-    [DEPT.PROD]: [],
-  },
-};
-
-// ── METAL DETECTOR REJECT ─────────────────────────────────────
-export const METAL_DETECTOR_REJECT_TEMPLATE: CreateTemplateInput = {
-  name: 'Metal Detector Reject',
-  description: 'Product rejected by metal detector — confirmed or suspected contamination',
-  buttonType: 'report_issue',
-  triggeringDepartment: 'any',
-  assignedDepartments: [DEPT.QUAL, DEPT.MAINT, DEPT.PROD],
-  photoRequired: true,
-  isProductionHold: true,
-  formFields: [
-    LOCATION_FIELD,
-    PRODUCT_LINE_FIELD,
-    {
-      id: 'equipment',
-      label: 'Metal Detector',
-      fieldType: 'dropdown',
-      required: true,
-    },
-    {
-      id: 'reject_count',
-      label: 'Number of Consecutive Rejects',
-      fieldType: 'number',
-      required: true,
-    },
-    DESCRIPTION_FIELD,
-    IMMEDIATE_ACTION_FIELD,
-  ],
-  departmentFormSuggestions: {
-    [DEPT.QUAL]: [
-      sf('metaldetectorlog', 'Metal Detector Log', '/(tabs)/quality/metaldetectorlog', true),
-      sf('foreignmaterial', 'Foreign Material Investigation', '/(tabs)/quality/foreignmaterial', true),
-      sf('ncr', 'NCR', '/(tabs)/quality/ncr', true),
-      sf('holdrelease', 'Hold & Release', '/(tabs)/quality/holdrelease'),
-    ],
-    [DEPT.MAINT]: [
-      sf('emergencywo', 'Emergency Work Order', '/(tabs)/cmms/work-orders/new'),
-      sf('conditionmonitoring', 'Condition Monitoring', '/(tabs)/cmms/condition'),
-    ],
-    [DEPT.PROD]: [
-      sf('productionlinecheck', 'Production Line Check', '/(tabs)/quality/productionlinecheck'),
-    ],
-  },
-};
-
-// ── TEMPERATURE DEVIATION ─────────────────────────────────────
-export const TEMPERATURE_DEVIATION_TEMPLATE: CreateTemplateInput = {
-  name: 'Temperature Deviation',
-  description: 'Temperature out of spec in cooler, freezer, or cooking process',
-  buttonType: 'report_issue',
-  triggeringDepartment: 'any',
-  assignedDepartments: [DEPT.QUAL, DEPT.MAINT, DEPT.PROD],
-  photoRequired: false,
-  isProductionHold: true,
-  formFields: [
-    LOCATION_FIELD,
-    {
-      id: 'temp_reading',
-      label: 'Current Temperature Reading',
-      fieldType: 'text_input',
-      required: true,
-      placeholder: 'e.g., 48F, 165F',
-    },
-    {
-      id: 'temp_target',
-      label: 'Target Temperature',
-      fieldType: 'text_input',
-      required: true,
-      placeholder: 'e.g., 40F max, 165F min',
-    },
-    {
-      id: 'deviation_type',
-      label: 'Deviation Type',
-      fieldType: 'dropdown',
-      required: true,
-      options: [
-        { value: 'cooler_high', label: 'Cooler — too warm' },
-        { value: 'freezer_high', label: 'Freezer — too warm' },
-        { value: 'cooking_low', label: 'Cooking — below target' },
-        { value: 'holding_out', label: 'Holding — out of range' },
-        { value: 'other', label: 'Other' },
-      ],
-    },
-    DESCRIPTION_FIELD,
-    IMMEDIATE_ACTION_FIELD,
-  ],
-  departmentFormSuggestions: {
-    [DEPT.QUAL]: [
-      sf('temperaturelog', 'Temperature Log', '/(tabs)/quality/temperaturelog', true),
-      sf('ccplog', 'CCP Monitoring Log', '/(tabs)/quality/ccplog', true),
-      sf('deviation', 'Deviation Report', '/(tabs)/quality/deviation', true),
-      sf('holdrelease', 'Hold & Release', '/(tabs)/quality/holdrelease'),
-    ],
-    [DEPT.MAINT]: [
-      sf('emergencywo', 'Emergency Work Order', '/(tabs)/cmms/work-orders/new', true),
-    ],
-    [DEPT.PROD]: [
-      sf('productionlinecheck', 'Production Line Check', '/(tabs)/quality/productionlinecheck'),
-    ],
-  },
-};
-
-// ── PEST SIGHTING ─────────────────────────────────────────────
-export const PEST_SIGHTING_TEMPLATE: CreateTemplateInput = {
-  name: 'Pest Sighting',
-  description: 'Pest or evidence of pest activity found in facility',
-  buttonType: 'report_issue',
-  triggeringDepartment: 'any',
-  assignedDepartments: [DEPT.QUAL, DEPT.SANI, DEPT.MAINT],
-  photoRequired: true,
-  isProductionHold: false,
-  formFields: [
-    LOCATION_FIELD,
-    {
-      id: 'pest_type',
-      label: 'Type of Pest / Evidence',
-      fieldType: 'dropdown',
-      required: true,
-      options: [
-        { value: 'rodent', label: 'Rodent (mouse/rat)' },
-        { value: 'insect_flying', label: 'Flying insect' },
-        { value: 'insect_crawling', label: 'Crawling insect' },
-        { value: 'bird', label: 'Bird' },
-        { value: 'droppings', label: 'Droppings / Evidence' },
-        { value: 'gnaw_marks', label: 'Gnaw marks' },
-        { value: 'other', label: 'Other' },
-      ],
-    },
-    DESCRIPTION_FIELD,
-    IMMEDIATE_ACTION_FIELD,
-  ],
-  departmentFormSuggestions: {
-    [DEPT.QUAL]: [
-      sf('ncr', 'NCR', '/(tabs)/quality/ncr'),
-      sf('roomhygienelog', 'Room Hygiene Log', '/(tabs)/quality/roomhygienelog'),
-    ],
-    [DEPT.SANI]: [
-      sf('dailytasks', 'Sanitation Daily Tasks', '/(tabs)/sanitation/dailytasks', true),
-    ],
-    [DEPT.MAINT]: [
-      sf('emergencywo', 'Emergency Work Order', '/(tabs)/cmms/work-orders/new'),
-    ],
-  },
-};
-
 // ── ALLERGEN CHANGEOVER ───────────────────────────────────────
+// 10-Phase SOP: Planning → End of Run → LOTO → Disassembly →
+// Dry Pre-Clean → Wet Clean → Reassembly → Allergen Testing →
+// QA Clearance → First Run Hold & Verification
+// All 5 operational departments involved
+// ───────────────────────────────────────────────────────────────
 export const ALLERGEN_CHANGEOVER_TEMPLATE: CreateTemplateInput = {
   name: 'Allergen Changeover',
-  description: 'Line changeover between allergen-containing products — full wet clean, LOTO, and QA verification required',
+  description: 'Line changeover between allergen-containing products — full LOTO, disassembly, clean, swab, release',
   buttonType: 'add_task',
   triggeringDepartment: 'any',
-  assignedDepartments: [DEPT.PROD, DEPT.SANI, DEPT.MAINT, DEPT.SAFE, DEPT.QUAL],
-  photoRequired: true,
+  assignedDepartments: ALL_OPERATIONAL,
+  photoRequired: false,
   isProductionHold: true,
   formFields: [
-    PRODUCT_LINE_FIELD,
     LOCATION_FIELD,
+    PRODUCT_LINE_FIELD,
     {
       id: 'allergen_from',
       label: 'Allergen Being Removed',
       fieldType: 'dropdown',
       required: true,
       options: [
-        { value: 'peanuts', label: 'Peanuts' },
         { value: 'milk', label: 'Milk' },
         { value: 'eggs', label: 'Eggs' },
+        { value: 'peanuts', label: 'Peanuts' },
         { value: 'tree_nuts', label: 'Tree Nuts' },
         { value: 'wheat', label: 'Wheat' },
         { value: 'soy', label: 'Soy' },
@@ -519,13 +35,13 @@ export const ALLERGEN_CHANGEOVER_TEMPLATE: CreateTemplateInput = {
     },
     {
       id: 'allergen_to',
-      label: 'Next Product Allergen',
+      label: 'Incoming Product Allergen',
       fieldType: 'dropdown',
       required: true,
       options: [
-        { value: 'peanuts', label: 'Peanuts' },
         { value: 'milk', label: 'Milk' },
         { value: 'eggs', label: 'Eggs' },
+        { value: 'peanuts', label: 'Peanuts' },
         { value: 'tree_nuts', label: 'Tree Nuts' },
         { value: 'wheat', label: 'Wheat' },
         { value: 'soy', label: 'Soy' },
@@ -536,192 +52,65 @@ export const ALLERGEN_CHANGEOVER_TEMPLATE: CreateTemplateInput = {
         { value: 'other', label: 'Other' },
       ],
     },
-    {
-      id: 'estimated_duration',
-      label: 'Estimated Changeover Duration',
-      fieldType: 'dropdown',
-      required: true,
-      options: [
-        { value: '2hr', label: '2 hours' },
-        { value: '4hr', label: '4 hours' },
-        { value: '6hr', label: '6 hours' },
-        { value: '8hr', label: '8+ hours' },
-      ],
-    },
     DESCRIPTION_FIELD,
   ],
   departmentFormSuggestions: {
-    [DEPT.PROD]: [
-      sf('productionlinecheck', 'Production Line Check', '/(tabs)/quality/productionlinecheck', true),
-      sf('batchlotrecord', 'Batch/Lot Record (close)', '/(tabs)/quality/batchlotrecord', true),
-      sf('holdrelease', 'First Run Hold & Release', '/(tabs)/quality/holdrelease', true),
-    ],
-    [DEPT.SANI]: [
-      sf('equipmentcleaning', 'Equipment Cleaning Verification', '/(tabs)/sanitation/equipmentcleaning', true),
-      sf('preopverification', 'Pre-Op Verification', '/(tabs)/sanitation/preopverification', true),
-      sf('chemicals', 'Chemical Usage Log', '/(tabs)/sanitation/chemicals', true),
-    ],
-    [DEPT.MAINT]: [
-      sf('loto', 'LOTO Permit Log', '/(tabs)/safety/loto', true),
-      sf('emergencywo', 'Work Order — Disassembly/Reassembly', '/(tabs)/cmms/work-orders/new', true),
-    ],
-    [DEPT.SAFE]: [
-      sf('loto', 'LOTO Permit Log', '/(tabs)/safety/loto', true),
-      sf('hazardid', 'Hazard Identification', '/(tabs)/safety/hazardid'),
-    ],
+    // ── QUALITY (1004) ──
+    // Phase 1: Allergen matrix review
+    // Phase 8: ATP swabs, allergen swabs, pre-swab visual
+    // Phase 9: QA clearance, line release
+    // Phase 10: First lot hold, disposition
     [DEPT.QUAL]: [
       sf('allergenchangeover', 'Allergen Changeover Verification', '/(tabs)/quality/allergenchangeover', true),
       sf('atpswab', 'ATP Swab Log', '/(tabs)/quality/atpswab', true),
-      sf('allergenswab', 'Allergen Swab Log', '/(tabs)/quality/allergenswab', true),
-      sf('linerelease', 'Line Release Form', '/(tabs)/quality/linerelease', true),
-      sf('ncr', 'NCR (if needed)', '/(tabs)/quality/ncr'),
+      sf('environmentalswab', 'Allergen Swab Log', '/(tabs)/quality/environmentalswab', true),
+      sf('preopinspection', 'QA Pre-Swab Visual Inspection', '/(tabs)/quality/preopinspection', true),
+      sf('holdrelease', 'Line Release / Hold Release', '/(tabs)/quality/holdrelease', true),
+      sf('ncr', 'NCR (if swab fails)', '/(tabs)/quality/ncr'),
     ],
-  },
-};
 
-// ── EQUIPMENT BREAKDOWN ───────────────────────────────────────
-export const EQUIPMENT_BREAKDOWN_TEMPLATE: CreateTemplateInput = {
-  name: 'Equipment Breakdown',
-  description: 'Equipment malfunction or failure affecting production',
-  buttonType: 'report_issue',
-  triggeringDepartment: 'any',
-  assignedDepartments: [DEPT.MAINT, DEPT.PROD, DEPT.QUAL],
-  photoRequired: true,
-  isProductionHold: true,
-  formFields: [
-    LOCATION_FIELD,
-    {
-      id: 'equipment',
-      label: 'Equipment',
-      fieldType: 'dropdown',
-      required: true,
-    },
-    {
-      id: 'failure_type',
-      label: 'Type of Failure',
-      fieldType: 'dropdown',
-      required: true,
-      options: [
-        { value: 'mechanical', label: 'Mechanical Failure' },
-        { value: 'electrical', label: 'Electrical Failure' },
-        { value: 'pneumatic', label: 'Pneumatic / Hydraulic' },
-        { value: 'controls', label: 'Controls / PLC' },
-        { value: 'leak', label: 'Leak' },
-        { value: 'other', label: 'Other' },
-      ],
-    },
-    DESCRIPTION_FIELD,
-    SEVERITY_FIELD,
-    IMMEDIATE_ACTION_FIELD,
-  ],
-  departmentFormSuggestions: {
+    // ── SANITATION (1002) ──
+    // Phase 5: Dry pre-clean (HEPA vacuum)
+    // Phase 6: Wet clean (wash, rinse, second wash, final rinse)
+    // Phase 7: Reassembly support
+    [DEPT.SANI]: [
+      sf('equipmentcleaning', 'Equipment Cleaning Log', '/(tabs)/sanitation/equipmentcleaning', true),
+      sf('cipcleaning', 'CIP Cleaning Record', '/(tabs)/sanitation/cipcleaning'),
+      sf('preopverification', 'Pre-Op Verification', '/(tabs)/sanitation/preopverification', true),
+      sf('chemicals', 'Cleaning Chemical Verification', '/(tabs)/sanitation/chemicals', true),
+      sf('dailytasks', 'Sanitation Verification Sign-Off', '/(tabs)/sanitation/dailytasks', true),
+    ],
+
+    // ── MAINTENANCE (1001) ──
+    // Phase 3: LOTO — lockout/tagout all equipment
+    // Phase 4: Disassembly — remove product-contact parts, inspect gaskets/o-rings
+    // Phase 7: Reassembly — reinstall parts, remove LOTO, verify equipment runs
     [DEPT.MAINT]: [
-      sf('emergencywo', 'Emergency Work Order', '/(tabs)/cmms/work-orders/new', true),
-      sf('downtimereport', 'Downtime Report', '/(tabs)/cmms/downtime', true),
+      sf('lotopermit', 'LOTO Permit Log', '/(tabs)/cmms/loto', true),
+      sf('disassemblylog', 'Disassembly / Reassembly Log', '/(tabs)/cmms/disassembly', true),
+      sf('emergencywo', 'Work Order (Parts Replacement)', '/(tabs)/cmms/work-orders/new'),
+      sf('conditionmonitoring', 'Equipment Condition Check', '/(tabs)/cmms/condition'),
     ],
+
+    // ── SAFETY (1005) ──
+    // Phase 3: LOTO oversight — verify zero energy state
+    // Phase 6: Chemical safety — SDS verification, PPE
+    // Phase 3/7: LOTO compliance verification on lock/unlock
+    [DEPT.SAFE]: [
+      sf('lotoverification', 'LOTO Safety Verification', '/(tabs)/safety/lotoverification', true),
+      sf('sdsreview', 'SDS / Chemical Safety Review', '/(tabs)/safety/sdsreview', true),
+      sf('ppeverification', 'PPE Verification', '/(tabs)/safety/ppeverification'),
+      sf('hazardid', 'Hazard Identification', '/(tabs)/safety/hazardid'),
+    ],
+
+    // ── PRODUCTION (1003) ──
+    // Phase 1: Schedule changeover, stage incoming materials
+    // Phase 2: End of run — close out peanut lot, clear room
+    // Phase 10: Open new production run, first lot documentation
     [DEPT.PROD]: [
-      sf('productionlinecheck', 'Production Line Check', '/(tabs)/quality/productionlinecheck'),
-    ],
-    [DEPT.QUAL]: [
-      sf('deviation', 'Deviation Report', '/(tabs)/quality/deviation'),
-    ],
-  },
-};
-
-// ── CUSTOMER COMPLAINT ────────────────────────────────────────
-export const CUSTOMER_COMPLAINT_TEMPLATE: CreateTemplateInput = {
-  name: 'Customer Complaint',
-  description: 'Customer reported quality issue with product',
-  buttonType: 'report_issue',
-  triggeringDepartment: DEPT.QUAL,
-  assignedDepartments: [DEPT.QUAL],
-  photoRequired: false,
-  isProductionHold: false,
-  formFields: [
-    {
-      id: 'customer_name',
-      label: 'Customer Name',
-      fieldType: 'text_input',
-      required: true,
-    },
-    {
-      id: 'product',
-      label: 'Product / SKU',
-      fieldType: 'text_input',
-      required: true,
-    },
-    {
-      id: 'complaint_type',
-      label: 'Complaint Category',
-      fieldType: 'dropdown',
-      required: true,
-      options: [
-        { value: 'foreign_material', label: 'Foreign Material' },
-        { value: 'quality', label: 'Quality / Taste / Appearance' },
-        { value: 'packaging', label: 'Packaging Defect' },
-        { value: 'labeling', label: 'Labeling Error' },
-        { value: 'allergen', label: 'Allergen Issue' },
-        { value: 'temperature', label: 'Temperature Abuse' },
-        { value: 'other', label: 'Other' },
-      ],
-    },
-    DESCRIPTION_FIELD,
-    {
-      id: 'lot_number',
-      label: 'Lot / Batch Number (if known)',
-      fieldType: 'text_input',
-      required: true,
-    },
-  ],
-  departmentFormSuggestions: {
-    [DEPT.QUAL]: [
-      sf('customercomplaint', 'Customer Complaint', '/(tabs)/quality/customercomplaint', true),
-      sf('ncr', 'NCR', '/(tabs)/quality/ncr'),
-      sf('capa', 'CAPA', '/(tabs)/quality/capa'),
-      sf('rootcause', 'Root Cause Analysis', '/(tabs)/quality/rootcause'),
+      sf('productionlinecheck', 'Production Line Check', '/(tabs)/quality/productionlinecheck', true),
+      sf('batchrecord', 'Batch / Lot Record', '/(tabs)/quality/batchrecord'),
+      sf('materialinspection', 'Incoming Material Inspection', '/(tabs)/quality/materialinspection'),
     ],
   },
 };
-
-
-// ── MASTER LIST ───────────────────────────────────────────────
-
-export const PREBUILT_TEMPLATES: Record<string, CreateTemplateInput> = {
-  'Foreign Material': FOREIGN_MATERIAL_TEMPLATE,
-  'Broken Glove': BROKEN_GLOVE_TEMPLATE,
-  'Employee Injury': EMPLOYEE_INJURY_TEMPLATE,
-  'Chemical Spill': CHEMICAL_SPILL_TEMPLATE,
-  'Metal Detector Reject': METAL_DETECTOR_REJECT_TEMPLATE,
-  'Temperature Deviation': TEMPERATURE_DEVIATION_TEMPLATE,
-  'Pest Sighting': PEST_SIGHTING_TEMPLATE,
-  'Allergen Changeover': ALLERGEN_CHANGEOVER_TEMPLATE,
-  'Equipment Breakdown': EQUIPMENT_BREAKDOWN_TEMPLATE,
-  'Customer Complaint': CUSTOMER_COMPLAINT_TEMPLATE,
-};
-
-/** All pre-built templates as an array for seeding */
-export const ALL_PREBUILT_TEMPLATES: CreateTemplateInput[] = Object.values(PREBUILT_TEMPLATES);
-
-/** Get pre-built config by name */
-export function getPrebuiltTemplate(name: string) {
-  if (PREBUILT_TEMPLATES[name]) return PREBUILT_TEMPLATES[name];
-
-  const lower = name.toLowerCase();
-  for (const [key, template] of Object.entries(PREBUILT_TEMPLATES)) {
-    if (key.toLowerCase().includes(lower) || lower.includes(key.toLowerCase())) {
-      return template;
-    }
-  }
-  return null;
-}
-
-/** List pre-built template summaries for picker UI */
-export function getPrebuiltTemplateList() {
-  return Object.entries(PREBUILT_TEMPLATES).map(([name, config]) => ({
-    name,
-    description: config.description,
-    departmentCount: config.assignedDepartments.length,
-    isProductionHold: config.isProductionHold || false,
-    buttonType: config.buttonType,
-  }));
-}
