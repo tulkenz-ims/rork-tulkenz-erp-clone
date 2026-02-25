@@ -490,23 +490,24 @@ export const PEST_SIGHTING_TEMPLATE: CreateTemplateInput = {
 // ── ALLERGEN CHANGEOVER ───────────────────────────────────────
 export const ALLERGEN_CHANGEOVER_TEMPLATE: CreateTemplateInput = {
   name: 'Allergen Changeover',
-  description: 'Line changeover between allergen-containing products',
+  description: 'Line changeover between allergen-containing products — full wet clean, LOTO, and QA verification required',
   buttonType: 'add_task',
   triggeringDepartment: 'any',
-  assignedDepartments: [DEPT.QUAL, DEPT.SANI, DEPT.PROD],
-  photoRequired: false,
+  assignedDepartments: [DEPT.PROD, DEPT.SANI, DEPT.MAINT, DEPT.SAFE, DEPT.QUAL],
+  photoRequired: true,
   isProductionHold: true,
   formFields: [
     PRODUCT_LINE_FIELD,
+    LOCATION_FIELD,
     {
       id: 'allergen_from',
       label: 'Allergen Being Removed',
       fieldType: 'dropdown',
       required: true,
       options: [
+        { value: 'peanuts', label: 'Peanuts' },
         { value: 'milk', label: 'Milk' },
         { value: 'eggs', label: 'Eggs' },
-        { value: 'peanuts', label: 'Peanuts' },
         { value: 'tree_nuts', label: 'Tree Nuts' },
         { value: 'wheat', label: 'Wheat' },
         { value: 'soy', label: 'Soy' },
@@ -518,29 +519,62 @@ export const ALLERGEN_CHANGEOVER_TEMPLATE: CreateTemplateInput = {
     },
     {
       id: 'allergen_to',
-      label: 'Next Product Allergen Status',
+      label: 'Next Product Allergen',
       fieldType: 'dropdown',
       required: true,
       options: [
+        { value: 'peanuts', label: 'Peanuts' },
+        { value: 'milk', label: 'Milk' },
+        { value: 'eggs', label: 'Eggs' },
+        { value: 'tree_nuts', label: 'Tree Nuts' },
+        { value: 'wheat', label: 'Wheat' },
+        { value: 'soy', label: 'Soy' },
+        { value: 'fish', label: 'Fish' },
+        { value: 'shellfish', label: 'Shellfish' },
+        { value: 'sesame', label: 'Sesame' },
         { value: 'allergen_free', label: 'Allergen-Free' },
-        { value: 'different_allergen', label: 'Different Allergen' },
-        { value: 'same_allergen', label: 'Same Allergen' },
+        { value: 'other', label: 'Other' },
+      ],
+    },
+    {
+      id: 'estimated_duration',
+      label: 'Estimated Changeover Duration',
+      fieldType: 'dropdown',
+      required: true,
+      options: [
+        { value: '2hr', label: '2 hours' },
+        { value: '4hr', label: '4 hours' },
+        { value: '6hr', label: '6 hours' },
+        { value: '8hr', label: '8+ hours' },
       ],
     },
     DESCRIPTION_FIELD,
   ],
   departmentFormSuggestions: {
-    [DEPT.QUAL]: [
-      sf('allergenchangeover', 'Allergen Changeover', '/(tabs)/quality/allergenchangeover', true),
-      sf('atpswab', 'ATP Swab Log', '/(tabs)/quality/atpswab'),
-      sf('environmentalswab', 'Environmental Swab Log', '/(tabs)/quality/environmentalswab'),
+    [DEPT.PROD]: [
+      sf('productionlinecheck', 'Production Line Check', '/(tabs)/quality/productionlinecheck', true),
+      sf('batchlotrecord', 'Batch/Lot Record (close)', '/(tabs)/quality/batchlotrecord', true),
+      sf('holdrelease', 'First Run Hold & Release', '/(tabs)/quality/holdrelease', true),
     ],
     [DEPT.SANI]: [
-      sf('equipmentcleaning', 'Equipment Cleaning', '/(tabs)/sanitation/equipmentcleaning', true),
+      sf('equipmentcleaning', 'Equipment Cleaning Verification', '/(tabs)/sanitation/equipmentcleaning', true),
       sf('preopverification', 'Pre-Op Verification', '/(tabs)/sanitation/preopverification', true),
+      sf('chemicals', 'Chemical Usage Log', '/(tabs)/sanitation/chemicals', true),
     ],
-    [DEPT.PROD]: [
-      sf('productionlinecheck', 'Production Line Check', '/(tabs)/quality/productionlinecheck'),
+    [DEPT.MAINT]: [
+      sf('loto', 'LOTO Permit Log', '/(tabs)/safety/loto', true),
+      sf('emergencywo', 'Work Order — Disassembly/Reassembly', '/(tabs)/cmms/work-orders/new', true),
+    ],
+    [DEPT.SAFE]: [
+      sf('loto', 'LOTO Permit Log', '/(tabs)/safety/loto', true),
+      sf('hazardid', 'Hazard Identification', '/(tabs)/safety/hazardid'),
+    ],
+    [DEPT.QUAL]: [
+      sf('allergenchangeover', 'Allergen Changeover Verification', '/(tabs)/quality/allergenchangeover', true),
+      sf('atpswab', 'ATP Swab Log', '/(tabs)/quality/atpswab', true),
+      sf('allergenswab', 'Allergen Swab Log', '/(tabs)/quality/allergenswab', true),
+      sf('linerelease', 'Line Release Form', '/(tabs)/quality/linerelease', true),
+      sf('ncr', 'NCR (if needed)', '/(tabs)/quality/ncr'),
     ],
   },
 };
