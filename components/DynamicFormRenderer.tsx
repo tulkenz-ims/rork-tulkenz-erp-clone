@@ -5,9 +5,7 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  ScrollView,
 } from 'react-native';
-import { ChevronDown, Check, Calendar } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { FormField, FormFieldOption } from '@/types/taskFeedTemplates';
 
@@ -59,7 +57,7 @@ export default function DynamicFormRenderer({
                   ? field.options?.find(o => o.value === value)?.label || value
                   : field.placeholder || `Select ${field.label}`}
               </Text>
-              <ChevronDown size={20} color={colors.textSecondary} />
+              <Text style={[styles.iconText, { color: colors.textSecondary }]}>▼</Text>
             </TouchableOpacity>
             {error && <Text style={styles.errorText}>{error}</Text>}
             {field.helpText && (
@@ -198,7 +196,7 @@ export default function DynamicFormRenderer({
                         },
                       ]}
                     >
-                      {isSelected && <Check size={14} color="#fff" />}
+                      {isSelected && <Text style={styles.checkIcon}>✓</Text>}
                     </View>
                     <Text style={[styles.checkboxLabel, { color: colors.text }]}>{option.label}</Text>
                   </TouchableOpacity>
@@ -251,7 +249,7 @@ export default function DynamicFormRenderer({
               ]}
               onPress={() => onDropdownPress?.(field)}
             >
-              <Calendar size={18} color={colors.textSecondary} />
+              <Text style={[styles.dateIcon, { color: colors.textSecondary }]}>📅</Text>
               <Text
                 style={[
                   styles.dateText,
@@ -307,6 +305,9 @@ const styles = StyleSheet.create({
   dropdownText: {
     fontSize: 15,
     flex: 1,
+  },
+  iconText: {
+    fontSize: 14,
   },
   textInput: {
     paddingHorizontal: 14,
@@ -372,6 +373,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  checkIcon: {
+    fontSize: 14,
+    color: '#fff',
+    fontWeight: '700' as const,
+  },
   checkboxLabel: {
     fontSize: 15,
     flex: 1,
@@ -384,6 +390,9 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     borderWidth: 1,
     gap: 10,
+  },
+  dateIcon: {
+    fontSize: 16,
   },
   dateText: {
     fontSize: 15,
