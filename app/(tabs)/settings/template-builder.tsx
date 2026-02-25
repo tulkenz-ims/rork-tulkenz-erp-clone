@@ -11,7 +11,6 @@ import {
   Switch,
   KeyboardAvoidingView,
   Platform,
-  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -89,11 +88,6 @@ const STEPS: { key: WizardStep; label: string; shortLabel: string }[] = [
   { key: 'settings', label: 'Settings', shortLabel: '4' },
   { key: 'preview', label: 'Preview', shortLabel: '5' },
 ];
-
-// ── Safe color helper — falls back to grey if code is 'any' or unmapped ──
-function safeDeptColor(code: string): string {
-  return getDepartmentColor(code) || '#6B7280';
-}
 
 export default function TemplateBuilderScreen() {
   const { colors } = useTheme();
@@ -381,17 +375,17 @@ export default function TemplateBuilderScreen() {
     );
   }, []);
 
-  // ── Loading guard — prevents white screen while fetching existing template ──
+  // FIX 1: prebuiltList must be above styles and the loading guard (Rules of Hooks)
   const prebuiltList = useMemo(() => getPrebuiltTemplateList(), []);
 
-const styles = createStyles(colors);
+  const styles = createStyles(colors);
 
-if (isEditing && isLoadingTemplate) {
+  // FIX 2: Loading guard — prevents white screen while Supabase fetches the template
+  if (isEditing && isLoadingTemplate) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}>
         <Stack.Screen options={{ title: 'Edit Template' }} />
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={{ color: colors.textSecondary, marginTop: 12, fontSize: 14 }}>Loading template...</Text>
+        <Text style={{ color: colors.textSecondary, fontSize: 16 }}>Loading template...</Text>
       </View>
     );
   }
@@ -589,23 +583,6 @@ if (isEditing && isLoadingTemplate) {
         <Text style={[styles.inputHint, { color: colors.textSecondary }]}>
           Which department can use this template?
         </Text>
-        {/* Any Department option */}
-        <TouchableOpacity
-          style={[
-            styles.deptChip,
-            {
-              backgroundColor: triggeringDepartment === 'any' ? '#6B7280' : colors.surface,
-              borderColor: '#6B7280',
-              marginBottom: 8,
-            },
-          ]}
-          onPress={() => setTriggeringDepartment('any')}
-        >
-          <View style={[styles.deptDot, { backgroundColor: triggeringDepartment === 'any' ? '#fff' : '#6B7280' }]} />
-          <Text style={[styles.deptChipText, { color: triggeringDepartment === 'any' ? '#fff' : colors.text }]}>
-            Any Department
-          </Text>
-        </TouchableOpacity>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.deptScroll}>
           {Object.values(DEPARTMENT_CODES).map((dept) => {
             const isSelected = triggeringDepartment === dept.code;
@@ -782,11 +759,9 @@ if (isEditing && isLoadingTemplate) {
   const renderPreviewStep = () => {
     const ButtonIcon = BUTTON_TYPE_ICONS[buttonType];
     const buttonColor = BUTTON_TYPE_COLORS[buttonType];
-    // Safe color — handles 'any' and any unmapped code
-    const triggerColor = safeDeptColor(triggeringDepartment);
-    const triggerLabel = triggeringDepartment === 'any'
-      ? 'Any Department'
-      : getDepartmentName(triggeringDepartment) || triggeringDepartment;
+    // FIX 3: getDepartmentColor returns undefined when code is 'any' — fallback to grey
+    const triggerColor = getDepartmentColor(triggeringDepartment) || '#6B7280';
+    const triggerName = triggeringDepartment === 'any' ? 'Any Department' : getDepartmentName(triggeringDepartment);
 
     return (
       <View style={styles.stepContent}>
@@ -816,7 +791,7 @@ if (isEditing && isLoadingTemplate) {
             </Text>
             <View style={[styles.previewDeptBadge, { backgroundColor: triggerColor + '20' }]}>
               <Text style={[styles.previewDeptText, { color: triggerColor }]}>
-                {triggerLabel}
+                {triggerName}
               </Text>
             </View>
           </View>
@@ -827,14 +802,14 @@ if (isEditing && isLoadingTemplate) {
             </Text>
             <View style={styles.previewDeptList}>
               {assignedDepartments.map((code) => {
-                const deptColor = safeDeptColor(code);
+                const deptColor = getDepartmentColor(code) || '#6B7280';
                 return (
                   <View
                     key={code}
                     style={[styles.previewDeptSmall, { backgroundColor: deptColor + '20' }]}
                   >
                     <Text style={[styles.previewDeptSmallText, { color: deptColor }]}>
-                      {getDepartmentName(code) || code}
+                      {getDepartmentName(code)}
                     </Text>
                   </View>
                 );
@@ -866,14 +841,6 @@ if (isEditing && isLoadingTemplate) {
                 Photo {photoRequired ? 'Required' : 'Optional'}
               </Text>
             </View>
-            {isProductionHold && (
-              <View style={[styles.previewSettingRow, { marginTop: 8 }]}>
-                <Factory size={16} color="#EF4444" />
-                <Text style={[styles.previewSettingText, { color: '#EF4444' }]}>
-                  Production Hold Enabled
-                </Text>
-              </View>
-            )}
           </View>
         </View>
       </View>
