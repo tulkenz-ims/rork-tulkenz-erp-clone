@@ -382,9 +382,11 @@ export default function TemplateBuilderScreen() {
   }, []);
 
   // ── Loading guard — prevents white screen while fetching existing template ──
-  const styles = createStyles(colors);
+  const prebuiltList = useMemo(() => getPrebuiltTemplateList(), []);
 
-  if (isEditing && isLoadingTemplate) {
+const styles = createStyles(colors);
+
+if (isEditing && isLoadingTemplate) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}>
         <Stack.Screen options={{ title: 'Edit Template' }} />
