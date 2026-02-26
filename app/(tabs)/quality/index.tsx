@@ -101,7 +101,7 @@ const QUALITY_FORM_CATEGORIES: FormCategory[] = [
     forms: [
       { id: 'preopinspection', title: 'Pre-Op Inspection', route: '/quality/preopinspection' },
       { id: 'sanitationverification', title: 'Sanitation Verification', route: '/quality/sanitationverification' },
-      { id: 'allergenchangechecklist', title: 'Allergen Changeover', route: '/quality/allergenchangechecklist' },
+      { id: 'allergenchangeover', title: 'Allergen Changeover', route: '/quality/allergenchangeover' },
       { id: 'linerelease', title: 'Line Release', route: '/quality/linerelease' },
       { id: 'equipmentreadiness', title: 'Equipment Readiness', route: '/quality/equipmentreadiness' },
     ],
