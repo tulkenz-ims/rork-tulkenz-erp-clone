@@ -53,7 +53,15 @@ export default function DynamicFormRenderer({
     const value = values[field.id];
     const error = errors[field.id];
 
-    switch (field.fieldType) {
+    // ── Auto-upgrade: any field with id 'location' or dynamicSource 'locations'
+    //    renders as a location dropdown, even if saved as text_input in the DB ──
+    const isLocationField = field.id === 'location' || (field as any).dynamicSource === 'locations';
+    const effectiveFieldType = isLocationField && locationOptions.length > 0 ? 'dropdown' : field.fieldType;
+    const effectiveField = isLocationField && locationOptions.length > 0
+      ? { ...field, fieldType: 'dropdown' as any, options: locationOptions }
+      : field;
+
+    switch (effectiveFieldType) {
       case 'dropdown':
         return (
           <View key={field.id} style={styles.fieldContainer}>
@@ -67,12 +75,12 @@ export default function DynamicFormRenderer({
                 { backgroundColor: colors.surface, borderColor: error ? '#EF4444' : colors.border },
               ]}
               onPress={() => {
-                // Inject dynamic options so parent picker shows them
-                const resolvedOptions = getFieldOptions(field);
-                if (resolvedOptions.length > 0 && (!field.options || field.options.length === 0)) {
-                  onDropdownPress?.({ ...field, options: resolvedOptions });
+                // Always pass effectiveField so parent picker gets resolved options
+                const resolvedOptions = getFieldOptions(effectiveField);
+                if (resolvedOptions.length > 0) {
+                  onDropdownPress?.({ ...effectiveField, options: resolvedOptions });
                 } else {
-                  onDropdownPress?.(field);
+                  onDropdownPress?.(effectiveField);
                 }
               }}
             >
@@ -83,7 +91,7 @@ export default function DynamicFormRenderer({
                 ]}
               >
                 {value
-                  ? getFieldOptions(field).find(o => o.value === value)?.label || value
+                  ? getFieldOptions(effectiveField).find(o => o.value === value)?.label || value
                   : field.placeholder || `Select ${field.label}`}
               </Text>
               <Text style={[styles.iconText, { color: colors.textSecondary }]}>▼</Text>
@@ -298,7 +306,7 @@ export default function DynamicFormRenderer({
       default:
         return null;
     }
-  }, [values, errors, colors, onChange, onDropdownPress, getFieldOptions]);
+  }, [values, errors, colors, onChange, onDropdownPress, getFieldOptions, locationOptions]);
 
   return (
     <View style={styles.container}>
