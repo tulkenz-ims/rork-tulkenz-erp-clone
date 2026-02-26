@@ -346,56 +346,114 @@ export default function AllergenChangeoverScreen() {
     try {
       const formNumber = `ALC-${formData.date.replace(/-/g, '').slice(2)}-${Math.floor(Math.random() * 9000 + 1000)}`;
 
-      // Build the record payload
-      const record = {
-        form_number: formNumber,
-        form_type: 'allergen_changeover',
-        date: formData.date,
-        time_initiated: formData.timeInitiated,
-        production_line: formData.productionLine,
-        previous_product: formData.previousProduct,
-        allergens_removed: formData.allergensBeingRemoved,
-        next_product: formData.nextProduct,
-        incoming_allergen_status: formData.incomingAllergenStatus,
-        changeover_initiated_by: formData.changeoverInitiatedBy,
-        dept_checks: formData.deptChecks,
-        visual_checks: formData.visualChecks,
-        swab_rows: formData.swabRows,
-        atp_threshold: formData.atpThreshold,
-        swab_kit_lot: formData.swabKitLot,
-        swab_kit_expiry: formData.swabKitExpiry,
-        all_swabs_pass: formData.allSwabsPass,
-        preop_checks: formData.preopChecks,
-        decision: formData.decision,
-        rejection_reason: formData.rejectionReason || null,
-        qa_name: qaSignature?.employeeName || null,
-        qa_employee_id: qaSignature?.employeeId || null,
-        qa_initials: qaSignature?.employeeInitials || null,
-        qa_signature_stamp: qaSignature?.signatureStamp || null,
-        qa_signed_at: qaSignature?.verifiedAt || null,
-        qa_pin_verified: isSignatureVerified(qaSignature),
-        prod_supervisor_name: prodSignature?.employeeName || null,
-        prod_supervisor_id: prodSignature?.employeeId || null,
-        prod_supervisor_initials: prodSignature?.employeeInitials || null,
-        prod_signature_stamp: prodSignature?.signatureStamp || null,
-        prod_signed_at: prodSignature?.verifiedAt || null,
-        prod_pin_verified: isSignatureVerified(prodSignature),
-        organization_id: user?.organizationId || null,
-        created_by: user?.id || null,
-        created_by_name: user?.name || null,
-      };
-
-      // Insert to quality_forms table (generic JSONB approach)
       const { data: inserted, error: insertError } = await supabase
-        .from('quality_forms')
+        .from('allergen_changeover_forms')
         .insert({
-          form_type: 'allergen_changeover',
           form_number: formNumber,
-          title: `Allergen Changeover - ${formData.productionLine} - ${formData.date}`,
           status: formData.decision === 'approved' ? 'completed' : 'requires_action',
-          form_data: record,
+
+          // Section 1: Changeover Information
+          changeover_date: formData.date,
+          time_initiated: formData.timeInitiated,
+          production_line: formData.productionLine,
+          previous_product: formData.previousProduct,
+          allergens_removed: formData.allergensBeingRemoved,
+          next_product: formData.nextProduct,
+          incoming_allergen_status: formData.incomingAllergenStatus,
+          changeover_initiated_by: formData.changeoverInitiatedBy,
+
+          // Section 2: Department Completion Verification
+          dept_prod_cleared_status: formData.deptChecks.prod_cleared.status,
+          dept_prod_cleared_initials: formData.deptChecks.prod_cleared.initials,
+          dept_san_cleaning_status: formData.deptChecks.san_cleaning.status,
+          dept_san_cleaning_initials: formData.deptChecks.san_cleaning.initials,
+          dept_san_preop_status: formData.deptChecks.san_preop.status,
+          dept_san_preop_initials: formData.deptChecks.san_preop.initials,
+          dept_maint_reassembled_status: formData.deptChecks.maint_reassembled.status,
+          dept_maint_reassembled_initials: formData.deptChecks.maint_reassembled.initials,
+
+          // Section 3: QA Visual Inspection
+          visual_contact_surfaces_status: formData.visualChecks.contact_surfaces.status,
+          visual_contact_surfaces_initials: formData.visualChecks.contact_surfaces.initials,
+          visual_gaskets_seals_status: formData.visualChecks.gaskets_seals.status,
+          visual_gaskets_seals_initials: formData.visualChecks.gaskets_seals.initials,
+          visual_non_contact_status: formData.visualChecks.non_contact.status,
+          visual_non_contact_initials: formData.visualChecks.non_contact.initials,
+          visual_no_pooled_water_status: formData.visualChecks.no_pooled_water.status,
+          visual_no_pooled_water_initials: formData.visualChecks.no_pooled_water.initials,
+          visual_utensils_tools_status: formData.visualChecks.utensils_tools.status,
+          visual_utensils_tools_initials: formData.visualChecks.utensils_tools.initials,
+
+          // Section 4: Swab / ATP Results
+          swab_1_location: formData.swabRows[0].location,
+          swab_1_surface_type: formData.swabRows[0].surfaceType,
+          swab_1_test_type: formData.swabRows[0].testType,
+          swab_1_result: formData.swabRows[0].result,
+          swab_1_pass_fail: formData.swabRows[0].passFail,
+          swab_1_initials: formData.swabRows[0].initials,
+
+          swab_2_location: formData.swabRows[1].location,
+          swab_2_surface_type: formData.swabRows[1].surfaceType,
+          swab_2_test_type: formData.swabRows[1].testType,
+          swab_2_result: formData.swabRows[1].result,
+          swab_2_pass_fail: formData.swabRows[1].passFail,
+          swab_2_initials: formData.swabRows[1].initials,
+
+          swab_3_location: formData.swabRows[2].location,
+          swab_3_surface_type: formData.swabRows[2].surfaceType,
+          swab_3_test_type: formData.swabRows[2].testType,
+          swab_3_result: formData.swabRows[2].result,
+          swab_3_pass_fail: formData.swabRows[2].passFail,
+          swab_3_initials: formData.swabRows[2].initials,
+
+          swab_4_location: formData.swabRows[3].location,
+          swab_4_surface_type: formData.swabRows[3].surfaceType,
+          swab_4_test_type: formData.swabRows[3].testType,
+          swab_4_result: formData.swabRows[3].result,
+          swab_4_pass_fail: formData.swabRows[3].passFail,
+          swab_4_initials: formData.swabRows[3].initials,
+
+          atp_threshold: formData.atpThreshold,
+          swab_kit_lot: formData.swabKitLot,
+          swab_kit_expiry: formData.swabKitExpiry,
+          all_swabs_pass: formData.allSwabsPass,
+
+          // Section 5: Pre-Op & Label Verification
+          preop_labels_verified_status: formData.preopChecks.labels_verified.status,
+          preop_labels_verified_initials: formData.preopChecks.labels_verified.initials,
+          preop_metal_detector_status: formData.preopChecks.metal_detector.status,
+          preop_metal_detector_initials: formData.preopChecks.metal_detector.initials,
+          preop_first_article_status: formData.preopChecks.first_article.status,
+          preop_first_article_initials: formData.preopChecks.first_article.initials,
+          preop_sanitizer_conc_status: formData.preopChecks.sanitizer_conc.status,
+          preop_sanitizer_conc_initials: formData.preopChecks.sanitizer_conc.initials,
+
+          // Section 6: Decision
+          decision: formData.decision,
+          rejection_reason: formData.rejectionReason || null,
+
+          // QA Signature (PPN)
+          qa_name: qaSignature?.employeeName || null,
+          qa_employee_id: qaSignature?.employeeId || null,
+          qa_initials: qaSignature?.employeeInitials || null,
+          qa_department_code: qaSignature?.departmentCode || null,
+          qa_signature_stamp: qaSignature?.signatureStamp || null,
+          qa_signed_at: qaSignature?.verifiedAt || null,
+          qa_pin_verified: isSignatureVerified(qaSignature),
+
+          // Production Supervisor Signature (PPN)
+          prod_supervisor_name: prodSignature?.employeeName || null,
+          prod_supervisor_id: prodSignature?.employeeId || null,
+          prod_supervisor_initials: prodSignature?.employeeInitials || null,
+          prod_supervisor_department_code: prodSignature?.departmentCode || null,
+          prod_signature_stamp: prodSignature?.signatureStamp || null,
+          prod_signed_at: prodSignature?.verifiedAt || null,
+          prod_pin_verified: isSignatureVerified(prodSignature),
+
+          // Organization & Audit
           organization_id: user?.organizationId || null,
           created_by: user?.id || null,
+          created_by_name: user?.name || null,
         })
         .select('id')
         .single();
