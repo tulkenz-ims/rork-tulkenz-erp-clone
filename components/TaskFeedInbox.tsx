@@ -252,8 +252,9 @@ export default function TaskFeedInbox({
         setShowCompleteModal(true);
       }
     } else if (task.status === 'in_progress') {
-      // Task already started — show decision modal
-      setShowDecisionModal(true);
+      // Task already started — show form picker to attach more forms
+      // User can hit "Complete Task" button in picker to go to decision/release
+      setShowFormPicker(true);
     } else {
       // Pending task — show form picker to start
       setShowFormPicker(true);
@@ -302,8 +303,15 @@ export default function TaskFeedInbox({
 
   const handleFormPickerClose = useCallback(() => {
     setShowFormPicker(false);
-    // Always show decision modal (has line restore, signature, etc.)
-    // regardless of whether task is pending or in_progress
+    // Just close — don't jump to decision modal
+    // User can tap task again to reopen picker or complete
+    setSelectedTask(null);
+  }, []);
+
+  const handleFormPickerComplete = useCallback(() => {
+    // User clicked "Complete Task" from inside form picker
+    // Close picker, open decision/hold-release modal
+    setShowFormPicker(false);
     setShowDecisionModal(true);
   }, []);
 
@@ -1060,6 +1068,8 @@ export default function TaskFeedInbox({
           completedAt: f.completedAt,
           completedByName: f.completedByName,
         }))}
+        showCompleteButton={selectedTask?.status === 'in_progress'}
+        onMarkComplete={handleFormPickerComplete}
       />
 
       {/* Post-Form Decision Modal */}
