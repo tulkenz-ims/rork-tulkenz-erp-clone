@@ -59,6 +59,36 @@ const PRODUCTION_LINES = [
 ];
 
 // ============================================================
+// FDA BIG 9 + COMMON ALLERGENS
+// ============================================================
+
+const COMMON_ALLERGENS = [
+  'Milk',
+  'Eggs',
+  'Fish',
+  'Shellfish',
+  'Tree Nuts',
+  'Peanuts',
+  'Wheat',
+  'Soybeans',
+  'Sesame',
+  'Whey Protein',
+  'Casein',
+  'Lactose',
+  'Gluten',
+  'Almond',
+  'Cashew',
+  'Walnut',
+  'Pecan',
+  'Coconut',
+  'Mustard',
+  'Celery',
+  'Lupin',
+  'Sulfites',
+  'Mollusks',
+];
+
+// ============================================================
 // CHECKLIST DEFINITIONS
 // ============================================================
 
@@ -133,9 +163,9 @@ interface AllergenFormData {
   timeInitiated: string;
   productionLine: string;
   previousProduct: string;
-  allergensBeingRemoved: string;
+  allergensBeingRemoved: string[];
   nextProduct: string;
-  incomingAllergenStatus: string;
+  incomingAllergenStatus: string[];
   changeoverInitiatedBy: string;
 
   // Section 2: Department Verification (keyed by item id)
@@ -178,9 +208,9 @@ const INITIAL_FORM: AllergenFormData = {
   timeInitiated: '',
   productionLine: '',
   previousProduct: '',
-  allergensBeingRemoved: '',
+  allergensBeingRemoved: [],
   nextProduct: '',
-  incomingAllergenStatus: '',
+  incomingAllergenStatus: [],
   changeoverInitiatedBy: '',
   deptChecks: makeChecks(DEPT_VERIFICATION_ITEMS),
   visualChecks: makeChecks(QA_VISUAL_ITEMS),
@@ -223,6 +253,7 @@ export default function AllergenChangeoverScreen() {
 
   // Dropdown pickers
   const [showLinePicker, setShowLinePicker] = useState(false);
+  const [showAllergenPicker, setShowAllergenPicker] = useState<'removed' | 'incoming' | null>(null);
 
   // ── History Query ──
   const { data: history = [], isLoading: isLoadingHistory, refetch: refetchHistory } = useQuery({
@@ -276,6 +307,16 @@ export default function AllergenChangeoverScreen() {
     });
   }, []);
 
+  const toggleAllergen = useCallback((field: 'allergensBeingRemoved' | 'incomingAllergenStatus', allergen: string) => {
+    setFormData(prev => {
+      const current = prev[field];
+      const updated = current.includes(allergen)
+        ? current.filter(a => a !== allergen)
+        : [...current, allergen];
+      return { ...prev, [field]: updated };
+    });
+  }, []);
+
   const resetForm = useCallback(() => {
     setFormData({
       ...INITIAL_FORM,
@@ -300,9 +341,9 @@ export default function AllergenChangeoverScreen() {
     if (!formData.timeInitiated.trim()) return 'Time Initiated is required';
     if (!formData.productionLine.trim()) return 'Production Line is required';
     if (!formData.previousProduct.trim()) return 'Previous Product is required (enter N/A if not applicable)';
-    if (!formData.allergensBeingRemoved.trim()) return 'Allergens Being Removed is required (enter N/A if not applicable)';
+    if (formData.allergensBeingRemoved.length === 0) return 'Allergens Being Removed is required — select at least one';
     if (!formData.nextProduct.trim()) return 'Next Product is required (enter N/A if not applicable)';
-    if (!formData.incomingAllergenStatus.trim()) return 'Incoming Allergen Status is required (enter N/A if not applicable)';
+    if (formData.incomingAllergenStatus.length === 0) return 'Incoming Allergen Status is required — select at least one';
     if (!formData.changeoverInitiatedBy.trim()) return 'Changeover Initiated By is required (enter N/A if not applicable)';
 
     // ── Section 2: Department Completion Verification (every row: Pass/Fail + Initials) ──
@@ -383,9 +424,9 @@ export default function AllergenChangeoverScreen() {
           time_initiated: formData.timeInitiated,
           production_line: formData.productionLine,
           previous_product: formData.previousProduct,
-          allergens_removed: formData.allergensBeingRemoved,
+          allergens_removed: formData.allergensBeingRemoved.join(', '),
           next_product: formData.nextProduct,
-          incoming_allergen_status: formData.incomingAllergenStatus,
+          incoming_allergen_status: formData.incomingAllergenStatus.join(', '),
           changeover_initiated_by: formData.changeoverInitiatedBy,
 
           // Section 2: Department Completion Verification
@@ -708,11 +749,11 @@ export default function AllergenChangeoverScreen() {
             <TaskFeedPostLinker
               selectedPostId={linkedPostId}
               selectedPostNumber={linkedPostNumber}
-              onPostSelected={(postId, postNumber) => {
+              onSelect={(postId, postNumber) => {
                 setLinkedPostId(postId);
                 setLinkedPostNumber(postNumber);
               }}
-              onPostCleared={() => {
+              onClear={() => {
                 setLinkedPostId(null);
                 setLinkedPostNumber(null);
               }}
@@ -779,7 +820,20 @@ export default function AllergenChangeoverScreen() {
                 </View>
                 <View style={[p.labelCell, { flex: 0.6 }]}><Text style={p.label}>Allergen(s) Being{'\n'}Removed</Text></View>
                 <View style={[p.valueCell, { flex: 1 }]}>
-                  <PaperCellInput value={formData.allergensBeingRemoved} onChangeText={(t) => updateForm('allergensBeingRemoved', t)} placeholder="N/A" />
+                  <Pressable style={p.allergenBtn} onPress={() => setShowAllergenPicker('removed')}>
+                    {formData.allergensBeingRemoved.length > 0 ? (
+                      <View style={p.chipWrap}>
+                        {formData.allergensBeingRemoved.map(a => (
+                          <View key={a} style={p.allergenChip}>
+                            <Text style={p.allergenChipText}>{a}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    ) : (
+                      <Text style={[p.dropdownText, { color: '#AAA' }]}>Tap to select...</Text>
+                    )}
+                    <ChevronDown size={12} color="#999" />
+                  </Pressable>
                 </View>
               </View>
 
@@ -791,7 +845,20 @@ export default function AllergenChangeoverScreen() {
                 </View>
                 <View style={[p.labelCell, { flex: 0.6 }]}><Text style={p.label}>Incoming Allergen{'\n'}Status</Text></View>
                 <View style={[p.valueCell, { flex: 1 }]}>
-                  <PaperCellInput value={formData.incomingAllergenStatus} onChangeText={(t) => updateForm('incomingAllergenStatus', t)} placeholder="N/A" />
+                  <Pressable style={p.allergenBtn} onPress={() => setShowAllergenPicker('incoming')}>
+                    {formData.incomingAllergenStatus.length > 0 ? (
+                      <View style={p.chipWrap}>
+                        {formData.incomingAllergenStatus.map(a => (
+                          <View key={a} style={p.allergenChip}>
+                            <Text style={p.allergenChipText}>{a}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    ) : (
+                      <Text style={[p.dropdownText, { color: '#AAA' }]}>Tap to select...</Text>
+                    )}
+                    <ChevronDown size={12} color="#999" />
+                  </Pressable>
                 </View>
               </View>
 
@@ -1024,6 +1091,53 @@ export default function AllergenChangeoverScreen() {
         </Pressable>
       </Modal>
 
+      {/* ============================================================ */}
+      {/* ALLERGEN MULTI-SELECT PICKER MODAL                            */}
+      {/* ============================================================ */}
+      <Modal visible={showAllergenPicker !== null} transparent animationType="fade">
+        <Pressable style={s.pickerOverlay} onPress={() => setShowAllergenPicker(null)}>
+          <Pressable style={[s.allergenPickerSheet, { backgroundColor: colors.surface }]} onPress={(e) => e.stopPropagation()}>
+            <Text style={[s.pickerTitle, { color: colors.text }]}>
+              {showAllergenPicker === 'removed' ? 'Allergens Being Removed' : 'Incoming Allergens'}
+            </Text>
+            <Text style={[{ fontSize: 12, color: colors.textSecondary, marginBottom: 12 }]}>
+              Select all that apply. Tap again to deselect.
+            </Text>
+            <ScrollView style={{ maxHeight: 400 }}>
+              <View style={s.allergenGrid}>
+                {COMMON_ALLERGENS.map(allergen => {
+                  const field = showAllergenPicker === 'removed' ? 'allergensBeingRemoved' : 'incomingAllergenStatus';
+                  const isSelected = formData[field].includes(allergen);
+                  return (
+                    <Pressable
+                      key={allergen}
+                      style={[s.allergenOption, isSelected && { backgroundColor: '#F97316' + '20', borderColor: '#F97316' }]}
+                      onPress={() => {
+                        toggleAllergen(field, allergen);
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      }}
+                    >
+                      {isSelected && <CheckCircle size={14} color="#F97316" />}
+                      <Text style={[s.allergenOptionText, { color: isSelected ? '#F97316' : colors.text }]}>
+                        {allergen}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </ScrollView>
+            <Pressable
+              style={[s.allergenDoneBtn, { backgroundColor: '#F97316' }]}
+              onPress={() => setShowAllergenPicker(null)}
+            >
+              <Text style={s.allergenDoneBtnText}>
+                Done ({(showAllergenPicker === 'removed' ? formData.allergensBeingRemoved : formData.incomingAllergenStatus).length} selected)
+              </Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -1064,6 +1178,12 @@ const p = StyleSheet.create({
   // Dropdown
   dropdownBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flex: 1 },
   dropdownText: { fontSize: 12, color: '#333' },
+
+  // Allergen chips
+  allergenBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flex: 1, minHeight: 24 },
+  chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 3, flex: 1, paddingVertical: 2 },
+  allergenChip: { backgroundColor: '#F97316' + '20', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1, borderWidth: 1, borderColor: '#F97316' + '40' },
+  allergenChipText: { fontSize: 9, fontWeight: '600', color: '#C2410C' },
 
   // Check rows (PASS/FAIL/INITIALS)
   checkHeaderRow: { flexDirection: 'row', backgroundColor: '#E2E8F0', borderBottomWidth: 1, borderBottomColor: FORM_BORDER, paddingVertical: 4 },
@@ -1145,4 +1265,10 @@ const s = StyleSheet.create({
   pickerTitle: { fontSize: 16, fontWeight: '700', marginBottom: 12 },
   pickerItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, paddingHorizontal: 12, borderRadius: 10, marginBottom: 4 },
   pickerItemText: { fontSize: 15 },
+  allergenPickerSheet: { borderRadius: 16, padding: 20, maxHeight: '80%', width: '100%' },
+  allergenGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  allergenOption: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0' },
+  allergenOptionText: { fontSize: 14, fontWeight: '500' },
+  allergenDoneBtn: { marginTop: 16, borderRadius: 10, paddingVertical: 12, alignItems: 'center' },
+  allergenDoneBtnText: { color: '#FFF', fontSize: 15, fontWeight: '600' },
 });
