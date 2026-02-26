@@ -9,6 +9,7 @@ import {
   Modal,
   Alert,
   ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -17,10 +18,14 @@ import {
   CheckCircle,
   AlertTriangle,
   ChevronDown,
+  ChevronRight,
+  FileText,
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useUser } from '@/contexts/UserContext';
+import { useOrganization } from '@/contexts/OrganizationContext';
 import { useLocations } from '@/hooks/useLocations';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import TaskFeedPostLinker from '@/components/TaskFeedPostLinker';
 import { useLinkFormToPost } from '@/hooks/useTaskFeedFormLinks';
@@ -196,12 +201,16 @@ const INITIAL_FORM: AllergenFormData = {
 export default function AllergenChangeoverScreen() {
   const { colors } = useTheme();
   const { user } = useUser();
+  const orgContext = useOrganization();
+  const organizationId = orgContext?.organizationId || '';
+  const queryClient = useQueryClient();
   const { locations = [] } = useLocations();
 
   // Form state
   const [formData, setFormData] = useState<AllergenFormData>({ ...INITIAL_FORM, deptChecks: makeChecks(DEPT_VERIFICATION_ITEMS), visualChecks: makeChecks(QA_VISUAL_ITEMS), preopChecks: makeChecks(PREOP_LABEL_ITEMS), swabRows: [emptySwabRow(), emptySwabRow(), emptySwabRow(), emptySwabRow()] });
   const [showForm, setShowForm] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [selectedRecord, setSelectedRecord] = useState<any>(null);
 
   // Task Feed linking
   const [linkedPostId, setLinkedPostId] = useState<string | null>(null);
@@ -214,6 +223,23 @@ export default function AllergenChangeoverScreen() {
 
   // Dropdown pickers
   const [showLinePicker, setShowLinePicker] = useState(false);
+
+  // ── History Query ──
+  const { data: history = [], isLoading: isLoadingHistory, refetch: refetchHistory } = useQuery({
+    queryKey: ['allergen_changeover_forms', organizationId],
+    queryFn: async () => {
+      if (!organizationId) return [];
+      const { data, error } = await supabase
+        .from('allergen_changeover_forms')
+        .select('id, form_number, status, changeover_date, time_initiated, production_line, previous_product, next_product, allergens_removed, decision, qa_name, created_by_name, created_at')
+        .eq('organization_id', organizationId)
+        .order('created_at', { ascending: false })
+        .limit(50);
+      if (error) { console.error('[AllergenChangeover] History error:', error); return []; }
+      return data || [];
+    },
+    enabled: !!organizationId,
+  });
 
   // Location options from database
   const locationOptions = useMemo(() =>
@@ -479,6 +505,7 @@ export default function AllergenChangeoverScreen() {
 
       setShowForm(false);
       resetForm();
+      queryClient.invalidateQueries({ queryKey: ['allergen_changeover_forms'] });
       Alert.alert('Success', `Allergen Changeover ${formNumber} submitted.\n\nDecision: ${formData.decision === 'approved' ? 'LINE RELEASED' : 'RE-CLEAN REQUIRED'}`);
     } catch (err: any) {
       console.error('[AllergenChangeover] Submit error:', err);
@@ -552,7 +579,11 @@ export default function AllergenChangeoverScreen() {
 
   return (
     <SafeAreaView style={[{ flex: 1 }, { backgroundColor: colors.background }]}>
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16 }}>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ padding: 16 }}
+        refreshControl={<RefreshControl refreshing={isLoadingHistory} onRefresh={() => refetchHistory()} tintColor={MED_BLUE} />}
+      >
 
         {/* Page Header */}
         <View style={[s.pageHeader, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -572,14 +603,82 @@ export default function AllergenChangeoverScreen() {
           <Text style={s.addBtnText}>New Allergen Changeover Form</Text>
         </Pressable>
 
+        {/* Stats Row */}
+        <View style={s.statsRow}>
+          <View style={[s.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Text style={[s.statVal, { color: colors.text }]}>{history.length}</Text>
+            <Text style={[s.statLbl, { color: colors.textSecondary }]}>Total</Text>
+          </View>
+          <View style={[s.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Text style={[s.statVal, { color: PASS_GREEN }]}>{history.filter((f: any) => f.decision === 'approved').length}</Text>
+            <Text style={[s.statLbl, { color: colors.textSecondary }]}>Approved</Text>
+          </View>
+          <View style={[s.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Text style={[s.statVal, { color: FAIL_RED }]}>{history.filter((f: any) => f.decision === 'rejected').length}</Text>
+            <Text style={[s.statLbl, { color: colors.textSecondary }]}>Rejected</Text>
+          </View>
+        </View>
+
         <View style={[s.infoBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Text style={[s.infoText, { color: colors.textSecondary }]}>
             DOC ID: QA-ALC-001  |  SQF 2.8.1.4-2.8.1.6  |  FDA 21 CFR 117
           </Text>
-          <Text style={[s.infoText, { color: colors.textSecondary, marginTop: 4 }]}>
-            Quality Department use only. Each department attaches their own forms (Equipment Cleaning, ATP Swab Log, Pre-Op Verification) via Task Feed.
-          </Text>
         </View>
+
+        {/* History List */}
+        {isLoadingHistory ? (
+          <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+            <ActivityIndicator size="large" color={MED_BLUE} />
+            <Text style={[s.infoText, { color: colors.textSecondary, marginTop: 8 }]}>Loading forms...</Text>
+          </View>
+        ) : history.length === 0 ? (
+          <View style={[s.emptyBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <FileText size={32} color={colors.textSecondary} />
+            <Text style={[s.emptyTitle, { color: colors.text }]}>No Forms Yet</Text>
+            <Text style={[s.emptyText, { color: colors.textSecondary }]}>Tap "New Allergen Changeover Form" to create your first record.</Text>
+          </View>
+        ) : (
+          history.map((record: any) => {
+            const isApproved = record.decision === 'approved';
+            return (
+              <Pressable
+                key={record.id}
+                style={[s.historyCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                onPress={() => setSelectedRecord(record)}
+              >
+                <View style={s.historyHeader}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[s.historyNumber, { color: colors.text }]}>{record.form_number}</Text>
+                    <Text style={[s.historyLine, { color: colors.textSecondary }]}>
+                      {record.production_line}  •  {record.changeover_date}
+                    </Text>
+                  </View>
+                  <View style={[s.decisionBadge, { backgroundColor: isApproved ? '#ECFDF5' : '#FEF2F2' }]}>
+                    <Text style={[s.decisionBadgeText, { color: isApproved ? PASS_GREEN : FAIL_RED }]}>
+                      {isApproved ? 'RELEASED' : 'REJECTED'}
+                    </Text>
+                  </View>
+                </View>
+                <View style={s.historyMeta}>
+                  <Text style={[s.historyMetaText, { color: colors.textSecondary }]}>
+                    {record.previous_product} → {record.next_product}
+                  </Text>
+                  <Text style={[s.historyMetaText, { color: colors.textSecondary }]}>
+                    Allergens: {record.allergens_removed}
+                  </Text>
+                </View>
+                <View style={s.historyFooter}>
+                  <Text style={[s.historyFooterText, { color: colors.textSecondary }]}>
+                    {record.qa_name || record.created_by_name || 'Unknown'}  •  {new Date(record.created_at).toLocaleDateString()}
+                  </Text>
+                  <ChevronRight size={16} color={colors.textSecondary} />
+                </View>
+              </Pressable>
+            );
+          })
+        )}
+
+        <View style={{ height: 20 }} />
 
       </ScrollView>
 
@@ -1019,8 +1118,25 @@ const s = StyleSheet.create({
   pageSub: { fontSize: 14 },
   addBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 12, padding: 14, gap: 8, marginBottom: 16 },
   addBtnText: { color: '#FFF', fontSize: 16, fontWeight: '600' },
-  infoBox: { borderRadius: 12, padding: 14, borderWidth: 1 },
+  infoBox: { borderRadius: 12, padding: 14, borderWidth: 1, marginBottom: 16 },
   infoText: { fontSize: 12, lineHeight: 18 },
+  statsRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
+  statCard: { flex: 1, borderRadius: 12, padding: 12, alignItems: 'center', borderWidth: 1 },
+  statVal: { fontSize: 20, fontWeight: '700' },
+  statLbl: { fontSize: 11, marginTop: 2 },
+  emptyBox: { borderRadius: 16, padding: 40, alignItems: 'center', borderWidth: 1, marginTop: 8 },
+  emptyTitle: { fontSize: 16, fontWeight: '600', marginTop: 12 },
+  emptyText: { fontSize: 13, textAlign: 'center', marginTop: 4 },
+  historyCard: { borderRadius: 12, padding: 14, borderWidth: 1, marginBottom: 10 },
+  historyHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  historyNumber: { fontSize: 14, fontWeight: '700' },
+  historyLine: { fontSize: 12, marginTop: 2 },
+  decisionBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  decisionBadgeText: { fontSize: 11, fontWeight: '700' },
+  historyMeta: { marginBottom: 8, gap: 2 },
+  historyMetaText: { fontSize: 12 },
+  historyFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  historyFooterText: { fontSize: 11 },
   modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderBottomWidth: 1 },
   modalTitle: { fontSize: 17, fontWeight: '600' },
   saveBtn: { fontSize: 16, fontWeight: '600' },
