@@ -224,7 +224,7 @@ const QUALITY_FORM_CATEGORIES: FormCategory[] = [
     color: '#F97316',
     forms: [
       { id: 'allergenmatrix', title: 'Allergen Matrix', route: '/quality/allergenmatrix' },
-      { id: 'allergenchangeoverchecklist', title: 'Allergen Changeover Checklist', route: '/quality/allergenchangeoverchecklist' },
+      { id: 'allergenchangechecklist', title: 'Allergen Changeover Checklist', route: '/quality/allergenchangeover' },
       { id: 'allergencleaningverification', title: 'Allergen Cleaning Verification', route: '/quality/allergencleaningverification' },
       { id: 'allergenlabelreview', title: 'Allergen Label Review', route: '/quality/allergenlabelreview' },
     ],
