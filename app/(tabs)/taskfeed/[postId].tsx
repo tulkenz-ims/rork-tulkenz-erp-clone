@@ -35,7 +35,7 @@ import DepartmentCompletionBadges from '@/components/DepartmentCompletionBadges'
 import ProductionStoppedBanner from '@/components/ProductionStoppedBanner';
 import EscalationModal from '@/components/EscalationModal';
 import { useSignoffDepartmentTask, useDeleteTaskFeedPost } from '@/hooks/useTaskFeedTemplates';
-import { usePostFormLinks } from '@/hooks/useTaskFeedFormLinks';
+import { usePostFormLinks, useUnlinkForm } from '@/hooks/useTaskFeedFormLinks';
 import { useUser } from '@/contexts/UserContext';
 
 const PRIORITY_COLORS: Record<string, { bg: string; text: string }> = {
@@ -103,6 +103,24 @@ export default function TaskFeedPostDetailScreen() {
 
   // Linked forms query
   const { data: linkedForms } = usePostFormLinks(postId);
+  const unlinkFormMutation = useUnlinkForm();
+
+  const handleUnlinkForm = useCallback((linkId: string, formLabel: string) => {
+    Alert.alert(
+      'Remove Linked Form',
+      `Remove "${formLabel}" from this post? This does not delete the form itself.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: () => {
+            unlinkFormMutation.mutate(linkId);
+          },
+        },
+      ]
+    );
+  }, [unlinkFormMutation]);
 
   useEffect(() => {
     if (Platform.OS === 'web') {
@@ -439,6 +457,8 @@ export default function TaskFeedPostDetailScreen() {
       'non-conformance report (ncr)': 'ncr',
       'non-conformance report': 'ncr',
       'nonconformancereport(ncr)': 'ncr',
+      'allergen_changeover': 'allergen-changeover',
+      'allergen changeover checklist': 'allergen-changeover',
       'capa': 'capa',
       'deviation': 'deviation',
       'hold tag': 'holdtag',
@@ -447,7 +467,13 @@ export default function TaskFeedPostDetailScreen() {
     const module = deptToModule[link.departmentCode || ''] || 'quality';
     const normalized = link.formType.toLowerCase().trim();
     const formRoute = formTypeRouteMap[normalized] || normalized.replace(/[\s\-()]/g, '');
-    router.push(`/${module}/${formRoute}` as any);
+
+    // Navigate with formId param so the target screen can open the specific record
+    if (link.formId) {
+      router.push({ pathname: `/(tabs)/${module}/${formRoute}` as any, params: { formId: link.formId } });
+    } else {
+      router.push(`/(tabs)/${module}/${formRoute}` as any);
+    }
   }, [router]);
 
   const styles = createStyles(colors);
@@ -856,6 +882,16 @@ export default function TaskFeedPostDetailScreen() {
                       </Text>
                     </View>
                   </View>
+                  <TouchableOpacity
+                    onPress={(e) => {
+                      e.stopPropagation?.();
+                      handleUnlinkForm(link.id, link.formNumber || link.formType);
+                    }}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    style={{ padding: 4 }}
+                  >
+                    <Trash2 size={16} color={colors.error || '#EF4444'} />
+                  </TouchableOpacity>
                 </View>
                 {link.formTitle && (
                   <Text style={[styles.woTitle, { color: colors.text }]} numberOfLines={2}>
