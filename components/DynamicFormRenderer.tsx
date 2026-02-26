@@ -39,27 +39,13 @@ export default function DynamicFormRenderer({
       }));
   }, [locations]);
 
-  // Build dynamic options for production line fields
-  const productionLineOptions: FormFieldOption[] = useMemo(() => {
-    return locations
-      .filter(l => l.status === 'active' && (l.location_type === 'line' || l.is_production))
-      .sort((a, b) => a.name.localeCompare(b.name))
-      .map(loc => ({
-        value: loc.name,
-        label: loc.location_code ? `${loc.name} (${loc.location_code})` : loc.name,
-      }));
-  }, [locations]);
-
   // Resolve options for a field — uses dynamic source if specified
   const getFieldOptions = useCallback((field: FormField): FormFieldOption[] => {
     if ((field as any).dynamicSource === 'locations' && locationOptions.length > 0) {
       return locationOptions;
     }
-    if ((field as any).dynamicSource === 'production_lines' && productionLineOptions.length > 0) {
-      return productionLineOptions;
-    }
     return field.options || [];
-  }, [locationOptions, productionLineOptions]);
+  }, [locationOptions]);
 
   const sortedFields = [...fields].sort((a, b) => a.sortOrder - b.sortOrder);
 
@@ -70,7 +56,7 @@ export default function DynamicFormRenderer({
     // ── Auto-upgrade: any field with id 'location' or dynamicSource 'locations'
     //    renders as a location dropdown, even if saved as text_input in the DB ──
     const isLocationField = field.id === 'location' || (field as any).dynamicSource === 'locations';
-    const isProductionLineField = field.id === 'production_line' || (field as any).dynamicSource === 'production_lines';
+    const isProductionLineField = field.id === 'production_line';
 
     let effectiveFieldType = field.fieldType;
     let effectiveField = field;
@@ -78,9 +64,14 @@ export default function DynamicFormRenderer({
     if (isLocationField && locationOptions.length > 0) {
       effectiveFieldType = 'dropdown';
       effectiveField = { ...field, fieldType: 'dropdown' as any, options: locationOptions };
-    } else if (isProductionLineField && productionLineOptions.length > 0) {
+    } else if (isProductionLineField) {
       effectiveFieldType = 'dropdown';
-      effectiveField = { ...field, fieldType: 'dropdown' as any, options: productionLineOptions };
+      effectiveField = { ...field, fieldType: 'dropdown' as any, options: [
+        { value: 'Line 1', label: 'Line 1' },
+        { value: 'Line 2', label: 'Line 2' },
+        { value: 'Line NS', label: 'Line NS' },
+        { value: 'Line 3', label: 'Line 3' },
+      ]};
     }
 
     switch (effectiveFieldType) {
@@ -328,7 +319,7 @@ export default function DynamicFormRenderer({
       default:
         return null;
     }
-  }, [values, errors, colors, onChange, onDropdownPress, getFieldOptions, locationOptions, productionLineOptions]);
+  }, [values, errors, colors, onChange, onDropdownPress, getFieldOptions, locationOptions]);
 
   return (
     <View style={styles.container}>
