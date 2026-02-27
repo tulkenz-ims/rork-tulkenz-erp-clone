@@ -1,8 +1,9 @@
-// app/(tabs)/quality/customformfill.tsx
+// app/(tabs)/compliance/customformfill.tsx
 // Universal form fill screen — renders any custom form template
+// PAPER FORM STYLING — matches printed PDF layout exactly
 // Reads templateId from route params, loads schema, renders fields, submits to custom_form_submissions
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, memo } from 'react';
 import {
   View,
   Text,
@@ -14,7 +15,6 @@ import {
   Alert,
   ActivityIndicator,
   RefreshControl,
-  Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -43,17 +43,34 @@ import {
   CustomFormSignature,
 } from '@/hooks/useCustomForms';
 
-// ── Constants ──────────────────────────────────────────────────
+// ── Paper Form Colors ─────────────────────────────────────────
 
-const BLUE = '#3B82F6';
+const DARK_HEADER = '#1E293B';
+const SECTION_BAR = '#334155';
+const BORDER = '#94A3B8';
+const LABEL_BG = '#F1F5F9';
+const COL_HDR_BG = '#E2E8F0';
+const WHITE = '#FFFFFF';
 const GREEN = '#10B981';
 const RED = '#EF4444';
+const BLUE = '#3B82F6';
 const PURPLE = '#8B5CF6';
-const SLATE = '#475569';
-const FORM_BORDER = '#CBD5E1';
-const FORM_HEADER_BG = '#1E293B';
-const LABEL_BG = '#F1F5F9';
-const WHITE = '#FFFFFF';
+
+// ── Memoized Paper Cell Input ─────────────────────────────────
+
+const PaperCellInput = memo(({ value, onChangeText, placeholder, maxLength, autoCapitalize, keyboardType, multiline, style }: any) => (
+  <TextInput
+    style={[p.cellInput, style]}
+    value={value}
+    onChangeText={onChangeText}
+    placeholder={placeholder || ''}
+    placeholderTextColor="#BBB"
+    maxLength={maxLength}
+    autoCapitalize={autoCapitalize}
+    keyboardType={keyboardType}
+    multiline={multiline}
+  />
+));
 
 // ── Component ──────────────────────────────────────────────────
 
@@ -89,7 +106,7 @@ export default function CustomFormFillScreen() {
   // Dropdown picker
   const [pickerField, setPickerField] = useState<CustomFormField | null>(null);
 
-  // ── Form Helpers ─────────────────────────────────────────────
+  // ── Helpers ──────────────────────────────────────────────────
 
   const updateValue = useCallback((fieldId: string, value: any) => {
     setFormValues(prev => ({ ...prev, [fieldId]: value }));
@@ -120,7 +137,7 @@ export default function CustomFormFillScreen() {
           }
         } else if (field.fieldType === 'pass_fail') {
           if (!val || val === 'none') {
-            return `"${field.label}" in "${section.title}" — select Pass or Fail`;
+            return `"${field.label}" in "${section.title}" — select Pass, Fail, or N/A`;
           }
           const initials = formValues[`${field.id}_initials`];
           if (!initials || !initials.trim()) {
@@ -134,7 +151,6 @@ export default function CustomFormFillScreen() {
       }
     }
 
-    // Validate signatures
     for (const sig of schema.signatures) {
       if (sig.required && !isSignatureVerified(signatures[sig.id])) {
         return `"${sig.label}" signature is required`;
@@ -153,7 +169,6 @@ export default function CustomFormFillScreen() {
 
     setIsSubmitting(true);
     try {
-      // Build signatures array
       const sigArray = schema.signatures.map(sig => ({
         id: sig.id,
         label: sig.label,
@@ -172,7 +187,6 @@ export default function CustomFormFillScreen() {
         linkedPostNumber: linkedPostNumber || undefined,
       });
 
-      // Link to task feed post
       if (linkedPostId && linkedPostNumber && result) {
         try {
           await linkFormMutation.mutateAsync({
@@ -200,214 +214,205 @@ export default function CustomFormFillScreen() {
     }
   }, [template, schema, formValues, signatures, linkedPostId, linkedPostNumber, submitMutation, linkFormMutation, validateForm, resetForm, refetchSubs]);
 
-  // ── Field Renderer ───────────────────────────────────────────
+  // ── Detect checklist sections (3+ pass_fail fields) ─────────
 
-  const renderField = useCallback((field: CustomFormField, sectionId: string) => {
-    const val = formValues[field.id];
+  const isSectionChecklist = useCallback((section: CustomFormSection): boolean => {
+    return section.fields.filter(f => f.fieldType === 'pass_fail').length >= 3;
+  }, []);
+
+  // ── Render: Info Fields (label/value table rows) ────────────
+
+  const renderInfoFields = useCallback((fields: CustomFormField[]) => {
+    const rows: CustomFormField[][] = [];
+    let currentRow: CustomFormField[] = [];
+    let currentWidth = 0;
+
+    for (const field of fields) {
+      const fw = field.width === 'third' ? 1 / 3 : field.width === 'half' ? 1 / 2 : 1;
+      if (currentWidth + fw > 1.01) {
+        if (currentRow.length > 0) rows.push(currentRow);
+        currentRow = [field];
+        currentWidth = fw;
+      } else {
+        currentRow.push(field);
+        currentWidth += fw;
+      }
+    }
+    if (currentRow.length > 0) rows.push(currentRow);
+
+    return rows.map((row, rowIdx) => (
+      <View key={`info-row-${rowIdx}`} style={p.tableRow}>
+        {row.map(field => {
+          const flex = field.width === 'third' ? 0.33 : field.width === 'half' ? 0.5 : 1;
+          return (
+            <View key={field.id} style={{ flex, flexDirection: 'row' }}>
+              <View style={[p.labelCell, { flex: 0.45 }]}>
+                <Text style={p.label}>{field.label}</Text>
+              </View>
+              <View style={[p.valueCell, { flex: 0.55 }]}>
+                {renderInfoInput(field)}
+              </View>
+            </View>
+          );
+        })}
+      </View>
+    ));
+  }, [formValues]);
+
+  const renderInfoInput = useCallback((field: CustomFormField) => {
+    const val = formValues[field.id] || '';
 
     switch (field.fieldType) {
       case 'label':
-        return (
-          <View key={field.id} style={[st.fieldWrap, widthStyle(field.width)]}>
-            <Text style={[st.instructionText, { color: colors.textSecondary }]}>{field.label}</Text>
-          </View>
-        );
-
-      case 'text_input':
-        return (
-          <View key={field.id} style={[st.fieldWrap, widthStyle(field.width)]}>
-            <Text style={[st.fieldLabel, { color: colors.text }]}>{field.label}{field.required ? ' *' : ''}</Text>
-            <TextInput
-              style={[st.fieldInput, { color: colors.text, borderColor: colors.border }]}
-              value={val || ''}
-              onChangeText={(t) => updateValue(field.id, t)}
-              placeholder={field.placeholder || 'N/A'}
-              placeholderTextColor={colors.textSecondary}
-            />
-          </View>
-        );
-
-      case 'text_area':
-        return (
-          <View key={field.id} style={[st.fieldWrap, widthStyle(field.width)]}>
-            <Text style={[st.fieldLabel, { color: colors.text }]}>{field.label}{field.required ? ' *' : ''}</Text>
-            <TextInput
-              style={[st.fieldInput, { color: colors.text, borderColor: colors.border, minHeight: 80, textAlignVertical: 'top' }]}
-              value={val || ''}
-              onChangeText={(t) => updateValue(field.id, t)}
-              placeholder={field.placeholder || 'N/A'}
-              placeholderTextColor={colors.textSecondary}
-              multiline
-            />
-          </View>
-        );
-
-      case 'number':
-        return (
-          <View key={field.id} style={[st.fieldWrap, widthStyle(field.width)]}>
-            <Text style={[st.fieldLabel, { color: colors.text }]}>{field.label}{field.required ? ' *' : ''}</Text>
-            <TextInput
-              style={[st.fieldInput, { color: colors.text, borderColor: colors.border }]}
-              value={val?.toString() || ''}
-              onChangeText={(t) => updateValue(field.id, t)}
-              placeholder={field.placeholder || '0'}
-              placeholderTextColor={colors.textSecondary}
-              keyboardType="numeric"
-            />
-          </View>
-        );
-
-      case 'date':
-        return (
-          <View key={field.id} style={[st.fieldWrap, widthStyle(field.width)]}>
-            <Text style={[st.fieldLabel, { color: colors.text }]}>{field.label}{field.required ? ' *' : ''}</Text>
-            <TextInput
-              style={[st.fieldInput, { color: colors.text, borderColor: colors.border }]}
-              value={val || new Date().toISOString().slice(0, 10)}
-              onChangeText={(t) => updateValue(field.id, t)}
-              placeholder="YYYY-MM-DD"
-              placeholderTextColor={colors.textSecondary}
-            />
-          </View>
-        );
-
-      case 'time':
-        return (
-          <View key={field.id} style={[st.fieldWrap, widthStyle(field.width)]}>
-            <Text style={[st.fieldLabel, { color: colors.text }]}>{field.label}{field.required ? ' *' : ''}</Text>
-            <TextInput
-              style={[st.fieldInput, { color: colors.text, borderColor: colors.border }]}
-              value={val || ''}
-              onChangeText={(t) => updateValue(field.id, t)}
-              placeholder="HH:MM"
-              placeholderTextColor={colors.textSecondary}
-            />
-          </View>
-        );
+        return <Text style={p.instructionText}>{field.label}</Text>;
 
       case 'dropdown':
         return (
-          <View key={field.id} style={[st.fieldWrap, widthStyle(field.width)]}>
-            <Text style={[st.fieldLabel, { color: colors.text }]}>{field.label}{field.required ? ' *' : ''}</Text>
-            <Pressable
-              style={[st.fieldInput, { borderColor: colors.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}
-              onPress={() => setPickerField(field)}
-            >
-              <Text style={{ fontSize: 14, color: val ? colors.text : colors.textSecondary }}>
-                {val ? (field.options?.find(o => o.value === val)?.label || val) : 'Select...'}
-              </Text>
-              <ChevronDown size={16} color={colors.textSecondary} />
-            </Pressable>
-          </View>
+          <Pressable style={p.dropdownBtn} onPress={() => setPickerField(field)}>
+            <Text style={[p.dropdownText, !val && { color: '#AAA' }]}>
+              {val ? (field.options?.find(o => o.value === val)?.label || val) : 'Select...'}
+            </Text>
+            <ChevronDown size={12} color="#999" />
+          </Pressable>
         );
 
       case 'radio':
         return (
-          <View key={field.id} style={[st.fieldWrap, widthStyle(field.width)]}>
-            <Text style={[st.fieldLabel, { color: colors.text }]}>{field.label}{field.required ? ' *' : ''}</Text>
-            <View style={st.radioRow}>
-              {(field.options || []).map(opt => (
-                <Pressable
-                  key={opt.value}
-                  style={[st.radioBtn, val === opt.value && { backgroundColor: BLUE + '15', borderColor: BLUE }]}
-                  onPress={() => updateValue(field.id, opt.value)}
-                >
-                  <Text style={{ fontSize: 13, color: val === opt.value ? BLUE : colors.text }}>{opt.label}</Text>
-                </Pressable>
-              ))}
-            </View>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, paddingVertical: 2 }}>
+            {(field.options || []).map(opt => (
+              <Pressable
+                key={opt.value}
+                style={[p.radioBtn, val === opt.value && { backgroundColor: BLUE + '15', borderColor: BLUE }]}
+                onPress={() => updateValue(field.id, opt.value)}
+              >
+                <Text style={[p.radioText, val === opt.value && { color: BLUE }]}>{opt.label}</Text>
+              </Pressable>
+            ))}
           </View>
         );
 
       case 'checkbox':
         return (
-          <View key={field.id} style={[st.fieldWrap, widthStyle(field.width)]}>
-            <Text style={[st.fieldLabel, { color: colors.text }]}>{field.label}{field.required ? ' *' : ''}</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, paddingVertical: 2 }}>
             {(field.options || []).map(opt => {
               const checked = Array.isArray(val) && val.includes(opt.value);
               return (
                 <Pressable
                   key={opt.value}
-                  style={[st.checkRow, checked && { backgroundColor: GREEN + '08' }]}
+                  style={[p.radioBtn, checked && { backgroundColor: GREEN + '15', borderColor: GREEN }]}
                   onPress={() => {
                     const current = Array.isArray(val) ? val : [];
-                    const updated = checked ? current.filter(v => v !== opt.value) : [...current, opt.value];
-                    updateValue(field.id, updated);
+                    updateValue(field.id, checked ? current.filter((v: string) => v !== opt.value) : [...current, opt.value]);
                   }}
                 >
-                  <View style={[st.checkBox, checked && { backgroundColor: GREEN, borderColor: GREEN }]}>
-                    {checked && <CheckCircle size={12} color="#FFF" />}
-                  </View>
-                  <Text style={{ fontSize: 13, color: colors.text }}>{opt.label}</Text>
+                  <Text style={[p.radioText, checked && { color: GREEN }]}>{opt.label}</Text>
                 </Pressable>
               );
             })}
           </View>
         );
 
-      case 'pass_fail':
-        const pfVal = val || 'none';
-        const initials = formValues[`${field.id}_initials`] || '';
-        return (
-          <View key={field.id} style={[st.passfailRow, { borderColor: colors.border }]}>
-            <View style={{ flex: 1 }}>
-              <Text style={[st.pfLabel, { color: colors.text }]}>{field.label}</Text>
-            </View>
-            <Pressable
-              style={[st.pfBtn, pfVal === 'pass' && { backgroundColor: '#ECFDF5', borderColor: GREEN }]}
-              onPress={() => updateValue(field.id, pfVal === 'pass' ? 'none' : 'pass')}
-            >
-              <Text style={[st.pfBtnText, pfVal === 'pass' && { color: GREEN }]}>P</Text>
-            </Pressable>
-            <Pressable
-              style={[st.pfBtn, pfVal === 'fail' && { backgroundColor: '#FEF2F2', borderColor: RED }]}
-              onPress={() => updateValue(field.id, pfVal === 'fail' ? 'none' : 'fail')}
-            >
-              <Text style={[st.pfBtnText, pfVal === 'fail' && { color: RED }]}>F</Text>
-            </Pressable>
-            <TextInput
-              style={[st.pfInitials, { color: colors.text, borderColor: colors.border }]}
-              value={initials}
-              onChangeText={(t) => updateValue(`${field.id}_initials`, t.toUpperCase().slice(0, 4))}
-              placeholder="Init."
-              placeholderTextColor="#CCC"
-              maxLength={4}
-              autoCapitalize="characters"
-            />
-          </View>
-        );
+      case 'number':
+        return <PaperCellInput value={val} onChangeText={(t: string) => updateValue(field.id, t)} placeholder={field.placeholder || '0'} keyboardType="numeric" />;
 
-      case 'initials':
-        return (
-          <View key={field.id} style={[st.fieldWrap, widthStyle(field.width)]}>
-            <Text style={[st.fieldLabel, { color: colors.text }]}>{field.label}{field.required ? ' *' : ''}</Text>
-            <TextInput
-              style={[st.fieldInput, { color: colors.text, borderColor: colors.border, width: 80 }]}
-              value={val || ''}
-              onChangeText={(t) => updateValue(field.id, t.toUpperCase().slice(0, 4))}
-              placeholder="Init."
-              placeholderTextColor={colors.textSecondary}
-              maxLength={4}
-              autoCapitalize="characters"
-            />
-          </View>
-        );
+      case 'text_area':
+        return <PaperCellInput value={val} onChangeText={(t: string) => updateValue(field.id, t)} placeholder={field.placeholder || 'N/A'} multiline style={{ minHeight: 40 }} />;
 
       default:
-        return (
-          <View key={field.id} style={[st.fieldWrap, widthStyle(field.width)]}>
-            <Text style={[st.fieldLabel, { color: colors.text }]}>{field.label}</Text>
-            <TextInput
-              style={[st.fieldInput, { color: colors.text, borderColor: colors.border }]}
-              value={val || ''}
-              onChangeText={(t) => updateValue(field.id, t)}
-              placeholder="N/A"
-              placeholderTextColor={colors.textSecondary}
-            />
-          </View>
-        );
+        return <PaperCellInput value={val} onChangeText={(t: string) => updateValue(field.id, t)} placeholder={field.placeholder || 'N/A'} />;
     }
-  }, [formValues, colors, updateValue]);
+  }, [formValues, updateValue]);
+
+  // ── Render: Checklist Table (pass/fail rows like PDF) ───────
+
+  const renderChecklistTable = useCallback((fields: CustomFormField[]) => {
+    const pfFields = fields.filter(f => f.fieldType === 'pass_fail');
+    const otherFields = fields.filter(f => f.fieldType !== 'pass_fail');
+
+    return (
+      <>
+        {otherFields.length > 0 && renderInfoFields(otherFields)}
+
+        {/* Column Headers — identical to PDF */}
+        <View style={p.checkHeaderRow}>
+          <View style={[p.checkHeaderCell, { flex: 1 }]}>
+            <Text style={p.checkHeaderText}>CHECK ITEM</Text>
+          </View>
+          <View style={[p.checkHeaderCell, { width: 40, alignItems: 'center' }]}>
+            <Text style={p.checkHeaderText}>PASS</Text>
+          </View>
+          <View style={[p.checkHeaderCell, { width: 40, alignItems: 'center' }]}>
+            <Text style={p.checkHeaderText}>FAIL</Text>
+          </View>
+          <View style={[p.checkHeaderCell, { width: 40, alignItems: 'center' }]}>
+            <Text style={p.checkHeaderText}>N/A</Text>
+          </View>
+          <View style={[p.checkHeaderCell, { width: 60, alignItems: 'center' }]}>
+            <Text style={p.checkHeaderText}>INITIALS</Text>
+          </View>
+        </View>
+
+        {/* Checklist Rows */}
+        {pfFields.map((field, idx) => {
+          const val = formValues[field.id] || 'none';
+          const initials = formValues[`${field.id}_initials`] || '';
+          return (
+            <View key={field.id} style={[p.checkRow, idx % 2 === 0 && { backgroundColor: '#FAFBFC' }]}>
+              {/* Item text */}
+              <View style={[p.checkItemCell, { flex: 1 }]}>
+                <Text style={p.checkItemText}>{field.label}</Text>
+              </View>
+              {/* PASS checkbox */}
+              <Pressable
+                style={[p.checkBoxCell, { width: 40 }, val === 'pass' && { backgroundColor: '#ECFDF5' }]}
+                onPress={() => { updateValue(field.id, val === 'pass' ? 'none' : 'pass'); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+              >
+                {val === 'pass' ? (
+                  <Text style={[p.checkMark, { color: GREEN }]}>✓</Text>
+                ) : (
+                  <View style={p.emptyCheckBox} />
+                )}
+              </Pressable>
+              {/* FAIL checkbox */}
+              <Pressable
+                style={[p.checkBoxCell, { width: 40 }, val === 'fail' && { backgroundColor: '#FEF2F2' }]}
+                onPress={() => { updateValue(field.id, val === 'fail' ? 'none' : 'fail'); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+              >
+                {val === 'fail' ? (
+                  <Text style={[p.checkMark, { color: RED }]}>✗</Text>
+                ) : (
+                  <View style={p.emptyCheckBox} />
+                )}
+              </Pressable>
+              {/* N/A checkbox */}
+              <Pressable
+                style={[p.checkBoxCell, { width: 40 }, val === 'na' && { backgroundColor: '#F0F9FF' }]}
+                onPress={() => { updateValue(field.id, val === 'na' ? 'none' : 'na'); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+              >
+                {val === 'na' ? (
+                  <Text style={[p.checkMark, { color: BLUE }]}>—</Text>
+                ) : (
+                  <View style={p.emptyCheckBox} />
+                )}
+              </Pressable>
+              {/* Initials */}
+              <View style={[p.checkInitialsCell, { width: 60 }]}>
+                <TextInput
+                  style={p.initialsInput}
+                  value={initials}
+                  onChangeText={(t) => updateValue(`${field.id}_initials`, t.toUpperCase().slice(0, 4))}
+                  placeholder="——"
+                  placeholderTextColor="#CCC"
+                  maxLength={4}
+                  autoCapitalize="characters"
+                />
+              </View>
+            </View>
+          );
+        })}
+      </>
+    );
+  }, [formValues, updateValue, renderInfoFields]);
 
   // ── Loading / Error States ───────────────────────────────────
 
@@ -441,59 +446,59 @@ export default function CustomFormFillScreen() {
         contentContainerStyle={{ padding: 16 }}
         refreshControl={<RefreshControl refreshing={loadingSubs} onRefresh={refetchSubs} tintColor={PURPLE} />}
       >
-        {/* Header */}
-        <View style={[st.pageHeader, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Text style={[st.pageTitle, { color: colors.text }]}>{template.name}</Text>
-          <Text style={[st.pageSub, { color: colors.textSecondary }]}>
+        {/* Header Card */}
+        <View style={[s.pageHeader, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Text style={[s.pageTitle, { color: colors.text }]}>{template.name}</Text>
+          <Text style={[s.pageSub, { color: colors.textSecondary }]}>
             {template.templateCode}  •  v{template.version}
           </Text>
           {schema.complianceRefs && schema.complianceRefs.length > 0 && (
-            <Text style={[st.pageCompliance, { color: colors.textSecondary }]}>
+            <Text style={[s.pageCompliance, { color: colors.textSecondary }]}>
               {schema.complianceRefs.join('  |  ')}
             </Text>
           )}
         </View>
 
         {/* New Form Button */}
-        <Pressable style={[st.addBtn, { backgroundColor: PURPLE }]} onPress={() => { resetForm(); setShowForm(true); }}>
+        <Pressable style={[s.addBtn, { backgroundColor: PURPLE }]} onPress={() => { resetForm(); setShowForm(true); }}>
           <Plus size={20} color="#FFF" />
-          <Text style={st.addBtnText}>Fill Out New Form</Text>
+          <Text style={s.addBtnText}>Fill Out New Form</Text>
         </Pressable>
 
         {/* Stats */}
-        <View style={st.statsRow}>
-          <View style={[st.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[st.statVal, { color: colors.text }]}>{submissions.length}</Text>
-            <Text style={[st.statLbl, { color: colors.textSecondary }]}>Submitted</Text>
+        <View style={s.statsRow}>
+          <View style={[s.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Text style={[s.statVal, { color: colors.text }]}>{submissions.length}</Text>
+            <Text style={[s.statLbl, { color: colors.textSecondary }]}>Submitted</Text>
           </View>
-          <View style={[st.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[st.statVal, { color: colors.text }]}>{schema.sections.length}</Text>
-            <Text style={[st.statLbl, { color: colors.textSecondary }]}>Sections</Text>
+          <View style={[s.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Text style={[s.statVal, { color: colors.text }]}>{schema.sections.length}</Text>
+            <Text style={[s.statLbl, { color: colors.textSecondary }]}>Sections</Text>
           </View>
-          <View style={[st.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[st.statVal, { color: colors.text }]}>{schema.signatures.length}</Text>
-            <Text style={[st.statLbl, { color: colors.textSecondary }]}>Signatures</Text>
+          <View style={[s.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Text style={[s.statVal, { color: colors.text }]}>{schema.signatures.length}</Text>
+            <Text style={[s.statLbl, { color: colors.textSecondary }]}>Signatures</Text>
           </View>
         </View>
 
-        {/* History */}
+        {/* Submission History */}
         {submissions.length === 0 ? (
-          <View style={[st.emptyBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={[s.emptyBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <FileText size={32} color={colors.textSecondary} />
-            <Text style={[st.emptyTitle, { color: colors.text }]}>No Submissions Yet</Text>
+            <Text style={[s.emptyTitle, { color: colors.text }]}>No Submissions Yet</Text>
           </View>
         ) : (
           submissions.map(sub => (
-            <View key={sub.id} style={[st.histCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <View style={st.histHeader}>
-                <Text style={[st.histNumber, { color: colors.text }]}>{sub.formNumber}</Text>
-                <View style={[st.statusBadge, { backgroundColor: sub.status === 'submitted' ? GREEN + '15' : BLUE + '15' }]}>
-                  <Text style={[st.statusText, { color: sub.status === 'submitted' ? GREEN : BLUE }]}>
+            <View key={sub.id} style={[s.histCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <View style={s.histHeader}>
+                <Text style={[s.histNumber, { color: colors.text }]}>{sub.formNumber}</Text>
+                <View style={[s.statusBadge, { backgroundColor: sub.status === 'submitted' ? GREEN + '15' : BLUE + '15' }]}>
+                  <Text style={[s.statusText, { color: sub.status === 'submitted' ? GREEN : BLUE }]}>
                     {sub.status.toUpperCase()}
                   </Text>
                 </View>
               </View>
-              <Text style={[st.histMeta, { color: colors.textSecondary }]}>
+              <Text style={[s.histMeta, { color: colors.textSecondary }]}>
                 {sub.createdByName}  •  {new Date(sub.createdAt).toLocaleDateString()}
               </Text>
             </View>
@@ -504,21 +509,22 @@ export default function CustomFormFillScreen() {
       </ScrollView>
 
       {/* ============================================================ */}
-      {/* FORM FILL MODAL                                               */}
+      {/* PAPER FORM FILL MODAL                                         */}
       {/* ============================================================ */}
       <Modal visible={showForm} animationType="slide" presentationStyle="pageSheet">
-        <SafeAreaView style={[{ flex: 1 }, { backgroundColor: colors.background }]}>
-          <View style={[st.modalHeader, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
+        <SafeAreaView style={[{ flex: 1 }, { backgroundColor: '#F2F2F2' }]}>
+          {/* Modal Header */}
+          <View style={[s.modalHeader, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
             <Pressable onPress={() => { setShowForm(false); resetForm(); }} disabled={isSubmitting}>
               <X size={24} color={colors.text} />
             </Pressable>
-            <Text style={[st.modalTitle, { color: colors.text }]}>{template.name}</Text>
+            <Text style={[s.modalTitle, { color: colors.text }]}>{template.name}</Text>
             <Pressable onPress={handleSubmit} disabled={isSubmitting}>
-              {isSubmitting ? <ActivityIndicator color={PURPLE} /> : <Text style={[st.saveBtn, { color: PURPLE }]}>Submit</Text>}
+              {isSubmitting ? <ActivityIndicator color={PURPLE} /> : <Text style={[s.saveBtn, { color: PURPLE }]}>Submit</Text>}
             </Pressable>
           </View>
 
-          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16 }}>
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 12 }}>
             {/* Task Feed Linker */}
             <TaskFeedPostLinker
               selectedPostId={linkedPostId}
@@ -527,58 +533,99 @@ export default function CustomFormFillScreen() {
               onClear={() => { setLinkedPostId(null); setLinkedPostNumber(null); }}
             />
 
-            {/* Form Header Bar */}
-            <View style={st.formHeaderBar}>
-              <Text style={st.formHeaderTitle}>{schema.name || template.name}</Text>
-              <Text style={st.formHeaderSub}>{template.templateCode}  •  v{template.version}</Text>
-            </View>
+            {/* ===== PAPER FORM CONTAINER ===== */}
+            <View style={p.form}>
 
-            {/* Sections */}
-            {schema.sections.map(section => (
-              <View key={section.id} style={st.sectionContainer}>
-                <View style={st.sectionBar}>
-                  <Text style={st.sectionTitle}>{section.title}</Text>
+              {/* Form Header — dark bar matching PDF */}
+              <View style={p.headerBar}>
+                <View style={p.headerLeft}>
+                  <View style={p.logoBox}>
+                    <Text style={p.logoText}>TulKenz</Text>
+                    <Text style={p.logoSub}>OPS</Text>
+                  </View>
+                  <View style={{ flex: 1, marginLeft: 10 }}>
+                    <Text style={p.headerTitle}>{(schema.name || template.name).toUpperCase()}</Text>
+                    {schema.complianceRefs && schema.complianceRefs.length > 0 && (
+                      <Text style={p.headerCompliance}>{schema.complianceRefs.join(' | ')}</Text>
+                    )}
+                    {schema.description && (
+                      <Text style={p.headerDeptUse}>{schema.description}</Text>
+                    )}
+                  </View>
                 </View>
-                <View style={st.sectionFields}>
-                  {section.fields.map(field => renderField(field, section.id))}
+                <View style={p.headerRight}>
+                  <Text style={p.docIdText}>DOC: {template.templateCode}</Text>
+                  <Text style={p.docRevText}>Rev: {template.version}.0</Text>
+                  {schema.complianceRefs?.[0] && (
+                    <Text style={p.docRefText}>{schema.complianceRefs[0]}</Text>
+                  )}
                 </View>
               </View>
-            ))}
 
-            {/* Signatures */}
-            {schema.signatures.length > 0 && (
-              <View style={st.sectionContainer}>
-                <View style={st.sectionBar}>
-                  <Text style={st.sectionTitle}>SIGNATURES</Text>
-                </View>
-                <View style={{ padding: 12 }}>
-                  {schema.signatures.map(sig => (
-                    <View key={sig.id} style={{ marginBottom: 16 }}>
-                      <PinSignatureCapture
-                        label={sig.label}
-                        onVerified={(data) => setSignatures(prev => ({ ...prev, [sig.id]: data }))}
-                        verificationData={signatures[sig.id]}
-                      />
+              {/* Render Each Section */}
+              {schema.sections.map(section => {
+                const isChecklist = isSectionChecklist(section);
+
+                return (
+                  <View key={section.id}>
+                    {/* Section Title Bar */}
+                    <View style={p.sectionBar}>
+                      <Text style={p.sectionTitle}>{section.title}</Text>
                     </View>
-                  ))}
-                </View>
+
+                    {/* Section Content */}
+                    {isChecklist
+                      ? renderChecklistTable(section.fields)
+                      : renderInfoFields(section.fields)
+                    }
+                  </View>
+                );
+              })}
+
+              {/* Signatures */}
+              {schema.signatures.length > 0 && (
+                <>
+                  <View style={p.sectionBar}>
+                    <Text style={p.sectionTitle}>SIGNATURES</Text>
+                  </View>
+                  <View style={{ backgroundColor: WHITE, padding: 12, borderWidth: 1, borderColor: BORDER, borderTopWidth: 0 }}>
+                    {schema.signatures.map(sig => (
+                      <View key={sig.id} style={{ marginBottom: 12 }}>
+                        <PinSignatureCapture
+                          label={sig.label}
+                          onVerified={(data) => setSignatures(prev => ({ ...prev, [sig.id]: data }))}
+                          verificationData={signatures[sig.id]}
+                        />
+                      </View>
+                    ))}
+                  </View>
+                </>
+              )}
+
+              {/* Footer */}
+              <View style={p.formFooter}>
+                <Text style={p.footerText}>
+                  {template.templateCode} Rev {template.version}.0 | Retain per record retention schedule | TulKenz OPS
+                </Text>
               </View>
-            )}
+            </View>
 
             <View style={{ height: 40 }} />
           </ScrollView>
         </SafeAreaView>
       </Modal>
 
-      {/* Dropdown Picker Modal */}
+      {/* ============================================================ */}
+      {/* DROPDOWN PICKER MODAL                                         */}
+      {/* ============================================================ */}
       <Modal visible={pickerField !== null} transparent animationType="fade">
-        <Pressable style={st.pickerOverlay} onPress={() => setPickerField(null)}>
-          <View style={[st.pickerSheet, { backgroundColor: colors.surface }]}>
-            <Text style={[st.pickerTitle, { color: colors.text }]}>{pickerField?.label}</Text>
+        <Pressable style={s.pickerOverlay} onPress={() => setPickerField(null)}>
+          <View style={[s.pickerSheet, { backgroundColor: colors.surface }]}>
+            <Text style={[s.pickerTitle, { color: colors.text }]}>{pickerField?.label}</Text>
             {(pickerField?.options || []).map(opt => (
               <Pressable
                 key={opt.value}
-                style={[st.pickerItem, formValues[pickerField?.id || ''] === opt.value && { backgroundColor: BLUE + '15' }]}
+                style={[s.pickerItem, formValues[pickerField?.id || ''] === opt.value && { backgroundColor: BLUE + '15' }]}
                 onPress={() => {
                   if (pickerField) updateValue(pickerField.id, opt.value);
                   setPickerField(null);
@@ -596,19 +643,180 @@ export default function CustomFormFillScreen() {
   );
 }
 
-// ── Helpers ────────────────────────────────────────────────────
+// ── Paper Form Styles ──────────────────────────────────────────
 
-function widthStyle(width: string) {
-  switch (width) {
-    case 'third': return { width: '33%' as any };
-    case 'half': return { width: '50%' as any };
-    default: return { width: '100%' as any };
-  }
-}
+const p = StyleSheet.create({
+  form: {
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: BORDER,
+    borderRadius: 4,
+    overflow: 'hidden',
+    backgroundColor: WHITE,
+  },
 
-// ── Styles ─────────────────────────────────────────────────────
+  // Header bar
+  headerBar: {
+    backgroundColor: DARK_HEADER,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    padding: 12,
+    minHeight: 60,
+  },
+  headerLeft: { flex: 1, flexDirection: 'row', alignItems: 'flex-start' },
+  logoBox: {
+    backgroundColor: '#2563EB',
+    borderRadius: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    alignItems: 'center',
+  },
+  logoText: { color: '#FFF', fontSize: 10, fontWeight: '800' },
+  logoSub: { color: '#93C5FD', fontSize: 8, fontWeight: '600', marginTop: -2 },
+  headerTitle: { color: '#FFF', fontSize: 13, fontWeight: '700', lineHeight: 17 },
+  headerCompliance: { color: '#94A3B8', fontSize: 8, marginTop: 2 },
+  headerDeptUse: { color: '#3B82F6', fontSize: 8, fontWeight: '600', marginTop: 1 },
+  headerRight: { alignItems: 'flex-end', marginLeft: 8 },
+  docIdText: { color: '#FFF', fontSize: 8, fontWeight: '700' },
+  docRevText: { color: '#CBD5E1', fontSize: 8 },
+  docRefText: { color: '#CBD5E1', fontSize: 8 },
 
-const st = StyleSheet.create({
+  // Section bars
+  sectionBar: {
+    backgroundColor: SECTION_BAR,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  sectionTitle: {
+    color: '#FFF',
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+
+  // Table rows
+  tableRow: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: BORDER,
+    minHeight: 28,
+  },
+  labelCell: {
+    backgroundColor: LABEL_BG,
+    borderRightWidth: 1,
+    borderRightColor: BORDER,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    justifyContent: 'center',
+  },
+  valueCell: {
+    backgroundColor: WHITE,
+    borderRightWidth: 1,
+    borderRightColor: BORDER,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    justifyContent: 'center',
+  },
+  label: { fontSize: 9, fontWeight: '600', color: '#334155' },
+  cellInput: { fontSize: 11, color: '#1E293B', paddingVertical: 2, flex: 1 },
+
+  // Dropdown
+  dropdownBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flex: 1 },
+  dropdownText: { fontSize: 11, color: '#333' },
+
+  // Radio / Checkbox
+  radioBtn: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 4, borderWidth: 1, borderColor: '#CBD5E1' },
+  radioText: { fontSize: 9, color: '#555' },
+
+  // Instruction
+  instructionText: { fontSize: 9, fontStyle: 'italic', color: '#666' },
+
+  // ── Checklist Table ──────────────────────────────────────────
+  checkHeaderRow: {
+    flexDirection: 'row',
+    backgroundColor: COL_HDR_BG,
+    borderBottomWidth: 1,
+    borderBottomColor: BORDER,
+  },
+  checkHeaderCell: {
+    paddingHorizontal: 4,
+    paddingVertical: 5,
+    borderRightWidth: 1,
+    borderRightColor: BORDER,
+    justifyContent: 'center',
+  },
+  checkHeaderText: {
+    fontSize: 7,
+    fontWeight: '700',
+    color: '#334155',
+    textAlign: 'center',
+  },
+  checkRow: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: BORDER,
+    minHeight: 28,
+    backgroundColor: WHITE,
+  },
+  checkItemCell: {
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    borderRightWidth: 1,
+    borderRightColor: BORDER,
+    justifyContent: 'center',
+  },
+  checkItemText: {
+    fontSize: 9,
+    color: '#1E293B',
+    lineHeight: 12,
+  },
+  checkBoxCell: {
+    borderRightWidth: 1,
+    borderRightColor: BORDER,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyCheckBox: {
+    width: 13,
+    height: 13,
+    borderWidth: 1.5,
+    borderColor: BORDER,
+    borderRadius: 2,
+  },
+  checkMark: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  checkInitialsCell: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRightWidth: 1,
+    borderRightColor: BORDER,
+  },
+  initialsInput: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#1E293B',
+    textAlign: 'center',
+    width: 52,
+    paddingVertical: 2,
+  },
+
+  // Footer
+  formFooter: {
+    backgroundColor: LABEL_BG,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderTopWidth: 1,
+    borderTopColor: BORDER,
+  },
+  footerText: { fontSize: 7, color: '#94A3B8' },
+});
+
+// ── General Styles ─────────────────────────────────────────────
+
+const s = StyleSheet.create({
   pageHeader: { borderRadius: 16, padding: 20, alignItems: 'center', borderWidth: 1, marginBottom: 16 },
   pageTitle: { fontSize: 20, fontWeight: '700', marginBottom: 4 },
   pageSub: { fontSize: 13 },
@@ -630,26 +838,6 @@ const st = StyleSheet.create({
   modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderBottomWidth: 1 },
   modalTitle: { fontSize: 17, fontWeight: '600' },
   saveBtn: { fontSize: 16, fontWeight: '600' },
-  formHeaderBar: { backgroundColor: FORM_HEADER_BG, borderRadius: 10, padding: 14, marginBottom: 0, marginTop: 12 },
-  formHeaderTitle: { color: '#FFF', fontSize: 15, fontWeight: '700' },
-  formHeaderSub: { color: '#94A3B8', fontSize: 11, marginTop: 2 },
-  sectionContainer: { borderWidth: 1, borderColor: FORM_BORDER, borderRadius: 0, marginBottom: 0, overflow: 'hidden' },
-  sectionBar: { backgroundColor: '#2D3748', paddingHorizontal: 12, paddingVertical: 8 },
-  sectionTitle: { color: '#FFF', fontSize: 12, fontWeight: '700', letterSpacing: 0.3 },
-  sectionFields: { flexDirection: 'row', flexWrap: 'wrap', padding: 10, gap: 8, backgroundColor: WHITE },
-  fieldWrap: { marginBottom: 4 },
-  fieldLabel: { fontSize: 11, fontWeight: '600', marginBottom: 3 },
-  fieldInput: { borderWidth: 1, borderRadius: 6, paddingHorizontal: 10, paddingVertical: 7, fontSize: 13 },
-  instructionText: { fontSize: 11, fontStyle: 'italic', paddingVertical: 4 },
-  radioRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  radioBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0' },
-  checkRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6, paddingHorizontal: 4, borderRadius: 6 },
-  checkBox: { width: 20, height: 20, borderRadius: 4, borderWidth: 1.5, borderColor: '#CBD5E1', alignItems: 'center', justifyContent: 'center' },
-  passfailRow: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 0, paddingHorizontal: 8, paddingVertical: 6, backgroundColor: WHITE, gap: 6 },
-  pfLabel: { fontSize: 11, lineHeight: 14 },
-  pfBtn: { width: 28, height: 28, borderRadius: 4, borderWidth: 1, borderColor: FORM_BORDER, alignItems: 'center', justifyContent: 'center' },
-  pfBtnText: { fontSize: 12, fontWeight: '600', color: '#999' },
-  pfInitials: { width: 48, borderWidth: 1, borderRadius: 4, paddingHorizontal: 4, paddingVertical: 3, fontSize: 11, fontWeight: '600', textAlign: 'center' },
   pickerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 30 },
   pickerSheet: { borderRadius: 16, padding: 20, maxHeight: '70%' },
   pickerTitle: { fontSize: 16, fontWeight: '700', marginBottom: 12 },
