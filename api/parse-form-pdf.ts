@@ -1,10 +1,7 @@
 // api/parse-form-pdf.ts
 // Vercel API route: POST /api/parse-form-pdf
-// Accepts base64 PDF, sends to Claude, returns form schema JSON
-
-import Anthropic from '@anthropic-ai/sdk';
-
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+// Accepts base64 PDF, sends to Claude via raw fetch, returns form schema JSON
+// NO SDK REQUIRED — uses plain fetch
 
 const SYSTEM_PROMPT = `You are a form digitization expert for food manufacturing facilities. 
 You analyze uploaded paper forms (PDF/image) and convert them into a structured JSON schema.
@@ -78,6 +75,11 @@ export default async function handler(req: any, res: any) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    return res.status(500).json({ error: 'ANTHROPIC_API_KEY not configured in Vercel environment variables' });
+  }
+
   try {
     const { pdfBase64, imageBase64, mimeType, instructions } = req.body;
 
@@ -87,7 +89,6 @@ export default async function handler(req: any, res: any) {
 
     const content: any[] = [];
 
-    // Add the document
     if (pdfBase64) {
       content.push({
         type: 'document',
@@ -108,27 +109,40 @@ export default async function handler(req: any, res: any) {
       });
     }
 
-    // Add the analysis prompt
     let userPrompt = 'Analyze this form and convert it to a JSON schema following the exact structure specified. Return ONLY the JSON, no other text.';
     if (instructions) {
       userPrompt += `\n\nAdditional context from the user: ${instructions}`;
     }
     content.push({ type: 'text', text: userPrompt });
 
-    const response = await client.messages.create({
-      model: 'claude-sonnet-4-5-20250514',
-      max_tokens: 4000,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: 'user', content }],
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-5-20250514',
+        max_tokens: 4000,
+        system: SYSTEM_PROMPT,
+        messages: [{ role: 'user', content }],
+      }),
     });
 
-    // Extract text from response
-    const text = response.content
+    if (!response.ok) {
+      const errorBody = await response.text();
+      console.error('[parse-form-pdf] Anthropic API error:', response.status, errorBody);
+      return res.status(502).json({ error: `Anthropic API error: ${response.status}` });
+    }
+
+    const data = await response.json();
+
+    const text = (data.content || [])
       .filter((block: any) => block.type === 'text')
       .map((block: any) => block.text)
       .join('');
 
-    // Parse JSON — strip any accidental markdown fences
     const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
     const schema = JSON.parse(cleaned);
 
