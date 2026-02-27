@@ -589,7 +589,7 @@ export default function FormBuilderScreen() {
                 <View style={st.cardActions}>
                   {activeTab === 'active' ? (
                     <>
-                      <Pressable style={[st.actionBtn, { backgroundColor: BLUE + '15' }]} onPress={() => router.push({ pathname: '/(tabs)/quality/customformfill' as any, params: { templateId: template.id } })}>
+                      <Pressable style={[st.actionBtn, { backgroundColor: BLUE + '15' }]} onPress={() => router.push({ pathname: '/(tabs)/compliance/customformfill' as any, params: { templateId: template.id } })}>
                         <Eye size={14} color={BLUE} />
                         <Text style={[st.actionBtnText, { color: BLUE }]}>Fill Out</Text>
                       </Pressable>
