@@ -108,7 +108,6 @@ const COMPLIANCE_FORM_CATEGORIES: FormCategory[] = [
       { id: 'auditncresponse', title: 'Audit NC Response', route: '/compliance/auditncresponse' },
       { id: 'carcloseout', title: 'CAR Close-Out', route: '/compliance/carcloseout' },
       { id: 'continualimprovement', title: 'Continual Improvement', route: '/compliance/continualimprovement' },
-      { id: 'auditsessions', title: 'Auditor Portal Sessions', route: '/compliance/auditsessions' },
     ],
   },
   {
@@ -272,6 +271,7 @@ const COMPLIANCE_FORM_CATEGORIES: FormCategory[] = [
       { id: 'compliancecalendar', title: 'Compliance Calendar', route: '/compliance/compliancecalendar' },
       { id: 'versioncontrol', title: 'Version Control', route: '/compliance/versioncontrol' },
       { id: 'backupverification', title: 'Backup Verification', route: '/compliance/backupverification' },
+      { id: 'formbuilder', title: 'Form Builder (AI)', route: '/compliance/formbuilder' },
     ],
   },
   {
