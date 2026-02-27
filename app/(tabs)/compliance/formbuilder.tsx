@@ -14,11 +14,8 @@ import {
   Alert,
   ActivityIndicator,
   RefreshControl,
-  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system';
 import * as Haptics from 'expo-haptics';
 import {
   Plus,
@@ -139,60 +136,59 @@ export default function FormBuilderScreen() {
 
   const handleUploadPdf = useCallback(async () => {
     try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: ['application/pdf', 'image/png', 'image/jpeg'],
-        copyToCacheDirectory: true,
-      });
+      // Create a hidden file input for web compatibility
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'application/pdf,image/png,image/jpeg';
 
-      if (result.canceled || !result.assets?.[0]) return;
+      input.onchange = async (e: any) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
 
-      const file = result.assets[0];
-      setIsParsing(true);
-      setShowCreateModal(false);
+        setIsParsing(true);
+        setShowCreateModal(false);
 
-      // Read file as base64
-      let base64Data: string;
-      if (Platform.OS === 'web') {
-        // Web: fetch blob and convert
-        const response = await fetch(file.uri);
-        const blob = await response.blob();
-        base64Data = await new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => {
-            const result = reader.result as string;
-            resolve(result.split(',')[1]);
-          };
-          reader.onerror = reject;
-          reader.readAsDataURL(blob);
-        });
-      } else {
-        base64Data = await FileSystem.readAsStringAsync(file.uri, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
-      }
+        try {
+          // Read file as base64
+          const base64Data: string = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              const result = reader.result as string;
+              resolve(result.split(',')[1]);
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+          });
 
-      const mimeType = file.mimeType || 'application/pdf';
+          const mimeType = file.type || 'application/pdf';
 
-      // Call AI parsing API
-      const parsed = await parsePdfToSchema(base64Data, mimeType, parseInstructions || undefined);
+          // Call AI parsing API
+          const parsed = await parsePdfToSchema(base64Data, mimeType, parseInstructions || undefined);
 
-      // Populate editor with parsed schema
-      setSchema(parsed);
-      setTemplateName(parsed.name || file.name?.replace(/\.[^.]+$/, '') || 'Untitled Form');
-      setTemplateDescription(parsed.description || '');
-      setTemplateCode(parsed.docId || `FORM-${Date.now().toString(36).toUpperCase()}`);
-      setTemplateCategory(parsed.category || 'quality');
+          // Populate editor with parsed schema
+          setSchema(parsed);
+          setTemplateName(parsed.name || file.name?.replace(/\.[^.]+$/, '') || 'Untitled Form');
+          setTemplateDescription(parsed.description || '');
+          setTemplateCode(parsed.docId || `FORM-${Date.now().toString(36).toUpperCase()}`);
+          setTemplateCategory(parsed.category || 'quality');
 
-      // Expand all sections for review
-      setExpandedSections(new Set(parsed.sections.map(s => s.id)));
+          // Expand all sections for review
+          setExpandedSections(new Set(parsed.sections.map((s: any) => s.id)));
 
-      setShowEditorModal(true);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          setShowEditorModal(true);
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        } catch (err: any) {
+          console.error('[FormBuilder] Parse error:', err);
+          Alert.alert('Parse Error', err.message || 'Failed to analyze form. Please try again.');
+        } finally {
+          setIsParsing(false);
+        }
+      };
+
+      input.click();
     } catch (err: any) {
       console.error('[FormBuilder] Upload error:', err);
-      Alert.alert('Parse Error', err.message || 'Failed to analyze form. Please try again.');
-    } finally {
-      setIsParsing(false);
+      Alert.alert('Error', err.message || 'Failed to open file picker.');
     }
   }, [parseInstructions]);
 
