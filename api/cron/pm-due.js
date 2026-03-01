@@ -269,7 +269,7 @@ module.exports = async (req, res) => {
             action: `PM: ${pm.name}`,
             notes: notes,
             photo_uri: (pm.photos && pm.photos.length > 0) ? pm.photos[0] : null,
-            employee_id: 'system-cron',
+            employee_id: null,
             employee_name: 'PM Auto-Scheduler',
             status: 'verified',
             source_type: 'task_feed_post',
