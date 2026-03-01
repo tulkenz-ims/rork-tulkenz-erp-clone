@@ -130,7 +130,7 @@ module.exports = async (req, res) => {
 
   // ── Init Supabase with service role (bypasses RLS) ──
   const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL,
+    process.env.EXPO_PUBLIC_SUPABASE_URL,
     process.env.SUPABASE_SERVICE_ROLE_KEY
   );
 
