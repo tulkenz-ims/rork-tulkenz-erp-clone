@@ -254,6 +254,34 @@ module.exports = async (req, res) => {
           // Post was created but dept tasks failed — still count it
         }
 
+        // ── Insert Task Verification (so it appears in feed) ──
+        const { error: tvError } = await supabase
+          .from('task_verifications')
+          .insert({
+            organization_id: pm.organization_id,
+            department_code: '1001',
+            department_name: 'Maintenance',
+            facility_code: pm.facility_id || null,
+            location_id: null,
+            location_name: pm.equipment_name || 'N/A',
+            category_id: 'pm-auto',
+            category_name: 'Preventive Maintenance',
+            action: `PM: ${pm.name}`,
+            notes: notes,
+            photo_uri: (pm.photos && pm.photos.length > 0) ? pm.photos[0] : null,
+            employee_id: 'system-cron',
+            employee_name: 'PM Auto-Scheduler',
+            status: 'verified',
+            source_type: 'task_feed_post',
+            source_id: newPost.id,
+            source_number: postNumber,
+          });
+
+        if (tvError) {
+          console.error(`Error creating task verification for PM ${pm.id}:`, tvError);
+          results.errors.push({ pm_id: pm.id, pm_name: pm.name, error: 'Task verification: ' + tvError.message });
+        }
+
         // ── Update PM Schedule: advance next_due ──
         const newNextDue = calculateNextDue(pm.frequency, pm.schedule_days);
 
