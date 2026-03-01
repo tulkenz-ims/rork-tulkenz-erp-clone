@@ -11,6 +11,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Modal,
+  Image,
 } from 'react-native';
 import { useRouter, useLocalSearchParams, Stack } from 'expo-router';
 import {
@@ -33,6 +34,9 @@ import {
   Zap,
   MapPin,
   Calendar,
+  Camera,
+  FileText,
+  Pen,
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import {
@@ -74,6 +78,9 @@ import {
   DEFAULT_LOTO_STEPS,
 } from '@/constants/workOrderDataConstants';
 import * as Haptics from 'expo-haptics';
+import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
+import { DEPARTMENT_CODES, getDepartmentName, getDepartmentColor } from '@/constants/organizationCodes';
 
 interface PMSafety {
   lotoRequired: boolean;
@@ -133,6 +140,16 @@ const SCHEDULE_TIMES: { value: string; label: string }[] = [
   { value: '18:00', label: '6:00 PM' },
 ];
 
+const DOCUMENT_TYPES = [
+  { id: 'opl', label: 'OPL', color: '#3B82F6' },
+  { id: 'sop', label: 'SOP', color: '#8B5CF6' },
+  { id: 'receipt', label: 'Receipt', color: '#10B981' },
+  { id: 'parts_list', label: 'Parts List', color: '#EC4899' },
+  { id: 'diagram', label: 'Diagram', color: '#F59E0B' },
+  { id: 'manual', label: 'Manual', color: '#06B6D4' },
+  { id: 'other', label: 'Other', color: '#6B7280' },
+];
+
 interface FormTask {
   id: string;
   description: string;
@@ -147,6 +164,13 @@ interface FormLOTOStep {
   lockColor?: string;
   energySource?: string;
   location?: string;
+}
+
+interface PMDocument {
+  id: string;
+  name: string;
+  type: string;
+  uri: string;
 }
 
 export default function PMTemplatesScreen() {
@@ -200,13 +224,18 @@ export default function PMTemplatesScreen() {
   const [lotoSteps, setLotoSteps] = useState<FormLOTOStep[]>([]);
   const [selectedPermits, setSelectedPermits] = useState<string[]>([]);
   const [selectedPPE, setSelectedPPE] = useState<string[]>([]);
+  const [showPPEModal, setShowPPEModal] = useState(false);
+  const [selectedDepartments, setSelectedDepartments] = useState<string[]>(['1001']);
+  const [photos, setPhotos] = useState<string[]>([]);
+  const [documents, setDocuments] = useState<PMDocument[]>([]);
+  const [signatureData, setSignatureData] = useState<string>('');
+  const [signedBy, setSignedBy] = useState<string>('');
   
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['basic', 'schedule', 'tasks']));
   const [scheduleTime, setScheduleTime] = useState<string>('08:00');
   const [scheduleDays, setScheduleDays] = useState<PMDayOfWeek[]>(['monday', 'tuesday', 'wednesday', 'thursday', 'friday']);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [showPermitModal, setShowPermitModal] = useState(false);
-  const [showPPEModal, setShowPPEModal] = useState(false);
   const [showLOTOStepModal, setShowLOTOStepModal] = useState(false);
   const [editingLOTOStep, setEditingLOTOStep] = useState<FormLOTOStep | null>(null);
   const [newLOTOStep, setNewLOTOStep] = useState({
@@ -215,6 +244,9 @@ export default function PMTemplatesScreen() {
     energySource: '',
     location: '',
   });
+  const [showDocTypeModal, setShowDocTypeModal] = useState(false);
+  const [pendingDocUri, setPendingDocUri] = useState<string>('');
+  const [pendingDocName, setPendingDocName] = useState<string>('');
 
   useEffect(() => {
     if (existingSchedule) {
@@ -255,6 +287,21 @@ export default function PMTemplatesScreen() {
       }
       if (existingSchedule.schedule_days && existingSchedule.schedule_days.length > 0) {
         setScheduleDays(existingSchedule.schedule_days);
+      }
+      if ((existingSchedule as any).departments && (existingSchedule as any).departments.length > 0) {
+        setSelectedDepartments((existingSchedule as any).departments);
+      }
+      if ((existingSchedule as any).photos && (existingSchedule as any).photos.length > 0) {
+        setPhotos((existingSchedule as any).photos);
+      }
+      if ((existingSchedule as any).documents && (existingSchedule as any).documents.length > 0) {
+        setDocuments((existingSchedule as any).documents);
+      }
+      if ((existingSchedule as any).signature_data) {
+        setSignatureData((existingSchedule as any).signature_data);
+      }
+      if ((existingSchedule as any).signed_by) {
+        setSignedBy((existingSchedule as any).signed_by);
       }
     }
   }, [existingSchedule]);
@@ -413,6 +460,75 @@ export default function PMTemplatesScreen() {
     );
   }, []);
 
+  const handleToggleDepartment = useCallback((deptCode: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setSelectedDepartments(prev => {
+      if (prev.includes(deptCode)) {
+        if (prev.length === 1) return prev;
+        return prev.filter(d => d !== deptCode);
+      }
+      return [...prev, deptCode];
+    });
+  }, []);
+
+  const handlePickPhoto = useCallback(async () => {
+    if (photos.length >= 10) {
+      Alert.alert('Limit Reached', 'Maximum 10 photos allowed');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsMultipleSelection: true,
+      selectionLimit: 10 - photos.length,
+      quality: 0.8,
+    });
+    if (!result.canceled && result.assets.length > 0) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      setPhotos(prev => [...prev, ...result.assets.map(a => a.uri)].slice(0, 10));
+    }
+  }, [photos.length]);
+
+  const handleRemovePhoto = useCallback((index: number) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setPhotos(prev => prev.filter((_, i) => i !== index));
+  }, []);
+
+  const handlePickDocument = useCallback(async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['application/pdf', 'image/*', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+        copyToCacheDirectory: true,
+      });
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0];
+        setPendingDocUri(asset.uri);
+        setPendingDocName(asset.name || 'Document');
+        setShowDocTypeModal(true);
+      }
+    } catch (err) {
+      Alert.alert('Error', 'Failed to pick document');
+    }
+  }, []);
+
+  const handleSaveDocument = useCallback((docType: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const newDoc: PMDocument = {
+      id: `doc-${Date.now()}`,
+      name: pendingDocName,
+      type: docType,
+      uri: pendingDocUri,
+    };
+    setDocuments(prev => [...prev, newDoc]);
+    setShowDocTypeModal(false);
+    setPendingDocUri('');
+    setPendingDocName('');
+  }, [pendingDocUri, pendingDocName]);
+
+  const handleRemoveDocument = useCallback((docId: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setDocuments(prev => prev.filter(d => d.id !== docId));
+  }, []);
+
   const handleTogglePPE = useCallback((ppeId: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setSelectedPPE(prev => 
@@ -420,6 +536,45 @@ export default function PMTemplatesScreen() {
         ? prev.filter(p => p !== ppeId)
         : [...prev, ppeId]
     );
+  }, []);
+
+  const handleSignature = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    // For now, prompt for name as signature
+    Alert.prompt(
+      'PPN Signature',
+      'Enter your full name to sign this PM template',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Sign',
+          onPress: (value) => {
+            if (value && value.trim()) {
+              setSignedBy(value.trim());
+              setSignatureData(`Signed by ${value.trim()} on ${new Date().toLocaleDateString()} at ${new Date().toLocaleTimeString()}`);
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            }
+          },
+        },
+      ],
+      'plain-text',
+      signedBy
+    );
+  }, [signedBy]);
+
+  const handleClearSignature = useCallback(() => {
+    Alert.alert('Clear Signature', 'Are you sure you want to remove the signature?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Clear',
+        style: 'destructive',
+        onPress: () => {
+          setSignatureData('');
+          setSignedBy('');
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        },
+      },
+    ]);
   }, []);
 
   const handleSave = useCallback(() => {
@@ -462,6 +617,12 @@ export default function PMTemplatesScreen() {
       facility_id: equipmentData?.facility_id || undefined,
       schedule_time: scheduleTime,
       schedule_days: (frequency === 'daily' || frequency === 'weekly' || frequency === 'biweekly') ? scheduleDays : undefined,
+      departments: selectedDepartments,
+      photos: photos,
+      documents: documents,
+      signature_data: signatureData || undefined,
+      signed_by: signedBy || undefined,
+      signed_at: signatureData ? new Date().toISOString() : undefined,
       tasks: tasks.map(t => ({
         id: t.id,
         description: t.description,
@@ -481,7 +642,7 @@ export default function PMTemplatesScreen() {
         permits: selectedPermits,
         ppeRequired: selectedPPE,
       },
-    };
+    } as any;
 
     if (isEditMode && existingSchedule) {
       updatePMScheduleMutation.mutate({
@@ -491,7 +652,7 @@ export default function PMTemplatesScreen() {
     } else {
       createPMScheduleMutation.mutate(pmData as Omit<ExtendedPMSchedule, 'id' | 'organization_id' | 'created_at' | 'updated_at'>);
     }
-  }, [name, description, selectedEquipment, frequency, priority, estimatedHours, assignedTo, isActive, tasks, equipment, employees, isEditMode, existingSchedule, updatePMScheduleMutation, createPMScheduleMutation]);
+  }, [name, description, selectedEquipment, frequency, priority, estimatedHours, assignedTo, isActive, tasks, equipment, employees, isEditMode, existingSchedule, updatePMScheduleMutation, createPMScheduleMutation, selectedDepartments, photos, documents, signatureData, signedBy, lotoRequired, lotoSteps, selectedPermits, selectedPPE, scheduleTime, scheduleDays]);
 
   const calculateNextDue = (freq: PMFrequency, days?: PMDayOfWeek[]): string => {
     const now = new Date();
@@ -1025,6 +1186,194 @@ export default function PMTemplatesScreen() {
           )}
         </View>
 
+        {/* Photos Section */}
+        <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          {renderSectionHeader(
+            'Photos',
+            'photos',
+            <Camera size={18} color="#F59E0B" />,
+            `${photos.length}/10`,
+            photos.length > 0 ? '#F59E0B' : colors.textTertiary
+          )}
+          {expandedSections.has('photos') && (
+            <View style={styles.sectionContent}>
+              <Text style={[styles.switchHint, { color: colors.textSecondary, marginBottom: 12 }]}>
+                Attach reference photos, diagrams, or equipment images (up to 10)
+              </Text>
+              {photos.length > 0 && (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+                  <View style={{ flexDirection: 'row', gap: 10 }}>
+                    {photos.map((uri, index) => (
+                      <View key={index} style={{ position: 'relative' }}>
+                        <Image
+                          source={{ uri }}
+                          style={{
+                            width: 80, height: 80, borderRadius: 10,
+                            backgroundColor: colors.backgroundSecondary,
+                            borderWidth: 1, borderColor: colors.border,
+                          }}
+                        />
+                        <Pressable
+                          onPress={() => handleRemovePhoto(index)}
+                          style={{
+                            position: 'absolute', top: -6, right: -6,
+                            width: 22, height: 22, borderRadius: 11,
+                            backgroundColor: '#EF4444',
+                            alignItems: 'center', justifyContent: 'center',
+                          }}
+                        >
+                          <X size={12} color="#FFFFFF" />
+                        </Pressable>
+                      </View>
+                    ))}
+                  </View>
+                </ScrollView>
+              )}
+              {photos.length < 10 && (
+                <Pressable
+                  style={[styles.addButton, { borderColor: '#F59E0B', backgroundColor: '#F59E0B10' }]}
+                  onPress={handlePickPhoto}
+                >
+                  <Plus size={18} color="#F59E0B" />
+                  <Text style={[styles.addButtonText, { color: '#F59E0B' }]}>Add Photos ({photos.length}/10)</Text>
+                </Pressable>
+              )}
+            </View>
+          )}
+        </View>
+
+        {/* Documents Section */}
+        <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          {renderSectionHeader(
+            'Documents & Attachments',
+            'documents',
+            <FileText size={18} color="#8B5CF6" />,
+            documents.length,
+            documents.length > 0 ? '#8B5CF6' : colors.textTertiary
+          )}
+          {expandedSections.has('documents') && (
+            <View style={styles.sectionContent}>
+              <Text style={[styles.switchHint, { color: colors.textSecondary, marginBottom: 12 }]}>
+                Attach OPLs, SOPs, receipts, parts lists, diagrams, manuals, or other documents
+              </Text>
+              {documents.length > 0 && (
+                <View style={{ gap: 8, marginBottom: 12 }}>
+                  {documents.map((doc) => {
+                    const docTypeConfig = DOCUMENT_TYPES.find(d => d.id === doc.type) || DOCUMENT_TYPES[6];
+                    return (
+                      <View
+                        key={doc.id}
+                        style={{
+                          flexDirection: 'row', alignItems: 'center',
+                          padding: 12, borderRadius: 10, gap: 12,
+                          backgroundColor: colors.backgroundSecondary,
+                          borderWidth: 1, borderColor: colors.border,
+                        }}
+                      >
+                        <View style={{
+                          width: 36, height: 36, borderRadius: 8,
+                          backgroundColor: docTypeConfig.color + '20',
+                          alignItems: 'center', justifyContent: 'center',
+                        }}>
+                          <FileText size={18} color={docTypeConfig.color} />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ fontSize: 14, fontWeight: '500', color: colors.text }} numberOfLines={1}>
+                            {doc.name}
+                          </Text>
+                          <View style={{
+                            alignSelf: 'flex-start',
+                            paddingHorizontal: 6, paddingVertical: 2,
+                            borderRadius: 4, marginTop: 4,
+                            backgroundColor: docTypeConfig.color + '20',
+                          }}>
+                            <Text style={{ fontSize: 10, fontWeight: '600', color: docTypeConfig.color }}>
+                              {docTypeConfig.label}
+                            </Text>
+                          </View>
+                        </View>
+                        <Pressable onPress={() => handleRemoveDocument(doc.id)}>
+                          <Trash2 size={16} color="#EF4444" />
+                        </Pressable>
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
+              <Pressable
+                style={[styles.addButton, { borderColor: '#8B5CF6', backgroundColor: '#8B5CF610' }]}
+                onPress={handlePickDocument}
+              >
+                <Plus size={18} color="#8B5CF6" />
+                <Text style={[styles.addButtonText, { color: '#8B5CF6' }]}>Add Document</Text>
+              </Pressable>
+            </View>
+          )}
+        </View>
+
+        {/* Departments Section */}
+        <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          {renderSectionHeader(
+            'Task Feed Departments',
+            'departments',
+            <Shield size={18} color="#06B6D4" />,
+            selectedDepartments.length,
+            selectedDepartments.length > 0 ? '#06B6D4' : colors.textTertiary
+          )}
+          {expandedSections.has('departments') && (
+            <View style={styles.sectionContent}>
+              <Text style={[styles.switchHint, { color: colors.textSecondary, marginBottom: 12 }]}>
+                When this PM comes due, it will auto-post to Task Feed and push tasks to these departments.
+              </Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+                {Object.values(DEPARTMENT_CODES).map((dept) => {
+                  const sel = selectedDepartments.includes(dept.code);
+                  return (
+                    <Pressable
+                      key={dept.code}
+                      style={{
+                        width: '47%',
+                        flexGrow: 1,
+                        padding: 14,
+                        borderRadius: 12,
+                        borderWidth: sel ? 2 : 1,
+                        borderColor: sel ? dept.color : colors.border,
+                        backgroundColor: sel ? dept.color + '15' : colors.backgroundSecondary,
+                        position: 'relative',
+                      }}
+                      onPress={() => handleToggleDepartment(dept.code)}
+                    >
+                      <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: dept.color, marginBottom: 8 }} />
+                      <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text, marginBottom: 2 }}>{dept.name}</Text>
+                      <Text style={{ fontSize: 12, color: colors.textSecondary }}>{dept.code}</Text>
+                      {sel && (
+                        <View style={{
+                          position: 'absolute', top: 10, right: 10,
+                          width: 20, height: 20, borderRadius: 10,
+                          backgroundColor: dept.color,
+                          alignItems: 'center', justifyContent: 'center',
+                        }}>
+                          <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>✓</Text>
+                        </View>
+                      )}
+                    </Pressable>
+                  );
+                })}
+              </View>
+              <View style={{
+                flexDirection: 'row', alignItems: 'center',
+                padding: 14, borderRadius: 10, marginTop: 16,
+                backgroundColor: colors.backgroundSecondary,
+                gap: 10,
+              }}>
+                <Text style={{ fontSize: 14, fontWeight: '500', color: colors.text }}>
+                  {selectedDepartments.length} department{selectedDepartments.length !== 1 ? 's' : ''} will receive this PM
+                </Text>
+              </View>
+            </View>
+          )}
+        </View>
+
         {/* LOTO Section */}
         <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           {renderSectionHeader(
@@ -1122,12 +1471,6 @@ export default function PMTemplatesScreen() {
                       <Text style={[styles.permitDesc, { color: colors.textSecondary }]} numberOfLines={2}>
                         {permit.description}
                       </Text>
-                      <View style={styles.permitMeta}>
-                        <Clock size={12} color={colors.textTertiary} />
-                        <Text style={[styles.permitMetaText, { color: colors.textTertiary }]}>
-                          {permit.description}
-                        </Text>
-                      </View>
                     </View>
                   ))}
                 </View>
@@ -1226,6 +1569,61 @@ export default function PMTemplatesScreen() {
                 <Plus size={18} color="#10B981" />
                 <Text style={[styles.addButtonText, { color: '#10B981' }]}>Add Task</Text>
               </Pressable>
+            </View>
+          )}
+        </View>
+
+        {/* PPN Signature Section */}
+        <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          {renderSectionHeader(
+            'PPN Signature',
+            'signature',
+            <Pen size={18} color="#EC4899" />,
+            signedBy ? 'SIGNED' : 'UNSIGNED',
+            signedBy ? '#10B981' : colors.textTertiary
+          )}
+          {expandedSections.has('signature') && (
+            <View style={styles.sectionContent}>
+              <Text style={[styles.switchHint, { color: colors.textSecondary, marginBottom: 12 }]}>
+                Sign off on this PM template to confirm review and approval
+              </Text>
+              {signatureData ? (
+                <View style={{
+                  padding: 16, borderRadius: 12, marginBottom: 12,
+                  backgroundColor: '#10B98110',
+                  borderWidth: 1, borderColor: '#10B98140',
+                }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                    <CheckCircle size={20} color="#10B981" />
+                    <Text style={{ fontSize: 16, fontWeight: '700', color: '#10B981' }}>Signed</Text>
+                  </View>
+                  <Text style={{ fontSize: 15, fontWeight: '600', color: colors.text, marginBottom: 4 }}>
+                    {signedBy}
+                  </Text>
+                  <Text style={{ fontSize: 12, color: colors.textSecondary }}>
+                    {signatureData}
+                  </Text>
+                  <Pressable
+                    style={{
+                      flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+                      marginTop: 12, padding: 10, borderRadius: 8,
+                      backgroundColor: '#EF444415', gap: 6,
+                    }}
+                    onPress={handleClearSignature}
+                  >
+                    <Trash2 size={14} color="#EF4444" />
+                    <Text style={{ fontSize: 13, fontWeight: '500', color: '#EF4444' }}>Clear Signature</Text>
+                  </Pressable>
+                </View>
+              ) : (
+                <Pressable
+                  style={[styles.addButton, { borderColor: '#EC4899', backgroundColor: '#EC489910' }]}
+                  onPress={handleSignature}
+                >
+                  <Pen size={18} color="#EC4899" />
+                  <Text style={[styles.addButtonText, { color: '#EC4899' }]}>Sign PM Template</Text>
+                </Pressable>
+              )}
             </View>
           )}
         </View>
@@ -1461,6 +1859,49 @@ export default function PMTemplatesScreen() {
                   {editingLOTOStep ? 'Save Changes' : 'Add Step'}
                 </Text>
               </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Document Type Selection Modal */}
+      <Modal visible={showDocTypeModal} animationType="fade" transparent>
+        <Pressable 
+          style={styles.modalOverlay} 
+          onPress={() => setShowDocTypeModal(false)}
+        >
+          <Pressable style={[styles.lotoModalContent, { backgroundColor: colors.surface }]} onPress={e => e.stopPropagation()}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Document Type</Text>
+              <Pressable onPress={() => setShowDocTypeModal(false)}>
+                <X size={24} color={colors.text} />
+              </Pressable>
+            </View>
+            <View style={{ padding: 20 }}>
+              <Text style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 16 }}>
+                What type of document is "{pendingDocName}"?
+              </Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+                {DOCUMENT_TYPES.map(docType => (
+                  <Pressable
+                    key={docType.id}
+                    style={{
+                      paddingVertical: 12, paddingHorizontal: 16,
+                      borderRadius: 10, borderWidth: 1,
+                      borderColor: docType.color,
+                      backgroundColor: docType.color + '15',
+                      minWidth: '45%', flexGrow: 1,
+                      alignItems: 'center',
+                    }}
+                    onPress={() => handleSaveDocument(docType.id)}
+                  >
+                    <FileText size={20} color={docType.color} />
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: docType.color, marginTop: 4 }}>
+                      {docType.label}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
             </View>
           </Pressable>
         </Pressable>
@@ -1758,10 +2199,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600' as const,
   },
-  lockColorDesc: {
-    fontSize: 9,
-    textAlign: 'center' as const,
-  },
   lotoStep: {
     flexDirection: 'row',
     gap: 12,
@@ -1862,17 +2299,6 @@ const styles = StyleSheet.create({
   },
   permitMetaText: {
     fontSize: 11,
-  },
-  approvalBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
-    marginLeft: 8,
-  },
-  approvalBadgeText: {
-    fontSize: 10,
-    fontWeight: '600' as const,
-    color: '#D97706',
   },
   noItemsText: {
     fontSize: 14,
