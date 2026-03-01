@@ -248,7 +248,7 @@ export default function PMTemplatesScreen() {
   const [pendingDocUri, setPendingDocUri] = useState<string>('');
   const [pendingDocName, setPendingDocName] = useState<string>('');
 
-  useEffect(() => {
+ useEffect(() => {
     if (existingSchedule) {
       setName(existingSchedule.name || '');
       setDescription(existingSchedule.description || '');
@@ -268,10 +268,9 @@ export default function PMTemplatesScreen() {
       })));
       
       const safety = (existingSchedule as unknown as { safety?: PMSafety }).safety;
-      if (safety) {
+      if (safety && typeof safety === 'object') {
         setLotoRequired(safety.lotoRequired || false);
         setLotoSteps((safety.lotoSteps || []).map(s => ({
-        }
           id: s.id,
           order: s.order,
           description: s.description,
@@ -279,8 +278,8 @@ export default function PMTemplatesScreen() {
           energySource: s.energySource,
           location: s.location,
         })));
-        setSelectedPermits(safety.permits);
-        setSelectedPPE(safety.ppeRequired);
+        setSelectedPermits(safety.permits || []);
+        setSelectedPPE(safety.ppeRequired || []);
       }
       
       if (existingSchedule.schedule_time) {
