@@ -61,7 +61,7 @@ const AUDITOR_PORTAL_LINK = {
   id: 'auditsessions',
   title: 'Auditor Portal Sessions',
   description: 'Manage auditor access, session tokens, and audit portal links',
-  route: '/compliance/auditorportalsessions',
+  route: '/compliance/auditsessions',
   color: '#3B82F6',
 };
 
