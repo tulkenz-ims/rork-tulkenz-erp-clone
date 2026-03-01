@@ -81,6 +81,8 @@ import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 
 import { DEPARTMENT_CODES, getDepartmentName, getDepartmentColor } from '@/constants/organizationCodes';
+import PinSignatureCapture from '@/components/PinSignatureCapture';
+import { SignatureVerification } from '@/hooks/usePinSignature';
 
 interface PMSafety {
   lotoRequired: boolean;
