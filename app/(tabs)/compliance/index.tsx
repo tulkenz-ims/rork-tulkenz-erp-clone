@@ -58,7 +58,7 @@ const MASTER_POLICY_LINK = {
 };
 
 const AUDITOR_PORTAL_LINK = {
-  id: 'auditorportalsessions',
+  id: 'auditsessions',
   title: 'Auditor Portal Sessions',
   description: 'Manage auditor access, session tokens, and audit portal links',
   route: '/compliance/auditorportalsessions',
