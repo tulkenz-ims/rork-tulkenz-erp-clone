@@ -271,16 +271,7 @@ export default function PMTemplatesScreen() {
       if (safety) {
         setLotoRequired(safety.lotoRequired || false);
         setLotoSteps((safety.lotoSteps || []).map(s => ({
-          id: s.id,
-          order: s.order,
-          description: s.description,
-          lockColor: s.lockColor,
-          energySource: s.energySource,
-          location: s.location,
-        })));
-        setSelectedPermits(safety.permits || []);
-        setSelectedPPE(safety.ppeRequired || []);
-      }
+        }
           id: s.id,
           order: s.order,
           description: s.description,
