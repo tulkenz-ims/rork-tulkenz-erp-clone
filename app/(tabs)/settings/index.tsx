@@ -34,6 +34,7 @@ import {
   BookOpen,
   Briefcase,
   ClipboardList,
+  Calculator,
 } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useUser } from '@/contexts/UserContext';
@@ -229,6 +230,13 @@ export default function SettingsScreen() {
               icon={Shield}
               label="Security"
               onPress={() => {}}
+              colors={colors}
+            />
+            <SettingItem
+              icon={Calculator}
+              label="The Numbers Truth"
+              value="ROI calculator & share link"
+              onPress={() => router.push('/settings/numbers-truth')}
               colors={colors}
             />
           </View>
