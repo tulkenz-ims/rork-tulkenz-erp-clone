@@ -475,7 +475,7 @@ export default function CMMSScreen() {
   };
 
   const quickActions = [
-    { label: 'New Work Order', icon: Plus, color: '#3B82F6', route: '/cmms/newworkorder' },
+    { label: 'Create Work Order', icon: AlertTriangle, color: '#F59E0B', route: '/(tabs)/taskfeed' },
     { label: 'PM Schedule', icon: Calendar, color: '#10B981', route: '/cmms/pmschedule' },
     { label: 'Equipment', icon: Cog, color: '#8B5CF6', route: '/cmms/equipmentlist' },
     { label: 'MRO Parts', icon: Package, color: '#EC4899', route: '/cmms/partslist' },
