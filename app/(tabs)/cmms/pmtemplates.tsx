@@ -79,7 +79,7 @@ import {
 } from '@/constants/workOrderDataConstants';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
-import * as DocumentPicker from 'expo-document-picker';
+
 import { DEPARTMENT_CODES, getDepartmentName, getDepartmentColor } from '@/constants/organizationCodes';
 
 interface PMSafety {
@@ -494,19 +494,34 @@ export default function PMTemplatesScreen() {
   }, []);
 
   const handlePickDocument = useCallback(async () => {
-    try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: ['application/pdf', 'image/*', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
-        copyToCacheDirectory: true,
-      });
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        const asset = result.assets[0];
-        setPendingDocUri(asset.uri);
-        setPendingDocName(asset.name || 'Document');
+    if (Platform.OS === 'web') {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'application/pdf,image/*,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      input.onchange = async (e: any) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setPendingDocUri(file.name);
+        setPendingDocName(file.name);
         setShowDocTypeModal(true);
+      };
+      input.click();
+    } else {
+      try {
+        const DocPicker = require('expo-document-picker');
+        const result = await DocPicker.getDocumentAsync({
+          type: ['application/pdf', 'image/*'],
+          copyToCacheDirectory: true,
+        });
+        if (!result.canceled && result.assets?.length > 0) {
+          const asset = result.assets[0];
+          setPendingDocUri(asset.uri);
+          setPendingDocName(asset.name || 'Document');
+          setShowDocTypeModal(true);
+        }
+      } catch (err) {
+        Alert.alert('Error', 'Failed to pick document');
       }
-    } catch (err) {
-      Alert.alert('Error', 'Failed to pick document');
     }
   }, []);
 
