@@ -230,8 +230,7 @@ export default function PMTemplatesScreen() {
   const [selectedDepartments, setSelectedDepartments] = useState<string[]>(['1001']);
   const [photos, setPhotos] = useState<string[]>([]);
   const [documents, setDocuments] = useState<PMDocument[]>([]);
-  const [signatureData, setSignatureData] = useState<string>('');
-  const [signedBy, setSignedBy] = useState<string>('');
+  const [signatureVerification, setSignatureVerification] = useState<SignatureVerification | null>(null);
   
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['basic', 'schedule', 'tasks']));
   const [scheduleTime, setScheduleTime] = useState<string>('08:00');
@@ -300,10 +299,14 @@ export default function PMTemplatesScreen() {
         setDocuments((existingSchedule as any).documents);
       }
       if ((existingSchedule as any).signature_data) {
-        setSignatureData((existingSchedule as any).signature_data);
-      }
-      if ((existingSchedule as any).signed_by) {
-        setSignedBy((existingSchedule as any).signed_by);
+        setSignatureVerification({
+          employeeId: (existingSchedule as any).signed_by || '',
+          employeeName: (existingSchedule as any).signed_by || '',
+          employeeInitials: '',
+          departmentCode: '',
+          signatureStamp: (existingSchedule as any).signature_data,
+          verifiedAt: (existingSchedule as any).signed_at || '',
+        });
       }
     }
   }, [existingSchedule]);
