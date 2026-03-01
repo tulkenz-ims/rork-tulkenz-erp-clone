@@ -57,6 +57,14 @@ const MASTER_POLICY_LINK = {
   color: '#7C3AED',
 };
 
+const AUDITOR_PORTAL_LINK = {
+  id: 'auditorportalsessions',
+  title: 'Auditor Portal Sessions',
+  description: 'Manage auditor access, session tokens, and audit portal links',
+  route: '/compliance/auditorportalsessions',
+  color: '#3B82F6',
+};
+
 const COMPLIANCE_FORM_CATEGORIES: FormCategory[] = [
   {
     id: 'fda-fsma',
@@ -382,6 +390,27 @@ export default function ComplianceScreen() {
             <Text style={[styles.masterPolicyDescription, { color: colors.textSecondary }]}>{MASTER_POLICY_LINK.description}</Text>
           </View>
           <ChevronRight size={20} color={MASTER_POLICY_LINK.color} />
+        </Pressable>
+
+        <Pressable
+          style={({ pressed }) => [
+            styles.masterPolicyCard,
+            { 
+              backgroundColor: colors.surface, 
+              borderColor: AUDITOR_PORTAL_LINK.color + '40',
+              opacity: pressed ? 0.9 : 1,
+            },
+          ]}
+          onPress={() => handleFormPress(AUDITOR_PORTAL_LINK.route)}
+        >
+          <View style={[styles.masterPolicyIcon, { backgroundColor: AUDITOR_PORTAL_LINK.color + '15' }]}>
+            <Shield size={24} color={AUDITOR_PORTAL_LINK.color} />
+          </View>
+          <View style={styles.masterPolicyContent}>
+            <Text style={[styles.masterPolicyTitle, { color: colors.text }]}>{AUDITOR_PORTAL_LINK.title}</Text>
+            <Text style={[styles.masterPolicyDescription, { color: colors.textSecondary }]}>{AUDITOR_PORTAL_LINK.description}</Text>
+          </View>
+          <ChevronRight size={20} color={AUDITOR_PORTAL_LINK.color} />
         </Pressable>
 
         <Text style={[styles.sectionTitle, { color: colors.text }]}>Compliance Forms</Text>
