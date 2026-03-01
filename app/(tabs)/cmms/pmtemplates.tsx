@@ -462,6 +462,25 @@ export default function PMTemplatesScreen() {
       facility_id: equipmentData?.facility_id || undefined,
       schedule_time: scheduleTime,
       schedule_days: (frequency === 'daily' || frequency === 'weekly' || frequency === 'biweekly') ? scheduleDays : undefined,
+      tasks: tasks.map(t => ({
+        id: t.id,
+        description: t.description,
+        required: t.required,
+        order: t.order,
+      })),
+      safety: {
+        lotoRequired,
+        lotoSteps: lotoSteps.map(s => ({
+          id: s.id,
+          order: s.order,
+          description: s.description,
+          lockColor: s.lockColor || null,
+          energySource: s.energySource || null,
+          location: s.location || null,
+        })),
+        permits: selectedPermits,
+        ppeRequired: selectedPPE,
+      },
     };
 
     if (isEditMode && existingSchedule) {
