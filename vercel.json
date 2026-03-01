@@ -1,4 +1,10 @@
 {
+  "crons": [
+    {
+      "path": "/api/cron/pm-due",
+      "schedule": "0 12 * * *"
+    }
+  ],
   "rewrites": [
     {
       "source": "/api/(.*)",
