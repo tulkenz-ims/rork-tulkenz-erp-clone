@@ -122,7 +122,7 @@ CATS.forEach(function(c){var d={};c.fields.forEach(function(f){d[f.key]=f.dflt;}
 var compData = {};
 COMPS.forEach(function(c){compData[c.id]={setup:c.setup,mpu:c.mpu,users:c.users};});
 
-var terms = {mode:"term",setupFee:150000,years:2,monthlyAfter:3500,lifetimePrice:500000};
+var terms = {mode:"term",setupFee:150000,years:5,monthlyAfter:3500,lifetimePrice:500000};
 var activeCard = null;
 var showComp = false;
 var currentView = "calculator";
@@ -137,7 +137,7 @@ function calc(){
   var cAnnual=cMo*12;
   var isLife=terms.mode==="lifetime";
   var yrs=isLife?10:terms.years;
-  var tkCost=isLife?terms.lifetimePrice:terms.setupFee;
+  var tkCost=isLife?terms.lifetimePrice:terms.setupFee+Math.max(0,yrs-2)*terms.monthlyAfter*12;
   var theirCost=cSetup+cAnnual*yrs+pC*yrs;
   var netPosition=theirCost-tkCost;
   var roiPercent=tkCost>0?Math.round((netPosition/tkCost)*100):0;
@@ -303,13 +303,13 @@ function render(){
     ["Full platform — every module, every feature","Unlimited users — no per-seat fees, ever","Historical data migration & digitization","System integration & process consulting","Staff training — all departments, all shifts","Lifetime support — direct, not a ticket queue","All updates, new features, new modules — forever","Priority input on roadmap & feature direction","Line sensors, light boards, emergency systems","Auditor Portal access for every audit, every year"].forEach(function(i){h+='<div style="font-size:11px;color:#88cccc;padding:3px 0">✓ '+i+'</div>';});
     h+='</div></div></div>';
   } else {
-    h+='<div><div style="margin-bottom:20px"><div style="font-size:15px;font-weight:700;color:#4ecdc4;margin-bottom:4px">Setup & Implementation</div><div style="font-size:12px;color:#666688;margin-bottom:10px">Full digital transformation: historical data migration, integration, process consulting, training, and platform access for the included years.</div><div style="position:relative"><span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#e8c547;font-family:JetBrains Mono,monospace;font-size:14px">$</span><input type="number" class="ni ni-dollar" value="'+terms.setupFee+'" id="setupFee" /></div></div>';
-    h+='<div style="margin-bottom:20px"><div style="font-size:15px;font-weight:700;color:#4ecdc4;margin-bottom:4px">Years Included</div><div style="font-size:12px;color:#666688;margin-bottom:10px">Full platform access included in the investment for this many years. No monthly fees during this period.</div><div style="display:flex;gap:6px">';
-    for(var y=1;y<=10;y++){h+='<button class="yr-btn'+(terms.years===y?' active':'')+'" data-yr="'+y+'">'+y+'</button>';}
+    h+='<div><div style="margin-bottom:20px"><div style="font-size:15px;font-weight:700;color:#4ecdc4;margin-bottom:4px">Setup & Implementation (2 Years Included)</div><div style="font-size:12px;color:#666688;margin-bottom:10px">Full digital transformation: historical data migration, integration, process consulting, training, and full platform access for the first 2 years. Monthly rate begins Year 3.</div><div style="position:relative"><span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#e8c547;font-family:JetBrains Mono,monospace;font-size:14px">$</span><input type="number" class="ni ni-dollar" value="'+terms.setupFee+'" id="setupFee" /></div></div>';
+    h+='<div style="margin-bottom:20px"><div style="font-size:15px;font-weight:700;color:#4ecdc4;margin-bottom:4px">Projection Window</div><div style="font-size:12px;color:#666688;margin-bottom:10px">How many years to project. Setup covers Year 1-2. Monthly rate applies Year 3 onward.</div><div style="display:flex;gap:6px">';
+    for(var y=2;y<=10;y++){h+='<button class="yr-btn'+(terms.years===y?' active':'')+'" data-yr="'+y+'">'+y+'</button>';}
     h+='</div></div>';
-    h+='<div style="margin-bottom:20px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><div><div style="font-size:15px;font-weight:700;color:#4ecdc4">After Year '+terms.years+' — Monthly</div><div style="font-size:12px;color:#666688">Ongoing access, if agreed upon. Renegotiated at renewal.</div></div><div style="background:rgba(78,205,196,0.08);border-radius:6px;padding:6px 12px"><div style="color:#4ecdc4;font-size:14px;font-weight:700;font-family:JetBrains Mono,monospace">$'+(terms.monthlyAfter*12).toLocaleString()+'/yr</div></div></div><div style="position:relative"><span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#e8c547;font-family:JetBrains Mono,monospace;font-size:14px">$</span><input type="number" class="ni ni-dollar" value="'+terms.monthlyAfter+'" id="monthlyAfter" /></div></div>';
-    h+='<div style="background:rgba(78,205,196,0.06);border-radius:10px;padding:14px"><div style="font-size:12px;font-weight:700;color:#4ecdc4;margin-bottom:8px">Included in the '+terms.years+'-Year Investment:</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">';
-    ["Full platform — every module, every feature","Unlimited users — no per-seat fees","Historical data migration & digitization","System integration & process consulting","Staff training — all departments, all shifts",terms.years+" years of support included","All updates & new features during term","Priority input on roadmap & features","Line sensors, light boards, emergency systems","Auditor Portal access for every audit"].forEach(function(i){h+='<div style="font-size:11px;color:#88cccc;padding:3px 0">✓ '+i+'</div>';});
+    h+='<div style="margin-bottom:20px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><div><div style="font-size:15px;font-weight:700;color:#4ecdc4">After Year 2 — Monthly</div><div style="font-size:12px;color:#666688">Ongoing access beginning Year 3. Locked rate for life.</div></div><div style="background:rgba(78,205,196,0.08);border-radius:6px;padding:6px 12px"><div style="color:#4ecdc4;font-size:14px;font-weight:700;font-family:JetBrains Mono,monospace">$'+(terms.monthlyAfter*12).toLocaleString()+'/yr</div></div></div><div style="position:relative"><span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#e8c547;font-family:JetBrains Mono,monospace;font-size:14px">$</span><input type="number" class="ni ni-dollar" value="'+terms.monthlyAfter+'" id="monthlyAfter" /></div></div>';
+    h+='<div style="background:rgba(78,205,196,0.06);border-radius:10px;padding:14px"><div style="font-size:12px;font-weight:700;color:#4ecdc4;margin-bottom:8px">Included in the Setup Investment:</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">';
+    ["Full platform — every module, every feature","Unlimited users — no per-seat fees","Historical data migration & digitization","System integration & process consulting","Staff training — all departments, all shifts","2 years of full access included","All updates & new features during term","Priority input on roadmap & features","Line sensors, light boards, emergency systems","Auditor Portal access for every audit"].forEach(function(i){h+='<div style="font-size:11px;color:#88cccc;padding:3px 0">✓ '+i+'</div>';});
     h+='</div></div></div>';
   }
   h+='</div></div>';
@@ -341,9 +341,9 @@ function render(){
     h+='<div style="font-size:11px;color:#9999aa;margin-bottom:10px;text-align:center">Year-by-year through 10 years — if everything stays the same (no inflation):</div>';
     h+='<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px">';
     for(var yi=1;yi<=10;yi++){
-      var inTerm=yi<=terms.years;
+      var inTerm=yi<=2;
       var theirAtYr=c.cSetup+c.cAnnual*yi+c.pC*yi;
-      var tkAtYr=inTerm?terms.setupFee:terms.setupFee+(yi-terms.years)*terms.monthlyAfter*12;
+      var tkAtYr=inTerm?terms.setupFee:terms.setupFee+(yi-2)*terms.monthlyAfter*12;
       var netAtYr=theirAtYr-tkAtYr;
       h+='<div style="background:'+(inTerm?"rgba(78,205,196,0.06)":"rgba(232,197,71,0.04)")+';border:'+(inTerm?"1px solid rgba(78,205,196,0.2)":"1px solid rgba(232,197,71,0.1)")+';border-radius:8px;padding:8px 4px;text-align:center">';
       h+='<div style="color:'+(inTerm?"#4ecdc4":"#777799")+';font-size:9px;font-weight:600;margin-bottom:4px">YEAR '+yi+(inTerm?" ✓":"")+'</div>';
