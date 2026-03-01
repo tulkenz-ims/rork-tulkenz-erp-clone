@@ -34,7 +34,7 @@ import * as Haptics from 'expo-haptics';
 // ═══════════════════════════════════════════════════════════════
 // UPDATE THIS to your actual deployed URL
 // ═══════════════════════════════════════════════════════════════
-const CALCULATOR_URL = 'https://your-tulkenz-domain.vercel.app/numbers-truth';
+const CALCULATOR_URL = 'https://app.tulkenz.net/numbers-truth';
 
 export default function NumbersTruthSettings() {
   const { colors } = useTheme();
