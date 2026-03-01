@@ -249,7 +249,7 @@ export default function PMTemplatesScreen() {
   const [pendingDocUri, setPendingDocUri] = useState<string>('');
   const [pendingDocName, setPendingDocName] = useState<string>('');
 
- useEffect(() => {
+  useEffect(() => {
     if (existingSchedule) {
       setName(existingSchedule.name || '');
       setDescription(existingSchedule.description || '');
@@ -269,9 +269,9 @@ export default function PMTemplatesScreen() {
       })));
       
       const safety = (existingSchedule as unknown as { safety?: PMSafety }).safety;
-      if (safety && typeof safety === 'object') {
-        setLotoRequired(safety.lotoRequired || false);
-        setLotoSteps((safety.lotoSteps || []).map(s => ({
+      if (safety) {
+        setLotoRequired(safety.lotoRequired);
+        setLotoSteps(safety.lotoSteps.map(s => ({
           id: s.id,
           order: s.order,
           description: s.description,
@@ -279,8 +279,8 @@ export default function PMTemplatesScreen() {
           energySource: s.energySource,
           location: s.location,
         })));
-        setSelectedPermits(safety.permits || []);
-        setSelectedPPE(safety.ppeRequired || []);
+        setSelectedPermits(safety.permits);
+        setSelectedPPE(safety.ppeRequired);
       }
       
       if (existingSchedule.schedule_time) {
@@ -558,44 +558,6 @@ export default function PMTemplatesScreen() {
     );
   }, []);
 
-  const handleSignature = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    // For now, prompt for name as signature
-    Alert.prompt(
-      'PPN Signature',
-      'Enter your full name to sign this PM template',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Sign',
-          onPress: (value) => {
-            if (value && value.trim()) {
-              setSignedBy(value.trim());
-              setSignatureData(`Signed by ${value.trim()} on ${new Date().toLocaleDateString()} at ${new Date().toLocaleTimeString()}`);
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            }
-          },
-        },
-      ],
-      'plain-text',
-      signedBy
-    );
-  }, [signedBy]);
-
-  const handleClearSignature = useCallback(() => {
-    Alert.alert('Clear Signature', 'Are you sure you want to remove the signature?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Clear',
-        style: 'destructive',
-        onPress: () => {
-          setSignatureData('');
-          setSignedBy('');
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-        },
-      },
-    ]);
-  }, []);
 
   const handleSave = useCallback(() => {
     if (!name.trim()) {
@@ -640,9 +602,9 @@ export default function PMTemplatesScreen() {
       departments: selectedDepartments,
       photos: photos,
       documents: documents,
-      signature_data: signatureData || undefined,
-      signed_by: signedBy || undefined,
-      signed_at: signatureData ? new Date().toISOString() : undefined,
+      signature_data: signatureVerification?.signatureStamp || undefined,
+      signed_by: signatureVerification?.employeeName || undefined,
+      signed_at: signatureVerification?.verifiedAt || undefined,
       tasks: tasks.map(t => ({
         id: t.id,
         description: t.description,
@@ -672,7 +634,7 @@ export default function PMTemplatesScreen() {
     } else {
       createPMScheduleMutation.mutate(pmData as Omit<ExtendedPMSchedule, 'id' | 'organization_id' | 'created_at' | 'updated_at'>);
     }
-  }, [name, description, selectedEquipment, frequency, priority, estimatedHours, assignedTo, isActive, tasks, equipment, employees, isEditMode, existingSchedule, updatePMScheduleMutation, createPMScheduleMutation, selectedDepartments, photos, documents, signatureData, signedBy, lotoRequired, lotoSteps, selectedPermits, selectedPPE, scheduleTime, scheduleDays]);
+  }, [name, description, selectedEquipment, frequency, priority, estimatedHours, assignedTo, isActive, tasks, equipment, employees, isEditMode, existingSchedule, updatePMScheduleMutation, createPMScheduleMutation, selectedDepartments, photos, documents, signatureVerification, lotoRequired, lotoSteps, selectedPermits, selectedPPE, scheduleTime, scheduleDays]);
 
   const calculateNextDue = (freq: PMFrequency, days?: PMDayOfWeek[]): string => {
     const now = new Date();
@@ -1599,51 +1561,22 @@ export default function PMTemplatesScreen() {
             'PPN Signature',
             'signature',
             <Pen size={18} color="#EC4899" />,
-            signedBy ? 'SIGNED' : 'UNSIGNED',
-            signedBy ? '#10B981' : colors.textTertiary
+            signatureVerification ? 'VERIFIED' : 'UNSIGNED',
+            signatureVerification ? '#10B981' : colors.textTertiary
           )}
           {expandedSections.has('signature') && (
             <View style={styles.sectionContent}>
               <Text style={[styles.switchHint, { color: colors.textSecondary, marginBottom: 12 }]}>
                 Sign off on this PM template to confirm review and approval
               </Text>
-              {signatureData ? (
-                <View style={{
-                  padding: 16, borderRadius: 12, marginBottom: 12,
-                  backgroundColor: '#10B98110',
-                  borderWidth: 1, borderColor: '#10B98140',
-                }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                    <CheckCircle size={20} color="#10B981" />
-                    <Text style={{ fontSize: 16, fontWeight: '700', color: '#10B981' }}>Signed</Text>
-                  </View>
-                  <Text style={{ fontSize: 15, fontWeight: '600', color: colors.text, marginBottom: 4 }}>
-                    {signedBy}
-                  </Text>
-                  <Text style={{ fontSize: 12, color: colors.textSecondary }}>
-                    {signatureData}
-                  </Text>
-                  <Pressable
-                    style={{
-                      flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-                      marginTop: 12, padding: 10, borderRadius: 8,
-                      backgroundColor: '#EF444415', gap: 6,
-                    }}
-                    onPress={handleClearSignature}
-                  >
-                    <Trash2 size={14} color="#EF4444" />
-                    <Text style={{ fontSize: 13, fontWeight: '500', color: '#EF4444' }}>Clear Signature</Text>
-                  </Pressable>
-                </View>
-              ) : (
-                <Pressable
-                  style={[styles.addButton, { borderColor: '#EC4899', backgroundColor: '#EC489910' }]}
-                  onPress={handleSignature}
-                >
-                  <Pen size={18} color="#EC4899" />
-                  <Text style={[styles.addButtonText, { color: '#EC4899' }]}>Sign PM Template</Text>
-                </Pressable>
-              )}
+              <PinSignatureCapture
+                onVerified={(verification) => setSignatureVerification(verification)}
+                onCleared={() => setSignatureVerification(null)}
+                formLabel="PM Schedule Template"
+                existingVerification={signatureVerification}
+                required={true}
+                accentColor="#EC4899"
+              />
             </View>
           )}
         </View>
