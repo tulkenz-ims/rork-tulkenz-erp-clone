@@ -269,8 +269,18 @@ export default function PMTemplatesScreen() {
       
       const safety = (existingSchedule as unknown as { safety?: PMSafety }).safety;
       if (safety) {
-        setLotoRequired(safety.lotoRequired);
-        setLotoSteps(safety.lotoSteps.map(s => ({
+        setLotoRequired(safety.lotoRequired || false);
+        setLotoSteps((safety.lotoSteps || []).map(s => ({
+          id: s.id,
+          order: s.order,
+          description: s.description,
+          lockColor: s.lockColor,
+          energySource: s.energySource,
+          location: s.location,
+        })));
+        setSelectedPermits(safety.permits || []);
+        setSelectedPPE(safety.ppeRequired || []);
+      }
           id: s.id,
           order: s.order,
           description: s.description,
