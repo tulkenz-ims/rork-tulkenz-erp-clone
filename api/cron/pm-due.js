@@ -188,7 +188,7 @@ module.exports = async (req, res) => {
           template_id: null,
           template_name: `PM: ${pm.name}`,
           template_snapshot: null,
-          created_by_id: 'system-cron',
+          created_by_id: null,
           created_by_name: 'PM Auto-Scheduler',
           facility_id: pm.facility_id || null,
           location_id: null,
