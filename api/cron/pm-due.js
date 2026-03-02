@@ -349,6 +349,24 @@ module.exports = async (req, res) => {
         results.posted++;
         console.log(`✓ Posted PM "${pm.name}" → ${postNumber} | WO: ${woNumber} | ${departments.length} depts | Next due: ${newNextDue}`);
 
+        } catch (pmError) {
+        console.error(`Unexpected error processing PM ${pm.id}:`, pmError);
+        results.errors.push({ pm_id: pm.id, pm_name: pm.name, error: pmError.message });
+      }
+    }
+
+    console.log(`Done: ${results.posted}/${results.processed} posted, ${results.errors.length} errors`);
+    return res.status(200).json({
+      message: `Processed ${results.processed} PM(s)`,
+      ...results,
+    });
+
+  } catch (err) {
+    console.error('Cron job failed:', err);
+    return res.status(500).json({ error: 'Cron job failed', details: err.message });
+  }
+};
+
 // ══════════════════════════════════════════════════════════════════════════════
 // VERCEL.JSON — Add this to your existing vercel.json:
 //
