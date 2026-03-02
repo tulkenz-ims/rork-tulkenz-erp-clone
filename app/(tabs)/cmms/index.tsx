@@ -32,6 +32,7 @@ import {
   Zap,
   Plus,
   AlertOctagon,
+  Inbox,
   Wrench,
 } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
