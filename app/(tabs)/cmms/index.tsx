@@ -32,6 +32,7 @@ import {
   Zap,
   Plus,
   AlertOctagon,
+  Wrench,
 } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -203,7 +204,6 @@ export default function CMMSScreen() {
   const { data: eqMetrics, refetch: refetchEqMetrics } = useEquipmentMetrics();
   const { data: pmMetrics, refetch: refetchPMMetrics } = usePMScheduleMetrics();
 
-  // Log any errors for debugging
   React.useEffect(() => {
     if (woError) console.error('[CMMSScreen] Work Order Error:', woError);
     if (eqError) console.error('[CMMSScreen] Equipment Error:', eqError);
@@ -246,7 +246,6 @@ export default function CMMSScreen() {
     });
   }, []);
 
-  // Work Order Statistics from Supabase
   const woStats = useMemo(() => {
     if (woMetrics) {
       const critical = workOrders.filter(wo => wo.priority === 'critical' && wo.status !== 'completed').length;
@@ -272,7 +271,6 @@ export default function CMMSScreen() {
     return { open, inProgress, completed, overdue, critical, total };
   }, [workOrders, woMetrics]);
 
-  // PM Statistics from Supabase
   const pmStats = useMemo(() => {
     if (pmMetrics) {
       const rate = typeof pmMetrics.complianceRate === 'number' && !isNaN(pmMetrics.complianceRate) 
@@ -295,7 +293,6 @@ export default function CMMSScreen() {
     return { scheduled, overdue, completed, total, complianceRate };
   }, [pmSchedules, pmMetrics]);
 
-  // Equipment Statistics from Supabase
   const equipmentStats = useMemo(() => {
     if (eqMetrics) {
       const total = eqMetrics.total || 1;
@@ -316,7 +313,6 @@ export default function CMMSScreen() {
     return { operational, down, maintenance, total, uptimeRate };
   }, [equipment, eqMetrics]);
 
-  // KPIs calculated from actual Supabase data
   const kpis = useMemo(() => ({
     mttr: { value: 0, unit: 'hrs', trend: 0, label: 'MTTR' },
     mtbf: { value: 0, unit: 'hrs', trend: 0, label: 'MTBF' },
@@ -326,7 +322,6 @@ export default function CMMSScreen() {
     firstTimeFixRate: { value: 0, unit: '%', trend: 0, label: 'First Time Fix' },
   }), [pmStats.complianceRate, woStats.open, woStats.inProgress]);
 
-  // Recent Activity Feed - derived from Supabase data
   const recentActivity: RecentActivity[] = useMemo(() => {
     const activities: RecentActivity[] = [];
     const now = new Date();
@@ -345,7 +340,6 @@ export default function CMMSScreen() {
       return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
     };
 
-    // Add work order activities from Supabase
     workOrders.slice(0, 20).forEach(wo => {
       if (wo.status === 'completed' && wo.completed_at) {
         activities.push({
@@ -380,7 +374,6 @@ export default function CMMSScreen() {
       }
     });
 
-    // Add PM work order activities from Supabase
     pmWorkOrders.slice(0, 10).forEach(pm => {
       if (pm.status === 'completed' && pm.completed_at) {
         activities.push({
@@ -394,7 +387,6 @@ export default function CMMSScreen() {
       }
     });
 
-    // Add equipment down events from Supabase
     equipment.forEach(eq => {
       if (eq.status === 'down') {
         activities.push({
@@ -409,14 +401,12 @@ export default function CMMSScreen() {
       }
     });
 
-    // Sort by date and return top 10
     return activities
       .sort((a, b) => ((b as any)._sortDate || 0) - ((a as any)._sortDate || 0))
       .slice(0, 10)
       .map(({ _sortDate, ...rest }: any) => rest as RecentActivity);
   }, [workOrders, pmWorkOrders, equipment]);
 
-  // Upcoming PMs - derived from Supabase PM schedules
   const upcomingPMs: UpcomingPM[] = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -595,8 +585,6 @@ ${completionData.additionalNotes}` : ''}
     }
   }, [organizationId, facilityId, user]);
 
-  // Create an OPEN work order from Task Feed and return its ID
-  // Tech will use the full WorkOrderDetail screen to complete it
   const handleCreateOpenWorkOrder = useCallback(async (
     task: TaskFeedDepartmentTask & { post?: { template_name?: string } }
   ): Promise<string | null> => {
@@ -645,7 +633,6 @@ ${completionData.additionalNotes}` : ''}
 
       if (error) {
         console.error('[CMMS] Error creating open WO:', error);
-        // Fallback: try without assigned_to/facility_id in case of UUID issues
         const { data: fallback, error: fallbackErr } = await supabase
           .from('work_orders')
           .insert({
@@ -879,19 +866,65 @@ ${completionData.additionalNotes}` : ''}
           </View>
         </View>
 
+        {/* ═══════════════════════════════════════════════════════════ */}
+        {/* TWO-PANE INBOX: Reactive | Preventive                     */}
+        {/* ═══════════════════════════════════════════════════════════ */}
+        <View style={styles.inboxSection}>
+          <View style={styles.sectionHeaderRow}>
+            <View style={styles.sectionTitleRow}>
+              <Inbox size={18} color="#3B82F6" />
+              <Text style={[styles.sectionTitleInline, { color: colors.text }]}>Maintenance Inbox</Text>
+            </View>
+          </View>
+
+          <View style={styles.twoPaneContainer}>
+            {/* Reactive Pane */}
+            <View style={[styles.inboxPane, { borderColor: colors.border }]}>
+              <View style={[styles.paneHeader, { backgroundColor: '#EF444410' }]}>
+                <AlertTriangle size={16} color="#EF4444" />
+                <Text style={[styles.paneHeaderTitle, { color: '#EF4444' }]}>Reactive</Text>
+              </View>
+              <ScrollView style={styles.paneScrollView} nestedScrollEnabled showsVerticalScrollIndicator={false}>
+                <TaskFeedInbox
+                  departmentCode="1001"
+                  moduleColor="#EF4444"
+                  workOrderTypeFilter="reactive"
+                  onTaskCompleted={handleTaskCompleted}
+                  createFullWorkOrder={handleCreateFullWorkOrder}
+                  createOpenWorkOrder={handleCreateOpenWorkOrder}
+                  requiresFullWorkOrder={true}
+                  maxVisible={20}
+                  showHeader={false}
+                />
+              </ScrollView>
+            </View>
+
+            {/* Preventive Pane */}
+            <View style={[styles.inboxPane, { borderColor: colors.border }]}>
+              <View style={[styles.paneHeader, { backgroundColor: '#10B98110' }]}>
+                <Wrench size={16} color="#10B981" />
+                <Text style={[styles.paneHeaderTitle, { color: '#10B981' }]}>Preventive</Text>
+              </View>
+              <ScrollView style={styles.paneScrollView} nestedScrollEnabled showsVerticalScrollIndicator={false}>
+                <TaskFeedInbox
+                  departmentCode="1001"
+                  moduleColor="#10B981"
+                  workOrderTypeFilter="preventive"
+                  onTaskCompleted={handleTaskCompleted}
+                  createFullWorkOrder={handleCreateFullWorkOrder}
+                  createOpenWorkOrder={handleCreateOpenWorkOrder}
+                  requiresFullWorkOrder={true}
+                  maxVisible={20}
+                  showHeader={false}
+                />
+              </ScrollView>
+            </View>
+          </View>
+        </View>
+
         {/* Quick Actions */}
         <View style={styles.quickActionsSection}>
-          <TaskFeedInbox
-          departmentCode="1001"
-          moduleColor="#3B82F6"
-          onTaskCompleted={handleTaskCompleted}
-          createFullWorkOrder={handleCreateFullWorkOrder}
-          createOpenWorkOrder={handleCreateOpenWorkOrder}
-          requiresFullWorkOrder={true}
-          maxVisible={3}
-        />
-
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>Quick Actions</Text>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Quick Actions</Text>
           <View style={styles.quickActionsGrid}>
             {quickActions.map((action, index) => {
               const IconComponent = action.icon;
@@ -1273,6 +1306,37 @@ const styles = StyleSheet.create({
   pmStatLabel: {
     fontSize: 10,
   },
+  // ══════════════════════════════════════════
+  // Two-Pane Inbox Styles
+  // ══════════════════════════════════════════
+  inboxSection: {
+    marginBottom: 16,
+  },
+  twoPaneContainer: {
+    flexDirection: 'row' as const,
+    gap: 10,
+  },
+  inboxPane: {
+    flex: 1,
+    borderRadius: 12,
+    borderWidth: 1,
+    overflow: 'hidden' as const,
+  },
+  paneHeader: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    paddingVertical: 10,
+    gap: 6,
+  },
+  paneHeaderTitle: {
+    fontSize: 14,
+    fontWeight: '700' as const,
+  },
+  paneScrollView: {
+    maxHeight: 400,
+  },
+  // ══════════════════════════════════════════
   quickActionsSection: {
     marginBottom: 16,
   },
