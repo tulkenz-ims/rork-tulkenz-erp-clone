@@ -181,7 +181,52 @@ module.exports = async (req, res) => {
           buildSafetyNotes(safety),
         ].filter(Boolean).join('\n');
 
-        // ── Insert Task Feed Post ──
+        // ── Create PM Work Order ──
+        const woNumber = `WO-PM-${String(now.getFullYear()).slice(-2)}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${String(Math.floor(100000 + Math.random() * 900000))}`;
+
+        const woData = {
+          organization_id: pm.organization_id,
+          work_order_number: woNumber,
+          title: `PM: ${pm.name}`,
+          description: pm.description || `Preventive Maintenance — ${pm.name}\nEquipment: ${pm.equipment_name || 'N/A'} (${pm.equipment_tag || 'N/A'})\nFrequency: ${pm.frequency}`,
+          status: 'open',
+          priority: pm.priority || 'medium',
+          type: 'preventive',
+          source: 'pm_schedule',
+          source_id: pm.id,
+          assigned_to: pm.assigned_to || null,
+          assigned_name: pm.assigned_name || null,
+          facility_id: pm.facility_id || null,
+          equipment_id: pm.equipment_id || null,
+          equipment: pm.equipment_name || null,
+          location: pm.equipment_name || null,
+          due_date: new Date().toISOString().split('T')[0],
+          estimated_hours: pm.estimated_hours || null,
+          department: '1001',
+          department_name: 'Maintenance',
+          tasks: tasks.length > 0 ? tasks : null,
+          safety: (safety.lotoRequired || (safety.permits && safety.permits.length > 0) || (safety.ppeRequired && safety.ppeRequired.length > 0)) ? safety : null,
+          attachments: {
+            photos: pm.photos || [],
+            documents: pm.documents || [],
+          },
+        };
+
+        const { data: newWO, error: woError } = await supabase
+          .from('work_orders')
+          .insert(woData)
+          .select('id, work_order_number')
+          .single();
+
+        if (woError) {
+          console.error(`Error creating PM work order for PM ${pm.id}:`, woError);
+          results.errors.push({ pm_id: pm.id, pm_name: pm.name, error: 'Work order: ' + woError.message });
+          continue;
+        }
+
+        console.log(`✓ Created PM Work Order ${woNumber} for "${pm.name}"`);
+
+        // ── Insert Task Feed Post (linked to work order) ──
         const postData = {
           organization_id: pm.organization_id,
           post_number: postNumber,
@@ -195,6 +240,8 @@ module.exports = async (req, res) => {
           location_name: pm.equipment_name || null,
           form_data: {
             pm_schedule_id: pm.id,
+            work_order_id: newWO.id,
+            work_order_number: newWO.work_order_number,
             equipment_name: pm.equipment_name,
             equipment_tag: pm.equipment_tag,
             equipment_id: pm.equipment_id,
@@ -205,6 +252,7 @@ module.exports = async (req, res) => {
             safety: safety,
             auto_generated: true,
             generated_at: todayISO,
+            work_order_type: 'preventive',
           },
           photo_url: (pm.photos && pm.photos.length > 0) ? pm.photos[0] : null,
           additional_photos: (pm.photos && pm.photos.length > 1) ? pm.photos.slice(1) : [],
@@ -238,8 +286,8 @@ module.exports = async (req, res) => {
           department_code: deptCode,
           department_name: DEPARTMENT_NAMES[deptCode] || `Dept ${deptCode}`,
           status: 'pending',
-          module_reference_type: 'pm_schedule',
-          module_reference_id: pm.id,
+          module_reference_type: 'pm_work_order',
+          module_reference_id: newWO.id,
           is_original: true,
           priority: pm.priority || 'medium',
         }));
@@ -251,7 +299,6 @@ module.exports = async (req, res) => {
         if (deptError) {
           console.error(`Error creating dept tasks for PM ${pm.id}:`, deptError);
           results.errors.push({ pm_id: pm.id, pm_name: pm.name, error: 'Dept tasks: ' + deptError.message });
-          // Post was created but dept tasks failed — still count it
         }
 
         // ── Insert Task Verification (so it appears in feed) ──
@@ -275,6 +322,7 @@ module.exports = async (req, res) => {
             source_type: 'task_feed_post',
             source_id: newPost.id,
             source_number: postNumber,
+            linked_work_order_id: newWO.id,
           });
 
         if (tvError) {
@@ -299,25 +347,7 @@ module.exports = async (req, res) => {
         }
 
         results.posted++;
-        console.log(`✓ Posted PM "${pm.name}" → ${postNumber} (${departments.length} depts) | Next due: ${newNextDue}`);
-
-      } catch (pmError) {
-        console.error(`Unexpected error processing PM ${pm.id}:`, pmError);
-        results.errors.push({ pm_id: pm.id, pm_name: pm.name, error: pmError.message });
-      }
-    }
-
-    console.log(`Done: ${results.posted}/${results.processed} posted, ${results.errors.length} errors`);
-    return res.status(200).json({
-      message: `Processed ${results.processed} PM(s)`,
-      ...results,
-    });
-
-  } catch (err) {
-    console.error('Cron job failed:', err);
-    return res.status(500).json({ error: 'Cron job failed', details: err.message });
-  }
-};
+        console.log(`✓ Posted PM "${pm.name}" → ${postNumber} | WO: ${woNumber} | ${departments.length} depts | Next due: ${newNextDue}`);
 
 // ══════════════════════════════════════════════════════════════════════════════
 // VERCEL.JSON — Add this to your existing vercel.json:
