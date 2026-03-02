@@ -60,6 +60,7 @@ interface WorkOrderCompletionData {
 interface TaskFeedInboxProps {
   departmentCode: string;
   moduleColor?: string;
+  workOrderTypeFilter?: 'reactive' | 'preventive' | 'all';
   onTaskCompleted?: (task: TaskFeedDepartmentTask, moduleHistoryId?: string) => void;
   createModuleHistoryRecord?: (task: TaskFeedDepartmentTask, notes: string) => Promise<string | null>;
   createFullWorkOrder?: (task: TaskFeedDepartmentTask, data: WorkOrderCompletionData) => Promise<string | null>;
@@ -67,6 +68,7 @@ interface TaskFeedInboxProps {
   maxVisible?: number;
   showHeader?: boolean;
   requiresFullWorkOrder?: boolean;
+  compactMode?: boolean;
 }
 
 interface PostDetails {
@@ -87,6 +89,7 @@ const MAINTENANCE_DEPT_CODES = ['1001', '3000', 'MAINT', 'MNT'];
 export default function TaskFeedInbox({
   departmentCode,
   moduleColor,
+  workOrderTypeFilter = 'all',
   onTaskCompleted,
   createModuleHistoryRecord,
   createFullWorkOrder,
@@ -94,6 +97,7 @@ export default function TaskFeedInbox({
   maxVisible = 5,
   showHeader = true,
   requiresFullWorkOrder,
+  compactMode = false,
 }: TaskFeedInboxProps) {
   const { colors } = useTheme();
   const { user } = useUser();
@@ -125,9 +129,8 @@ export default function TaskFeedInbox({
   });
 
   const pendingTasks = useMemo(() => {
-    return rawTasks.map((task: any) => ({
+    const mapped = rawTasks.map((task: any) => ({
       ...task,
-      // Map snake_case DB fields to camelCase for component use
       formCompletions: task.form_completions || [],
       suggestedForms: task.suggested_forms || [],
       formsCompleted: task.forms_completed || 0,
@@ -152,7 +155,19 @@ export default function TaskFeedInbox({
         holdStatus: task.task_feed_posts.hold_status || 'none',
       } : undefined,
     }));
-  }, [rawTasks]);
+
+    if (workOrderTypeFilter === 'all') return mapped;
+
+    return mapped.filter((task: any) => {
+      const refType = task.module_reference_type || '';
+      const postFormData = task.post?.form_data || {};
+      const isPM = refType === 'pm_work_order' || refType === 'pm_schedule' || postFormData.work_order_type === 'preventive' || postFormData.auto_generated === true || postFormData.manual_generate === true;
+
+      if (workOrderTypeFilter === 'preventive') return isPM;
+      if (workOrderTypeFilter === 'reactive') return !isPM;
+      return true;
+    });
+  }, [rawTasks, workOrderTypeFilter]);
 
   const completeMutation = useCompleteDepartmentTask({
     onSuccess: (data) => {
