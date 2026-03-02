@@ -8,6 +8,8 @@ import {
   TextInput,
   RefreshControl,
   Modal,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
@@ -24,6 +26,7 @@ import {
   X,
   Play,
   Pause,
+  Wrench,
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import {
@@ -34,6 +37,8 @@ import {
   type PMPriority,
 } from '@/hooks/useSupabasePMSchedules';
 import * as Haptics from 'expo-haptics';
+import PinSignatureCapture from '@/components/PinSignatureCapture';
+import { SignatureVerification } from '@/hooks/usePinSignature';
 
 type StatusFilter = 'all' | 'active' | 'inactive';
 type FrequencyFilter = PMFrequency | 'all';
@@ -69,6 +74,12 @@ export default function PMScheduleScreen() {
   const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>('all');
   const [refreshing, setRefreshing] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
+
+  // Generate WO state
+  const [showGenerateWOModal, setShowGenerateWOModal] = useState(false);
+  const [selectedPMForGenerate, setSelectedPMForGenerate] = useState<ExtendedPMSchedule | null>(null);
+  const [generateSignature, setGenerateSignature] = useState<SignatureVerification | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -157,6 +168,62 @@ export default function PMScheduleScreen() {
     const dueDate = new Date(nextDue);
     return Math.ceil((dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
   };
+
+  // ── Generate WO handlers ──
+  const handleOpenGenerateWO = useCallback((pm: ExtendedPMSchedule) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setSelectedPMForGenerate(pm);
+    setGenerateSignature(null);
+    setShowGenerateWOModal(true);
+  }, []);
+
+  const handleGenerateWO = useCallback(async () => {
+    if (!selectedPMForGenerate) return;
+    if (!generateSignature) {
+      Alert.alert('Signature Required', 'Please verify your identity with PPN before generating a work order.');
+      return;
+    }
+
+    setIsGenerating(true);
+
+    try {
+      const response = await fetch('/api/pm/generate-wo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pm_schedule_id: selectedPMForGenerate.id,
+          triggered_by_name: generateSignature.employeeName,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || data.details || 'Failed to generate work order');
+      }
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+      Alert.alert(
+        'Work Order Generated',
+        `${data.work_order.work_order_number} has been created for "${selectedPMForGenerate.name}".\n\nTask Feed: ${data.task_feed_post.post_number}\nDepartments notified: ${data.departments_notified}`,
+        [{ text: 'OK' }]
+      );
+
+      setShowGenerateWOModal(false);
+      setSelectedPMForGenerate(null);
+      setGenerateSignature(null);
+      
+      // Refresh to show updated next_due
+      await refetch();
+
+    } catch (error: any) {
+      console.error('[PMSchedule] Generate WO error:', error);
+      Alert.alert('Error', error.message || 'Failed to generate work order. Please try again.');
+    } finally {
+      setIsGenerating(false);
+    }
+  }, [selectedPMForGenerate, generateSignature, refetch]);
 
   const renderScheduleCard = useCallback((item: ExtendedPMSchedule) => {
     const priorityConfig = PRIORITY_CONFIG[item.priority as PMPriority] || PRIORITY_CONFIG.medium;
@@ -267,9 +334,23 @@ export default function PMScheduleScreen() {
             </Text>
           </View>
         </View>
+
+        {/* Generate WO Button */}
+        {item.active && (
+          <Pressable
+            style={[styles.generateWOButton, { backgroundColor: '#8B5CF6' }]}
+            onPress={(e) => {
+              e.stopPropagation();
+              handleOpenGenerateWO(item);
+            }}
+          >
+            <Wrench size={16} color="#FFFFFF" />
+            <Text style={styles.generateWOButtonText}>Generate Work Order</Text>
+          </Pressable>
+        )}
       </Pressable>
     );
-  }, [colors, handleSchedulePress]);
+  }, [colors, handleSchedulePress, handleOpenGenerateWO]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -365,6 +446,7 @@ export default function PMScheduleScreen() {
         <View style={styles.bottomPadding} />
       </ScrollView>
 
+      {/* Filter Modal */}
       <Modal
         visible={showFilters}
         transparent
@@ -495,6 +577,170 @@ export default function PMScheduleScreen() {
                 onPress={() => setShowFilters(false)}
               >
                 <Text style={[styles.modalButtonText, { color: '#FFFFFF' }]}>Apply</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Generate Work Order Modal with PPN Signature */}
+      <Modal
+        visible={showGenerateWOModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => {
+          if (!isGenerating) {
+            setShowGenerateWOModal(false);
+            setSelectedPMForGenerate(null);
+            setGenerateSignature(null);
+          }
+        }}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => {
+            if (!isGenerating) {
+              setShowGenerateWOModal(false);
+              setSelectedPMForGenerate(null);
+              setGenerateSignature(null);
+            }
+          }}
+        >
+          <Pressable style={[styles.generateModalContent, { backgroundColor: colors.surface }]} onPress={e => e.stopPropagation()}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Generate Work Order</Text>
+              <Pressable
+                onPress={() => {
+                  if (!isGenerating) {
+                    setShowGenerateWOModal(false);
+                    setSelectedPMForGenerate(null);
+                    setGenerateSignature(null);
+                  }
+                }}
+              >
+                <X size={24} color={colors.text} />
+              </Pressable>
+            </View>
+
+            <ScrollView style={styles.generateModalBody} showsVerticalScrollIndicator={false}>
+              {selectedPMForGenerate && (
+                <>
+                  {/* PM Summary */}
+                  <View style={[styles.pmSummaryCard, { backgroundColor: colors.backgroundSecondary, borderColor: colors.border }]}>
+                    <View style={styles.pmSummaryHeader}>
+                      <Calendar size={20} color="#8B5CF6" />
+                      <Text style={[styles.pmSummaryTitle, { color: colors.text }]} numberOfLines={2}>
+                        {selectedPMForGenerate.name}
+                      </Text>
+                    </View>
+                    <View style={styles.pmSummaryDetails}>
+                      <View style={styles.pmSummaryRow}>
+                        <Cog size={14} color={colors.textSecondary} />
+                        <Text style={[styles.pmSummaryText, { color: colors.textSecondary }]}>
+                          {selectedPMForGenerate.equipment_name || 'N/A'} ({selectedPMForGenerate.equipment_tag || 'N/A'})
+                        </Text>
+                      </View>
+                      <View style={styles.pmSummaryRow}>
+                        <Clock size={14} color={colors.textSecondary} />
+                        <Text style={[styles.pmSummaryText, { color: colors.textSecondary }]}>
+                          {FREQUENCY_LABELS[selectedPMForGenerate.frequency as PMFrequency] || selectedPMForGenerate.frequency} • Est. {selectedPMForGenerate.estimated_hours || 1}h
+                        </Text>
+                      </View>
+                      {selectedPMForGenerate.assigned_name && (
+                        <View style={styles.pmSummaryRow}>
+                          <User size={14} color={colors.textSecondary} />
+                          <Text style={[styles.pmSummaryText, { color: colors.textSecondary }]}>
+                            Assigned: {selectedPMForGenerate.assigned_name}
+                          </Text>
+                        </View>
+                      )}
+                      <View style={styles.pmSummaryRow}>
+                        <CheckCircle size={14} color={colors.textSecondary} />
+                        <Text style={[styles.pmSummaryText, { color: colors.textSecondary }]}>
+                          {((selectedPMForGenerate as any).tasks || []).length} tasks
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={[styles.pmSummaryBadgeRow]}>
+                      <View style={[styles.pmSummaryBadge, { backgroundColor: (PRIORITY_CONFIG[selectedPMForGenerate.priority as PMPriority] || PRIORITY_CONFIG.medium).color + '15' }]}>
+                        <Text style={[styles.pmSummaryBadgeText, { color: (PRIORITY_CONFIG[selectedPMForGenerate.priority as PMPriority] || PRIORITY_CONFIG.medium).color }]}>
+                          {(PRIORITY_CONFIG[selectedPMForGenerate.priority as PMPriority] || PRIORITY_CONFIG.medium).label} Priority
+                        </Text>
+                      </View>
+                      <View style={[styles.pmSummaryBadge, { backgroundColor: '#8B5CF615' }]}>
+                        <Text style={[styles.pmSummaryBadgeText, { color: '#8B5CF6' }]}>
+                          Preventive
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  {/* What will happen */}
+                  <View style={[styles.generateInfoCard, { backgroundColor: '#8B5CF610', borderColor: '#8B5CF640' }]}>
+                    <Wrench size={18} color="#8B5CF6" />
+                    <View style={styles.generateInfoContent}>
+                      <Text style={[styles.generateInfoTitle, { color: '#8B5CF6' }]}>This will:</Text>
+                      <Text style={[styles.generateInfoText, { color: colors.textSecondary }]}>
+                        • Create a PM Work Order (WO-PM-...){'\n'}
+                        • Post to Task Feed with linked WO{'\n'}
+                        • Send to assigned department inboxes{'\n'}
+                        • Advance next due date to {FREQUENCY_LABELS[selectedPMForGenerate.frequency as PMFrequency] || selectedPMForGenerate.frequency} schedule
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* PPN Signature */}
+                  <View style={styles.signatureSection}>
+                    <Text style={[styles.signatureSectionTitle, { color: colors.text }]}>
+                      Authorization Required
+                    </Text>
+                    <Text style={[styles.signatureSectionHint, { color: colors.textSecondary }]}>
+                      Verify your identity with PPN to authorize this work order
+                    </Text>
+                    <PinSignatureCapture
+                      onVerified={(verification) => setGenerateSignature(verification)}
+                      onCleared={() => setGenerateSignature(null)}
+                      formLabel="Generate PM Work Order"
+                      existingVerification={generateSignature}
+                      required={true}
+                      accentColor="#8B5CF6"
+                    />
+                  </View>
+                </>
+              )}
+            </ScrollView>
+
+            {/* Footer Buttons */}
+            <View style={[styles.generateModalFooter, { borderTopColor: colors.border }]}>
+              <Pressable
+                style={[styles.generateModalButton, { backgroundColor: colors.backgroundSecondary }]}
+                onPress={() => {
+                  if (!isGenerating) {
+                    setShowGenerateWOModal(false);
+                    setSelectedPMForGenerate(null);
+                    setGenerateSignature(null);
+                  }
+                }}
+                disabled={isGenerating}
+              >
+                <Text style={[styles.generateModalButtonText, { color: colors.text }]}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={[
+                  styles.generateModalButton,
+                  { backgroundColor: generateSignature && !isGenerating ? '#8B5CF6' : colors.border },
+                ]}
+                onPress={handleGenerateWO}
+                disabled={!generateSignature || isGenerating}
+              >
+                {isGenerating ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <>
+                    <Wrench size={18} color="#FFFFFF" />
+                    <Text style={[styles.generateModalButtonText, { color: '#FFFFFF' }]}>Generate WO</Text>
+                  </>
+                )}
               </Pressable>
             </View>
           </Pressable>
@@ -672,6 +918,20 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500' as const,
   },
+  generateWOButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: 8,
+    marginTop: 10,
+    gap: 8,
+  },
+  generateWOButtonText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '600' as const,
+  },
   emptyState: {
     alignItems: 'center' as const,
     paddingVertical: 60,
@@ -756,6 +1016,111 @@ const styles = StyleSheet.create({
     alignItems: 'center' as const,
   },
   modalButtonText: {
+    fontSize: 15,
+    fontWeight: '600' as const,
+  },
+  // Generate WO Modal styles
+  generateModalContent: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '90%',
+  },
+  generateModalBody: {
+    paddingHorizontal: 20,
+    maxHeight: 500,
+  },
+  pmSummaryCard: {
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 16,
+  },
+  pmSummaryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 12,
+  },
+  pmSummaryTitle: {
+    fontSize: 16,
+    fontWeight: '600' as const,
+    flex: 1,
+  },
+  pmSummaryDetails: {
+    gap: 8,
+    marginBottom: 12,
+  },
+  pmSummaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  pmSummaryText: {
+    fontSize: 13,
+    flex: 1,
+  },
+  pmSummaryBadgeRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  pmSummaryBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  pmSummaryBadgeText: {
+    fontSize: 11,
+    fontWeight: '600' as const,
+  },
+  generateInfoCard: {
+    flexDirection: 'row',
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 20,
+    gap: 12,
+    alignItems: 'flex-start',
+  },
+  generateInfoContent: {
+    flex: 1,
+  },
+  generateInfoTitle: {
+    fontSize: 14,
+    fontWeight: '600' as const,
+    marginBottom: 6,
+  },
+  generateInfoText: {
+    fontSize: 13,
+    lineHeight: 22,
+  },
+  signatureSection: {
+    marginBottom: 20,
+  },
+  signatureSectionTitle: {
+    fontSize: 15,
+    fontWeight: '600' as const,
+    marginBottom: 4,
+  },
+  signatureSectionHint: {
+    fontSize: 12,
+    marginBottom: 12,
+  },
+  generateModalFooter: {
+    flexDirection: 'row',
+    gap: 12,
+    padding: 20,
+    borderTopWidth: 1,
+  },
+  generateModalButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 10,
+    gap: 8,
+  },
+  generateModalButtonText: {
     fontSize: 15,
     fontWeight: '600' as const,
   },
