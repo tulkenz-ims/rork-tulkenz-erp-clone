@@ -368,6 +368,18 @@ export default function WorkOrderDetail({
   // Live downtime timer
   const [downtimeDuration, setDowntimeDuration] = useState<string>('');
 
+  // ═══════════════ EDITABLE INFO FIELDS ═══════════════
+  const [isEditingInfo, setIsEditingInfo] = useState(false);
+  const [editEquipment, setEditEquipment] = useState(workOrder.equipment || '');
+  const [editLocation, setEditLocation] = useState(workOrder.location || '');
+  const [editDueDate, setEditDueDate] = useState(workOrder.due_date || '');
+  const [editDescription, setEditDescription] = useState(workOrder.description || '');
+
+    // ═══════════════ START WORK MODAL — PPN REQUIRED ═══════════════
+  const [showStartWorkModal, setShowStartWorkModal] = useState(false);
+  const [startWorkSignature, setStartWorkSignature] = useState<SignatureVerification | null>(null);
+  const [isStarting, setIsStarting] = useState(false);
+
   useEffect(() => {
     if (!activeDowntimeEvent || activeDowntimeEvent.status !== 'ongoing' || !activeDowntimeEvent.stopped_at) {
       setDowntimeDuration('');
@@ -424,6 +436,47 @@ export default function WorkOrderDetail({
       return next;
     });
   }, []);
+
+  // ─── Save Edited Info Fields ───
+  const handleSaveInfoEdits = useCallback(() => {
+    const updates: Partial<DetailedWorkOrder> = {};
+    const trimmedEquipment = editEquipment.trim() || 'N/A';
+    const trimmedLocation = editLocation.trim() || 'N/A';
+    const trimmedDueDate = editDueDate.trim() || 'N/A';
+    const trimmedDescription = editDescription.trim() || 'N/A';
+
+    if (trimmedEquipment !== (workOrder.equipment || '')) updates.equipment = trimmedEquipment;
+    if (trimmedLocation !== (workOrder.location || '')) updates.location = trimmedLocation;
+    if (trimmedDueDate !== (workOrder.due_date || '')) updates.due_date = trimmedDueDate;
+    if (trimmedDescription !== (workOrder.description || '')) updates.description = trimmedDescription;
+
+    if (Object.keys(updates).length > 0) {
+      // Update local state immediately
+      onUpdate(workOrder.id, updates);
+
+      // Persist to Supabase
+      console.log('[WorkOrderDetail] Saving info edits:', Object.keys(updates));
+      updateWorkOrderMutation.mutate(
+        { id: workOrder.id, updates },
+        {
+          onSuccess: () => {
+            console.log('[WorkOrderDetail] Info edits saved successfully');
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          },
+          onError: (error) => {
+            console.error('[WorkOrderDetail] Failed to save info edits:', error);
+            // Revert on error
+            setEditEquipment(workOrder.equipment || '');
+            setEditLocation(workOrder.location || '');
+            setEditDueDate(workOrder.due_date || '');
+            setEditDescription(workOrder.description || '');
+            Alert.alert('Error', 'Failed to save changes. Please try again.');
+          },
+        }
+      );
+    }
+    setIsEditingInfo(false);
+  }, [workOrder, editEquipment, editLocation, editDueDate, editDescription, onUpdate, updateWorkOrderMutation]);
 
   const handleToggleTask = useCallback((taskId: string) => {
     if (!canEdit) return;
@@ -1256,6 +1309,19 @@ export default function WorkOrderDetail({
     return failureCodeCategoriesData.filter(cat => groupedFailureCodes[cat.id]?.length > 0);
   }, [groupedFailureCodes, failureCodeCategoriesData]);
 
+  // ═══════════════ PRE-START VALIDATION ═══════════════
+  const preStartValidation = useMemo(() => {
+    const issues: string[] = [];
+    if (!workOrder.equipment) issues.push('Equipment not specified');
+    if (!workOrder.location) issues.push('Location not specified');
+    if (!workOrder.assignedName) issues.push('Not assigned to a technician');
+    if (!workOrder.due_date) issues.push('Due date not set');
+    if (workOrder.safety?.lotoRequired && (workOrder.safety?.lotoSteps || []).length === 0) {
+      issues.push('LOTO required but no steps defined');
+    }
+    return { valid: issues.length === 0, issues };
+  }, [workOrder]);
+
   const toggleFailureCodeCategory = useCallback((categoryId: FailureCodeCategory) => {
     Haptics.selectionAsync();
     setExpandedFailureCodeCategories(prev => {
@@ -1278,6 +1344,60 @@ export default function WorkOrderDetail({
     Haptics.selectionAsync();
     setExpandedFailureCodeCategories(new Set());
   }, []);
+
+  // ═══════════════════════════════════════════════════════════════
+  // START WORK — PPN SIGNATURE + PRE-START VALIDATION
+  // ═══════════════════════════════════════════════════════════════
+
+  const handleOpenStartWorkModal = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setStartWorkSignature(null);
+    setIsStarting(false);
+    setShowStartWorkModal(true);
+  }, []);
+
+  const handleConfirmStartWork = useCallback(async () => {
+    if (!isSignatureVerified(startWorkSignature)) {
+      Alert.alert('Signature Required', 'Please verify your PPN signature before starting work.');
+      return;
+    }
+    if (!preStartValidation.valid) {
+      Alert.alert(
+        'Cannot Start Work',
+        `Please address the following before starting:\n\n• ${preStartValidation.issues.join('\n• ')}`,
+      );
+      return;
+    }
+
+    setIsStarting(true);
+    const signedName = startWorkSignature?.employeeName || userName;
+    const signatureStamp = startWorkSignature?.signatureStamp || '';
+
+    try {
+      const startNotes = workOrder.notes
+        ? `${workOrder.notes}\n\n--- Work Started ---\nStarted by: ${signedName}\nAt: ${new Date().toLocaleString()}\n${signatureStamp}`
+        : `--- Work Started ---\nStarted by: ${signedName}\nAt: ${new Date().toLocaleString()}\n${signatureStamp}`;
+
+      await updateWorkOrderMutation.mutateAsync({
+        id: workOrder.id,
+        updates: { notes: startNotes },
+      });
+
+      startWorkMutation.mutate(workOrder.id);
+      setShowStartWorkModal(false);
+      setStartWorkSignature(null);
+      setIsStarting(false);
+
+      Alert.alert(
+        'Work Started',
+        `${workOrder.workOrderNumber} is now in progress.\n\nStarted by: ${signedName}`,
+      );
+    } catch (error) {
+      console.error('[WorkOrderDetail] Start work error:', error);
+      Alert.alert('Error', 'Failed to start work. Please try again.');
+      setIsStarting(false);
+    }
+  }, [startWorkSignature, preStartValidation, workOrder, userName, updateWorkOrderMutation, startWorkMutation]);
 
   const handleAddPartFromInventory = useCallback((material: Material | MaterialWithLabels, quantity: number) => {
     if (quantity <= 0) return;
@@ -1476,37 +1596,144 @@ export default function WorkOrderDetail({
               </Text>
             </View>
           </View>
-          {workOrder.equipment && (
-            <View style={styles.infoRow}>
-              <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>Equipment</Text>
-              <Text style={[styles.infoValue, { color: colors.text }]}>{workOrder.equipment}</Text>
-            </View>
-          )}
+
+          {/* ═══ EDITABLE: Equipment ═══ */}
           <View style={styles.infoRow}>
-            <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>Location</Text>
-            <Text style={[styles.infoValue, { color: colors.text }]}>{workOrder.location || 'Not specified'}</Text>
+            <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>Equipment *</Text>
+            {isEditingInfo ? (
+              <TextInput
+                style={[styles.infoEditInput, { backgroundColor: colors.backgroundSecondary, color: colors.text, borderColor: editEquipment.trim() ? colors.border : '#EF4444' }]}
+                value={editEquipment}
+                onChangeText={setEditEquipment}
+                placeholder="Enter equipment or N/A"
+                placeholderTextColor={colors.textTertiary}
+              />
+            ) : (
+              <Text style={[styles.infoValue, { color: workOrder.equipment ? colors.text : '#EF4444' }]}>
+                {workOrder.equipment || 'Not specified'}
+              </Text>
+            )}
           </View>
+
+          {/* ═══ EDITABLE: Location ═══ */}
           <View style={styles.infoRow}>
-            <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>Due Date</Text>
-            <Text style={[styles.infoValue, { color: colors.text }]}>{workOrder.due_date}</Text>
+            <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>Location *</Text>
+            {isEditingInfo ? (
+              <TextInput
+                style={[styles.infoEditInput, { backgroundColor: colors.backgroundSecondary, color: colors.text, borderColor: editLocation.trim() ? colors.border : '#EF4444' }]}
+                value={editLocation}
+                onChangeText={setEditLocation}
+                placeholder="Enter location or N/A"
+                placeholderTextColor={colors.textTertiary}
+              />
+            ) : (
+              <Text style={[styles.infoValue, { color: workOrder.location ? colors.text : '#EF4444' }]}>
+                {workOrder.location || 'Not specified'}
+              </Text>
+            )}
           </View>
-          {workOrder.assignedName && (
-            <View style={styles.infoRow}>
-              <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>Assigned To</Text>
-              <Text style={[styles.infoValue, { color: colors.text }]}>{workOrder.assignedName}</Text>
-            </View>
-          )}
+
+          {/* ═══ EDITABLE: Due Date ═══ */}
+          <View style={styles.infoRow}>
+            <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>Due Date *</Text>
+            {isEditingInfo ? (
+              <TextInput
+                style={[styles.infoEditInput, { backgroundColor: colors.backgroundSecondary, color: colors.text, borderColor: editDueDate.trim() ? colors.border : '#EF4444' }]}
+                value={editDueDate}
+                onChangeText={setEditDueDate}
+                placeholder="YYYY-MM-DD or N/A"
+                placeholderTextColor={colors.textTertiary}
+              />
+            ) : (
+              <Text style={[styles.infoValue, { color: workOrder.due_date ? colors.text : '#EF4444' }]}>
+                {workOrder.due_date || 'Not specified'}
+              </Text>
+            )}
+          </View>
+
+          {/* NON-EDITABLE: Assigned To (read-only, shows red if blank) */}
+          <View style={styles.infoRow}>
+            <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>Assigned To *</Text>
+            <Text style={[styles.infoValue, { color: workOrder.assignedName ? colors.text : '#EF4444' }]}>
+              {workOrder.assignedName || 'Not assigned'}
+            </Text>
+          </View>
+
           {workOrder.estimatedHours && (
             <View style={styles.infoRow}>
               <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>Est. Hours</Text>
               <Text style={[styles.infoValue, { color: colors.text }]}>{workOrder.estimatedHours} hrs</Text>
             </View>
           )}
-          
+
+          {/* ═══ EDITABLE: Description ═══ */}
           <View style={styles.descriptionContainer}>
-            <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>Description</Text>
-            <Text style={[styles.description, { color: colors.text }]}>{workOrder.description}</Text>
+            <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>Description *</Text>
+            {isEditingInfo ? (
+              <TextInput
+                style={[styles.notesInput, { backgroundColor: colors.backgroundSecondary, color: colors.text, borderColor: editDescription.trim() ? colors.border : '#EF4444', marginTop: 6 }]}
+                value={editDescription}
+                onChangeText={setEditDescription}
+                placeholder="Enter description or N/A"
+                placeholderTextColor={colors.textTertiary}
+                multiline
+                numberOfLines={3}
+              />
+            ) : (
+              <Text style={[styles.description, { color: workOrder.description ? colors.text : '#EF4444' }]}>
+                {workOrder.description || 'Not specified'}
+              </Text>
+            )}
           </View>
+
+          {/* ═══ EDIT / SAVE BUTTON ═══ */}
+          {canEdit && workOrder.status !== 'completed' && workOrder.status !== 'cancelled' && (
+            <View style={{ marginTop: 12 }}>
+              {isEditingInfo ? (
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <Pressable
+                    style={[styles.editLotoButton, { borderColor: colors.border, flex: 1 }]}
+                    onPress={() => {
+                      setEditEquipment(workOrder.equipment || '');
+                      setEditLocation(workOrder.location || '');
+                      setEditDueDate(workOrder.due_date || '');
+                      setEditDescription(workOrder.description || '');
+                      setIsEditingInfo(false);
+                    }}
+                  >
+                    <X size={16} color={colors.textSecondary} />
+                    <Text style={[styles.editLotoText, { color: colors.textSecondary }]}>Cancel</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.actionButton, { backgroundColor: colors.primary, flex: 2, padding: 12 }]}
+                    onPress={handleSaveInfoEdits}
+                    disabled={updateWorkOrderMutation.isPending}
+                  >
+                    {updateWorkOrderMutation.isPending ? (
+                      <ActivityIndicator size="small" color="#FFFFFF" />
+                    ) : (
+                      <Save size={16} color="#FFFFFF" />
+                    )}
+                    <Text style={[styles.actionButtonText, { fontSize: 14 }]}>Save Changes</Text>
+                  </Pressable>
+                </View>
+              ) : (
+                <Pressable
+                  style={[styles.editLotoButton, { borderColor: colors.primary }]}
+                  onPress={() => {
+                    setEditEquipment(workOrder.equipment || '');
+                    setEditLocation(workOrder.location || '');
+                    setEditDueDate(workOrder.due_date || '');
+                    setEditDescription(workOrder.description || '');
+                    setIsEditingInfo(true);
+                  }}
+                >
+                  <Edit3 size={16} color={colors.primary} />
+                  <Text style={[styles.editLotoText, { color: colors.primary }]}>Edit Info</Text>
+                </Pressable>
+              )}
+            </View>
+          )}
 
           {activeDowntimeEvent && activeDowntimeEvent.status === 'ongoing' && (
             <View style={[styles.downtimeInfoContainer, { backgroundColor: '#FEE2E2', borderColor: '#FECACA' }]}>
@@ -2401,24 +2628,6 @@ export default function WorkOrderDetail({
 
       {workOrder.status !== 'completed' && workOrder.status !== 'cancelled' && canEdit && (
         <View style={[styles.footer, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
-          {workOrder.status === 'open' && (
-            <Pressable
-              style={[styles.actionButton, { backgroundColor: '#F59E0B' }, startWorkMutation.isPending && { opacity: 0.6 }]}
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                console.log('[WorkOrderDetail] Starting work on:', workOrder.id);
-                startWorkMutation.mutate(workOrder.id);
-              }}
-              disabled={startWorkMutation.isPending}
-            >
-              {startWorkMutation.isPending ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
-                <Play size={20} color="#FFFFFF" />
-              )}
-              <Text style={styles.actionButtonText}>{startWorkMutation.isPending ? 'Starting...' : 'Start Work'}</Text>
-            </Pressable>
-          )}
           {workOrder.status === 'in_progress' && (
             <Pressable
               style={[styles.actionButton, { backgroundColor: '#10B981' }]}
@@ -2436,6 +2645,28 @@ export default function WorkOrderDetail({
           )}
         </View>
       )}
+       {workOrder.status === 'open' && (
+            <>
+              {!preStartValidation.valid && (
+                <View style={{ backgroundColor: '#FEF3C7', borderColor: '#FDE68A', borderWidth: 1, borderRadius: 10, padding: 12, marginBottom: 12, flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
+                  <AlertTriangle size={18} color="#D97706" />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: '#92400E' }}>Pre-Start Issues</Text>
+                    {preStartValidation.issues.map((issue, idx) => (
+                      <Text key={idx} style={{ fontSize: 12, color: '#B45309', marginTop: 2 }}>• {issue}</Text>
+                    ))}
+                  </View>
+                </View>
+              )}
+              <Pressable
+                style={[styles.actionButton, { backgroundColor: '#F59E0B' }]}
+                onPress={handleOpenStartWorkModal}
+              >
+                <Play size={20} color="#FFFFFF" />
+                <Text style={styles.actionButtonText}>Start Work</Text>
+              </Pressable>
+            </>
+          )}
       {(workOrder.status === 'completed' || workOrder.status === 'cancelled') && (
         <View style={[styles.footer, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
           <View
@@ -2460,6 +2691,7 @@ export default function WorkOrderDetail({
       {renderPartsModal()}
       {renderChemicalsModal()}
       {renderFailureCodeModal()}
+      {renderStartWorkModal()}
       {renderCompletionModal()}
       {renderLOTOModal()}
       <BarcodeScanner
@@ -2470,6 +2702,156 @@ export default function WorkOrderDetail({
       />
     </View>
   );
+
+  function renderStartWorkModal() {
+    const handleCloseStartWorkModal = () => {
+      setShowStartWorkModal(false);
+      setStartWorkSignature(null);
+      setIsStarting(false);
+    };
+
+    return (
+      <Modal visible={showStartWorkModal} animationType="slide" presentationStyle="pageSheet">
+        <View style={[styles.modalContainer, { backgroundColor: colors.background }]}>
+          <View style={[styles.completionModalHeader, { backgroundColor: '#F59E0B' }]}>
+            <View style={styles.completionModalHeaderContent}>
+              <View style={styles.completionModalHeaderLeft}>
+                <View style={[styles.completionModalIconBadge, { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
+                  <Play size={24} color="#FFFFFF" />
+                </View>
+                <View>
+                  <Text style={styles.completionModalTitle}>Start Work</Text>
+                  <Text style={styles.completionModalSubtitle}>{workOrder.workOrderNumber}</Text>
+                </View>
+              </View>
+              <Pressable onPress={handleCloseStartWorkModal} style={styles.completionModalCloseBtn}>
+                <X size={24} color="#FFFFFF" />
+              </Pressable>
+            </View>
+          </View>
+
+          <ScrollView style={styles.completionModalContent} showsVerticalScrollIndicator={false}>
+            {/* Work Order Summary */}
+            <View style={[styles.completionModalWorkOrderInfo, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <Text style={[styles.completionModalInfoLabel, { color: colors.textSecondary }]}>Work Order</Text>
+              <Text style={[styles.completionModalInfoValue, { color: colors.text }]}>{workOrder.title}</Text>
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+                <View style={[styles.typeBadge, { backgroundColor: typeColors[workOrder.type] + '20' }]}>
+                  <Text style={[styles.typeBadgeText, { color: typeColors[workOrder.type] }]}>
+                    {workOrder.type.charAt(0).toUpperCase() + workOrder.type.slice(1)}
+                  </Text>
+                </View>
+                <View style={[styles.priorityBadge, { backgroundColor: priorityColors[workOrder.priority] + '20' }]}>
+                  <View style={[styles.priorityDot, { backgroundColor: priorityColors[workOrder.priority] }]} />
+                  <Text style={[styles.priorityText, { color: priorityColors[workOrder.priority] }]}>
+                    {workOrder.priority.toUpperCase()}
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Pre-Start Checklist */}
+            <View style={[{ marginBottom: 16, padding: 12, borderRadius: 10, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }]}>
+              <Text style={[{ fontSize: 14, fontWeight: '700', color: colors.text, marginBottom: 10 }]}>Pre-Start Checklist</Text>
+              {[
+                { label: 'Equipment identified', done: !!workOrder.equipment, value: workOrder.equipment || 'Not specified' },
+                { label: 'Location specified', done: !!workOrder.location, value: workOrder.location || 'Not specified' },
+                { label: 'Assigned to technician', done: !!workOrder.assignedName, value: workOrder.assignedName || 'Unassigned' },
+                { label: 'Due date set', done: !!workOrder.due_date, value: workOrder.due_date || 'Not set' },
+                { label: 'LOTO reviewed', done: !workOrder.safety?.lotoRequired || (workOrder.safety?.lotoSteps || []).length > 0, value: workOrder.safety?.lotoRequired ? `${(workOrder.safety?.lotoSteps || []).length} steps` : 'Not required' },
+                { label: 'PPN signature verified', done: isSignatureVerified(startWorkSignature), value: startWorkSignature?.employeeName || 'Not signed' },
+              ].map((item, idx) => (
+                <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6, borderBottomWidth: idx < 5 ? 1 : 0, borderBottomColor: colors.border }}>
+                  <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: item.done ? '#10B98120' : '#EF444420', justifyContent: 'center', alignItems: 'center' }}>
+                    {item.done ? (
+                      <CheckCircle2 size={16} color="#10B981" />
+                    ) : (
+                      <AlertTriangle size={14} color="#EF4444" />
+                    )}
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 13, color: item.done ? '#10B981' : colors.textSecondary, fontWeight: item.done ? '600' : '400' }}>
+                      {item.label}
+                    </Text>
+                    <Text style={{ fontSize: 11, color: colors.textTertiary, marginTop: 1 }}>{item.value}</Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+
+            {/* Safety Requirements Summary */}
+            {(workOrder.safety?.lotoRequired || (workOrder.safety?.permits || []).length > 0 || (workOrder.safety?.ppeRequired || []).length > 0) && (
+              <View style={[{ marginBottom: 16, padding: 12, borderRadius: 10, backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FECACA' }]}>
+                <Text style={[{ fontSize: 14, fontWeight: '700', color: '#991B1B', marginBottom: 8 }]}>⚠ Safety Requirements</Text>
+                {workOrder.safety?.lotoRequired && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4 }}>
+                    <Lock size={14} color="#DC2626" />
+                    <Text style={{ fontSize: 13, color: '#7F1D1D' }}>LOTO Required — {(workOrder.safety?.lotoSteps || []).length} lockout steps</Text>
+                  </View>
+                )}
+                {(workOrder.safety?.permits || []).length > 0 && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4 }}>
+                    <Shield size={14} color="#DC2626" />
+                    <Text style={{ fontSize: 13, color: '#7F1D1D' }}>{(workOrder.safety.permits || []).length} permit(s) required</Text>
+                  </View>
+                )}
+                {(workOrder.safety?.ppeRequired || []).length > 0 && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4 }}>
+                    <HardHat size={14} color="#DC2626" />
+                    <Text style={{ fontSize: 13, color: '#7F1D1D' }}>{(workOrder.safety.ppeRequired || []).length} PPE item(s) required</Text>
+                  </View>
+                )}
+              </View>
+            )}
+
+            {/* PPN Signature */}
+            <View style={{ marginBottom: 16 }}>
+              <Text style={[{ fontSize: 14, fontWeight: '700', color: colors.text, marginBottom: 8 }]}>Verified By (PPN Signature) *</Text>
+              <PinSignatureCapture
+                onVerified={setStartWorkSignature}
+                onCleared={() => setStartWorkSignature(null)}
+                formLabel="Start Work Authorization"
+                accentColor="#F59E0B"
+                existingVerification={startWorkSignature}
+                required={true}
+              />
+            </View>
+
+            {/* Actions */}
+            <View style={styles.completionModalActions}>
+              <Pressable
+                style={[styles.completionCancelBtn, { borderColor: colors.border, opacity: isStarting ? 0.5 : 1 }]}
+                onPress={handleCloseStartWorkModal}
+                disabled={isStarting}
+              >
+                <Text style={[styles.completionCancelText, { color: colors.textSecondary }]}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={[
+                  styles.completionConfirmBtn,
+                  {
+                    backgroundColor: (preStartValidation.valid && !isStarting && isSignatureVerified(startWorkSignature)) ? '#F59E0B' : '#9CA3AF',
+                    opacity: (preStartValidation.valid && !isStarting && isSignatureVerified(startWorkSignature)) ? 1 : 0.6,
+                  },
+                ]}
+                onPress={handleConfirmStartWork}
+                disabled={!preStartValidation.valid || isStarting || !isSignatureVerified(startWorkSignature)}
+              >
+                {isStarting ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Play size={18} color="#FFFFFF" />
+                )}
+                <Text style={styles.completionConfirmText}>
+                  {isStarting ? 'Starting...' : 'Start Work'}
+                </Text>
+              </Pressable>
+            </View>
+          </ScrollView>
+        </View>
+      </Modal>
+    );
+  }
 
   function renderLaborSection() {
     return (
@@ -3702,7 +4084,7 @@ export default function WorkOrderDetail({
                 ) : (
                   <CheckCircle2 size={18} color="#FFFFFF" />
                 )}
-                <Text style={styles.completionConfirmText}>{isCompleting ? 'Completing...' : 'Complete Work Order'}</Text>
+                <Text style={styles.completionConfirmText}>{isCompleting ? 'Completing...' : 'Confirm Completion'}</Text>
               </Pressable>
             </View>
           </ScrollView>
@@ -4287,6 +4669,16 @@ const createStyles = (colors: any) =>
     infoValue: {
       fontSize: 14,
       fontWeight: '500' as const,
+    },
+     infoEditInput: {
+      fontSize: 14,
+      fontWeight: '500' as const,
+      borderRadius: 8,
+      borderWidth: 1,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      minWidth: 160,
+      textAlign: 'right' as const,
     },
     typeBadge: {
       paddingHorizontal: 10,
