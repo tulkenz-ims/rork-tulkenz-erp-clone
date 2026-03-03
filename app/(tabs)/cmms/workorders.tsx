@@ -10,6 +10,7 @@ import {
   RefreshControl,
   Modal,
   Platform,
+  Alert,
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -801,30 +802,51 @@ export default function WorkOrdersScreen() {
   }, [selectedDetailWorkOrder, startWorkOrderMutation, refetchWorkOrders]);
 
   const handleCompleteWork = useCallback((id: string) => {
-    console.log('[WorkOrders] Completing work order:', id);
-    
-    // Optimistic update
-    setWorkOrders(prev => prev.map(wo => 
-      wo.id === id ? { ...wo, status: 'completed' as const, completed_at: new Date().toISOString() } : wo
-    ));
-    
-    // Persist with dedicated mutation
-    completeWorkOrderMutation.mutate(
-      { workOrderId: id },
-      {
-        onSuccess: () => {
-          console.log('[WorkOrders] Successfully completed work order:', id);
-        },
-        onError: (error) => {
-          console.error('[WorkOrders] Failed to complete work order:', error);
-          refetchWorkOrders();
-        },
+    console.log('[WorkOrders] Complete requested from list for:', id);
+    // Completion must go through the detail screen for PPN signature,
+    // completion notes, and pre-completion validation.
+    // If called from WorkOrderDetail (via onCompleteWork prop), 
+    // those guards have already been passed — allow it.
+    if (showDetailModal && selectedDetailWorkOrder?.id === id) {
+      // Called from detail screen — guards already passed
+      setWorkOrders(prev => prev.map(wo => 
+        wo.id === id ? { ...wo, status: 'completed' as const, completed_at: new Date().toISOString() } : wo
+      ));
+      completeWorkOrderMutation.mutate(
+        { workOrderId: id },
+        {
+          onSuccess: () => {
+            console.log('[WorkOrders] Successfully completed work order:', id);
+          },
+          onError: (error) => {
+            console.error('[WorkOrders] Failed to complete work order:', error);
+            refetchWorkOrders();
+          },
+        }
+      );
+      setShowDetailModal(false);
+      setSelectedDetailWorkOrder(null);
+    } else {
+      // Called from list — redirect to detail screen
+      const wo = workOrders.find(w => w.id === id);
+      if (wo) {
+        Alert.alert(
+          'Open Work Order',
+          'Work orders must be completed from the detail screen to ensure all required fields, completion notes, and PPN signature are captured.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Open Detail',
+              onPress: () => {
+                setSelectedDetailWorkOrder(wo);
+                setShowDetailModal(true);
+              },
+            },
+          ]
+        );
       }
-    );
-    
-    setShowDetailModal(false);
-    setSelectedDetailWorkOrder(null);
-  }, [completeWorkOrderMutation, refetchWorkOrders]);
+    }
+  }, [completeWorkOrderMutation, refetchWorkOrders, showDetailModal, selectedDetailWorkOrder, workOrders]);
 
   const handleQuickStatusChange = useCallback((wo: DetailedWorkOrder) => {
     setSelectedWorkOrder(wo);
@@ -870,8 +892,27 @@ export default function WorkOrdersScreen() {
         startWorkOrderMutation.mutate(workOrderId, { onSuccess, onError });
         break;
       case 'completed':
-        completeWorkOrderMutation.mutate({ workOrderId }, { onSuccess, onError });
-        break;
+        // Block quick-complete — must go through detail screen for PPN + validation
+        setShowStatusModal(false);
+        setSelectedWorkOrder(null);
+        const woToComplete = workOrders.find(w => w.id === workOrderId);
+        if (woToComplete) {
+          Alert.alert(
+            'Open Work Order',
+            'Work orders must be completed from the detail screen to ensure all required fields, completion notes, and PPN signature are captured.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Open Detail',
+                onPress: () => {
+                  setSelectedDetailWorkOrder(woToComplete);
+                  setShowDetailModal(true);
+                },
+              },
+            ]
+          );
+        }
+        return; // Don't do the optimistic update below
       case 'on_hold':
         putOnHoldMutation.mutate({ workOrderId }, { onSuccess, onError });
         break;
