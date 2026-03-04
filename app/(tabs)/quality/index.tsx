@@ -39,6 +39,7 @@ import {
   Bell,
   Wrench,
   Calendar,
+  Inbox,
 } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -485,13 +486,55 @@ export default function QualityScreen() {
           </Text>
         </View>
 
-        <TaskFeedInbox
-          departmentCode="1004"
-          moduleColor="#3B82F6"
-          onTaskCompleted={handleTaskCompleted}
-          createModuleHistoryRecord={handleCreateQualityHistoryRecord}
-          maxVisible={3}
-        />
+        {/* ═══════════════════════════════════════════════════════════ */}
+        {/* TWO-PANE INBOX: Reactive | Scheduled Tasks                */}
+        {/* ═══════════════════════════════════════════════════════════ */}
+        <View style={styles.inboxSection}>
+          <View style={styles.inboxHeaderRow}>
+            <Inbox size={18} color="#3B82F6" />
+            <Text style={[styles.inboxTitle, { color: colors.text }]}>Quality Inbox</Text>
+          </View>
+
+          <View style={styles.twoPaneContainer}>
+            {/* Reactive Pane */}
+            <View style={[styles.inboxPane, { borderColor: colors.border }]}>
+              <View style={[styles.paneHeader, { backgroundColor: '#EF444410' }]}>
+                <AlertTriangle size={16} color="#EF4444" />
+                <Text style={[styles.paneHeaderTitle, { color: '#EF4444' }]}>Reactive</Text>
+              </View>
+              <ScrollView style={styles.paneScrollView} nestedScrollEnabled showsVerticalScrollIndicator={false}>
+                <TaskFeedInbox
+                  departmentCode="1004"
+                  moduleColor="#EF4444"
+                  workOrderTypeFilter="reactive"
+                  onTaskCompleted={handleTaskCompleted}
+                  createModuleHistoryRecord={handleCreateQualityHistoryRecord}
+                  maxVisible={20}
+                  showHeader={false}
+                />
+              </ScrollView>
+            </View>
+
+            {/* Scheduled Tasks Pane */}
+            <View style={[styles.inboxPane, { borderColor: colors.border }]}>
+              <View style={[styles.paneHeader, { backgroundColor: '#8B5CF610' }]}>
+                <Calendar size={16} color="#8B5CF6" />
+                <Text style={[styles.paneHeaderTitle, { color: '#8B5CF6' }]}>Scheduled Tasks</Text>
+              </View>
+              <ScrollView style={styles.paneScrollView} nestedScrollEnabled showsVerticalScrollIndicator={false}>
+                <TaskFeedInbox
+                  departmentCode="1004"
+                  moduleColor="#8B5CF6"
+                  workOrderTypeFilter="preventive"
+                  onTaskCompleted={handleTaskCompleted}
+                  createModuleHistoryRecord={handleCreateQualityHistoryRecord}
+                  maxVisible={20}
+                  showHeader={false}
+                />
+              </ScrollView>
+            </View>
+          </View>
+        </View>
 
         <View style={styles.statsGrid}>
           {stats.map((stat, index) => {
@@ -900,6 +943,44 @@ const styles = StyleSheet.create({
   formTitle: {
     fontSize: 14,
     fontWeight: '500' as const,
+  },
+  // Two-Pane Inbox
+  inboxSection: {
+    marginBottom: 16,
+  },
+  inboxHeaderRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 8,
+    marginBottom: 12,
+  },
+  inboxTitle: {
+    fontSize: 16,
+    fontWeight: '600' as const,
+  },
+  twoPaneContainer: {
+    flexDirection: 'row' as const,
+    gap: 10,
+  },
+  inboxPane: {
+    flex: 1,
+    borderRadius: 12,
+    borderWidth: 1,
+    overflow: 'hidden' as const,
+  },
+  paneHeader: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    paddingVertical: 10,
+    gap: 6,
+  },
+  paneHeaderTitle: {
+    fontSize: 14,
+    fontWeight: '700' as const,
+  },
+  paneScrollView: {
+    maxHeight: 400,
   },
   bottomPadding: {
     height: 32,
