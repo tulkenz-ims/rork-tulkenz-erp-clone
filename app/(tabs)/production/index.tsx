@@ -17,6 +17,9 @@ import {
   TrendingUp,
   Boxes,
   CheckCircle,
+  AlertTriangle,
+  Calendar,
+  Inbox,
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useMaterialsQuery } from '@/hooks/useSupabaseMaterials';
@@ -93,12 +96,49 @@ export default function ProductionScreen() {
         </Text>
       </View>
 
-      <TaskFeedInbox
-        departmentCode="1003"
-        moduleColor="#F59E0B"
-        onTaskCompleted={handleTaskCompleted}
-        maxVisible={3}
-      />
+      {/* TWO-PANE INBOX: Reactive | Scheduled Tasks */}
+      <View style={styles.inboxSection}>
+        <View style={styles.inboxHeaderRow}>
+          <Inbox size={18} color="#F59E0B" />
+          <Text style={[styles.inboxTitle, { color: colors.text }]}>Production Inbox</Text>
+        </View>
+
+        <View style={styles.twoPaneContainer}>
+          <View style={[styles.inboxPane, { borderColor: colors.border }]}>
+            <View style={[styles.paneHeader, { backgroundColor: '#EF444410' }]}>
+              <AlertTriangle size={16} color="#EF4444" />
+              <Text style={[styles.paneHeaderTitle, { color: '#EF4444' }]}>Reactive</Text>
+            </View>
+            <ScrollView style={styles.paneScrollView} nestedScrollEnabled showsVerticalScrollIndicator={false}>
+              <TaskFeedInbox
+                departmentCode="1003"
+                moduleColor="#EF4444"
+                workOrderTypeFilter="reactive"
+                onTaskCompleted={handleTaskCompleted}
+                maxVisible={20}
+                showHeader={false}
+              />
+            </ScrollView>
+          </View>
+
+          <View style={[styles.inboxPane, { borderColor: colors.border }]}>
+            <View style={[styles.paneHeader, { backgroundColor: '#F59E0B10' }]}>
+              <Calendar size={16} color="#F59E0B" />
+              <Text style={[styles.paneHeaderTitle, { color: '#F59E0B' }]}>Scheduled Tasks</Text>
+            </View>
+            <ScrollView style={styles.paneScrollView} nestedScrollEnabled showsVerticalScrollIndicator={false}>
+              <TaskFeedInbox
+                departmentCode="1003"
+                moduleColor="#F59E0B"
+                workOrderTypeFilter="preventive"
+                onTaskCompleted={handleTaskCompleted}
+                maxVisible={20}
+                showHeader={false}
+              />
+            </ScrollView>
+          </View>
+        </View>
+      </View>
 
       <View style={styles.statsGrid}>
         {stats.map((stat, index) => {
@@ -248,6 +288,44 @@ const styles = StyleSheet.create({
   moduleDescription: {
     fontSize: 12,
     lineHeight: 16,
+  },
+  // Two-Pane Inbox
+  inboxSection: {
+    marginBottom: 16,
+  },
+  inboxHeaderRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 8,
+    marginBottom: 12,
+  },
+  inboxTitle: {
+    fontSize: 16,
+    fontWeight: '600' as const,
+  },
+  twoPaneContainer: {
+    flexDirection: 'row' as const,
+    gap: 10,
+  },
+  inboxPane: {
+    flex: 1,
+    borderRadius: 12,
+    borderWidth: 1,
+    overflow: 'hidden' as const,
+  },
+  paneHeader: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    paddingVertical: 10,
+    gap: 6,
+  },
+  paneHeaderTitle: {
+    fontSize: 14,
+    fontWeight: '700' as const,
+  },
+  paneScrollView: {
+    maxHeight: 400,
   },
   bottomPadding: {
     height: 40,
