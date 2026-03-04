@@ -174,17 +174,6 @@ export default function PMWorkOrderDetail({
   const totalTasks = workOrder.tasks?.length || 0;
   const allTasksComplete = totalTasks > 0 && completedCount === totalTasks;
 
-  // ── Start Work modal state ──
-  const [showStartModal, setShowStartModal] = useState(false);
-  const [startSignature, setStartSignature] = useState<SignatureVerification | null>(null);
-  const [isStarting, setIsStarting] = useState(false);
-
-  // ── Complete PM modal state ──
-  const [showCompleteModal, setShowCompleteModal] = useState(false);
-  const [completeSignature, setCompleteSignature] = useState<SignatureVerification | null>(null);
-  const [completionNotes, setCompletionNotes] = useState('');
-  const [isCompleting, setIsCompleting] = useState(false);
-
   // ── Complete PM modal state ──
   const [showCompleteModal, setShowCompleteModal] = useState(false);
   const [showCompletePinPad, setShowCompletePinPad] = useState(false);
