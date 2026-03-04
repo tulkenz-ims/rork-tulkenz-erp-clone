@@ -1439,7 +1439,7 @@ export function useDeleteTaskFeedPost(callbacks?: MutationCallbacks<string>) {
         // Continue anyway - the post deletion is the main goal
       }
 
-      // Delete related task verification records
+     // Delete related task verification records (by source_id OR by post number)
       const { error: verifyDeleteError } = await supabase
         .from('task_verifications')
         .delete()
@@ -1447,8 +1447,17 @@ export function useDeleteTaskFeedPost(callbacks?: MutationCallbacks<string>) {
         .eq('source_type', 'task_feed_post');
 
       if (verifyDeleteError) {
-        console.error('[useDeleteTaskFeedPost] Error deleting task verifications:', verifyDeleteError);
-        // Continue anyway
+        console.error('[useDeleteTaskFeedPost] Error deleting task verifications by source_id:', verifyDeleteError);
+      }
+
+      // Also delete any task_verifications matching the post number (PM-generated entries use work order ID as source_id)
+      const { error: verifyByNumberError } = await supabase
+        .from('task_verifications')
+        .delete()
+        .eq('source_number', post.post_number);
+
+      if (verifyByNumberError) {
+        console.error('[useDeleteTaskFeedPost] Error deleting task verifications by source_number:', verifyByNumberError);
       }
 
       // Delete related notifications
