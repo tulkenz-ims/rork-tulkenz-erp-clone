@@ -1420,7 +1420,9 @@ export function useDeleteTaskFeedPost(callbacks?: MutationCallbacks<string>) {
         userRole === 'manager' ||
         userRole === 'supervisor' ||
         userRole === 'super_admin' ||
-        userRole === 'admin';
+        userRole === 'superadmin' ||
+        userRole === 'admin' ||
+        userRole === 'owner';
 
       if (!isAuthorized) {
         throw new Error('You are not authorized to delete this post');
@@ -1549,7 +1551,9 @@ export function useCanDeleteTaskFeedPost() {
       userRole === 'manager' ||
       userRole === 'supervisor' ||
       userRole === 'super_admin' ||
-      userRole === 'admin'
+      userRole === 'superadmin' ||
+      userRole === 'admin' ||
+      userRole === 'owner'
     );
   };
 }
