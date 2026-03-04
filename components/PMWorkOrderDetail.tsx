@@ -33,7 +33,7 @@ import {
 } from 'lucide-react-native';
 import { SignatureVerification, useLogSignature } from '@/hooks/usePinSignature';
 import * as Haptics from 'expo-haptics';
-import PinPadModal from '@/components/PinPadModal';
+import PinSignatureCapture from '@/components/PinSignatureCapture';
 
 interface PMWorkOrderDetailProps {
   workOrder: {
@@ -176,9 +176,14 @@ export default function PMWorkOrderDetail({
 
   // ── Start Work modal state ──
   const [showStartModal, setShowStartModal] = useState(false);
-  const [showStartPinPad, setShowStartPinPad] = useState(false);
   const [startSignature, setStartSignature] = useState<SignatureVerification | null>(null);
   const [isStarting, setIsStarting] = useState(false);
+
+  // ── Complete PM modal state ──
+  const [showCompleteModal, setShowCompleteModal] = useState(false);
+  const [completeSignature, setCompleteSignature] = useState<SignatureVerification | null>(null);
+  const [completionNotes, setCompletionNotes] = useState('');
+  const [isCompleting, setIsCompleting] = useState(false);
 
   // ── Complete PM modal state ──
   const [showCompleteModal, setShowCompleteModal] = useState(false);
@@ -234,9 +239,9 @@ export default function PMWorkOrderDetail({
     setShowStartModal(true);
   }, [workOrder]);
 
-  const handleStartPinVerified = useCallback((verification: SignatureVerification) => {
-    setStartSignature(verification);
-    setShowStartPinPad(false);
+  const handleCompletePinVerified = useCallback((verification: SignatureVerification) => {
+    setCompleteSignature(verification);
+    setShowCompletePinPad(false);
   }, []);
 
   const handleConfirmStart = useCallback(async () => {
@@ -790,21 +795,14 @@ export default function PMWorkOrderDetail({
 
               {/* PPN Signature */}
               <Text style={[styles.modalSectionTitle, { color: colors.text, marginTop: 16 }]}>PPN Verification</Text>
-              {startSignature ? (
-                <View style={[styles.signatureConfirmed, { backgroundColor: '#10B98115' }]}>
-                  <Text style={styles.signatureConfirmedText}>✓ Verified: {startSignature.employeeName}</Text>
-                  <TouchableOpacity onPress={() => { setStartSignature(null); setShowStartPinPad(true); }}>
-                    <Text style={styles.signatureChangeText}>Change</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : (
-                <TouchableOpacity
-                  style={[styles.signatureButton, { borderColor: colors.border }]}
-                  onPress={() => setShowStartPinPad(true)}
-                >
-                  <Text style={[styles.signatureButtonText, { color: colors.primary }]}>Tap to Verify PPN</Text>
-                </TouchableOpacity>
-              )}
+              <PinSignatureCapture
+                onVerified={(v: SignatureVerification) => setStartSignature(v)}
+                onCleared={() => setStartSignature(null)}
+                formLabel="PM Work Order Start"
+                existingVerification={startSignature}
+                required
+                accentColor="#10B981"
+              />
             </ScrollView>
 
             <View style={[styles.modalFooter, { backgroundColor: colors.background }]}>
@@ -871,21 +869,14 @@ export default function PMWorkOrderDetail({
 
               {/* PPN Signature */}
               <Text style={[styles.modalSectionTitle, { color: colors.text }]}>PPN Verification</Text>
-              {completeSignature ? (
-                <View style={[styles.signatureConfirmed, { backgroundColor: '#10B98115' }]}>
-                  <Text style={styles.signatureConfirmedText}>✓ Verified: {completeSignature.employeeName}</Text>
-                  <TouchableOpacity onPress={() => { setCompleteSignature(null); setShowCompletePinPad(true); }}>
-                    <Text style={styles.signatureChangeText}>Change</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : (
-                <TouchableOpacity
-                  style={[styles.signatureButton, { borderColor: colors.border }]}
-                  onPress={() => setShowCompletePinPad(true)}
-                >
-                  <Text style={[styles.signatureButtonText, { color: colors.primary }]}>Tap to Verify PPN</Text>
-                </TouchableOpacity>
-              )}
+              <PinSignatureCapture
+                onVerified={(v: SignatureVerification) => setCompleteSignature(v)}
+                onCleared={() => setCompleteSignature(null)}
+                formLabel="PM Work Order Completion"
+                existingVerification={completeSignature}
+                required
+                accentColor="#10B981"
+              />
             </ScrollView>
 
             <View style={[styles.modalFooter, { backgroundColor: colors.background }]}>
@@ -914,23 +905,6 @@ export default function PMWorkOrderDetail({
           </View>
         </View>
       </Modal>
-
-      {/* ════════════ PPN Pin Pads ════════════ */}
-      <PinPadModal
-        visible={showStartPinPad}
-        onClose={() => setShowStartPinPad(false)}
-        onVerified={handleStartPinVerified}
-        title="Verify PPN — Start PM"
-      />
-      <PinPadModal
-        visible={showCompletePinPad}
-        onClose={() => setShowCompletePinPad(false)}
-        onVerified={handleCompletePinVerified}
-        title="Verify PPN — Complete PM"
-      />
-    </View>
-  );
-}
 
 const styles = StyleSheet.create({
   container: {
