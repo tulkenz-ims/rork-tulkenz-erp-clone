@@ -174,9 +174,13 @@ export default function PMWorkOrderDetail({
   const totalTasks = workOrder.tasks?.length || 0;
   const allTasksComplete = totalTasks > 0 && completedCount === totalTasks;
 
+  // ── Start Work modal state ──
+  const [showStartModal, setShowStartModal] = useState(false);
+  const [startSignature, setStartSignature] = useState<SignatureVerification | null>(null);
+  const [isStarting, setIsStarting] = useState(false);
+
   // ── Complete PM modal state ──
   const [showCompleteModal, setShowCompleteModal] = useState(false);
-  const [showCompletePinPad, setShowCompletePinPad] = useState(false);
   const [completeSignature, setCompleteSignature] = useState<SignatureVerification | null>(null);
   const [completionNotes, setCompletionNotes] = useState('');
   const [isCompleting, setIsCompleting] = useState(false);
@@ -228,11 +232,6 @@ export default function PMWorkOrderDetail({
     setShowStartModal(true);
   }, [workOrder]);
 
-  const handleCompletePinVerified = useCallback((verification: SignatureVerification) => {
-    setCompleteSignature(verification);
-    setShowCompletePinPad(false);
-  }, []);
-
   const handleConfirmStart = useCallback(async () => {
     if (!startSignature) {
       Alert.alert('PPN Required', 'Please verify your PPN signature before starting work.');
@@ -282,11 +281,6 @@ export default function PMWorkOrderDetail({
     }
     setShowCompleteModal(true);
   }, [allTasksComplete, totalTasks, completedCount]);
-
-  const handleCompletePinVerified = useCallback((verification: SignatureVerification) => {
-    setCompleteSignature(verification);
-    setShowCompletePinPad(false);
-  }, []);
 
   const handleConfirmComplete = useCallback(async () => {
     if (!completeSignature) {
@@ -894,6 +888,9 @@ export default function PMWorkOrderDetail({
           </View>
         </View>
       </Modal>
+    </View>
+  );
+}
 
 const styles = StyleSheet.create({
   container: {
