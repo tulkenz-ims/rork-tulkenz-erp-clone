@@ -440,25 +440,6 @@ export default function LoginScreen() {
               </View>
             </View>
           )}
-
-          {/* ── Auditor Portal Access ── */}
-          <View style={styles.auditorDivider}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>External Access</Text>
-            <View style={styles.dividerLine} />
-          </View>
-
-          <Pressable
-            style={styles.auditorButton}
-            onPress={() => setShowAuditorPortal(true)}
-          >
-            <Shield size={18} color="#6C5CE7" />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.auditorButtonTitle}>Auditor Portal Access</Text>
-              <Text style={styles.auditorButtonSub}>External auditors — enter your access token</Text>
-            </View>
-            <Text style={styles.auditorArrow}>→</Text>
-          </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
