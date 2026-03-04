@@ -5,6 +5,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useUser } from '@/contexts/UserContext';
 import { useWorkOrdersQuery, useStartWorkOrder, useCompleteWorkOrder, useUpdateWorkOrderDetail } from '@/hooks/useSupabaseWorkOrders';
 import WorkOrderDetail from '@/components/WorkOrderDetail';
+import PMWorkOrderDetail from '@/components/PMWorkOrderDetail';
 import { AlertTriangle } from 'lucide-react-native';
 
 interface DetailedWorkOrder {
@@ -254,14 +255,25 @@ export default function WorkOrderDetailScreen() {
           headerTintColor: colors.text,
         }} 
       />
-      <WorkOrderDetail
-        workOrder={workOrder}
-        onClose={handleClose}
-        onUpdate={handleUpdate}
-        onStartWork={handleStartWork}
-        onCompleteWork={handleCompleteWork}
-        canEdit={true}
-      />
+      {workOrder.type === 'preventive' ? (
+        <PMWorkOrderDetail
+          workOrder={workOrder}
+          onClose={handleClose}
+          onUpdate={handleUpdate}
+          onStartWork={handleStartWork}
+          onCompleteWork={handleCompleteWork}
+          canEdit={true}
+        />
+      ) : (
+        <WorkOrderDetail
+          workOrder={workOrder}
+          onClose={handleClose}
+          onUpdate={handleUpdate}
+          onStartWork={handleStartWork}
+          onCompleteWork={handleCompleteWork}
+          canEdit={true}
+        />
+      )}
     </View>
   );
 }
