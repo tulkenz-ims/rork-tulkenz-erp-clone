@@ -58,6 +58,7 @@ import {
   User,
 } from 'lucide-react-native';
 import WorkOrderDetail from '@/components/WorkOrderDetail';
+import PMWorkOrderDetail from '@/components/PMWorkOrderDetail';
 
 const DEBOUNCE_DELAY = 300;
 const SKELETON_COUNT = 5;
@@ -2239,14 +2240,25 @@ export default function WorkOrdersScreen() {
         onRequestClose={handleCloseDetail}
       >
         {selectedDetailWorkOrder && (
-          <WorkOrderDetail
-            workOrder={selectedDetailWorkOrder}
-            onClose={handleCloseDetail}
-            onUpdate={handleUpdateWorkOrder}
-            onStartWork={handleStartWork}
-            onCompleteWork={handleCompleteWork}
-            canEdit={true}
-          />
+          selectedDetailWorkOrder.type === 'preventive' ? (
+            <PMWorkOrderDetail
+              workOrder={selectedDetailWorkOrder}
+              onClose={handleCloseDetail}
+              onUpdate={handleUpdateWorkOrder}
+              onStartWork={handleStartWork}
+              onCompleteWork={handleCompleteWork}
+              canEdit={true}
+            />
+          ) : (
+            <WorkOrderDetail
+              workOrder={selectedDetailWorkOrder}
+              onClose={handleCloseDetail}
+              onUpdate={handleUpdateWorkOrder}
+              onStartWork={handleStartWork}
+              onCompleteWork={handleCompleteWork}
+              canEdit={true}
+            />
+          )
         )}
       </Modal>
 
