@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,8 +10,11 @@ import {
   TextInput,
   Alert,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useUser } from '@/contexts/UserContext';
+import { useOrganization } from '@/contexts/OrganizationContext';
+import { supabase } from '@/lib/supabase';
 import {
   X,
   Wrench,
@@ -21,6 +24,12 @@ import {
   ClipboardList,
   Clock,
   RefreshCw,
+  Package,
+  ChevronRight,
+  CheckCircle2,
+  AlertTriangle,
+  Tag,
+  User,
 } from 'lucide-react-native';
 import { SignatureVerification, useLogSignature } from '@/hooks/usePinSignature';
 import * as Haptics from 'expo-haptics';
@@ -70,6 +79,23 @@ interface PMWorkOrderDetailProps {
   canEdit: boolean;
 }
 
+interface PMScheduleData {
+  id: string;
+  name: string;
+  description: string | null;
+  frequency: string;
+  equipment_name: string | null;
+  equipment_tag: string | null;
+  assigned_name: string | null;
+  last_completed: string | null;
+  next_due: string;
+  estimated_hours: number | null;
+  parts_required: any[] | null;
+  active: boolean;
+  schedule_days: string[] | null;
+  schedule_time: string | null;
+}
+
 const PRIORITY_COLORS: Record<string, string> = {
   critical: '#DC2626',
   high: '#EF4444',
@@ -85,6 +111,16 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bgColor: str
   cancelled: { label: 'Cancelled', color: '#6B7280', bgColor: 'rgba(107,114,128,0.15)' },
 };
 
+const FREQUENCY_LABELS: Record<string, string> = {
+  daily: 'Daily',
+  weekly: 'Weekly',
+  biweekly: 'Every 2 Weeks',
+  monthly: 'Monthly',
+  quarterly: 'Quarterly',
+  semi_annually: 'Semi-Annually',
+  annually: 'Annually',
+};
+
 export default function PMWorkOrderDetail({
   workOrder,
   onClose,
@@ -95,8 +131,35 @@ export default function PMWorkOrderDetail({
 }: PMWorkOrderDetailProps) {
   const { colors } = useTheme();
   const { user } = useUser();
+  const { organizationId } = useOrganization();
+  const router = useRouter();
   const statusConfig = STATUS_CONFIG[workOrder.status] || STATUS_CONFIG.open;
   const priorityColor = PRIORITY_COLORS[workOrder.priority] || '#F59E0B';
+
+  // ── PM Schedule data ──
+  const [pmSchedule, setPmSchedule] = useState<PMScheduleData | null>(null);
+  const [isLoadingSchedule, setIsLoadingSchedule] = useState(false);
+
+  useEffect(() => {
+    if (workOrder.source === 'pm_schedule' && workOrder.sourceId) {
+      setIsLoadingSchedule(true);
+      supabase
+        .from('pm_schedules')
+        .select('id, name, description, frequency, equipment_name, equipment_tag, assigned_name, last_completed, next_due, estimated_hours, parts_required, active, schedule_days, schedule_time')
+        .eq('id', workOrder.sourceId)
+        .eq('organization_id', organizationId)
+        .single()
+        .then(({ data, error }) => {
+          if (error) {
+            console.error('[PMWorkOrderDetail] Error fetching PM schedule:', error);
+          } else if (data) {
+            console.log('[PMWorkOrderDetail] Loaded PM schedule:', data.name, '| Frequency:', data.frequency);
+            setPmSchedule(data as PMScheduleData);
+          }
+          setIsLoadingSchedule(false);
+        });
+    }
+  }, [workOrder.sourceId, workOrder.source, organizationId]);
 
   // ── Task completion state ──
   const [taskStates, setTaskStates] = useState<Record<number, boolean>>(() => {
@@ -138,7 +201,6 @@ export default function PMWorkOrderDetail({
     setTaskStates(prev => {
       const updated = { ...prev, [index]: !prev[index] };
 
-      // Build updated tasks array and persist to DB
       const updatedTasks = (workOrder.tasks || []).map((task: any, i: number) => ({
         ...task,
         completed: updated[i] || false,
@@ -272,6 +334,28 @@ export default function PMWorkOrderDetail({
     }
   }, [completeSignature, completionNotes, workOrder, onCompleteWork, onUpdate, logSignature, completedCount, totalTasks]);
 
+  // ── Navigate to parent PM schedule ──
+  const handleViewSchedule = useCallback(() => {
+    if (pmSchedule?.id) {
+      router.push(`/(tabs)/cmms/pmschedule` as any);
+    }
+  }, [pmSchedule, router]);
+
+  // ── Helpers ──
+  const formatDate = useCallback((dateStr: string | null) => {
+    if (!dateStr) return 'N/A';
+    const date = new Date(dateStr + 'T00:00:00');
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  }, []);
+
+  const getDaysUntil = useCallback((dateStr: string) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const target = new Date(dateStr + 'T00:00:00');
+    target.setHours(0, 0, 0, 0);
+    return Math.ceil((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  }, []);
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* ════════════ Header ════════════ */}
@@ -316,11 +400,121 @@ export default function PMWorkOrderDetail({
           ) : null}
         </View>
 
-        {/* PM Schedule Info */}
+        {/* ════════════ PM Schedule Metadata ════════════ */}
+        {workOrder.source === 'pm_schedule' && (
+          <View style={[styles.section, { backgroundColor: colors.surface, borderColor: '#10B981' + '40' }]}>
+            <View style={styles.sectionHeader}>
+              <RefreshCw size={16} color="#10B981" />
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>PM Schedule</Text>
+              {pmSchedule?.active === false && (
+                <View style={[styles.inactiveBadge, { backgroundColor: '#EF444420' }]}>
+                  <Text style={styles.inactiveBadgeText}>Inactive</Text>
+                </View>
+              )}
+            </View>
+
+            {isLoadingSchedule ? (
+              <View style={styles.scheduleLoading}>
+                <ActivityIndicator size="small" color="#10B981" />
+                <Text style={[styles.scheduleLoadingText, { color: colors.textSecondary }]}>Loading schedule...</Text>
+              </View>
+            ) : pmSchedule ? (
+              <View style={styles.scheduleContent}>
+                {/* Schedule Name */}
+                <View style={[styles.scheduleNameRow, { backgroundColor: '#10B98110' }]}>
+                  <ClipboardList size={14} color="#10B981" />
+                  <Text style={[styles.scheduleNameText, { color: colors.text }]}>{pmSchedule.name}</Text>
+                </View>
+
+                {/* Frequency */}
+                <View style={styles.scheduleRow}>
+                  <RefreshCw size={14} color={colors.textSecondary} />
+                  <Text style={[styles.scheduleLabel, { color: colors.textSecondary }]}>Frequency</Text>
+                  <View style={[styles.frequencyBadge, { backgroundColor: '#3B82F620' }]}>
+                    <Text style={[styles.frequencyBadgeText, { color: '#3B82F6' }]}>
+                      {FREQUENCY_LABELS[pmSchedule.frequency] || pmSchedule.frequency}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Schedule Days & Time */}
+                {(pmSchedule.schedule_days && pmSchedule.schedule_days.length > 0) && (
+                  <View style={styles.scheduleRow}>
+                    <Calendar size={14} color={colors.textSecondary} />
+                    <Text style={[styles.scheduleLabel, { color: colors.textSecondary }]}>Schedule</Text>
+                    <Text style={[styles.scheduleValue, { color: colors.text }]}>
+                      {pmSchedule.schedule_days.join(', ')}{pmSchedule.schedule_time ? ` at ${pmSchedule.schedule_time}` : ''}
+                    </Text>
+                  </View>
+                )}
+
+                {/* Equipment Tag */}
+                {pmSchedule.equipment_tag && (
+                  <View style={styles.scheduleRow}>
+                    <Tag size={14} color={colors.textSecondary} />
+                    <Text style={[styles.scheduleLabel, { color: colors.textSecondary }]}>Asset Tag</Text>
+                    <Text style={[styles.scheduleValue, { color: colors.text }]}>{pmSchedule.equipment_tag}</Text>
+                  </View>
+                )}
+
+                {/* Last Completed */}
+                <View style={styles.scheduleRow}>
+                  <CheckCircle2 size={14} color={pmSchedule.last_completed ? '#10B981' : colors.textTertiary} />
+                  <Text style={[styles.scheduleLabel, { color: colors.textSecondary }]}>Last Completed</Text>
+                  <Text style={[styles.scheduleValue, { color: pmSchedule.last_completed ? colors.text : '#EF4444' }]}>
+                    {pmSchedule.last_completed ? formatDate(pmSchedule.last_completed) : 'Never'}
+                  </Text>
+                </View>
+
+                {/* Next Due */}
+                <View style={styles.scheduleRow}>
+                  <Calendar size={14} color={colors.textSecondary} />
+                  <Text style={[styles.scheduleLabel, { color: colors.textSecondary }]}>Next Due</Text>
+                  <Text style={[styles.scheduleValue, { color: colors.text }]}>
+                    {formatDate(pmSchedule.next_due)}
+                    {(() => {
+                      const days = getDaysUntil(pmSchedule.next_due);
+                      if (days < 0) return ` (${Math.abs(days)}d overdue)`;
+                      if (days === 0) return ' (Today)';
+                      if (days <= 7) return ` (${days}d)`;
+                      return '';
+                    })()}
+                  </Text>
+                </View>
+
+                {/* Assigned Technician from Schedule */}
+                {pmSchedule.assigned_name && (
+                  <View style={styles.scheduleRow}>
+                    <User size={14} color={colors.textSecondary} />
+                    <Text style={[styles.scheduleLabel, { color: colors.textSecondary }]}>Default Tech</Text>
+                    <Text style={[styles.scheduleValue, { color: colors.text }]}>{pmSchedule.assigned_name}</Text>
+                  </View>
+                )}
+
+                {/* View Schedule Link */}
+                <TouchableOpacity
+                  style={[styles.viewScheduleButton, { backgroundColor: '#10B98115', borderColor: '#10B98140' }]}
+                  onPress={handleViewSchedule}
+                  activeOpacity={0.7}
+                >
+                  <RefreshCw size={14} color="#10B981" />
+                  <Text style={styles.viewScheduleText}>View PM Schedule</Text>
+                  <ChevronRight size={16} color="#10B981" />
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <Text style={[styles.scheduleNotFound, { color: colors.textTertiary }]}>
+                PM schedule not found (ID: {workOrder.sourceId || 'N/A'})
+              </Text>
+            )}
+          </View>
+        )}
+
+        {/* Work Order Info */}
         <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <View style={styles.sectionHeader}>
-            <RefreshCw size={16} color="#10B981" />
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>PM Schedule Info</Text>
+            <Wrench size={16} color="#3B82F6" />
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Work Order Info</Text>
           </View>
           <View style={styles.infoGrid}>
             {workOrder.equipment && (
@@ -342,7 +536,7 @@ export default function PMWorkOrderDetail({
             </View>
             {workOrder.assignedName && (
               <View style={styles.infoRow}>
-                <Clock size={14} color={colors.textSecondary} />
+                <User size={14} color={colors.textSecondary} />
                 <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>Assigned To</Text>
                 <Text style={[styles.infoValue, { color: colors.text }]}>{workOrder.assignedName}</Text>
               </View>
@@ -357,7 +551,43 @@ export default function PMWorkOrderDetail({
           </View>
         </View>
 
-        {/* Tasks Checklist */}
+        {/* ════════════ Parts Required ════════════ */}
+        {pmSchedule?.parts_required && Array.isArray(pmSchedule.parts_required) && pmSchedule.parts_required.length > 0 && (
+          <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={styles.sectionHeader}>
+              <Package size={16} color="#8B5CF6" />
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>
+                Parts Required ({pmSchedule.parts_required.length})
+              </Text>
+            </View>
+            {pmSchedule.parts_required.map((part: any, index: number) => (
+              <View key={index} style={[styles.partRow, { borderBottomColor: colors.border }]}>
+                <View style={[styles.partIcon, { backgroundColor: '#8B5CF620' }]}>
+                  <Package size={12} color="#8B5CF6" />
+                </View>
+                <View style={styles.partContent}>
+                  <Text style={[styles.partName, { color: colors.text }]}>
+                    {part.name || part.part_name || part.description || `Part ${index + 1}`}
+                  </Text>
+                  {(part.part_number || part.partNumber) && (
+                    <Text style={[styles.partNumber, { color: colors.textTertiary }]}>
+                      #{part.part_number || part.partNumber}
+                    </Text>
+                  )}
+                </View>
+                {(part.quantity || part.qty) && (
+                  <View style={[styles.partQtyBadge, { backgroundColor: '#8B5CF620' }]}>
+                    <Text style={[styles.partQtyText, { color: '#8B5CF6' }]}>
+                      ×{part.quantity || part.qty}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* ════════════ Tasks Checklist ════════════ */}
         {workOrder.tasks && workOrder.tasks.length > 0 && (
           <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <View style={styles.sectionHeader}>
@@ -409,7 +639,7 @@ export default function PMWorkOrderDetail({
           </View>
         )}
 
-        {/* Safety Requirements */}
+        {/* ════════════ Safety Requirements ════════════ */}
         {(workOrder.safety.lotoRequired || workOrder.safety.permits.length > 0 || workOrder.safety.ppeRequired.length > 0) && (
           <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <View style={styles.sectionHeader}>
@@ -470,7 +700,7 @@ export default function PMWorkOrderDetail({
           </View>
         )}
 
-        {/* Notes */}
+        {/* ════════════ Notes ════════════ */}
         {workOrder.notes ? (
           <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <View style={styles.sectionHeader}>
@@ -529,6 +759,14 @@ export default function PMWorkOrderDetail({
               <View style={[styles.modalInfoCard, { backgroundColor: colors.background }]}>
                 <Text style={[styles.modalInfoLabel, { color: colors.textSecondary }]}>{workOrder.workOrderNumber}</Text>
                 <Text style={[styles.modalInfoValue, { color: colors.text }]}>{workOrder.title}</Text>
+                {pmSchedule && (
+                  <View style={[styles.modalFrequencyTag, { backgroundColor: '#10B98120' }]}>
+                    <RefreshCw size={10} color="#10B981" />
+                    <Text style={styles.modalFrequencyText}>
+                      {FREQUENCY_LABELS[pmSchedule.frequency] || pmSchedule.frequency}
+                    </Text>
+                  </View>
+                )}
               </View>
 
               {/* Pre-Start Checklist */}
@@ -621,7 +859,7 @@ export default function PMWorkOrderDetail({
               {/* Completion Notes */}
               <Text style={[styles.modalSectionTitle, { color: colors.text }]}>Completion Notes *</Text>
               <TextInput
-                style={[styles.notesInput, { backgroundColor: colors.background, color: colors.text, borderColor: colors.border }]}
+                style={[styles.completionNotesInput, { backgroundColor: colors.background, color: colors.text, borderColor: colors.border }]}
                 placeholder="Describe the work performed, any findings, parts used..."
                 placeholderTextColor={colors.textTertiary}
                 value={completionNotes}
@@ -812,6 +1050,128 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     flex: 1,
   },
+  // ── PM Schedule Styles ──
+  scheduleLoading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+    gap: 10,
+  },
+  scheduleLoadingText: {
+    fontSize: 13,
+  },
+  scheduleContent: {
+    gap: 8,
+  },
+  scheduleNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    padding: 10,
+    borderRadius: 8,
+  },
+  scheduleNameText: {
+    fontSize: 14,
+    fontWeight: '600',
+    flex: 1,
+  },
+  scheduleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 6,
+  },
+  scheduleLabel: {
+    fontSize: 13,
+    fontWeight: '500',
+    width: 100,
+  },
+  scheduleValue: {
+    fontSize: 13,
+    fontWeight: '500',
+    flex: 1,
+    textAlign: 'right',
+  },
+  frequencyBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+    marginLeft: 'auto',
+  },
+  frequencyBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  inactiveBadge: {
+    marginLeft: 'auto',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  inactiveBadgeText: {
+    color: '#EF4444',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  scheduleNotFound: {
+    fontSize: 13,
+    fontStyle: 'italic',
+    textAlign: 'center',
+    paddingVertical: 8,
+  },
+  viewScheduleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    gap: 8,
+    marginTop: 4,
+  },
+  viewScheduleText: {
+    color: '#10B981',
+    fontSize: 14,
+    fontWeight: '600',
+    flex: 1,
+  },
+  // ── Parts Required Styles ──
+  partRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+  },
+  partIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 7,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  partContent: {
+    flex: 1,
+    gap: 1,
+  },
+  partName: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  partNumber: {
+    fontSize: 11,
+  },
+  partQtyBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  partQtyText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  // ── Task Styles ──
   taskRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -870,6 +1230,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
   },
+  // ── Safety Styles ──
   safetyBanner: {
     padding: 10,
     borderRadius: 8,
@@ -929,10 +1290,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
+  // ── Notes ──
   notesText: {
     fontSize: 14,
     lineHeight: 20,
   },
+  // ── Footer ──
   footer: {
     padding: 16,
     borderTopWidth: 1,
@@ -950,6 +1313,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  // ── Modal Styles ──
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
@@ -994,6 +1358,21 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     marginTop: 2,
+  },
+  modalFrequencyTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    marginTop: 4,
+  },
+  modalFrequencyText: {
+    color: '#10B981',
+    fontSize: 11,
+    fontWeight: '700',
   },
   modalSectionTitle: {
     fontSize: 14,
@@ -1053,7 +1432,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
   },
-  notesInput: {
+  completionNotesInput: {
     borderRadius: 10,
     padding: 14,
     fontSize: 15,
