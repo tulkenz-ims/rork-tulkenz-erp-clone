@@ -553,6 +553,46 @@ function renderOverview(){
   });
   h+='</div>';
 
+  // ── IMPLEMENTATION TIMELINE ──
+  h+=ovSectionHead("Implementation Timeline","Realistic rollout with proper process discovery, training, and stabilization. Timeframes are adjustable — every facility is different.","#10B981");
+
+  h+='<div style="display:flex;flex-direction:column;gap:0;margin-bottom:40px">';
+
+  var phases=[
+    {phase:"Phase 0",title:"Infrastructure & Data Migration",weeks:"Week 1–2",color:"#64748B",items:["Production environment setup (separate from development)","Employee roster import (bulk upload from spreadsheet)","Equipment registry import (bulk upload — no hand-typing 2,600 parts)","MRO parts and inventory bulk import","Roles, departments, locations, rooms configured","SDS library migrated"]},
+    {phase:"Phase 1",title:"CMMS + Inventory + Task Feed",weeks:"Week 3–5",color:"#3B82F6",items:["Work orders, PMs, equipment, parts — live immediately","Task Feed templates configured for your facility","Check In / Check Out, Emergency Protocol, SDS live","Train maintenance team on the system","Train supervisors and department leads on Task Feed","Refinements based on first two weeks of real use"]},
+    {phase:"Phase 2",title:"Sanitation",weeks:"Week 6–9",color:"#14B8A6",items:["Shadow sanitation crew — observe and document current processes","Build digital checklists, master sanitation schedule, crew assignments","Chemical and consumable inventory setup","Go live — train sanitation crew","Refine based on feedback"]},
+    {phase:"Phase 3",title:"Safety",weeks:"Week 10–13",color:"#EF4444",items:["Shadow safety team — document LOTO procedures per machine","Build permit templates, incident reporting workflows","SDS integration across departments","Go live — train all employees on incident reporting","Emergency protocol drills documented in system"]},
+    {phase:"Phase 4",title:"Quality",weeks:"Week 14–19",color:"#10B981",items:["Shadow QA team through full shifts — this is the deep one","Document every check: CCPs, temperatures, metal detectors, pre-op, hold/release","Map current paper forms to digital templates","Build and test all quality templates, scheduled tasks","Go live — train QA team, daily report sign-off workflow active","Room Hygiene Log auto-tracking verified"]},
+    {phase:"Phase 5",title:"Production + Hardware",weeks:"Week 20–22",color:"#8B5CF6",items:["Production run tracking live","Photoelectric sensors installed on lines (bag/unit counting)","Room status light bars installed above production rooms","Equipment sensors on critical assets (temp, vibration)","Auditor Portal configured for next audit cycle"]},
+    {phase:"Phase 6",title:"Stabilization & Handoff",weeks:"Week 23–26",color:"#E8C547",items:["Full system shakedown — everything running together","Fix anything that surfaced during real use","Document custom workflows and facility-specific configurations","Prepare for first fully-digital audited cycle","Shop Packets verified — all run documentation collecting automatically","System handoff — your team owns it"]}
+  ];
+
+  phases.forEach(function(p,i){
+    h+='<div style="display:flex;gap:16px;position:relative">';
+    // Timeline line
+    h+='<div style="display:flex;flex-direction:column;align-items:center;width:40px;flex-shrink:0">';
+    h+='<div style="width:36px;height:36px;border-radius:18px;background:'+p.color+';display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#fff;z-index:1">'+p.phase.replace("Phase ","")+'</div>';
+    if(i<phases.length-1) h+='<div style="width:2px;flex:1;background:linear-gradient(to bottom,'+p.color+','+phases[i+1].color+');margin:4px 0"></div>';
+    h+='</div>';
+    // Content
+    h+='<div style="flex:1;padding-bottom:'+(i<phases.length-1?'24':'0')+'px">';
+    h+='<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap"><span style="font-size:16px;font-weight:800;color:'+p.color+'">'+p.title+'</span><span style="font-size:12px;font-weight:600;color:#777799;background:rgba(255,255,255,0.05);padding:3px 10px;border-radius:5px">'+p.weeks+'</span></div>';
+    p.items.forEach(function(item){
+      h+='<div style="font-size:12px;color:#aaaacc;padding:3px 0;line-height:1.6">• '+item+'</div>';
+    });
+    h+='</div></div>';
+  });
+
+  h+='</div>';
+
+  // Timeline note
+  h+='<div style="background:linear-gradient(135deg,rgba(16,185,129,0.06),rgba(232,197,71,0.06));border:1px solid rgba(16,185,129,0.2);border-radius:12px;padding:18px;margin-bottom:40px">';
+  h+='<div style="font-size:15px;font-weight:700;color:#10B981;margin-bottom:8px">6 Months to Full Digital Operations</div>';
+  h+='<div style="font-size:13px;color:#aaaacc;line-height:1.7;margin-bottom:12px">CMMS is live by week 3. Each module rolls out with proper process discovery — we walk your floors, observe how your teams actually work, and build the digital version of your processes. No cookie-cutter templates forced onto your facility.</div>';
+  h+='<div style="font-size:13px;color:#888899;line-height:1.7">Timeline may extend to 9 months depending on data volume, cross-department complexity, and facility-specific customization. Bulk import tools handle large datasets — no one is hand-typing 2,600 parts.</div>';
+  h+='</div>';
+
   // Footer
   h+='<div style="text-align:center;padding:32px 0;border-top:1px solid rgba(168,85,247,0.2)">';
   h+='<div style="font-size:28px;font-weight:900;margin-bottom:8px"><span style="color:#fff">Tul</span><span style="color:#a855f7">Kenz</span><span style="color:#fff"> OPS</span></div>';
