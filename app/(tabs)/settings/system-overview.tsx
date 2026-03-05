@@ -149,7 +149,7 @@ const moduleData = [
     desc: 'Token-based external auditor access, read-only compliance dashboard, no login required, audit framework selection (SQF, FDA, OSHA, BRC, FSSC 22000, and more)',
     layman: 'Give your auditor a secure link — they see exactly what they need for their audit without needing an account. You control what they see and when their access expires.' },
   { name: 'Time Clock', screens: 4, icon: Clock, color: '#84CC16',
-    desc: 'Clock in/out, break tracking, kiosk mode for shared devices, room hub, shift management',
+    desc: 'Check in/out, break tracking, kiosk mode for shared devices, room hub, shift management',
     layman: 'Employees clock in and out from their phone or a shared tablet at the door. Tracks breaks, overtime, and hours by department.' },
   { name: 'Approvals', screens: 5, icon: CheckCircle, color: '#A855F7',
     desc: 'Multi-tier approval workflows, delegation, approval history, configurable approval chains',
