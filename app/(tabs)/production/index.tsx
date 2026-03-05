@@ -130,7 +130,7 @@ export default function ProductionScreen() {
               <TaskFeedInbox
                 departmentCode="1003"
                 moduleColor="#F59E0B"
-                workOrderTypeFilter="preventive"
+                workOrderTypeFilter="scheduled"
                 onTaskCompleted={handleTaskCompleted}
                 maxVisible={20}
                 showHeader={false}
