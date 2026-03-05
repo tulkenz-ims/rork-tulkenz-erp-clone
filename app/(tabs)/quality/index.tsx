@@ -525,7 +525,7 @@ export default function QualityScreen() {
                 <TaskFeedInbox
                   departmentCode="1004"
                   moduleColor="#8B5CF6"
-                  workOrderTypeFilter="preventive"
+                  workOrderTypeFilter="scheduled"
                   onTaskCompleted={handleTaskCompleted}
                   createModuleHistoryRecord={handleCreateQualityHistoryRecord}
                   maxVisible={20}
