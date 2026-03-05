@@ -25,17 +25,15 @@ const FREQUENCY_DAYS = {
 };
 
 const DEPARTMENT_NAMES = {
-  '1000': 'Administration',
+  '1000': 'Projects / Offices',
   '1001': 'Maintenance',
-  '1002': 'Production',
-  '1003': 'Quality',
-  '1004': 'Sanitation',
+  '1002': 'Sanitation',
+  '1003': 'Production',
+  '1004': 'Quality',
   '1005': 'Safety',
-  '1006': 'Warehouse',
-  '1007': 'Shipping',
-  '1008': 'Receiving',
-  '1009': 'Human Resources',
-  '1010': 'Logistics',
+  '1006': 'HR',
+  '1008': 'Warehouse',
+  '1009': 'IT / Technology',
 };
 
 // ══════════════════════════════════ HELPERS ══════════════════════════════════
