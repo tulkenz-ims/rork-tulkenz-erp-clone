@@ -168,6 +168,7 @@ function animTo(el,target){
 // ═══════════════════════════ RENDER ══════════════════════════════
 function render(){
   if(currentView==="sources"){renderSources();return;}
+  if(currentView==="overview"){renderOverview();return;}
   var c=calc();
   var app=document.getElementById("app");
 
@@ -366,7 +367,7 @@ function render(){
   h+='<div style="padding:12px 16px;background:rgba(255,255,255,0.03);border-radius:8px;border:1px solid rgba(255,255,255,0.06);margin-bottom:16px"><div style="color:#555566;font-size:10px;line-height:1.6;text-align:center">Paper operations estimates based on published industry research. Competitor pricing from published rates & industry averages. All figures adjustable. These represent potential outcomes, not guarantees.</div></div>';
 
   // View Sources button
-  h+='<div style="text-align:center;margin-bottom:24px"><button class="src-btn" id="viewSources">📊 View Research Sources</button></div>';
+  h+='<div style="text-align:center;margin-bottom:24px;display:flex;justify-content:center;gap:12px;flex-wrap:wrap"><button class="src-btn" id="viewSources">📊 View Research Sources</button><button class="src-btn" id="viewOverview" style="border-color:rgba(168,85,247,0.3);color:#a855f7">🏭 Platform Overview</button></div>';
 
   // Footer
   h+='<div style="text-align:center"><p style="color:#e8c547;font-size:16px;font-weight:700;font-style:italic;line-height:1.5;margin-bottom:8px">"The goal isn\\'t fewer people.<br/>It\\'s more time for the work that matters."</p><div style="color:#555566;font-size:11px"><span style="color:#fff">Tul</span><span style="color:#a855f7">Kenz</span><span style="color:#fff"> OPS</span><span style="color:#555566"> — Built for Manufacturing</span></div></div>';
@@ -375,6 +376,199 @@ function render(){
   app.innerHTML=h;
   updateAnimatedNumbers();
   bindEvents();
+}
+
+function renderOverview(){
+  var app=document.getElementById("app");
+  var h='';
+  // Top bar
+  h+='<div class="topbar"><div style="display:flex;align-items:center;gap:10px"><div style="width:38px;height:38px;border-radius:8px;background:linear-gradient(135deg,#a855f7,#7c3aed);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;color:#fff;letter-spacing:0.5px">TKO</div><div><span style="font-size:15px;font-weight:700;line-height:1.1"><span style="color:#fff">Tul</span><span style="color:#a855f7">Kenz</span><span style="color:#fff"> OPS</span></span><div style="font-size:8px;color:#777799;letter-spacing:1.5px;text-transform:uppercase">Platform Overview</div></div></div><button id="backFromOverview" style="padding:8px 18px;background:transparent;border:1px solid #e8c547;border-radius:6px;color:#e8c547;font-size:12px;font-weight:600;cursor:pointer;font-family:Outfit,sans-serif">← Back to Calculator</button></div>';
+
+  h+='<div style="max-width:900px;margin:0 auto;padding:32px 16px 60px">';
+
+  // Hero
+  h+='<div style="text-align:center;padding:48px 20px;background:linear-gradient(135deg,rgba(168,85,247,0.15),rgba(59,130,246,0.1));border:1px solid rgba(168,85,247,0.3);border-radius:20px;margin-bottom:32px">';
+  h+='<div style="font-size:42px;font-weight:900;margin-bottom:8px"><span style="color:#fff">Tul</span><span style="color:#a855f7">Kenz</span><span style="color:#fff"> OPS</span></div>';
+  h+='<div style="font-size:18px;color:#c4b5fd;margin-bottom:6px">Comprehensive Operations Management Platform</div>';
+  h+='<div style="font-size:14px;color:#8b7fc7">Purpose-built for food manufacturing facilities</div>';
+  h+='<div style="display:flex;justify-content:center;gap:20px;margin-top:24px;flex-wrap:wrap">';
+  [["39","Modules"],["838","Screens"],["103","Hooks"],["463K+","Lines of Code"]].forEach(function(s){
+    h+='<div style="background:rgba(0,0,0,0.3);border:1px solid rgba(168,85,247,0.25);border-radius:10px;padding:12px 20px;text-align:center"><div style="color:#a855f7;font-size:24px;font-weight:800;font-family:JetBrains Mono,monospace">'+s[0]+'</div><div style="color:#777799;font-size:10px;text-transform:uppercase;letter-spacing:1px;margin-top:2px">'+s[1]+'</div></div>';
+  });
+  h+='</div></div>';
+
+  // Customization callout
+  h+='<div style="background:linear-gradient(135deg,rgba(232,197,71,0.06),rgba(168,85,247,0.06));border:1px solid rgba(232,197,71,0.2);border-radius:12px;padding:18px;margin-bottom:32px;text-align:center"><div style="font-size:18px;font-weight:800;color:#e8c547;margin-bottom:6px">Built to Your Processes</div><div style="font-size:13px;color:#aaaacc;line-height:1.7">Every form, checklist, workflow, and approval chain is configured to how your facility actually works. No two facilities are the same — TulKenz OPS adapts to yours. The modules below show capabilities, not limitations.</div></div>';
+
+  // ── MODULES ──
+  h+=ovSectionHead("Operational Modules","Every department gets a dedicated Reactive inbox for floor issues and a Scheduled inbox for recurring tasks — nothing gets mixed up, nothing gets lost.","#a855f7");
+
+  var modules=[
+    {name:"CMMS / Maintenance",color:"#3B82F6",icon:"🔧",screens:93,desc:"Work orders, PMs, equipment registry, parts inventory, vendors, failure analysis, LOTO, KPI dashboards, labor costing, MTBF/MTTR. Reactive & Preventive inboxes.",plain:"Everything your maintenance team needs — tracking repairs, scheduling preventive work, managing spare parts and vendors, and measuring how well equipment is performing."},
+    {name:"Quality",color:"#10B981",icon:"📋",screens:104,desc:"CCP monitoring, pre-op inspections, metal detector logs, temperature logs, room hygiene log, hold tags, daily reports with PPIN sign-off. Reactive & Scheduled inboxes.",plain:"Tracks every quality check — food safety critical control points, product inspections, temperature readings, and room cleanliness with daily Quality sign-off."},
+    {name:"Safety",color:"#EF4444",icon:"⚠️",screens:99,desc:"Incident reports, OSHA 300/301, safety permits, emergency events/drills, contractor safety, ergonomics, PPE, SDS management. Reactive & Scheduled inboxes.",plain:"Report injuries, track permits, run emergency drills, manage contractor access, keep OSHA paperwork current, and make sure everyone has their protective gear."},
+    {name:"Sanitation",color:"#14B8A6",icon:"✨",screens:80,desc:"Master sanitation schedule, daily/weekly/monthly tasks, crew assignment, restroom cleaning, chemical safety, NCRs, CAPAs. Reactive & Scheduled inboxes.",plain:"Manages the entire cleaning operation — who cleans what and when, tracks supplies and chemicals, handles non-conformances, and keeps all sanitation logs."},
+    {name:"Production",color:"#8B5CF6",icon:"🏭",screens:3,desc:"Production runs with real-time sensor counting, yield tracking, waste/rework, materials management. Reactive & Scheduled inboxes.",plain:"Counts bags/units off the line in real-time using sensors. Tracks good units, waste, and ties everything to a run number."},
+    {name:"Compliance",color:"#7C3AED",icon:"🛡️",screens:119,desc:"SQF audit prep, HACCP plans, document control, CAPA, internal audits, supplier approvals, training records.",plain:"Keeps you audit-ready — organizes compliance documents, tracks corrective actions, manages food safety plans, and logs training."},
+    {name:"Inventory",color:"#F59E0B",icon:"📦",screens:113,desc:"Multi-department materials (MRO, production, sanitation, safety, warehouse, office), lot tracking, stock levels, cycle counts, low stock alerts.",plain:"One place for all your stuff — parts, raw materials, cleaning supplies, safety gear. Tracks what you have and alerts you when something runs low."},
+    {name:"Procurement",color:"#EC4899",icon:"💰",screens:52,desc:"Purchase requests, purchase orders, vendor management, receiving, multi-tier approvals, budget tracking.",plain:"Handles buying — from requesting a purchase, getting it approved, sending the PO, all the way to receiving it and tracking cost."},
+    {name:"Finance",color:"#06B6D4",icon:"📊",screens:69,desc:"Budgets, cost centers, GL accounts, journal entries, AP/AR, expense tracking, financial reporting.",plain:"Tracks money in and out — department budgets, vendor bills, expenses, and financial reports."},
+    {name:"HR",color:"#6366F1",icon:"👥",screens:51,desc:"Employee profiles, benefits, attendance, time-off, FMLA, disciplinary, onboarding, offboarding, EEOC, I-9/E-Verify.",plain:"Manages people from hire to retire — records, benefits, time off, write-ups, new hire paperwork, and compliance."},
+    {name:"Task Feed",color:"#F97316",icon:"⚡",screens:2,desc:"Cross-department issue routing, production holds, department task assignments, form linking, work order creation, PPIN sign-off, auto Room Hygiene Log.",plain:"The nerve center — when something happens on the floor, it posts here and auto-routes to every department that needs to respond."},
+    {name:"Auditor Portal",color:"#6C5CE7",icon:"👁️",screens:1,desc:"Token-based external auditor access, read-only compliance dashboard, no login required. Supports SQF, FDA, OSHA, BRC, FSSC 22000, and custom frameworks.",plain:"Give your auditor a secure link — they see exactly what they need without an account. You control access and expiration."},
+    {name:"Time Clock",color:"#84CC16",icon:"⏰",screens:4,desc:"Check in/out, presence tracking, kiosk mode for shared devices, room hub, shift management.",plain:"Employees check in and out from their phone or a shared tablet. Tracks who is on-site and integrates alongside your existing payroll system."},
+    {name:"Emergency Protocol",color:"#DC2626",icon:"🚨",screens:6,desc:"Fire/tornado/chemical/active shooter protocols, real-time headcount, drill tracking, facility-wide alert system, after-action reports.",plain:"Start a drill or respond to a real emergency — instant facility-wide alerts, live headcount tracking, and full post-event documentation."},
+    {name:"Approvals",color:"#A855F7",icon:"✅",screens:5,desc:"Multi-tier approval workflows, delegation, approval history, configurable chains.",plain:"When something needs a manager OK, it flows through an approval chain. Managers can delegate when they are out."},
+    {name:"Settings",color:"#64748B",icon:"⚙️",screens:13,desc:"Organization setup, facilities, departments, roles/permissions, Task Feed templates, alert preferences.",plain:"The admin panel — set up your company, buildings, rooms, departments, who has access, and how templates work."}
+  ];
+
+  h+='<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:40px">';
+  modules.forEach(function(m){
+    h+='<div style="background:#0f0f1a;border:1px solid '+m.color+'33;border-left:3px solid '+m.color+';border-radius:10px;padding:14px 16px">';
+    h+='<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px"><div style="display:flex;align-items:center;gap:8px"><span style="font-size:18px">'+m.icon+'</span><span style="font-size:15px;font-weight:700;color:'+m.color+'">'+m.name+'</span></div><span style="color:'+m.color+';font-size:13px;font-weight:700;font-family:JetBrains Mono,monospace">'+m.screens+' screens</span></div>';
+    h+='<div style="font-size:12px;color:#aaaacc;line-height:1.6;margin-bottom:6px">'+m.desc+'</div>';
+    h+='<div style="font-size:11px;color:#8B5CF6;font-style:italic;line-height:1.5">→ '+m.plain+'</div>';
+    h+='</div>';
+  });
+  h+='</div>';
+
+  // ── FLAGSHIP FEATURES ──
+  h+=ovSectionHead("Flagship Features","Capabilities that no competitor offers — at any price.","#e8c547");
+
+  // Task Feed
+  h+='<div style="background:linear-gradient(135deg,#0f1828,#12121f);border:1px solid rgba(59,130,246,0.4);border-radius:16px;padding:24px 20px;margin-bottom:14px;position:relative;overflow:hidden"><div style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#3b82f6,#e8c547,#4ecdc4,#3b82f6);background-size:200% 100%;animation:shimmer 3s linear infinite"></div>';
+  h+='<div style="font-size:10px;letter-spacing:3px;color:#3b82f6;text-transform:uppercase;font-weight:700;margin-bottom:8px">★ Nothing Like It Exists</div>';
+  h+='<div style="font-size:22px;font-weight:800;color:#fff;margin-bottom:10px">The Task Feed</div>';
+  h+='<div style="font-size:14px;color:#b0c4de;line-height:1.8;margin-bottom:14px">A broken glove is found on the production floor. The employee posts it. <strong style="color:#e8c547">The Task Feed automatically dispatches to Sanitation, Maintenance, Safety, and Production — simultaneously.</strong> No phone calls. No chasing people down. Every department responds, fills out their forms, and the department tags go from red to green one by one. <strong style="color:#4ecdc4">The line does not resume until the designated sign-off authority clears it.</strong></div>';
+  h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px">';
+  ["Auto-dispatches to all relevant departments","Department tags track red → green status","Every form and WO links back to the original post","Line resumes only when sign-off authority clears","Daily Room Hygiene Report auto-tracks every instance","Template-driven — 100% customizable per workflow","Complete audit trail — who, what, when, why","Shop Packets — all run docs collected in one place"].forEach(function(t){h+='<div style="font-size:11px;color:#8fafc8;padding:5px 8px;background:rgba(59,130,246,0.08);border-radius:5px">◆ '+t+'</div>';});
+  h+='</div></div>';
+
+  // Auditor Portal
+  h+='<div style="background:linear-gradient(135deg,#0f1a1a,#12121f);border:1px solid rgba(78,205,196,0.4);border-radius:16px;padding:24px 20px;margin-bottom:14px;position:relative;overflow:hidden"><div style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#4ecdc4,#e8c547,#4ecdc4);background-size:200% 100%;animation:shimmer 3s linear infinite"></div>';
+  h+='<div style="font-size:10px;letter-spacing:3px;color:#4ecdc4;text-transform:uppercase;font-weight:700;margin-bottom:8px">★ Industry First</div>';
+  h+='<div style="font-size:22px;font-weight:800;color:#fff;margin-bottom:10px">The Auditor Portal</div>';
+  h+='<div style="font-size:14px;color:#bbdddd;line-height:1.8;margin-bottom:14px">Your SQF auditor walks in. You hand them a tablet or send a <strong style="color:#e8c547">secure session link for remote access</strong>. Token-based, expirable, revocable. Read-only access to work orders, CAPAs, training logs, sanitation records, SDS documents — all searchable, timestamped, linked. <strong style="color:#4ecdc4">The auditor is impressed before they ask their first question.</strong></div>';
+  h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px">';
+  ["Unique authenticated link per auditor","Token expiration and revocation","Read-only — auditors verify, never edit","Full search across all audit-specific records","Linked records — tap a CAPA, see the NCR, the WO","Supports SQF, BRCGS, FDA, OSHA, ESG, custom","Complete session tracking — what they viewed, when","Countdown to next audit — always know where you stand"].forEach(function(t){h+='<div style="font-size:11px;color:#88bbbb;padding:5px 8px;background:rgba(78,205,196,0.08);border-radius:5px">◆ '+t+'</div>';});
+  h+='</div></div>';
+
+  // Emergency Protocol
+  h+='<div style="background:linear-gradient(135deg,#1a0f0f,#12121f);border:1px solid rgba(239,68,68,0.4);border-radius:16px;padding:24px 20px;margin-bottom:14px;position:relative;overflow:hidden"><div style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#ef4444,#f59e0b,#ef4444);background-size:200% 100%;animation:shimmer 3s linear infinite"></div>';
+  h+='<div style="font-size:10px;letter-spacing:3px;color:#ef4444;text-transform:uppercase;font-weight:700;margin-bottom:8px">★ Real-Time Emergency Response</div>';
+  h+='<div style="font-size:22px;font-weight:800;color:#fff;margin-bottom:10px">Emergency Protocol System</div>';
+  h+='<div style="font-size:14px;color:#e8a0a0;line-height:1.8;margin-bottom:14px">Fire, tornado, chemical spill, active shooter — select the type, <strong style="color:#f59e0b">roll call starts immediately</strong>. Every checked-in employee appears on a split-screen headcount. Tap their name as they arrive at the assembly point. <strong style="color:#ef4444">Facility-wide alert broadcasts to every connected device.</strong> After-action reports, drill history, and response time metrics all documented automatically.</div>';
+  h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px">';
+  ["Instant facility-wide emergency alerts","Live headcount — who is accounted for, who is not","Check in / check out integration","Fire, tornado, chemical, active shooter protocols","Drill mode for practice runs","After-action report with timeline","Response time metrics and drill history","Cancel button for accidental activations"].forEach(function(t){h+='<div style="font-size:11px;color:#e8a0a0;padding:5px 8px;background:rgba(239,68,68,0.08);border-radius:5px">◆ '+t+'</div>';});
+  h+='</div></div>';
+
+  // Shop Packets
+  h+='<div style="background:linear-gradient(135deg,#1a1a0f,#12121f);border:1px solid rgba(232,197,71,0.4);border-radius:16px;padding:24px 20px;margin-bottom:40px;position:relative;overflow:hidden"><div style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#e8c547,#f97316,#e8c547);background-size:200% 100%;animation:shimmer 3s linear infinite"></div>';
+  h+='<div style="font-size:10px;letter-spacing:3px;color:#e8c547;text-transform:uppercase;font-weight:700;margin-bottom:8px">★ Complete Run Documentation</div>';
+  h+='<div style="font-size:22px;font-weight:800;color:#fff;margin-bottom:10px">Shop Packets</div>';
+  h+='<div style="font-size:14px;color:#ccbb88;line-height:1.8;margin-bottom:14px">All paperwork for a single production run comes together in one place — the run record, quality checks, temperature logs, metal detector verifications, cleaning records, LOTO permits, and any Task Feed posts. <strong style="color:#e8c547">Run #12234 and every document associated with it, organized and audit-ready.</strong> No more hunting through filing cabinets.</div>';
+  h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px">';
+  ["Production run record with bag/unit counts","Quality checks linked to run number","Temperature and CCP logs","Metal detector verification records","Cleaning and sanitation sign-offs","LOTO permits and equipment clearances","Task Feed posts from the run","Complete audit trail — one click, one run"].forEach(function(t){h+='<div style="font-size:11px;color:#ccbb88;padding:5px 8px;background:rgba(232,197,71,0.08);border-radius:5px">◆ '+t+'</div>';});
+  h+='</div></div>';
+
+  // ── HARDWARE INTEGRATIONS ──
+  h+=ovSectionHead("Hardware Integrations","Low-cost, food-safe components that connect to your existing facility WiFi. If it can talk to the internet, it can talk to TulKenz OPS.","#06B6D4");
+
+  h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:40px">';
+
+  // Andon lights
+  h+='<div style="background:#0f0f1a;border:1px solid rgba(255,136,68,0.3);border-radius:14px;padding:20px"><div style="font-size:24px;margin-bottom:8px">🔴🟡🟢🔵⚪</div><div style="font-size:16px;font-weight:700;color:#ff8844;margin-bottom:6px">Room Status / Andon Light System</div><div style="font-size:12px;color:#aaaacc;line-height:1.6;margin-bottom:12px">WiFi-connected LED light bars mounted above each production room entrance. The light changes color based on room status — visible from anywhere on the floor.</div>';
+  h+='<div style="display:flex;flex-direction:column;gap:4px">';
+  [{c:"#10B981",s:"Green",d:"Running / Production Active"},{c:"#EF4444",s:"Red",d:"LOTO / Locked Out"},{c:"#F59E0B",s:"Yellow",d:"Cleaning / Sanitation"},{c:"#3B82F6",s:"Blue",d:"Setup / Changeover"},{c:"#6B7280",s:"Gray",d:"Idle / Not In Use"}].forEach(function(l){
+    h+='<div style="display:flex;align-items:center;gap:8px"><div style="width:12px;height:12px;border-radius:50%;background:'+l.c+'"></div><span style="font-size:11px;color:'+l.c+';font-weight:600;min-width:50px">'+l.s+'</span><span style="font-size:11px;color:#777799">'+l.d+'</span></div>';
+  });
+  h+='</div><div style="margin-top:12px;font-size:11px;color:#666688;font-style:italic">Controlled from TulKenz OPS — synced with Task Feed and CMMS in real time. Supervisors see status on-screen; floor personnel see the physical lights.</div></div>';
+
+  // Sensors
+  h+='<div style="background:#0f0f1a;border:1px solid rgba(168,85,247,0.3);border-radius:14px;padding:20px"><div style="font-size:24px;margin-bottom:8px">📡</div><div style="font-size:16px;font-weight:700;color:#a855f7;margin-bottom:6px">Equipment Sensors & Line Counting</div><div style="font-size:12px;color:#aaaacc;line-height:1.6;margin-bottom:12px">Photoelectric sensors count bags/units in real-time. Equipment sensors monitor temperature, vibration, humidity, and runtime. Data flows to TulKenz OPS continuously.</div>';
+  h+='<div style="display:flex;flex-direction:column;gap:4px">';
+  ["Bag/unit counting via photoelectric sensor","Temperature monitoring on critical equipment","Vibration detection for early failure warning","Auto-generate work orders when thresholds exceeded","MTBF / MTTR tracked from actual sensor data","OEE visibility without manual data collection"].forEach(function(t){h+='<div style="font-size:11px;color:#bb99dd;padding:2px 0">• '+t+'</div>';});
+  h+='</div><div style="margin-top:12px;font-size:11px;color:#666688;font-style:italic">Hardware: ESP32 microcontroller ($10-15), photoelectric sensor ($80-150), IP65 enclosure. Total per line: $150-300. Food-safe, washdown rated.</div></div>';
+
+  // Other hardware
+  h+='<div style="background:#0f0f1a;border:1px solid rgba(78,205,196,0.3);border-radius:14px;padding:20px"><div style="font-size:24px;margin-bottom:8px">📱</div><div style="font-size:16px;font-weight:700;color:#4ecdc4;margin-bottom:6px">Kiosk Mode & Barcode Scanning</div><div style="font-size:12px;color:#aaaacc;line-height:1.6">';
+  h+='<strong style="color:#4ecdc4">Time Clock Kiosk:</strong> Mount a tablet at the entrance — employees check in/out by tapping their name and entering their PIN. One device, everyone uses it.<br/><br/>';
+  h+='<strong style="color:#4ecdc4">Barcode/QR Scanning:</strong> Scan parts and materials with your phone camera or a handheld scanner for receiving, cycle counts, and parts issuing.</div></div>';
+
+  // Offline
+  h+='<div style="background:#0f0f1a;border:1px solid rgba(132,204,22,0.3);border-radius:14px;padding:20px"><div style="font-size:24px;margin-bottom:8px">📶</div><div style="font-size:16px;font-weight:700;color:#84CC16;margin-bottom:6px">Offline Resilience</div><div style="font-size:12px;color:#aaaacc;line-height:1.6">';
+  h+='If WiFi drops, screens you have already opened stay visible — cached on your device. Once the connection comes back, the app automatically syncs and picks up where it left off. You will not lose data or get stuck on a blank screen.</div></div>';
+
+  h+='</div>';
+
+  // ── CROSS-MODULE INTEGRATION ──
+  h+=ovSectionHead("Cross-Module Integration","Modules do not operate in silos — they talk to each other automatically. These are examples of what the platform does out of the box. If your facility has a workflow that crosses departments, we can wire it up.","#F97316");
+
+  h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:40px">';
+  [
+    {from:"Task Feed",to:"Room Hygiene Log",desc:"Department completes a task in a production room → hygiene log entry auto-created for SQF compliance"},
+    {from:"Task Feed",to:"Work Orders",desc:"Maintenance gets an issue → creates a work order right from the task, linked back to the original report"},
+    {from:"Task Feed",to:"Production Runs",desc:"Post Start Run / End Run → creates and closes production run records, sensor counts tie to the run"},
+    {from:"Work Orders",to:"Parts Inventory",desc:"Parts used on a work order → inventory goes down automatically, no separate adjustment needed"},
+    {from:"PM Schedules",to:"Work Orders",desc:"Preventive maintenance auto-generates work orders on schedule — daily, weekly, monthly, or meter-based"},
+    {from:"Inspections",to:"Task Feed",desc:"Inspection fails → auto-creates a flagged post so relevant departments get notified and act"},
+    {from:"Approvals",to:"Procurement",desc:"Purchase over threshold → flows through approval chain before the PO is sent to the vendor"},
+    {from:"All Modules",to:"Shop Packets",desc:"Every document for a production run collects automatically — one click to see everything for Run #12234"}
+  ].forEach(function(i){
+    h+='<div style="background:#0f0f1a;border:1px solid rgba(249,115,22,0.15);border-radius:8px;padding:12px"><div style="display:flex;align-items:center;gap:6px;margin-bottom:6px"><span style="font-size:11px;font-weight:700;color:#f97316">'+i.from+'</span><span style="color:#e8c547;font-size:10px">→</span><span style="font-size:11px;font-weight:700;color:#4ecdc4">'+i.to+'</span></div><div style="font-size:11px;color:#888899;line-height:1.5">'+i.desc+'</div></div>';
+  });
+  h+='</div>';
+
+  // ── COMPLIANCE ──
+  h+=ovSectionHead("Regulatory Compliance","Built-in support for the standards that matter in food manufacturing — to name a few.","#F59E0B");
+
+  h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:40px">';
+  [
+    {name:"SQF",color:"#3B82F6",desc:"Document control, audits, CAPA, HACCP, training, hygiene logs"},
+    {name:"FDA FSMA",color:"#10B981",desc:"Preventive controls, CCP monitoring, temperature logs, supplier verification"},
+    {name:"OSHA",color:"#EF4444",desc:"Incident reporting, 300/301 logs, LOTO, PPE, permits, emergency preparedness"},
+    {name:"GMP",color:"#8B5CF6",desc:"Equipment maintenance, calibration, sanitation schedules, hygiene verification"},
+    {name:"HACCP",color:"#06B6D4",desc:"Critical control point monitoring, hazard analysis, corrective actions"},
+    {name:"BRC / FSSC 22000",color:"#EC4899",desc:"Supported through the flexible compliance module with custom audit frameworks"}
+  ].forEach(function(c){
+    h+='<div style="background:'+c.color+'08;border:1px solid '+c.color+'33;border-radius:10px;padding:12px"><div style="font-size:14px;font-weight:800;color:'+c.color+';margin-bottom:4px">'+c.name+'</div><div style="font-size:11px;color:#888899;line-height:1.5">'+c.desc+'</div></div>';
+  });
+  h+='</div>';
+
+  // ── SECURITY ──
+  h+=ovSectionHead("Security Architecture","Enterprise-grade security built into every layer — not bolted on after the fact.","#EF4444");
+
+  h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:40px">';
+  [
+    {title:"Bcrypt Password Hashing",desc:"Passwords scrambled into unreadable code before storage. Even a database breach cannot reveal them."},
+    {title:"TLS 1.3 Encryption in Transit",desc:"All data scrambled during transmission. Same technology banks use. Intercepted data is gibberish."},
+    {title:"AES-256 Encryption at Rest",desc:"Data encrypted in the database with military-grade encryption. Physical theft of hardware reveals nothing."},
+    {title:"Row Level Security on Every Table",desc:"The database itself enforces permissions. Even a code bug cannot expose unauthorized data."},
+    {title:"Organization-Level Data Isolation",desc:"Each company is completely walled off. Company A can never see Company B, period."},
+    {title:"Role-Based Access Control",desc:"Admin, Manager, Supervisor, Technician, Operator — each sees only what they need."},
+    {title:"PPIN Sign-Off for Regulated Actions",desc:"Personal PIN required for production holds, daily reports, and sign-offs — digital signature with accountability."},
+    {title:"99.9%+ Uptime SLA",desc:"Hosted on Vercel + Supabase with automatic backups, global CDN, and point-in-time data restoration."}
+  ].forEach(function(s){
+    h+='<div style="background:#0f0f1a;border:1px solid rgba(239,68,68,0.12);border-radius:8px;padding:12px"><div style="font-size:12px;font-weight:700;color:#ff6b6b;margin-bottom:4px">'+s.title+'</div><div style="font-size:11px;color:#888899;line-height:1.5">'+s.desc+'</div></div>';
+  });
+  h+='</div>';
+
+  // Footer
+  h+='<div style="text-align:center;padding:32px 0;border-top:1px solid rgba(168,85,247,0.2)">';
+  h+='<div style="font-size:28px;font-weight:900;margin-bottom:8px"><span style="color:#fff">Tul</span><span style="color:#a855f7">Kenz</span><span style="color:#fff"> OPS</span></div>';
+  h+='<div style="font-size:14px;color:#888899;margin-bottom:16px">A single unified platform replacing separate CMMS, QMS, EHS, HRIS, procurement, and production tracking systems — purpose-built for food manufacturing.</div>';
+  h+='<div style="font-size:18px;font-weight:800;color:#e8c547;font-style:italic;line-height:1.5">"The goal is not fewer people.<br/>It is more time for the work that matters."</div>';
+  h+='<div style="margin-top:16px;font-size:11px;color:#555566">Built by TulKenz LLC — 2026</div>';
+  h+='</div>';
+
+  h+='</div>';
+  app.innerHTML=h;
+
+  document.getElementById("backFromOverview").addEventListener("click",function(){currentView="calculator";render();window.scrollTo(0,0);});
+}
+
+function ovSectionHead(title,sub,color){
+  return '<div style="margin-bottom:20px;padding-bottom:14px;border-bottom:1px solid '+color+'33"><h2 style="font-size:22px;font-weight:800;color:#fff;margin-bottom:6px">'+title+'</h2><div style="font-size:13px;color:#7777aa;line-height:1.6">'+sub+'</div></div>';
 }
 
 function renderSources(){
@@ -470,6 +664,8 @@ function bindEvents(){
   // Sources button
   var vs=document.getElementById("viewSources");
   if(vs)vs.addEventListener("click",function(){currentView="sources";render();window.scrollTo(0,0);});
+  var vo=document.getElementById("viewOverview");
+  if(vo)vo.addEventListener("click",function(){currentView="overview";render();window.scrollTo(0,0);});
 }
 
 // ═══════════════════════════ INIT ═══════════════════════════════
