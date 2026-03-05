@@ -118,10 +118,15 @@ export default function EmergencyAlertOverlay() {
         return;
       }
 
-      if (data && data.length > 0) {
+     if (data && data.length > 0) {
         console.log('[EmergencyAlert] 🚨 Active emergency found:', data[0].title);
-        setActiveEmergency(data[0] as EmergencyEvent);
-        setMinimized(false);
+        setActiveEmergency(prev => {
+          // Only force full-screen if this is a different emergency
+          if (!prev || prev.id !== data[0].id) {
+            setMinimized(false);
+          }
+          return data[0] as EmergencyEvent;
+        });
       } else {
         setActiveEmergency(null);
       }
@@ -151,11 +156,17 @@ export default function EmergencyAlertOverlay() {
 
           if (payload.eventType === 'INSERT' && ACTIVE_STATUSES.includes(record.status)) {
             console.log('[EmergencyAlert] 🚨 NEW EMERGENCY:', record.title);
-            setActiveEmergency(record);
-            setMinimized(false);
+            setActiveEmergency(prev => {
+              // Only force full-screen for a genuinely new emergency
+              if (!prev || prev.id !== record.id) {
+                setMinimized(false);
+              }
+              return record;
+            });
           } else if (payload.eventType === 'UPDATE') {
             if (ACTIVE_STATUSES.includes(record.status)) {
               console.log('[EmergencyAlert] 🔄 Emergency updated:', record.status);
+              // Update data but DON'T reset minimized — user chose to minimize
               setActiveEmergency(record);
             } else {
               console.log('[EmergencyAlert] ✅ Emergency cleared:', record.status);
