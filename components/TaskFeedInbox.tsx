@@ -60,7 +60,7 @@ interface WorkOrderCompletionData {
 interface TaskFeedInboxProps {
   departmentCode: string;
   moduleColor?: string;
-  workOrderTypeFilter?: 'reactive' | 'preventive' | 'all';
+  workOrderTypeFilter?: 'reactive' | 'preventive' | 'scheduled' | 'all';
   onTaskCompleted?: (task: TaskFeedDepartmentTask, moduleHistoryId?: string) => void;
   createModuleHistoryRecord?: (task: TaskFeedDepartmentTask, notes: string) => Promise<string | null>;
   createFullWorkOrder?: (task: TaskFeedDepartmentTask, data: WorkOrderCompletionData) => Promise<string | null>;
@@ -162,9 +162,11 @@ export default function TaskFeedInbox({
       const refType = task.module_reference_type || '';
       const postFormData = task.post?.form_data || {};
       const isPM = refType === 'pm_work_order' || refType === 'pm_schedule' || postFormData.work_order_type === 'preventive' || postFormData.auto_generated === true || postFormData.manual_generate === true;
+      const isScheduled = isPM || refType === 'scheduled_task' || postFormData.work_order_type === 'scheduled' || postFormData.scheduled === true;
 
       if (workOrderTypeFilter === 'preventive') return isPM;
-      if (workOrderTypeFilter === 'reactive') return !isPM;
+      if (workOrderTypeFilter === 'scheduled') return isScheduled;
+      if (workOrderTypeFilter === 'reactive') return !isPM && !isScheduled;
       return true;
     });
   }, [rawTasks, workOrderTypeFilter]);
