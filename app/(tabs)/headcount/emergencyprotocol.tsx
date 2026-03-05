@@ -476,13 +476,45 @@ export default function EmergencyProtocolScreen() {
             <Text style={styles.overallTimerText}>{formatTime(emergency.elapsedSeconds)}</Text>
           </View>
           {!allSafe && (
-            <TouchableOpacity
-              style={styles.infoButton}
-              onPress={() => setShowInstructions(true)}
-            >
-              <Info size={20} color="#FFFFFF" />
-            </TouchableOpacity>
-          )}
+        <TouchableOpacity
+          style={styles.endEmergencyButton}
+          onPress={() => {
+            Alert.alert(
+              'End Protocol?',
+              'This will end the emergency protocol and mark the event as resolved. Not all personnel have been accounted for.',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'End Protocol',
+                  style: 'destructive',
+                  onPress: async () => {
+                    if (eventId) {
+                      try {
+                        await updateEvent({
+                          id: eventId,
+                          status: 'resolved',
+                          resolved_at: new Date().toISOString(),
+                        });
+                        await addTimelineEntry({
+                          eventId,
+                          action: `Protocol ended early — ${safeEmployees.length}/${emergency.employees.length} accounted for`,
+                        });
+                      } catch (err) {
+                        console.error('[EmergencyProtocol] Error resolving event:', err);
+                      }
+                    }
+                    handleClose();
+                    router.back();
+                  },
+                },
+              ],
+            );
+          }}
+        >
+          <X size={18} color="#FFFFFF" />
+          <Text style={styles.endEmergencyText}>END PROTOCOL</Text>
+        </TouchableOpacity>
+      )}
         </View>
       </View>
 
