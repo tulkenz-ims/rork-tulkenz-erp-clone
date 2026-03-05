@@ -425,7 +425,7 @@ export default function SystemOverviewScreen() {
           <TechItem label="Uptime" value="99.9%+ (Vercel + Supabase SLAs)" colors={colors}
             layman="The app is available 99.9% of the time. That's less than 9 hours of downtime per year. Both Vercel and Supabase guarantee this in their service agreements." />
           <TechItem label="CDN" value="Static assets from nearest edge PoP" colors={colors} alt
-            layman="Content Delivery Network — images, icons, and app files are cached at 'points of presence' worldwide. It's why pages load fast instead of waiting for a faraway server." />
+            layman="If WiFi drops, screens you've already opened stay visible — cached on your device. Once the connection comes back, the app automatically syncs and picks up where it left off. You won't lose data or get stuck on a blank screen." />
 
           <SectionLabel text="Hardware Integrations" color="#06B6D4" />
           <BulletItem icon={Wifi} iconColor="#06B6D4" colors={colors}
@@ -442,7 +442,7 @@ export default function SystemOverviewScreen() {
             layman="Scan parts and materials with your phone camera or a handheld scanner to speed up receiving, cycle counts, and parts issuing." />
           <BulletItem icon={Wifi} iconColor="#06B6D4" colors={colors}
             text="Time clock kiosk mode for shared devices"
-            layman="Mount a tablet by the entrance and employees can clock in/out by tapping their name and entering their PIN. One device, everyone uses it." />
+            layman="Mount a tablet by the entrance and employees can check in/out by tapping their name and entering their PIN. One device, everyone uses it." />
           <BulletItem icon={Wifi} iconColor="#06B6D4" colors={colors}
             text="Push notifications via Expo Push Notification Service"
             layman="When something needs your attention (new task assigned, production hold, low stock alert), your phone buzzes with a notification — even when the app is closed." />
