@@ -47,6 +47,8 @@ import {
   EMERGENCY_SEVERITY_COLORS,
 } from '@/types/emergencyEvents';
 import { useEmergencyEvents } from '@/hooks/useEmergencyEvents';
+import { useOrganization } from '@/contexts/OrganizationContext';
+import { supabase } from '@/lib/supabase';
 
 type EmployeeStatus = 'pending' | 'safe';
 
@@ -92,6 +94,8 @@ export default function EmergencyProtocolScreen() {
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   const { createEvent, updateEvent, addTimelineEntry, isCreating } = useEmergencyEvents();
+  const orgContext = useOrganization();
+  const organizationId = orgContext?.organizationId || '';
   const [eventId, setEventId] = useState<string | null>(null);
   const [isSavingDetails, setIsSavingDetails] = useState(false);
 
@@ -306,9 +310,30 @@ export default function EmergencyProtocolScreen() {
     }
   }, [eventId, severity, locationDetails, description, emergencyServicesCalled, updateEvent, addTimelineEntry]);
 
-  const handleClose = useCallback(() => {
+  const handleClose = useCallback(async () => {
     if (timerRef.current) {
       clearInterval(timerRef.current);
+    }
+    // Fallback: if eventId wasn't set yet, find and cancel any active event we just created
+    if (!eventId && organizationId) {
+      try {
+        const { data } = await supabase
+          .from('emergency_events')
+          .select('id')
+          .eq('organization_id', organizationId)
+          .in('status', ['initiated', 'in_progress'])
+          .order('initiated_at', { ascending: false })
+          .limit(1);
+        if (data && data.length > 0) {
+          await supabase
+            .from('emergency_events')
+            .update({ status: 'cancelled', resolved_at: new Date().toISOString() })
+            .eq('id', data[0].id);
+          console.log('[EmergencyProtocol] Fallback: cancelled orphan event', data[0].id);
+        }
+      } catch (err) {
+        console.error('[EmergencyProtocol] Fallback cleanup error:', err);
+      }
     }
     setEmergency({
       isActive: false,
@@ -513,6 +538,43 @@ export default function EmergencyProtocolScreen() {
         >
           <X size={18} color="#FFFFFF" />
           <Text style={styles.endEmergencyText}>END PROTOCOL</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.cancelDrillButton}
+          onPress={() => {
+            Alert.alert(
+              'Cancel?',
+              'This will cancel the event entirely. Use this if it was started by accident.',
+              [
+                { text: 'No', style: 'cancel' },
+                {
+                  text: 'Yes, Cancel',
+                  style: 'destructive',
+                  onPress: async () => {
+                    if (eventId) {
+                      try {
+                        await updateEvent({
+                          id: eventId,
+                          status: 'cancelled',
+                          resolved_at: new Date().toISOString(),
+                        });
+                        await addTimelineEntry({
+                          eventId,
+                          action: 'Event cancelled — started by accident',
+                        });
+                      } catch (err) {
+                        console.error('[EmergencyProtocol] Error cancelling:', err);
+                      }
+                    }
+                    handleClose();
+                    router.back();
+                  },
+                },
+              ],
+            );
+          }}
+        >
+          <Text style={styles.cancelDrillText}>CANCEL — STARTED BY ACCIDENT</Text>
         </TouchableOpacity>
       )}
         </View>
@@ -1201,6 +1263,20 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600' as const,
     color: '#FFFFFF',
+  },
+  cancelDrillButton: {
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    backgroundColor: 'rgba(239, 68, 68, 0.2)',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(239, 68, 68, 0.3)',
+    paddingVertical: 12,
+  },
+  cancelDrillText: {
+    fontSize: 12,
+    fontWeight: '700' as const,
+    color: '#EF4444',
+    letterSpacing: 0.5,
   },
   successScrollView: {
     flex: 1,
