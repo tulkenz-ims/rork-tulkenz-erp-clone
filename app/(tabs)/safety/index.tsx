@@ -333,7 +333,7 @@ export default function SafetyScreen() {
                 <TaskFeedInbox
                   departmentCode="1005"
                   moduleColor="#F59E0B"
-                  workOrderTypeFilter="preventive"
+                  workOrderTypeFilter="scheduled"
                   onTaskCompleted={handleTaskCompleted}
                   createModuleHistoryRecord={handleCreateSafetyHistoryRecord}
                   maxVisible={20}
