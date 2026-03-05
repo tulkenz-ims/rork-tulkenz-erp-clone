@@ -419,7 +419,7 @@ export default function SanitationScreen() {
               <TaskFeedInbox
                 departmentCode="1002"
                 moduleColor="#8B5CF6"
-                workOrderTypeFilter="preventive"
+                workOrderTypeFilter="scheduled"
                 onTaskCompleted={handleTaskCompleted}
                 createModuleHistoryRecord={handleCreateSanitationHistoryRecord}
                 maxVisible={20}
