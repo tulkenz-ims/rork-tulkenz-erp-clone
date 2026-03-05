@@ -501,6 +501,7 @@ export default function EmergencyProtocolScreen() {
             <Text style={styles.overallTimerText}>{formatTime(emergency.elapsedSeconds)}</Text>
           </View>
           {!allSafe && (
+        <>
         <TouchableOpacity
           style={styles.endEmergencyButton}
           onPress={() => {
@@ -544,7 +545,7 @@ export default function EmergencyProtocolScreen() {
           onPress={() => {
             Alert.alert(
               'Cancel?',
-              'This will cancel the event entirely. Use this if it was started by accident.',
+              'This will cancel the event and clear all alerts. This action cannot be undone.',
               [
                 { text: 'No', style: 'cancel' },
                 {
@@ -574,8 +575,9 @@ export default function EmergencyProtocolScreen() {
             );
           }}
         >
-          <Text style={styles.cancelDrillText}>CANCEL — STARTED BY ACCIDENT</Text>
+          <Text style={styles.cancelDrillText}>CANCEL EVENT </Text>
         </TouchableOpacity>
+        </>
       )}
         </View>
       </View>
