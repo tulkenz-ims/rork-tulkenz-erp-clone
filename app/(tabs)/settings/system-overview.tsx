@@ -30,6 +30,11 @@ import {
   BarChart3,
   Zap,
   Info,
+  Eye,
+  Radio,
+  Lightbulb,
+  Boxes,
+  FolderOpen,
 } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -108,20 +113,20 @@ function SectionLabel({ text, color }: { text: string; color: string }) {
 
 const moduleData = [
   { name: 'CMMS / Maintenance', screens: 93, icon: Wrench, color: '#3B82F6',
-    desc: 'Work orders, PMs, equipment registry, parts inventory, vendors, failure analysis, LOTO, KPI dashboards, labor costing, MTBF/MTTR, warranty tracking',
-    layman: 'Everything your maintenance team needs — tracking repairs, scheduling preventive work, managing spare parts and vendors, and measuring how well equipment is performing.' },
+    desc: 'Work orders, PMs, equipment registry, parts inventory, vendors, failure analysis, LOTO, KPI dashboards, labor costing, MTBF/MTTR, warranty tracking. Reactive and Preventive task inboxes.',
+    layman: 'Everything your maintenance team needs — tracking repairs, scheduling preventive work, managing spare parts and vendors, and measuring how well equipment is performing. Reactive issues and scheduled PMs each have their own inbox.' },
   { name: 'Quality', screens: 104, icon: ClipboardList, color: '#10B981',
-    desc: 'CCP monitoring, pre-op inspections, metal detector logs, temperature logs, room hygiene log, hold tags, daily reports with PPIN sign-off',
-    layman: 'Tracks every quality check in the facility — food safety critical control points, product inspections, temperature readings, and room cleanliness with daily Quality sign-off.' },
+    desc: 'CCP monitoring, pre-op inspections, metal detector logs, temperature logs, room hygiene log, hold tags, daily reports with PPIN sign-off. Reactive and Scheduled Task inboxes.',
+    layman: 'Tracks every quality check in the facility — food safety critical control points, product inspections, temperature readings, and room cleanliness with daily Quality sign-off. Reactive issues and scheduled checks each have their own inbox.' },
   { name: 'Safety', screens: 99, icon: AlertTriangle, color: '#EF4444',
-    desc: 'Incident reports, OSHA 300/301 logs, safety permits, emergency events/drills, contractor safety, ergonomics, respirator fit tests, PPE, SDS, vehicle incidents',
-    layman: 'Report injuries, track safety permits, run and log emergency drills, manage contractor access, keep OSHA paperwork current, and make sure everyone has their protective gear.' },
+    desc: 'Incident reports, OSHA 300/301 logs, safety permits, emergency events/drills, contractor safety, ergonomics, respirator fit tests, PPE, SDS, vehicle incidents. Reactive and Scheduled Task inboxes.',
+    layman: 'Report injuries, track safety permits, run and log emergency drills, manage contractor access, keep OSHA paperwork current, and make sure everyone has their protective gear. Reactive issues and recurring safety tasks each have their own inbox.' },
   { name: 'Compliance', screens: 119, icon: Shield, color: '#8B5CF6',
     desc: 'SQF audit prep, HACCP plans, document control, corrective actions (CAPA), internal audits, supplier approvals, training records',
     layman: 'Keeps you audit-ready — organizes all your compliance documents, tracks corrective actions, manages food safety plans, and logs training so auditors can find everything fast.' },
   { name: 'Sanitation', screens: 80, icon: FileText, color: '#14B8A6',
-    desc: 'Master sanitation schedule, daily/weekly/monthly tasks, crew assignment, restroom cleaning, chemical safety, NCRs, CAPAs, PPE inventories',
-    layman: 'Manages the entire cleaning operation — who cleans what and when, tracks supplies like gloves and chemicals, handles non-conformances, and keeps restroom logs.' },
+    desc: 'Master sanitation schedule, daily/weekly/monthly tasks, crew assignment, restroom cleaning, chemical safety, NCRs, CAPAs, PPE inventories. Reactive and Scheduled Task inboxes.',
+    layman: 'Manages the entire cleaning operation — who cleans what and when, tracks supplies like gloves and chemicals, handles non-conformances, and keeps restroom logs. Reactive issues and scheduled cleaning tasks each have their own inbox.' },
   { name: 'Inventory', screens: 113, icon: Package, color: '#F59E0B',
     desc: 'Multi-department materials (MRO, production, sanitation, safety, warehouse, office), lot tracking, stock levels, cycle counts, adjustments, replenishment, low stock alerts',
     layman: 'One place for all your stuff — parts, raw materials, cleaning supplies, safety gear. Tracks what you have, what you need, and alerts you when something is running low.' },
@@ -129,8 +134,8 @@ const moduleData = [
     desc: 'Purchase requests, purchase orders, vendor management, receiving, multi-tier approvals, budget tracking, contract management',
     layman: 'Handles buying things — from requesting a purchase, getting it approved, sending the PO to the vendor, all the way to receiving it at the dock and tracking the cost.' },
   { name: 'Production', screens: 3, icon: Activity, color: '#8B5CF6',
-    desc: 'Production runs with real-time sensor counting, yield tracking, waste/rework, materials management, Task Feed integration',
-    layman: 'Counts bags/units coming off the line in real-time using a sensor. Tracks how many good units, how many wasted, and ties it all to a run number.' },
+    desc: 'Production runs with real-time sensor counting, yield tracking, waste/rework, materials management, Task Feed integration. Reactive and Scheduled Task inboxes.',
+    layman: 'Counts bags/units coming off the line in real-time using a sensor. Tracks how many good units, how many wasted, and ties it all to a run number. Reactive issues and scheduled production tasks each have their own inbox.' },
   { name: 'Finance', screens: 69, icon: BarChart3, color: '#06B6D4',
     desc: 'Budgets, cost centers, GL accounts, journal entries, AP/AR, expense tracking, financial reporting',
     layman: 'Tracks money in and out — department budgets, vendor bills, expenses, and financial reports so you know where every dollar goes.' },
@@ -140,6 +145,9 @@ const moduleData = [
   { name: 'Task Feed', screens: 2, icon: Zap, color: '#F97316',
     desc: 'Cross-department issue routing, production holds, department task assignments, form responses, work order linking, PPIN sign-off, auto Room Hygiene Log',
     layman: 'The nerve center — when something happens on the floor, it gets posted here and automatically routes to every department that needs to respond. Tracks who did what and when.' },
+  { name: 'Auditor Portal', screens: 1, icon: Eye, color: '#6C5CE7',
+    desc: 'Token-based external auditor access, read-only compliance dashboard, no login required, audit framework selection (SQF, FDA, OSHA, BRC, FSSC 22000, and more)',
+    layman: 'Give your auditor a secure link — they see exactly what they need for their audit without needing an account. You control what they see and when their access expires.' },
   { name: 'Time Clock', screens: 4, icon: Clock, color: '#84CC16',
     desc: 'Clock in/out, break tracking, kiosk mode for shared devices, room hub, shift management',
     layman: 'Employees clock in and out from their phone or a shared tablet at the door. Tracks breaks, overtime, and hours by department.' },
@@ -264,6 +272,12 @@ export default function SystemOverviewScreen() {
 
         {/* ── Module Breakdown ─────────────────────────── */}
         <Collapsible title="Module Breakdown (39 Modules)" icon={Layers} iconColor="#8B5CF6" colors={colors}>
+          <View style={[styles.customNote, { backgroundColor: '#8B5CF610', borderColor: '#8B5CF640' }]}>
+            <Lightbulb size={16} color="#8B5CF6" />
+            <Text style={[styles.customNoteText, { color: colors.text }]}>
+              Every module is built to match your facility's processes and templates. The forms, checklists, workflows, and approval chains shown below are examples — each one is configured to how your team actually works. No two facilities are the same, and TulKenz OPS adapts to yours.
+            </Text>
+          </View>
           {moduleData.map((mod, i) => (
             <View key={i} style={[styles.moduleRow, i > 0 && { borderTopWidth: 1, borderTopColor: colors.border }]}>
               <View style={[styles.moduleIcon, { backgroundColor: mod.color + '20' }]}>
@@ -418,6 +432,12 @@ export default function SystemOverviewScreen() {
             text="Photoelectric sensors (ESP32) for production line counting"
             layman="A small light sensor on the conveyor belt detects each bag that passes. A tiny WiFi-enabled computer (ESP32) counts them and sends the number to TulKenz OPS every few seconds." />
           <BulletItem icon={Wifi} iconColor="#06B6D4" colors={colors}
+            text="Room Status / Andon Light System"
+            layman="WiFi-connected LED light bars mounted above each production room entrance. The light changes color based on room status — green for running, red for LOTO, yellow for cleaning, blue for setup/changeover, gray for idle. Status is controlled from TulKenz OPS and updates the physical lights in real time. Supervisors and floor personnel can see room status from anywhere in the facility at a glance." />
+          <BulletItem icon={Wifi} iconColor="#06B6D4" colors={colors}
+            text="Equipment sensor monitoring (temperature, vibration, humidity, runtime)"
+            layman="Small wireless sensors attached to critical equipment continuously monitor operating conditions. If a motor runs hot, vibration increases, or humidity spikes, TulKenz OPS gets the data and can trigger alerts or auto-generate a work order before the equipment fails." />
+          <BulletItem icon={Wifi} iconColor="#06B6D4" colors={colors}
             text="Barcode/QR scanner support for inventory operations"
             layman="Scan parts and materials with your phone camera or a handheld scanner to speed up receiving, cycle counts, and parts issuing." />
           <BulletItem icon={Wifi} iconColor="#06B6D4" colors={colors}
@@ -426,10 +446,20 @@ export default function SystemOverviewScreen() {
           <BulletItem icon={Wifi} iconColor="#06B6D4" colors={colors}
             text="Push notifications via Expo Push Notification Service"
             layman="When something needs your attention (new task assigned, production hold, low stock alert), your phone buzzes with a notification — even when the app is closed." />
+
+          <View style={[styles.customNote, { backgroundColor: '#06B6D410', borderColor: '#06B6D440' }]}>
+            <Lightbulb size={16} color="#06B6D4" />
+            <Text style={[styles.customNoteText, { color: colors.text }]}>
+              Hardware integrations use low-cost, food-safe components (ESP32 microcontrollers, IP65/IP67 rated enclosures) that connect to your existing facility WiFi. The platform is designed to accept data from any sensor or device that can make an HTTPS request — if it can talk to the internet, it can talk to TulKenz OPS.
+            </Text>
+          </View>
         </Collapsible>
 
         {/* ── Cross-Module Integration ─────────────────── */}
         <Collapsible title="Cross-Module Integration" icon={Zap} iconColor="#F97316" colors={colors}>
+          <BulletItem icon={Zap} iconColor="#F97316" colors={colors}
+            text="Department Inboxes — Reactive & Scheduled"
+            layman="Every operational department (Maintenance, Quality, Safety, Sanitation, Production) has a split inbox — one side for reactive issues that come in from the floor, one side for scheduled recurring tasks. Nothing gets lost, nothing gets mixed up." />
           <BulletItem icon={Zap} iconColor="#F97316" colors={colors}
             text="Task Feed → Room Hygiene Log"
             layman="When a department completes a task in a production room, it automatically creates a hygiene log entry — no extra steps needed for SQF compliance." />
@@ -451,6 +481,16 @@ export default function SystemOverviewScreen() {
           <BulletItem icon={Zap} iconColor="#F97316" colors={colors}
             text="Approvals → Procurement"
             layman="Purchase requests over a certain dollar amount automatically go through an approval chain — manager, then director, then VP — before the PO is sent to the vendor." />
+          <BulletItem icon={FolderOpen} iconColor="#E8C547" colors={colors}
+            text="Shop Packets — Complete Run Documentation"
+            layman="All paperwork for a single production run comes together in one place — the run record, quality checks, temperature logs, metal detector verifications, cleaning records, LOTO permits, and any Task Feed posts. Run #12234 and every document associated with it, organized and audit-ready. No more hunting through filing cabinets." />
+
+          <View style={[styles.customNote, { backgroundColor: '#F9731610', borderColor: '#F9731640' }]}>
+            <Lightbulb size={16} color="#F97316" />
+            <Text style={[styles.customNoteText, { color: colors.text }]}>
+              These integrations are examples of what the platform does out of the box. TulKenz OPS is built to connect any module to any other module — if your facility has a workflow that crosses departments, we can wire it up. The platform adapts to your processes, not the other way around.
+            </Text>
+          </View>
         </Collapsible>
 
         {/* Footer */}
@@ -469,46 +509,48 @@ export default function SystemOverviewScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   content: { paddingBottom: 40 },
-  hero: { padding: 32, alignItems: 'center' },
-  heroTitle: { color: '#FFF', fontSize: 32, fontWeight: '800' },
-  heroSub: { color: '#E0D4FF', fontSize: 16, marginTop: 6, textAlign: 'center' },
+  hero: { padding: 32, alignItems: 'center' as const },
+  heroTitle: { color: '#FFF', fontSize: 32, fontWeight: '800' as const },
+  heroSub: { color: '#E0D4FF', fontSize: 16, marginTop: 6, textAlign: 'center' as const },
   heroDesc: { color: '#C4B5FD', fontSize: 14, marginTop: 4 },
-  statsRow: { flexDirection: 'row', padding: 12, gap: 8 },
-  statCard: { flex: 1, borderRadius: 10, borderWidth: 1, padding: 12, alignItems: 'center' },
-  statValue: { fontSize: 22, fontWeight: '800' },
+  statsRow: { flexDirection: 'row' as const, padding: 12, gap: 8 },
+  statCard: { flex: 1, borderRadius: 10, borderWidth: 1, padding: 12, alignItems: 'center' as const },
+  statValue: { fontSize: 22, fontWeight: '800' as const },
   statLabel: { fontSize: 11, marginTop: 4 },
-  collapsible: { marginHorizontal: 12, marginTop: 12, borderRadius: 12, borderWidth: 1, overflow: 'hidden' },
-  collapsibleHeader: { flexDirection: 'row', alignItems: 'center', padding: 16, gap: 10 },
-  collapsibleTitle: { flex: 1, fontSize: 16, fontWeight: '700' },
+  collapsible: { marginHorizontal: 12, marginTop: 12, borderRadius: 12, borderWidth: 1, overflow: 'hidden' as const },
+  collapsibleHeader: { flexDirection: 'row' as const, alignItems: 'center' as const, padding: 16, gap: 10 },
+  collapsibleTitle: { flex: 1, fontSize: 16, fontWeight: '700' as const },
   collapsibleBody: { padding: 16, paddingTop: 12, borderTopWidth: 1 },
-  sectionLabel: { fontSize: 13, fontWeight: '800', marginBottom: 10, marginTop: 16, textTransform: 'uppercase', letterSpacing: 0.5 },
+  sectionLabel: { fontSize: 13, fontWeight: '800' as const, marginBottom: 10, marginTop: 16, textTransform: 'uppercase' as const, letterSpacing: 0.5 },
   techItem: { paddingVertical: 10, paddingHorizontal: 8, borderRadius: 6 },
-  techTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  techLabel: { fontSize: 13, fontWeight: '600' },
-  techValue: { fontSize: 13, fontWeight: '600', flex: 1, textAlign: 'right' },
-  laymanRow: { flexDirection: 'row', gap: 6, marginTop: 6 },
-  laymanText: { flex: 1, fontSize: 12, lineHeight: 17, fontStyle: 'italic' },
+  techTop: { flexDirection: 'row' as const, justifyContent: 'space-between' as const, alignItems: 'center' as const },
+  techLabel: { fontSize: 13, fontWeight: '600' as const },
+  techValue: { fontSize: 13, fontWeight: '600' as const, flex: 1, textAlign: 'right' as const },
+  laymanRow: { flexDirection: 'row' as const, gap: 6, marginTop: 6 },
+  laymanText: { flex: 1, fontSize: 12, lineHeight: 17, fontStyle: 'italic' as const },
   bulletItem: { marginBottom: 10 },
-  bulletRow: { flexDirection: 'row', gap: 10 },
+  bulletRow: { flexDirection: 'row' as const, gap: 10 },
   bulletText: { flex: 1, fontSize: 13, lineHeight: 19 },
-  laymanIndented: { flexDirection: 'row', gap: 6, marginTop: 5, marginLeft: 24 },
-  laymanSmall: { flex: 1, fontSize: 12, lineHeight: 17, fontStyle: 'italic' },
-  moduleRow: { flexDirection: 'row', paddingVertical: 14, alignItems: 'flex-start' },
-  moduleIcon: { width: 36, height: 36, borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  laymanIndented: { flexDirection: 'row' as const, gap: 6, marginTop: 5, marginLeft: 24 },
+  laymanSmall: { flex: 1, fontSize: 12, lineHeight: 17, fontStyle: 'italic' as const },
+  moduleRow: { flexDirection: 'row' as const, paddingVertical: 14, alignItems: 'flex-start' as const },
+  moduleIcon: { width: 36, height: 36, borderRadius: 8, alignItems: 'center' as const, justifyContent: 'center' as const, marginRight: 12 },
   moduleInfo: { flex: 1 },
-  moduleHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  moduleName: { fontSize: 14, fontWeight: '700' },
-  moduleScreens: { fontSize: 14, fontWeight: '800' },
+  moduleHeader: { flexDirection: 'row' as const, justifyContent: 'space-between' as const, alignItems: 'center' as const },
+  moduleName: { fontSize: 14, fontWeight: '700' as const },
+  moduleScreens: { fontSize: 14, fontWeight: '800' as const },
   moduleDesc: { fontSize: 12, marginTop: 3, lineHeight: 17 },
-  totalRow: { flexDirection: 'row', justifyContent: 'space-between', paddingTop: 14, marginTop: 8, borderTopWidth: 2 },
-  totalLabel: { fontSize: 14, fontWeight: '700' },
-  totalValue: { fontSize: 18, fontWeight: '800' },
+  totalRow: { flexDirection: 'row' as const, justifyContent: 'space-between' as const, paddingTop: 14, marginTop: 8, borderTopWidth: 2 },
+  totalLabel: { fontSize: 14, fontWeight: '700' as const },
+  totalValue: { fontSize: 18, fontWeight: '800' as const },
   compCard: { borderRadius: 10, borderWidth: 1, padding: 14, marginBottom: 10 },
-  compLabel: { fontSize: 14, fontWeight: '800', marginBottom: 6 },
+  compLabel: { fontSize: 14, fontWeight: '800' as const, marginBottom: 6 },
   compTech: { fontSize: 13, lineHeight: 19, marginBottom: 4 },
-  moreNote: { flexDirection: 'row', gap: 8, padding: 14, borderRadius: 10, marginTop: 6 },
-  moreNoteText: { flex: 1, fontSize: 12, lineHeight: 18, fontStyle: 'italic' },
-  footer: { borderTopWidth: 1, margin: 12, paddingTop: 20, alignItems: 'center', gap: 8, paddingBottom: 20 },
-  footerBold: { fontSize: 16, fontWeight: '800' },
-  footerText: { fontSize: 12, textAlign: 'center', lineHeight: 18 },
+  moreNote: { flexDirection: 'row' as const, gap: 8, padding: 14, borderRadius: 10, marginTop: 6 },
+  moreNoteText: { flex: 1, fontSize: 12, lineHeight: 18, fontStyle: 'italic' as const },
+  customNote: { flexDirection: 'row' as const, gap: 10, padding: 14, borderRadius: 10, borderWidth: 1, marginBottom: 14, alignItems: 'flex-start' as const },
+  customNoteText: { flex: 1, fontSize: 13, lineHeight: 19 },
+  footer: { borderTopWidth: 1, margin: 12, paddingTop: 20, alignItems: 'center' as const, gap: 8, paddingBottom: 20 },
+  footerBold: { fontSize: 16, fontWeight: '800' as const },
+  footerText: { fontSize: 12, textAlign: 'center' as const, lineHeight: 18 },
 });
