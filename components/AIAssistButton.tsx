@@ -272,8 +272,35 @@ export default function AIAssistButton() {
       // Speak the response
       speakResponse(data.speech);
 
-      // Execute the action
-      await executeAction(data.action, data.params);
+     // Execute the action
+      const actionResult = await executeAction(data.action, data.params);
+
+      // If the action returned useful data, show it as a follow-up message
+      if (actionResult && actionResult.success && actionResult.message && 
+          !['info', 'clarify'].includes(data.action)) {
+        const followUpMsg: ChatMessage = {
+          id: `result-${Date.now()}`,
+          role: 'assistant',
+          text: actionResult.message,
+          action: data.action,
+          params: actionResult.data as Record<string, unknown>,
+          timestamp: new Date(),
+        };
+        setMessages(prev => [...prev, followUpMsg]);
+
+        // Speak the result if it's different from Claude's original speech
+        if (actionResult.message !== data.speech) {
+          speakResponse(actionResult.message);
+        }
+      } else if (actionResult && !actionResult.success) {
+        const errorFollowUp: ChatMessage = {
+          id: `error-${Date.now()}`,
+          role: 'assistant',
+          text: actionResult.message || 'Action failed.',
+          timestamp: new Date(),
+        };
+        setMessages(prev => [...prev, errorFollowUp]);
+      }
 
     } catch (err: any) {
       console.error('[AIAssist] Error:', err);
