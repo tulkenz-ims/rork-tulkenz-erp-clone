@@ -37,6 +37,7 @@ import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as Speech from 'expo-speech';
 import * as FileSystem from 'expo-file-system';
+import { useAIActions } from '@/hooks/useAIActions';
 
 // ══════════════════════════════════ TYPES ══════════════════════════════════
 
@@ -146,6 +147,7 @@ function useSpeechRecognition() {
 export default function AIAssistButton() {
   const { colors } = useTheme();
   const { user } = useUser();
+  const { executeAction: executeAIAction } = useAIActions();
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [textInput, setTextInput] = useState('');
@@ -289,48 +291,19 @@ export default function AIAssistButton() {
 
   // ── Execute AI action ──
   const executeAction = useCallback(async (action: string, params: Record<string, unknown>) => {
-    // TODO: Wire these to real Supabase hooks in hooks/useAIActions.ts
-    // For now, log the action — the speech response already tells the user what happened
     console.log('[AIAssist] Execute:', action, params);
-
-    switch (action) {
-      case 'start_pre_op':
-        console.log('[AIAssist] Would start Pre-Op for room:', params.room);
-        break;
-      case 'complete_checklist_item':
-        console.log('[AIAssist] Would complete item:', params.item_number, 'as', params.status);
-        break;
-      case 'sign_off':
-        console.log('[AIAssist] Would sign off with PIN');
-        break;
-      case 'create_work_order':
-        console.log('[AIAssist] Would create WO:', params.title);
-        break;
-      case 'create_task_feed_post':
-        console.log('[AIAssist] Would create TF post:', params.template_name);
-        break;
-      case 'start_production_run':
-        console.log('[AIAssist] Would start run:', params.run_number, 'in', params.room);
-        break;
-      case 'end_production_run':
-        console.log('[AIAssist] Would end run:', params.run_number);
-        break;
-      case 'change_room_status':
-        console.log('[AIAssist] Would change', params.room, 'to', params.status);
-        break;
-      case 'lookup_part':
-        console.log('[AIAssist] Would search parts:', params.query);
-        break;
-      case 'lookup_equipment':
-        console.log('[AIAssist] Would lookup equipment:', params.query);
-        break;
-      case 'diagnose_issue':
-        console.log('[AIAssist] Diagnosis:', params.suggested_cause, '→', params.suggested_fix);
-        break;
-      default:
-        break;
+    try {
+      const result = await executeAIAction(action, params);
+      if (!result.success) {
+        console.warn('[AIAssist] Action failed:', result.message);
+      } else {
+        console.log('[AIAssist] Action succeeded:', result.message);
+      }
+      return result;
+    } catch (err) {
+      console.error('[AIAssist] Action error:', err);
     }
-  }, []);
+  }, [executeAIAction]);
 
   // ── Mic button handler ──
   const handleMicPress = useCallback(() => {
