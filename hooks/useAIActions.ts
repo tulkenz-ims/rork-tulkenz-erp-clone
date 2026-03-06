@@ -373,10 +373,10 @@ export function useAIActions() {
     try {
       const query = (params.query as string) || '';
       const { data: parts, error } = await supabase
-        .from('parts')
-        .select('id, name, part_number, quantity_on_hand, location, unit_cost, minimum_stock, status')
+        .from('materials')
+        .select('id, name, material_number, sku, on_hand, min_level, location, bin, aisle, rack, shelf, unit_price, vendor, vendor_part_number, manufacturer, manufacturer_part_number, status, category, description')
         .eq('organization_id', organizationId)
-        .or(`name.ilike.%${query}%,part_number.ilike.%${query}%,description.ilike.%${query}%`)
+        .or(`name.ilike.%${query}%,material_number.ilike.%${query}%,description.ilike.%${query}%,sku.ilike.%${query}%,vendor_part_number.ilike.%${query}%,manufacturer_part_number.ilike.%${query}%`)
         .limit(10);
 
       if (error) throw error;
@@ -391,22 +391,29 @@ export function useAIActions() {
 
       const results = parts.map(p => ({
         name: p.name,
-        part_number: p.part_number,
-        in_stock: p.quantity_on_hand,
-        location: p.location,
-        unit_cost: p.unit_cost,
-        min_stock: p.minimum_stock,
-        low_stock: (p.quantity_on_hand || 0) <= (p.minimum_stock || 0),
+        material_number: p.material_number,
+        sku: p.sku,
+        in_stock: p.on_hand,
+        location: [p.location, p.aisle, p.rack, p.shelf, p.bin].filter(Boolean).join(' > ') || 'No location set',
+        unit_price: p.unit_price,
+        min_level: p.min_level,
+        low_stock: (p.on_hand || 0) <= (p.min_level || 0),
+        vendor: p.vendor,
+        vendor_part: p.vendor_part_number,
+        manufacturer: p.manufacturer,
+        mfg_part: p.manufacturer_part_number,
+        category: p.category,
       }));
 
       const topResult = results[0];
       const stockStatus = topResult.in_stock > 0
-        ? `${topResult.in_stock} in stock at ${topResult.location || 'unknown location'}`
+        ? `${topResult.in_stock} in stock at ${topResult.location}`
         : 'OUT OF STOCK';
+      const lowWarning = topResult.low_stock ? ' ⚠️ LOW STOCK' : '';
 
       return {
         success: true,
-        message: `Found ${results.length} result(s). Top match: ${topResult.name} (${topResult.part_number || 'N/A'}) - ${stockStatus}.`,
+        message: `Found ${results.length} result(s). Top match: ${topResult.name} (${topResult.material_number || topResult.sku || 'N/A'}) - ${stockStatus}${lowWarning}. Vendor: ${topResult.vendor || 'N/A'}.`,
         data: { results, total: results.length },
       };
     } catch (err: any) {
