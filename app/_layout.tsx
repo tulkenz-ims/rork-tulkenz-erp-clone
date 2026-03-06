@@ -13,11 +13,9 @@ import { PushNotificationsProvider } from "@/contexts/PushNotificationsContext";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { RealtimeProvider } from "@/contexts/RealtimeContext";
 import EmergencyAlertOverlay from "@/components/EmergencyAlertOverlay";
-
+import AIAssistButton from "@/components/AIAssistButton";
 SplashScreen.preventAutoHideAsync();
-
 const queryClient = new QueryClient();
-
 function RootLayoutNav() {
   return (
     <Stack screenOptions={{ headerBackTitle: "Back" }}>
@@ -38,12 +36,10 @@ function RootLayoutNav() {
     </Stack>
   );
 }
-
 export default function RootLayout() {
   useEffect(() => {
     SplashScreen.hideAsync();
   }, []);
-
   return (
     <QueryClientProvider client={queryClient}>
       <GestureHandlerRootView style={{ flex: 1 }}>
@@ -58,6 +54,7 @@ export default function RootLayout() {
                         <RealtimeProvider>
                          <RootLayoutNav />
                          <EmergencyAlertOverlay />
+                         <AIAssistButton />
                         </RealtimeProvider>
                       </PushNotificationsProvider>
                      </NotificationsProvider>
