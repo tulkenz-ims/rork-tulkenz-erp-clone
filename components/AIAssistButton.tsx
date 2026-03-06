@@ -33,11 +33,12 @@ import {
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useUser } from '@/contexts/UserContext';
+import { useAIActions } from '@/hooks/useAIActions';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as Speech from 'expo-speech';
 import * as FileSystem from 'expo-file-system';
-import { useAIActions } from '@/hooks/useAIActions';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // ══════════════════════════════════ TYPES ══════════════════════════════════
 
@@ -79,7 +80,6 @@ const ACTION_ICONS: Record<string, { icon: any; color: string }> = {
 
 // ══════════════════════════════════ SPEECH RECOGNITION ══════════════════════════════════
 
-// Web Speech API wrapper (works on web, falls back to text input on mobile)
 function useSpeechRecognition() {
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState('');
@@ -128,7 +128,6 @@ function useSpeechRecognition() {
       return true;
     }
 
-    // Mobile: no built-in speech recognition — use text input
     return false;
   }, []);
 
@@ -158,6 +157,27 @@ export default function AIAssistButton() {
   const scrollRef = useRef<ScrollView>(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const { isListening, transcript, startListening, stopListening, setTranscript } = useSpeechRecognition();
+
+  // Load saved chat on mount (per-user)
+  useEffect(() => {
+    const chatKey = `ai_chat_${user?.id || 'default'}`;
+    AsyncStorage.getItem(chatKey).then(stored => {
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored);
+          setMessages(parsed.map((m: any) => ({ ...m, timestamp: new Date(m.timestamp) })));
+        } catch (e) { console.warn('[AIAssist] Failed to parse saved chat'); }
+      }
+    });
+  }, [user?.id]);
+
+  // Save chat whenever messages change (per-user)
+  useEffect(() => {
+    if (messages.length > 0) {
+      const chatKey = `ai_chat_${user?.id || 'default'}`;
+      AsyncStorage.setItem(chatKey, JSON.stringify(messages.slice(-50))).catch(() => {});
+    }
+  }, [messages, user?.id]);
 
   // Pulse animation for the floating button
   useEffect(() => {
@@ -206,6 +226,22 @@ export default function AIAssistButton() {
       console.error('[AIAssist] Speech synthesis error:', err);
     }
   }, [isSpeechEnabled]);
+
+  // ── Execute AI action ──
+  const executeAction = useCallback(async (action: string, params: Record<string, unknown>) => {
+    console.log('[AIAssist] Execute:', action, params);
+    try {
+      const result = await executeAIAction(action, params);
+      if (!result.success) {
+        console.warn('[AIAssist] Action failed:', result.message);
+      } else {
+        console.log('[AIAssist] Action succeeded:', result.message);
+      }
+      return result;
+    } catch (err) {
+      console.error('[AIAssist] Action error:', err);
+    }
+  }, [executeAIAction]);
 
   // ── Send command to AI ──
   const handleSend = useCallback(async (commandText?: string) => {
@@ -272,7 +308,7 @@ export default function AIAssistButton() {
       // Speak the response
       speakResponse(data.speech);
 
-     // Execute the action
+      // Execute the action
       const actionResult = await executeAction(data.action, data.params);
 
       // If the action returned useful data, show it as a follow-up message
@@ -314,23 +350,7 @@ export default function AIAssistButton() {
     } finally {
       setIsProcessing(false);
     }
-  }, [textInput, pendingImage, user, speakResponse]);
-
-  // ── Execute AI action ──
-  const executeAction = useCallback(async (action: string, params: Record<string, unknown>) => {
-    console.log('[AIAssist] Execute:', action, params);
-    try {
-      const result = await executeAIAction(action, params);
-      if (!result.success) {
-        console.warn('[AIAssist] Action failed:', result.message);
-      } else {
-        console.log('[AIAssist] Action succeeded:', result.message);
-      }
-      return result;
-    } catch (err) {
-      console.error('[AIAssist] Action error:', err);
-    }
-  }, [executeAIAction]);
+  }, [textInput, pendingImage, user, speakResponse, executeAction]);
 
   // ── Mic button handler ──
   const handleMicPress = useCallback(() => {
@@ -340,7 +360,6 @@ export default function AIAssistButton() {
     } else {
       const started = startListening();
       if (!started) {
-        // Fallback: focus text input (mobile or unsupported browser)
         console.log('[AIAssist] Speech not available — use text input');
       }
     }
@@ -360,7 +379,6 @@ export default function AIAssistButton() {
         const asset = result.assets[0];
         let base64Data = asset.base64 || '';
 
-        // If base64 not returned, read the file
         if (!base64Data && asset.uri) {
           const fileData = await FileSystem.readAsStringAsync(asset.uri, {
             encoding: FileSystem.EncodingType.Base64,
@@ -405,7 +423,8 @@ export default function AIAssistButton() {
     setMessages([]);
     setPendingImage(null);
     setTextInput('');
-  }, []);
+    AsyncStorage.removeItem(`ai_chat_${user?.id || 'default'}`).catch(() => {});
+  }, [user?.id]);
 
   // ── Render action badge ──
   const renderActionBadge = (action?: string) => {
