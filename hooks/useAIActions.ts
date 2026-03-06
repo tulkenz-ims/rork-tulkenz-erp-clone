@@ -371,17 +371,15 @@ export function useAIActions() {
     if (!organizationId) return { success: false, message: 'No organization selected' };
 
     try {
-      let query = (params.query as string) || '';
-      // Strip trailing s/es for better matching (bearings -> bearing, switches -> switch)
-      const singularQuery = query.replace(/ies$/i, 'y').replace(/ses$/i, 's').replace(/s$/i, '');
-      const searchTerms = query !== singularQuery
-        ? `name.ilike.%${query}%,name.ilike.%${singularQuery}%,material_number.ilike.%${query}%,description.ilike.%${query}%,description.ilike.%${singularQuery}%,sku.ilike.%${query}%,vendor_part_number.ilike.%${query}%,manufacturer_part_number.ilike.%${query}%`
-        : `name.ilike.%${query}%,material_number.ilike.%${query}%,description.ilike.%${query}%,sku.ilike.%${query}%,vendor_part_number.ilike.%${query}%,manufacturer_part_number.ilike.%${query}%`;
+      const rawQuery = (params.query as string) || '';
+      // Search both original and singular form
+      const singular = rawQuery.replace(/ies$/i, 'y').replace(/ses$/i, 's').replace(/s$/i, '');
+      
       const { data: parts, error } = await supabase
         .from('materials')
         .select('id, name, material_number, sku, on_hand, min_level, location, bin, aisle, rack, shelf, unit_price, vendor, vendor_part_number, manufacturer, manufacturer_part_number, status, category, description')
         .eq('organization_id', organizationId)
-        .or(`name.ilike.%${query}%,material_number.ilike.%${query}%,description.ilike.%${query}%,sku.ilike.%${query}%,vendor_part_number.ilike.%${query}%,manufacturer_part_number.ilike.%${query}%`)
+        .or(`name.ilike.%${rawQuery}%,name.ilike.%${singular}%,description.ilike.%${rawQuery}%,description.ilike.%${singular}%,material_number.ilike.%${rawQuery}%,sku.ilike.%${rawQuery}%,vendor_part_number.ilike.%${rawQuery}%,manufacturer_part_number.ilike.%${rawQuery}%`)
         .limit(10);
 
       if (error) throw error;
