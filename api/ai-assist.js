@@ -157,17 +157,106 @@ Production (4): Supersack staged with correct lot, cases/packaging staged, HMI r
 6. Pneumatic System: Air cylinders, solenoid valves, FRL unit, air regulators
 7. Electrical/Controls: PLC, HMI, solid state relays (Omron), DPDT relays, contactors, photo sensors, E-stop
 
-### Troubleshooting
-- Bad horizontal seal: Low jaw temp, short seal time, product in seal area, worn jaw tape → Check/adjust temp, increase seal time, clean jaws, replace Strip & Stick tape
-- Vertical seal failure: Low temp, short seal time, film threaded wrong, bad film → Adjust temp/time, re-thread film, replace Teflon tape
-- Film won't cut: Cutter timing wrong, blade dull, pneumatic pressure low → Reset cutter values, replace blade, check air
-- Cut position wrong: Photosensor moved, registration mark misaligned, cutter calibration off → Re-adjust photosensor, check film marks, re-calibrate
-- Film tracking off: Uneven tension, roll off-center, worn rollers, former damage → Re-center roll, adjust tension, inspect rollers/former
-- Bag length inconsistent: Pull belt wear/glazing, encoder issue, belt tension → Replace belts, check encoder, adjust tension
-- Jaw won't close: Low air pressure, solenoid stuck, cylinder worn → Check air (70 PSI), test solenoid, replace cylinder seals
-- Machine won't start: E-stop engaged, interlock open, door not closed, PLC fault → Reset E-stop, close doors, check PLC alarm
-- Product in seal area: Fill timing wrong, hopper bridging, static buildup → Adjust fill delay, clear bridge, add ionizer
-- Print unclear/tearing: Print temp wrong, timing off, ribbon feed issue → Adjust temp/timing, check ribbon
+### Troubleshooting (from AFI Publication 4110811)
+
+Machine Fails to Power On:
+- Check voltmeter for available power at main bus bar in electrical control panel
+- If no power: check power cord, loose connections, tripped breaker
+- Check for blown main fuse (indicates excessive current - another problem may exist)
+
+Inability To Control Sealing Temperature (critical alarm):
+- Check connections for affected output at PLC - ensure secure
+- Check proper voltage levels to relay for affected heating element
+- Check if coil side of relay energized, does switch side output energize and stay energized
+- Inspect wiring for kinks or damage
+- Check programmed temperature is set correctly
+
+Partial Vertical Seal:
+- Check side-to-side positioning of film roll - if too far to one side, vertical seal integrity is compromised
+- Check tracking of film through machine - must be pulled straight
+
+Seals Open Easily:
+- Check temperature setting for the failing seal - must match film type
+- If endseal: make sure bag deflators are not pushing product into endseal before jaws close
+
+Cooling Stuck On Or Does Not Work:
+- Check PLC input/output LEDs for proper activation timing
+- Check electrical and pneumatic connections at electric/pneumatic valve assembly
+- Use test button on valve assembly to test function
+
+Air Pressure Drops Once Machine Started:
+- Check compressed air supply line for restrictions or damage
+- Check for leaks in air supply lines to internal components
+
+Jaw Does Not Function:
+- Check compressed air reaching jaw cylinder
+- Check air can vent from opposite side of cylinder
+- Check proper voltage to electric/pneumatic solenoids
+- Make sure pneumatic control valve changes state when solenoid energized/de-energized
+- For front endseal jaw: check plastic bushings/guides that jaw slides ride on - replace if damaged or contaminated
+
+Photoeye Does Not Function:
+- Check output LED on photo eye controller - should illuminate when mark is in front of sensing block
+- If LED is flashing: indicates short circuit condition
+- Manually advance film while monitoring bar graph LEDs at top of controller
+- As registration mark enters field of view, LEDs should light progressively
+
+Testing Electric/Pneumatic Valve Block:
+- Block of 10 pneumatic valves, each with its own electric control solenoid
+- Each solenoid has a test button for manual actuation and an amber LED indicator
+- Use test buttons to isolate whether problem is electrical (solenoid) or pneumatic (valve/cylinder)
+
+### Repair Procedures (from official manual - step-by-step)
+
+Forming Collar Replacement: Loosen upper bolts, loosen two quick release handles, slide collar forward and off. Reverse to install.
+
+Belt Drive Belt Replacement: Remove two knobs retaining vertical sealing element assembly, slide it off mounting posts. Loosen tensioner bolt, pivot tensioner to release tension, remove belt. Always replace belts in pairs.
+
+Belt Drive Motor Replacement: Remove belt first. Label and disconnect wires at motor. Remove drive pulley retaining bolt and pulley. Remove four mounting bolts (two upper, two lower). Slide motor rearward to disengage from drive gear.
+
+Vertical Sealing Element Replacement: Remove two knobs securing vertical sealing assembly. Pull off mounting posts. Rotate 180 degrees. Open black electrical box (4 screws). Disconnect thermocouple. Slide thermocouple out of jaw. Reverse to install. After install: run AutoTune on temperature control.
+
+Endseal Heating Element Replacement: Open front door. Remove cover from black electrical box (loosen screws). Label, disconnect heating element connections. Remove element from endseal jaw. After install: run AutoTune on TEMPERATURE CONTROL menu.
+
+Endseal Jaw Pneumatic Cylinder Replacement: Access through left side door. Label and disconnect air supply lines. Break jam nut loose on cylinder rods. Back cylinder rods out of arms. Lift cylinders out. Remove bolts holding two cylinders together. Transfer quick-connect fittings to new cylinder.
+
+Knife Blade Replacement: Open front door. Remove two knife blade mounting bolts. Remove blade. Install new blade with cutting edge facing rear of machine.
+
+Knife Cylinder Replacement: Remove knife blade first. Label and disconnect air supply lines. Remove four cylinder mounting bolts from rear of mounting plate. Slide cylinder toward front to remove.
+
+Filter/Regulator Replacement: Disconnect air line. Disconnect electrical connection from electronic dump valve. Remove mounting bolts. Remove electronic dump valve from old unit and install on new. After install: adjust air pressure using regulator knob.
+
+Encoder Replacement: Open right side electrical panel door. Label encoder wires at PLC. Disconnect cable. Remove wire ties. Remove hex head screw attaching encoder to mounting block. Install new encoder with wheel making firm contact with film.
+
+Photoeye Sensing Tip Replacement: Open right side electrical panel. Disconnect cable at photoeye controller. Remove mounting bolt. Install new tip. Route cable same path as original.
+
+Pneumatic Quick-Connect Fitting Replacement: Disconnect air supply line (press collar while pulling). Unscrew fitting. Wrap new fitting threads with Teflon tape (bottom to hex head, same direction as threads). Tighten. Reconnect and check for leaks with soapy water.
+
+### Preventive Maintenance Schedule (from manual)
+
+Daily (before startup):
+- Thoroughly clean machine
+- Inspect for damaged, worn, or misadjusted components
+- Inspect for loose fasteners
+- ALL electrical power must be disconnected and locked OFF before these procedures
+
+Monthly (every 700 operating hours):
+- Inspect and service filter in Filter/Regulator
+- Inspect all hoses, air cylinders, and linkages - replace worn/damaged parts
+- Clean dust/product accumulated inside or on machine
+- Check all fasteners - tighten any found loose
+
+### Key Operating Notes
+- Machine must warm up 15 minutes after power on before first fill cycle
+- Emergency Stop should ONLY be used for emergencies - use MACHINE MODE switch for normal stop
+- Filter/regulator functions as electronic dump valve - automatically dumps air on E-stop or door open
+- Encoder is accurate to 0.001 inch - detects belt drive slippage
+- Photoeye requires light colored film with dark registration marks (dark on light only)
+- Pneumatic components are permanently lubricated - no additional lubrication required
+- Bag deflator pads should lead horizontal seals by 1/4 inch for best results
+- Belt drives are symmetrical - motors must run at same speed or film will bind
+- PLC maintains heating element temperature to +/-1 degree Fahrenheit
+- Three heating elements: vertical seal, front endseal, rear endseal - each controlled by own 220V solid-state relay
 
 ### Common Parts (Tracked in Inventory)
 - Teflon tape 2" x 18 yd (vertical seal bar)
