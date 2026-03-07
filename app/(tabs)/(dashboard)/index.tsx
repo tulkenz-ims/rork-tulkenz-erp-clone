@@ -438,6 +438,12 @@ export default function ExecutiveDashboard() {
         </View>
 
         <LineStatusWidget />
+        <Pressable 
+          style={{ backgroundColor: '#8B5CF6', padding: 14, borderRadius: 10, marginBottom: 16, alignItems: 'center' }}
+          onPress={() => router.push('/production/room-dashboard?room=PA1')}
+        >
+          <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>Open PA1 Room Dashboard</Text>
+        </Pressable>
 
         {/* Row: Procurement + Inventory */}
         <View style={isWide ? styles.wideRow : undefined}>
