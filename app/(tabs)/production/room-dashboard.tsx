@@ -8,6 +8,7 @@ import {
   RefreshControl,
   ActivityIndicator,
   Dimensions,
+  Alert,
 } from 'react-native';
 import { useRouter, useLocalSearchParams, Stack } from 'expo-router';
 import {
@@ -287,15 +288,21 @@ export default function RoomDashboard() {
   }, [queryClient, roomCode]);
 
   // ── Call simulator tick ──
+  const [tickCount, setTickCount] = useState(0);
+
   const handleTick = useCallback(async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     try {
-      await fetch('https://app.tulkenz.net/api/simulator?action=tick', { method: 'POST' });
+      const res = await fetch('https://app.tulkenz.net/api/simulator?action=tick', { method: 'POST' });
+      const json = await res.json();
+      console.log('[RoomDashboard] Tick result:', json);
+      setTickCount(json.tick || tickCount + 1);
       await queryClient.invalidateQueries({ queryKey: ['room-dashboard', roomCode] });
-    } catch (err) {
+    } catch (err: any) {
       console.error('[RoomDashboard] Tick error:', err);
+      Alert.alert('Tick Error', err.message || 'Failed to connect to simulator');
     }
-  }, [queryClient, roomCode]);
+  }, [queryClient, roomCode, tickCount]);
 
   // ── Trigger event ──
   const handleTriggerEvent = useCallback(async (eventName: string) => {
@@ -621,7 +628,7 @@ export default function RoomDashboard() {
             ].filter(e => e.rooms.includes(roomCode)).map(evt => (
               <Pressable
                 key={evt.event}
-                style={[styles.simBtn, { borderColor: evt.color + '40', backgroundColor: evt.color + '10' }]}
+                style={({ pressed }) => [styles.simBtn, { borderColor: evt.color + '40', backgroundColor: pressed ? evt.color + '40' : evt.color + '10', opacity: pressed ? 0.7 : 1 }]}
                 onPress={() => handleTriggerEvent(evt.event)}
               >
                 <Text style={[styles.simBtnText, { color: evt.color }]}>{evt.label}</Text>
@@ -629,11 +636,11 @@ export default function RoomDashboard() {
             ))}
           </View>
           <Pressable
-            style={[styles.tickBtnLarge, { backgroundColor: '#8B5CF620', borderColor: '#8B5CF640' }]}
+            style={({ pressed }) => [styles.tickBtnLarge, { backgroundColor: pressed ? '#8B5CF650' : '#8B5CF620', borderColor: '#8B5CF640', opacity: pressed ? 0.7 : 1 }]}
             onPress={handleTick}
           >
             <Zap size={18} color="#8B5CF6" />
-            <Text style={[styles.tickBtnText, { color: '#8B5CF6' }]}>Advance Tick</Text>
+            <Text style={[styles.tickBtnText, { color: '#8B5CF6' }]}>Advance Tick{tickCount > 0 ? ` (${tickCount})` : ''}</Text>
           </Pressable>
         </View>
 
