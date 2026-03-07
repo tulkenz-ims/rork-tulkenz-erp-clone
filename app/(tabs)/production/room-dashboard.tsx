@@ -305,7 +305,7 @@ export default function RoomDashboard() {
       // Run a few ticks to show the effect
       for (let i = 0; i < 3; i++) {
         await new Promise(r => setTimeout(r, 500));
-        await fetch('/api/simulator?action=tick', { method: 'POST' });
+        await fetch('https://app.tulkenz.net/api/simulator?action=tick', { method: 'POST' });
       }
       await queryClient.invalidateQueries({ queryKey: ['room-dashboard', roomCode] });
     } catch (err) {
