@@ -290,7 +290,7 @@ export default function RoomDashboard() {
   const handleTick = useCallback(async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     try {
-      await fetch('/api/simulator?action=tick', { method: 'POST' });
+      await fetch('https://app.tulkenz.net/api/simulator?action=tick', { method: 'POST' });
       await queryClient.invalidateQueries({ queryKey: ['room-dashboard', roomCode] });
     } catch (err) {
       console.error('[RoomDashboard] Tick error:', err);
@@ -301,7 +301,7 @@ export default function RoomDashboard() {
   const handleTriggerEvent = useCallback(async (eventName: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     try {
-      await fetch(`/api/simulator?action=trigger&event=${eventName}&room=${roomCode}`, { method: 'POST' });
+      await fetch(`https://app.tulkenz.net/api/simulator?action=trigger&event=${eventName}&room=${roomCode}`, { method: 'POST' });
       // Run a few ticks to show the effect
       for (let i = 0; i < 3; i++) {
         await new Promise(r => setTimeout(r, 500));
