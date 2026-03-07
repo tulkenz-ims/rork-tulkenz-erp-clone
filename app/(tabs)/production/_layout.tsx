@@ -17,6 +17,7 @@ export default function ProductionLayout() {
       <Stack.Screen name="index" options={{ title: 'Production', headerShown: true }} />
       <Stack.Screen name="materials" options={{ title: 'Production Materials' }} />
       <Stack.Screen name="productionruns" options={{ title: 'Production Runs', headerShown: false }} />
+      <Stack.Screen name="room-dashboard" options={{ title: 'Room Dashboard', headerShown: false }} />
     </Stack>
   );
 }
