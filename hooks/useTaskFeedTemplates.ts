@@ -1096,6 +1096,40 @@ export function useCreateTaskFeedPost(callbacks?: MutationCallbacks<TaskFeedPost
 
       console.log('[useCreateTaskFeedPost] Post created:', postData.id, postNumber);
 
+      // Step 4b-pre: Update room_status if production stopped and room identified
+      if (isProductionHold && productionLine) {
+        try {
+          await supabase
+            .from('room_status')
+            .update({
+              status: 'down',
+              andon_color: 'red',
+              bags_per_minute: 0,
+              updated_at: new Date().toISOString(),
+              updated_by: `${user.first_name} ${user.last_name}`,
+            })
+            .eq('organization_id', organizationId)
+            .eq('room_code', productionLine);
+
+          await supabase
+            .from('production_events')
+            .insert({
+              organization_id: organizationId,
+              room_code: productionLine,
+              event_type: 'line_stopped',
+              category: 'unscheduled',
+              reason: `Production stopped - ${template.name} (${postNumber})`,
+              started_at: new Date().toISOString(),
+              auto_generated: false,
+              work_order_id: null,
+            });
+
+          console.log('[useCreateTaskFeedPost] Room status updated to DOWN for', productionLine);
+        } catch (roomErr) {
+          console.error('[useCreateTaskFeedPost] Room status update error (non-blocking):', roomErr);
+        }
+      }
+
       // Step 4b: Log initial production hold if applicable
       if (isProductionHold) {
         try {
@@ -1662,6 +1696,40 @@ export function useCreateManualTaskFeedPost(callbacks?: MutationCallbacks<TaskFe
       }
 
       console.log('[useCreateManualTaskFeedPost] Post created:', postData.id, postNumber);
+
+      // Update room_status if production stopped and room identified
+      if (isProductionHold && productionLine) {
+        try {
+          await supabase
+            .from('room_status')
+            .update({
+              status: 'down',
+              andon_color: 'red',
+              bags_per_minute: 0,
+              updated_at: new Date().toISOString(),
+              updated_by: `${user.first_name} ${user.last_name}`,
+            })
+            .eq('organization_id', organizationId)
+            .eq('room_code', productionLine);
+
+          await supabase
+            .from('production_events')
+            .insert({
+              organization_id: organizationId,
+              room_code: productionLine,
+              event_type: 'line_stopped',
+              category: 'unscheduled',
+              reason: `Production stopped - ${input.title} (${postNumber})`,
+              started_at: new Date().toISOString(),
+              auto_generated: false,
+              work_order_id: null,
+            });
+
+          console.log('[useCreateManualTaskFeedPost] Room status updated to DOWN for', productionLine);
+        } catch (roomErr) {
+          console.error('[useCreateManualTaskFeedPost] Room status update error (non-blocking):', roomErr);
+        }
+      }
 
       // Log production hold if applicable
       if (isProductionHold) {
