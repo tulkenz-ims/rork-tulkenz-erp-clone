@@ -1,304 +1,226 @@
 // api/ai-assist.js
-// Vercel Serverless Function — TulKenz OPS AI Voice Assistant
-// Receives text commands (from speech-to-text) + optional image (base64)
-// Calls Claude API, returns structured JSON actions the app executes
-// Public endpoint — authentication handled by passing user context
+// Vercel Serverless Function — TulKenz OPS AI Assistant v2
+// Uses Claude TOOL USE (function calling) instead of JSON prompting
+// Each task feed template = a tool with exact field schemas
+// Claude picks the right tool + fills every field from the user's message
 
 const Anthropic = require('@anthropic-ai/sdk').default;
 
-// ══════════════════════════════════ SYSTEM PROMPT ══════════════════════════════════
-
-const SYSTEM_PROMPT = `You are the TulKenz OPS AI Assistant — a voice-controlled operations assistant for a food manufacturing facility. You help operators, technicians, supervisors, and managers run the facility by executing commands through the TulKenz OPS platform.
-
-## YOUR CAPABILITIES (Actions You Can Execute)
-
-You respond with a JSON object containing an "action" and "speech" field. The app executes the action and speaks the speech back to the user.
-
-Available actions:
-
-### Task Feed
-- create_task_feed_post: Create a new post in Task Feed
-- start_pre_op: Start a Pre-Op inspection for a room
-- complete_checklist_item: Mark a checklist item pass/fail
-- sign_off: Complete and sign off with PIN verification
-
-### Work Orders
-- create_work_order: Create a maintenance work order
-- lookup_work_orders: Search open work orders
-
-### Equipment & Parts
-- lookup_part: Search parts inventory
-- lookup_equipment: Get equipment details, PM history, manuals
-- diagnose_issue: Analyze a problem (from description or photo) and suggest fixes
-
-### Production
-- start_production_run: Start a production run for a room
-- end_production_run: End the current run
-- change_room_status: Update room andon light status (running, loto, cleaning, setup, idle)
-
-### General
-- search: General search across the system
-- info: Return information without taking action
-- clarify: Ask the user for more details
-
-## RESPONSE FORMAT
-
-Always respond with valid JSON only — no markdown, no backticks, no explanation outside the JSON:
-
-{
-  "action": "action_name",
-  "speech": "What you say back to the user (conversational, clear, brief)",
-  "params": {
-    // action-specific parameters
-  }
-}
-
-## ACTION PARAMS
-
-### create_task_feed_post
-{ "template_name": "string", "room": "string", "departments": ["1001","1002",...], "notes": "string", "priority": "medium" }
-
-### start_pre_op
-{ "room": "PA1", "room_name": "Packet Area 1" }
-This creates a Pre-Op task feed post and dispatches checklist tasks to all departments.
-
-### complete_checklist_item
-{ "item_number": 1, "status": "pass" or "fail", "notes": "optional" }
-
-### sign_off
-{ "pin": "1234", "action_type": "pre_op_complete" }
-
-### create_work_order
-{ "title": "string", "equipment_id": "string", "equipment_name": "string", "description": "string", "priority": "medium", "type": "reactive" or "preventive", "parts_needed": ["part name",...] }
-
-### lookup_part
-{ "query": "search term" }
-
-### lookup_equipment
-{ "query": "equipment name or tag", "section": "specs" or "manual" or "troubleshooting" or "pm_history" or "parts" }
-
-### diagnose_issue
-{ "equipment": "Avatar A-1200", "symptom": "description of problem", "suggested_cause": "string", "suggested_fix": "string", "parts_needed": ["part",...], "severity": "low/medium/high/critical", "create_work_order": true/false }
-
-### start_production_run
-{ "room": "PA1", "run_number": "12234", "product": "string" }
-
-### end_production_run
-{ "room": "PA1", "run_number": "12234" }
-
-### change_room_status
-{ "room": "PA1", "status": "running" or "loto" or "cleaning" or "setup" or "idle" }
-
-### search
-{ "query": "search term", "scope": "parts" or "equipment" or "work_orders" or "task_feed" or "all" }
-
-### info
-{ "topic": "string" }
-
-### clarify
-{ "question": "What you need to know" }
-
-## FACILITY KNOWLEDGE
-
-### Rooms
-- PR1: Production Room 1 (bags/jugs) — Dept 1003
-- PR2: Production Room 2 (bags/jugs) — Dept 1003
-- PA1: Packet Area 1 (Avatar A-1200 VFFS) — Dept 1003
-- BB1: Big Blend — Dept 1003
-- SB1: Small Blend — Dept 1003
-- PA2: Packet Area 2 (unused) — Dept 1003
-
-### Department Codes
-- 1001: Maintenance
-- 1002: Sanitation
-- 1003: Production
-- 1004: Quality
-- 1005: Safety
-
-### PA1 Production Line Flow
-1. Supersack on hoist/frame
-2. Magnets (foreign material control)
-3. Auger/screw conveyor feeds hopper
-4. Hopper feeds Avatar A-1200 VFFS
-5. Avatar forms, fills, seals packets (up to 60/min)
-6. Discharge conveyor
-7. Keyence printer (date/lot coding)
-8. Manual boxing station
-
-### PA1 Pre-Op Checklist (20 items)
-Quality (5): Magnet inspection, hopper/forming tube residue check, film roll verification, Keyence printer date/lot check, first 5 bags seal/weight/print test
-Sanitation (4): Floor/walls/drains, conveyor belts, Avatar contact surfaces, boxing station
-Maintenance (4): Air pressure 70 PSI, pull belt tension, sealing jaw temp/tape, E-stop and interlocks
-Safety (3): LOTO devices cleared, guards and covers, PPE available
-Production (4): Supersack staged with correct lot, cases/packaging staged, HMI recipe loaded, bag counter reset
-
-## AVATAR A-1200 VFFS KNOWLEDGE BASE
-
-### Specifications
-- Manufacturer: All-Fill Inc. (Avatar VFFS division)
-- Model: A/1200
-- Type: Vertical Form Fill & Seal
-- Dimensions: 46.5" x 72.75" x 57"
-- Electrical: 208-480V, Single Phase, 50/60 Hz, 25A
-- Pneumatic: Up to 45 SCFM at 70 PSI
-- Rate: Up to 60 cycles/min
-- Bags: 2.5" x 3" to 8" x 14"
-- Fill: 0.5 oz to 5 lb
-- Film: Laminate/poly up to 0.006"
-- HMI: 7" color touchscreen, 50 stored routines
-- Changeover: Completely tool-less
-
-### Component Systems
-1. Film Unwind & Feed: Film roll spindle, tension arm, guide rollers, dancer arm
-2. Forming Tube & Collar: Forming shoulder, forming tube, film guide plates (tool-less removal)
-3. Pull Belts: Servo-driven sync belts, belt tensioners, drive motor
-4. Vertical Sealing Bar: Heating element, Teflon tape (2" x 18 yd), pressure bar, thermocouple
-5. Horizontal Sealing Jaws: Front/rear jaw assembly, heating elements, jaw tape (Strip & Stick 100S), springs, cutting knife
-6. Pneumatic System: Air cylinders, solenoid valves, FRL unit, air regulators
-7. Electrical/Controls: PLC, HMI, solid state relays (Omron), DPDT relays, contactors, photo sensors, E-stop
-
-### Troubleshooting (from AFI Publication 4110811)
-
-Machine Fails to Power On:
-- Check voltmeter for available power at main bus bar in electrical control panel
-- If no power: check power cord, loose connections, tripped breaker
-- Check for blown main fuse (indicates excessive current - another problem may exist)
-
-Inability To Control Sealing Temperature (critical alarm):
-- Check connections for affected output at PLC - ensure secure
-- Check proper voltage levels to relay for affected heating element
-- Check if coil side of relay energized, does switch side output energize and stay energized
-- Inspect wiring for kinks or damage
-- Check programmed temperature is set correctly
-
-Partial Vertical Seal:
-- Check side-to-side positioning of film roll - if too far to one side, vertical seal integrity is compromised
-- Check tracking of film through machine - must be pulled straight
-
-Seals Open Easily:
-- Check temperature setting for the failing seal - must match film type
-- If endseal: make sure bag deflators are not pushing product into endseal before jaws close
-
-Cooling Stuck On Or Does Not Work:
-- Check PLC input/output LEDs for proper activation timing
-- Check electrical and pneumatic connections at electric/pneumatic valve assembly
-- Use test button on valve assembly to test function
-
-Air Pressure Drops Once Machine Started:
-- Check compressed air supply line for restrictions or damage
-- Check for leaks in air supply lines to internal components
-
-Jaw Does Not Function:
-- Check compressed air reaching jaw cylinder
-- Check air can vent from opposite side of cylinder
-- Check proper voltage to electric/pneumatic solenoids
-- Make sure pneumatic control valve changes state when solenoid energized/de-energized
-- For front endseal jaw: check plastic bushings/guides that jaw slides ride on - replace if damaged or contaminated
-
-Photoeye Does Not Function:
-- Check output LED on photo eye controller - should illuminate when mark is in front of sensing block
-- If LED is flashing: indicates short circuit condition
-- Manually advance film while monitoring bar graph LEDs at top of controller
-- As registration mark enters field of view, LEDs should light progressively
-
-Testing Electric/Pneumatic Valve Block:
-- Block of 10 pneumatic valves, each with its own electric control solenoid
-- Each solenoid has a test button for manual actuation and an amber LED indicator
-- Use test buttons to isolate whether problem is electrical (solenoid) or pneumatic (valve/cylinder)
-
-### Repair Procedures (from official manual - step-by-step)
-
-Forming Collar Replacement: Loosen upper bolts, loosen two quick release handles, slide collar forward and off. Reverse to install.
-
-Belt Drive Belt Replacement: Remove two knobs retaining vertical sealing element assembly, slide it off mounting posts. Loosen tensioner bolt, pivot tensioner to release tension, remove belt. Always replace belts in pairs.
-
-Belt Drive Motor Replacement: Remove belt first. Label and disconnect wires at motor. Remove drive pulley retaining bolt and pulley. Remove four mounting bolts (two upper, two lower). Slide motor rearward to disengage from drive gear.
-
-Vertical Sealing Element Replacement: Remove two knobs securing vertical sealing assembly. Pull off mounting posts. Rotate 180 degrees. Open black electrical box (4 screws). Disconnect thermocouple. Slide thermocouple out of jaw. Reverse to install. After install: run AutoTune on temperature control.
-
-Endseal Heating Element Replacement: Open front door. Remove cover from black electrical box (loosen screws). Label, disconnect heating element connections. Remove element from endseal jaw. After install: run AutoTune on TEMPERATURE CONTROL menu.
-
-Endseal Jaw Pneumatic Cylinder Replacement: Access through left side door. Label and disconnect air supply lines. Break jam nut loose on cylinder rods. Back cylinder rods out of arms. Lift cylinders out. Remove bolts holding two cylinders together. Transfer quick-connect fittings to new cylinder.
-
-Knife Blade Replacement: Open front door. Remove two knife blade mounting bolts. Remove blade. Install new blade with cutting edge facing rear of machine.
-
-Knife Cylinder Replacement: Remove knife blade first. Label and disconnect air supply lines. Remove four cylinder mounting bolts from rear of mounting plate. Slide cylinder toward front to remove.
-
-Filter/Regulator Replacement: Disconnect air line. Disconnect electrical connection from electronic dump valve. Remove mounting bolts. Remove electronic dump valve from old unit and install on new. After install: adjust air pressure using regulator knob.
-
-Encoder Replacement: Open right side electrical panel door. Label encoder wires at PLC. Disconnect cable. Remove wire ties. Remove hex head screw attaching encoder to mounting block. Install new encoder with wheel making firm contact with film.
-
-Photoeye Sensing Tip Replacement: Open right side electrical panel. Disconnect cable at photoeye controller. Remove mounting bolt. Install new tip. Route cable same path as original.
-
-Pneumatic Quick-Connect Fitting Replacement: Disconnect air supply line (press collar while pulling). Unscrew fitting. Wrap new fitting threads with Teflon tape (bottom to hex head, same direction as threads). Tighten. Reconnect and check for leaks with soapy water.
-
-### Preventive Maintenance Schedule (from manual)
-
-Daily (before startup):
-- Thoroughly clean machine
-- Inspect for damaged, worn, or misadjusted components
-- Inspect for loose fasteners
-- ALL electrical power must be disconnected and locked OFF before these procedures
-
-Monthly (every 700 operating hours):
-- Inspect and service filter in Filter/Regulator
-- Inspect all hoses, air cylinders, and linkages - replace worn/damaged parts
-- Clean dust/product accumulated inside or on machine
-- Check all fasteners - tighten any found loose
-
-### Key Operating Notes
-- Machine must warm up 15 minutes after power on before first fill cycle
-- Emergency Stop should ONLY be used for emergencies - use MACHINE MODE switch for normal stop
-- Filter/regulator functions as electronic dump valve - automatically dumps air on E-stop or door open
-- Encoder is accurate to 0.001 inch - detects belt drive slippage
-- Photoeye requires light colored film with dark registration marks (dark on light only)
-- Pneumatic components are permanently lubricated - no additional lubrication required
-- Bag deflator pads should lead horizontal seals by 1/4 inch for best results
-- Belt drives are symmetrical - motors must run at same speed or film will bind
-- PLC maintains heating element temperature to +/-1 degree Fahrenheit
-- Three heating elements: vertical seal, front endseal, rear endseal - each controlled by own 220V solid-state relay
-
-### Common Parts (Tracked in Inventory)
-- Teflon tape 2" x 18 yd (vertical seal bar)
-- Strip & Stick 100S .125" x 3/4" x 10 ft (jaw tape)
-- 8-pin DPDT relay with LED (Omron)
-- Solid state relay with indicator lamp (Omron)
-- Pull belts (various sizes)
-- Cutting blade
-- Heating elements (vertical and horizontal)
-- Thermocouples
-- Solenoid valves
-- Pneumatic cylinders
-- Photo sensors
-- Fuses (4A, 10A, 15A)
-- O-rings and gaskets
-- Push-to-connect pneumatic fittings
-- Bearings (6000 series)
-
-### HMI Controls Reference
-- PULL: Pulls one bag length of film
-- FILL/POUCH MAKE: Toggles between pouch making and filling mode
-- JOG: Makes one complete cycle (one bag with product)
-- START/STOP: Auto mode on/off
-- HORI. CLOSE: Manual horizontal jaw close/open
-- VER. SEAL ONCE: Manual vertical seal
-- CUT ONCE: Manual cutter activation
-- PRINT ONCE: Manual print activation
-
-## BEHAVIOR RULES
-
-1. Always respond in JSON format. Nothing else.
-2. Be conversational in the "speech" field — talk like a knowledgeable maintenance supervisor.
-3. When diagnosing from a photo, be specific about what you see and reference the troubleshooting matrix.
-4. When looking up parts, include stock status and location if available.
-5. For Pre-Op, walk through items one at a time.
-6. If a command is ambiguous, use the "clarify" action to ask.
-7. If someone asks about equipment you don't have data for, say so and offer to create a placeholder.
-8. Reference room names naturally (PA1, PR1, etc.)
-9. For PIN sign-off, always include the PIN in params — the app verifies it.
-10. Keep speech responses under 3 sentences unless the user asked for detail.`;
-
-// ══════════════════════════════════ HANDLER ══════════════════════════════════
+// ══════════════════════════════════════════════════════════════════
+// SYSTEM PROMPT — shorter now, behavior rules only
+// Template knowledge is encoded in the tools themselves
+// ══════════════════════════════════════════════════════════════════
+
+const SYSTEM_PROMPT = `You are the TulKenz OPS AI Assistant for a food manufacturing facility (NextLN, Chike brand). You help operators, technicians, supervisors, and managers execute tasks through the TulKenz OPS platform using tools.
+
+## HOW YOU WORK
+
+You have tools for every action in the app. When a user asks you to do something, pick the right tool and fill in ALL parameters from what they said. If they didn't mention a required field, ASK them for it before calling the tool — never guess on required fields.
+
+## CRITICAL RULES
+
+1. ALWAYS use a tool to take action. Never just describe what you would do.
+2. Every field marked required MUST be filled. If the user didn't provide it, use the ask_clarification tool to ask.
+3. For optional fields the user didn't mention, use "N/A".
+4. Reporting an issue = Task Feed post (pick the right template). NOT a work order.
+5. Work orders are for scheduled maintenance or follow-up repairs, not for reporting incidents.
+6. Match the user's description to the most specific template available. "Broken glove" = broken_glove template, "found metal" = foreign_material template, etc.
+7. Be conversational in your text responses — talk like a knowledgeable maintenance supervisor.
+8. Keep responses under 3 sentences unless asked for detail.
+
+## ROUTING RULES — Task Feed vs Work Order
+
+USE TASK FEED (create_task_feed_post_*) when someone says:
+- "Report..." / "Log..." / "Found a..." / "There's a..." / "We have a..."
+- Any incident, finding, issue, complaint, or observation
+- Broken glove, foreign material, chemical spill, pest, injury, equipment problem, temp issue, metal detector hit, customer complaint
+
+USE WORK ORDER (create_work_order) ONLY when someone says:
+- "Schedule maintenance on..." / "Create a work order for..." / "Need to repair..."
+- Planned repairs or follow-up work after an issue was already reported
+
+## FACILITY REFERENCE
+
+Rooms: PR1 (Production Room 1), PR2 (Production Room 2), PA1 (Packet Area 1), PA2 (Packet Area 2), BB1 (Big Blend), SB1 (Small Blend)
+Production Lines: Line 1, Line 2, Line 3
+Departments: 1001=Maintenance, 1002=Sanitation, 1003=Production, 1004=Quality, 1005=Safety
+`;
+
+// ══════════════════════════════════════════════════════════════════
+// TOOL DEFINITIONS
+// Each task feed template = one tool with exact field schema
+// Claude CAN'T deviate from these — it's enforced by the API
+// ══════════════════════════════════════════════════════════════════
+
+const TOOLS = [
+  // ────────────────────────────────────────────
+  // TASK FEED: Quality Templates
+  // ────────────────────────────────────────────
+  {
+    name: "create_task_feed_post_broken_glove",
+    description: "Report a broken glove incident. Use when someone found a torn, ripped, broken, or damaged glove. This is a Quality department task feed post that dispatches to ALL 5 departments. Photo is required — remind the user if they didn't provide one.",
+    input_schema: {
+      type: "object",
+      properties: {
+        location: {
+          type: "string",
+          description: "Room or area where the glove was found. Use room codes: PR1, PR2, PA1, PA2, BB1, SB1, or describe area like 'Cooler 3', 'Warehouse'",
+        },
+        glove_type: {
+          type: "string",
+          enum: ["Nitrile", "Latex", "Vinyl", "Cut-Resistant", "Other"],
+          description: "Type of glove that was broken",
+        },
+        missing_fragment_found: {
+          type: "string",
+          enum: ["Yes - fragment recovered", "No - fragment missing"],
+          description: "Whether the missing piece/fragment of the glove was found and recovered",
+        },
+        description: {
+          type: "string",
+          description: "What happened — how the glove broke, where it was found, any details about contamination risk",
+        },
+        production_line: {
+          type: "string",
+          enum: ["Line 1", "Line 2", "Line 3", "N/A"],
+          description: "Which production line this occurred on. Use 'N/A' if not on a production line.",
+        },
+        immediate_action_taken: {
+          type: "string",
+          description: "What was done immediately after discovery — e.g. 'Stopped the line', 'Segregated product', 'Replaced glove'",
+        },
+        production_stopped: {
+          type: "boolean",
+          description: "Whether production was stopped due to this incident",
+        },
+        additional_notes: {
+          type: "string",
+          description: "Any extra information. Use 'N/A' if nothing to add.",
+        },
+      },
+      required: ["location", "glove_type", "missing_fragment_found", "description", "production_line", "immediate_action_taken", "production_stopped"],
+    },
+  },
+
+  // PLACEHOLDER — add each template as we build them:
+  // create_task_feed_post_chemical_spill
+  // create_task_feed_post_customer_complaint
+  // create_task_feed_post_employee_injury
+  // create_task_feed_post_equipment_breakdown
+  // create_task_feed_post_foreign_material
+  // create_task_feed_post_metal_detector_reject
+  // create_task_feed_post_pest_sighting
+  // create_task_feed_post_temperature_deviation
+
+  // ────────────────────────────────────────────
+  // WORK ORDERS
+  // ────────────────────────────────────────────
+  {
+    name: "create_work_order",
+    description: "Create a maintenance work order for scheduled repair or follow-up maintenance. Do NOT use this for reporting incidents — use the appropriate task feed template instead.",
+    input_schema: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "Short title for the work order" },
+        equipment_name: { type: "string", description: "Name of equipment needing work" },
+        description: { type: "string", description: "Detailed description of work needed" },
+        priority: { type: "string", enum: ["low", "medium", "high", "critical"] },
+        type: { type: "string", enum: ["reactive", "preventive", "predictive"] },
+      },
+      required: ["title", "equipment_name", "description", "priority", "type"],
+    },
+  },
+
+  // ────────────────────────────────────────────
+  // EQUIPMENT & PARTS
+  // ────────────────────────────────────────────
+  {
+    name: "lookup_part",
+    description: "Search parts inventory for a specific part by name, part number, or description",
+    input_schema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Part name, number, or description to search for" },
+      },
+      required: ["query"],
+    },
+  },
+  {
+    name: "lookup_equipment",
+    description: "Get equipment details, specs, PM history, troubleshooting info, or manual content",
+    input_schema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Equipment name or tag to look up" },
+        section: { type: "string", enum: ["specs", "manual", "troubleshooting", "pm_history", "parts"], description: "What info to retrieve" },
+      },
+      required: ["query"],
+    },
+  },
+  {
+    name: "diagnose_issue",
+    description: "Analyze an equipment problem from a description or photo and suggest causes, fixes, and parts needed",
+    input_schema: {
+      type: "object",
+      properties: {
+        equipment: { type: "string", description: "Equipment name (e.g. 'Avatar A-1200')" },
+        symptom: { type: "string", description: "What's happening — the problem the user describes" },
+      },
+      required: ["equipment", "symptom"],
+    },
+  },
+
+  // ────────────────────────────────────────────
+  // PRODUCTION
+  // ────────────────────────────────────────────
+  {
+    name: "change_room_status",
+    description: "Change a room's andon light status",
+    input_schema: {
+      type: "object",
+      properties: {
+        room: { type: "string", enum: ["PR1", "PR2", "PA1", "PA2", "BB1", "SB1"] },
+        status: { type: "string", enum: ["running", "loto", "cleaning", "setup", "idle", "down"] },
+      },
+      required: ["room", "status"],
+    },
+  },
+
+  // ────────────────────────────────────────────
+  // UTILITY
+  // ────────────────────────────────────────────
+  {
+    name: "ask_clarification",
+    description: "Ask the user for more information when you don't have enough detail to fill required fields. Always try to fill what you can and only ask about what's missing.",
+    input_schema: {
+      type: "object",
+      properties: {
+        question: { type: "string", description: "What you need to know" },
+        partial_data: {
+          type: "object",
+          description: "Fields you already know from the user's message, so you don't ask again",
+          additionalProperties: true,
+        },
+      },
+      required: ["question"],
+    },
+  },
+  {
+    name: "general_response",
+    description: "Respond to general questions, greetings, or informational requests that don't require an app action",
+    input_schema: {
+      type: "object",
+      properties: {
+        message: { type: "string", description: "Your response to the user" },
+      },
+      required: ["message"],
+    },
+  },
+];
+
+// ══════════════════════════════════════════════════════════════════
+// HANDLER
+// ══════════════════════════════════════════════════════════════════
 
 module.exports = async (req, res) => {
   // CORS
@@ -306,13 +228,8 @@ module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
+  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
@@ -321,7 +238,7 @@ module.exports = async (req, res) => {
   }
 
   try {
-    const { command, image, context } = req.body;
+    const { command, image, context, conversation } = req.body;
 
     if (!command && !image) {
       return res.status(400).json({ error: 'No command or image provided' });
@@ -329,7 +246,7 @@ module.exports = async (req, res) => {
 
     const client = new Anthropic({ apiKey });
 
-    // Build messages
+    // Build user message content
     const userContent = [];
 
     // Add image if provided (base64)
@@ -344,9 +261,9 @@ module.exports = async (req, res) => {
       });
     }
 
-    // Add the text command
+    // Add context about where the user is in the app
     const contextStr = context
-      ? `\n\n[Context: User is on screen "${context.screen || 'unknown'}". User: ${context.userName || 'unknown'} (${context.userRole || 'unknown'}). Current room: ${context.currentRoom || 'none'}.]`
+      ? `\n\n[Context: Screen="${context.screen || 'unknown'}", User=${context.userName || 'unknown'} (${context.userRole || 'unknown'}), Room=${context.currentRoom || 'none'}]`
       : '';
 
     userContent.push({
@@ -354,48 +271,86 @@ module.exports = async (req, res) => {
       text: (command || 'What do you see in this image?') + contextStr,
     });
 
+    // Build messages array — support multi-turn conversation
+    const messages = [];
+
+    // Add conversation history if provided (for follow-up questions)
+    if (conversation && Array.isArray(conversation)) {
+      conversation.forEach((msg) => {
+        messages.push(msg);
+      });
+    }
+
+    // Add current user message
+    messages.push({ role: 'user', content: userContent });
+
+    // Call Claude with TOOLS
     const response = await client.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1024,
       system: SYSTEM_PROMPT,
-      messages: [
-        {
-          role: 'user',
-          content: userContent,
-        },
-      ],
+      tools: TOOLS,
+      messages: messages,
     });
 
-    // Extract text response
-    const textBlock = response.content.find(b => b.type === 'text');
-    if (!textBlock) {
-      return res.status(500).json({ error: 'No response from AI' });
-    }
+    console.log('[ai-assist] Stop reason:', response.stop_reason);
 
-    // Parse JSON response
-    let parsed;
-    try {
-      // Strip any markdown fences if Claude added them
-      const clean = textBlock.text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
-      parsed = JSON.parse(clean);
-    } catch (parseErr) {
-      console.error('[ai-assist] Failed to parse Claude response:', textBlock.text);
-      parsed = {
-        action: 'info',
-        speech: textBlock.text,
-        params: {},
-      };
-    }
-
-    console.log('[ai-assist] Action:', parsed.action, '| Speech:', (parsed.speech || '').substring(0, 80));
-
-    return res.status(200).json({
+    // Process response — could be tool_use, text, or both
+    const result = {
       success: true,
-      action: parsed.action,
-      speech: parsed.speech,
-      params: parsed.params || {},
-      raw: textBlock.text,
-    });
+      action: null,
+      tool_name: null,
+      params: null,
+      speech: null,
+      needs_photo: false,
+      conversation_continue: false,
+    };
+
+    for (const block of response.content) {
+      if (block.type === 'tool_use') {
+        result.action = 'tool_call';
+        result.tool_name = block.name;
+        result.params = block.input;
+        result.tool_use_id = block.id;
+
+        // Check if this template requires a photo
+        const photoRequired = [
+          'create_task_feed_post_broken_glove',
+          'create_task_feed_post_chemical_spill',
+          'create_task_feed_post_equipment_breakdown',
+          'create_task_feed_post_foreign_material',
+          'create_task_feed_post_metal_detector_reject',
+          'create_task_feed_post_pest_sighting',
+          'create_task_feed_post_temperature_deviation',
+        ];
+        if (photoRequired.includes(block.name) && !image) {
+          result.needs_photo = true;
+        }
+
+        console.log('[ai-assist] Tool:', block.name, '| Params:', JSON.stringify(block.input).substring(0, 200));
+      }
+
+      if (block.type === 'text') {
+        result.speech = block.text;
+      }
+    }
+
+    // If Claude asked for clarification, flag for multi-turn
+    if (result.tool_name === 'ask_clarification') {
+      result.conversation_continue = true;
+      result.speech = result.params?.question || result.speech;
+    }
+
+    // If general response, just pass the message
+    if (result.tool_name === 'general_response') {
+      result.speech = result.params?.message || result.speech;
+      result.action = 'info';
+    }
+
+    // Build assistant message for conversation history
+    result.assistant_message = { role: 'assistant', content: response.content };
+
+    return res.status(200).json(result);
 
   } catch (err) {
     console.error('[ai-assist] Error:', err);
