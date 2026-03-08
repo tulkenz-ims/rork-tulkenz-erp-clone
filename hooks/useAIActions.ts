@@ -133,6 +133,7 @@ export function useAIActions() {
     departments = ALL_DEPARTMENTS,
     priority = 'medium',
     isProductionHold = false,
+    roomLine,
     photoUrl,
   }: {
     templateKey: string;
