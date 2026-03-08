@@ -337,7 +337,15 @@ export default function AIAssistButton() {
         throw new Error((data as any).error || 'AI request failed');
       }
 
-      // After successful response, add user turn + assistant turn to history
+      // Resolve tool name + speech FIRST (needed for history storage below)
+      const toolName = data.tool_name || data.action;
+      const speechText = data.speech || 'Done.';
+
+      // After successful response, add both turns to history.
+      // CRITICAL: If assistant_message has a tool_use block, the Anthropic API
+      // requires the next user message to have a matching tool_result block.
+      // Since we do plain conversational follow-ups, we store a plain text
+      // version of the assistant turn to avoid the API rejecting the next call.
       const userTurn: ConversationTurn = {
         role: 'user',
         content: userContent.length === 1 && userContent[0].type === 'text'
@@ -346,21 +354,22 @@ export default function AIAssistButton() {
       };
 
       if (data.assistant_message) {
+        const hasToolUse = Array.isArray(data.assistant_message.content) &&
+          data.assistant_message.content.some((b: any) => b.type === 'tool_use');
+
+        const assistantTurnToStore: ConversationTurn = hasToolUse
+          ? { role: 'assistant', content: speechText }
+          : data.assistant_message;
+
         conversationHistoryRef.current = [
           ...conversationHistoryRef.current,
           userTurn,
-          data.assistant_message,
+          assistantTurnToStore,
         ];
-        // Keep bounded to last 20 turns
         if (conversationHistoryRef.current.length > 20) {
           conversationHistoryRef.current = conversationHistoryRef.current.slice(-20);
         }
       }
-
-      // ── Resolve the tool name ──
-      // New API returns tool_name; fall back to action for legacy compatibility
-      const toolName = data.tool_name || data.action;
-      const speechText = data.speech || 'Done.';
 
       // Add Claude's response bubble
       const assistantMsg: ChatMessage = {
