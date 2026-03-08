@@ -257,15 +257,21 @@ function HeartbeatMonitor({ bpm, sensors, color = HUD.green, onBeat }: { bpm: nu
         <Animated.View style={[hbS.sweep, { backgroundColor: lineColor, transform: [{ translateX: sweepAnim.interpolate({ inputRange: [0, 1], outputRange: [0, chartW] }) }] }]} />
       </View>
 
-      <View style={hbS.footer}>
-        {sensors.slice(0, 3).map(s => (
-          <View key={s.id || s.sensor_name} style={hbS.footerItem}>
-            <View style={[hbS.footerDot, { backgroundColor: SC[s.status] || HUD.textDim }]} />
-            <Text style={hbS.footerLabel} numberOfLines={1}>{s.sensor_name}</Text>
-            <Text style={[hbS.footerVal, { color: SC[s.status] || HUD.textDim }]}>{s.value?.toFixed(0) ?? '—'}{s.unit}</Text>
-          </View>
-        ))}
-      </View>
+      {/* Scrolling sensor ticker — cycles through ALL sensors */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={hbS.ticker}>
+        <View style={{ flexDirection: 'row', gap: 6 }}>
+          {sensors.map(s => {
+            const col = SC[s.status] || HUD.textDim;
+            return (
+              <View key={s.id || s.sensor_name} style={[hbS.tickerItem, { borderColor: col + '40', backgroundColor: col + '08' }]}>
+                <View style={[hbS.footerDot, { backgroundColor: col, shadowColor: col, shadowOpacity: s.status === 'critical' ? 1 : 0, shadowRadius: 4, shadowOffset: { width: 0, height: 0 } }]} />
+                <Text style={hbS.footerLabel} numberOfLines={1}>{s.sensor_name}</Text>
+                <Text style={[hbS.footerVal, { color: col }]}>{s.value?.toFixed(1) ?? '—'}<Text style={{ fontSize: 8, fontWeight: '400' }}> {s.unit}</Text></Text>
+              </View>
+            );
+          })}
+        </View>
+      </ScrollView>
     </View>
   );
 }
@@ -280,8 +286,8 @@ const hbS = StyleSheet.create({
   gridLine: { position: 'absolute', left: 0, right: 0, height: 1, backgroundColor: HUD.grid },
   barsRow: { flexDirection: 'row', alignItems: 'center', height: '100%', gap: 0.5 },
   sweep: { position: 'absolute', top: 0, bottom: 0, width: 2, opacity: 0.4, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.8, shadowRadius: 4 },
-  footer: { flexDirection: 'row', gap: 6 },
-  footerItem: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: HUD.bg, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 4 },
+  ticker: { marginTop: 0 },
+  tickerItem: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 8, borderWidth: 1, paddingHorizontal: 8, paddingVertical: 5 },
   footerDot: { width: 5, height: 5, borderRadius: 3 },
   footerLabel: { fontSize: 9, color: HUD.textSec, flex: 1 },
   footerVal: { fontSize: 10, fontWeight: '700' },
@@ -931,7 +937,9 @@ function HexMetric({ label, value, unit, color, icon, beatSignal, jitter = 0 }: 
   // On each beat: pulse scale + apply jitter to displayed number
   useEffect(() => {
     if (beatSignal === undefined || beatSignal === 0) return;
-    // Jitter the displayed number slightly
+    const isCritical = color === HUD.red;
+    if (!isCritical) return; // only animate on critical state
+
     if (jitter > 0) {
       const base = parseFloat(value);
       if (!isNaN(base)) {
@@ -940,12 +948,10 @@ function HexMetric({ label, value, unit, color, icon, beatSignal, jitter = 0 }: 
         setLiveValue(Number.isInteger(base) ? Math.round(jittered).toString() : jittered.toFixed(1));
       }
     }
-    // Scale pulse
     Animated.sequence([
       Animated.timing(scaleAnim, { toValue: 1.08, duration: 80, useNativeDriver: true }),
       Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, tension: 200, friction: 10 }),
     ]).start();
-    // Glow flash
     Animated.sequence([
       Animated.timing(glowAnim, { toValue: 1, duration: 80, useNativeDriver: false }),
       Animated.timing(glowAnim, { toValue: 0, duration: 400, useNativeDriver: false }),
@@ -1150,7 +1156,7 @@ export default function RoomDashboard() {
         {/* Heartbeat monitor */}
         <HeartbeatMonitor
           bpm={bpm}
-          sensors={sensorReadings.filter(s => s.value != null).slice(0, 3)}
+          sensors={sensorReadings.filter(s => s.value != null)}
           color={bpmColor}
           onBeat={() => setBeatSignal(b => b + 1)}
         />
