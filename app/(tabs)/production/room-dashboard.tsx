@@ -1161,9 +1161,8 @@ const INTEL_COLORS: Record<IntelSeverity, string> = { critical: HUD.red, warning
 const INTEL_CAT_LABELS: Record<string, string> = { predictive: 'PREDICTIVE', operator: 'OPERATOR INTEL', product: 'PRODUCT HISTORY', history: 'MAINT LOG' };
 const INTEL_CAT_COLORS: Record<string, string> = { predictive: HUD.purple, operator: HUD.amber, product: HUD.green, history: HUD.textSec };
 
-const EquipmentIntelligence = React.memo(function EquipmentIntelligence() {
+const EquipmentIntelligence = React.memo(function EquipmentIntelligence({ expanded, setExpanded }: { expanded: string | null; setExpanded: (id: string | null) => void }) {
   const [filter, setFilter] = useState<string>('all');
-  const [expanded, setExpanded] = useState<string | null>(null);
   const categories = ['all', 'predictive', 'operator', 'product', 'history'];
   const items = filter === 'all' ? INTEL_DATA : INTEL_DATA.filter(i => i.category === filter);
   const warnCount = INTEL_DATA.filter(i => i.severity === 'warning').length;
@@ -1203,7 +1202,7 @@ const EquipmentIntelligence = React.memo(function EquipmentIntelligence() {
             <TouchableOpacity
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setExpanded(prev => prev === item.id ? null : item.id);
+                setExpanded(expanded === item.id ? null : item.id);
               }}
               activeOpacity={0.7}
               style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6 }}
@@ -1284,6 +1283,8 @@ export default function RoomDashboard() {
   const [toastVisible, setToastVisible] = useState(false);
   const [toastEventTitle, setToastEventTitle] = useState('');
   const [beatSignal, setBeatSignal] = useState(0);
+  const [expandedIntel, setExpandedIntel] = useState<string | null>(null);
+  const handleSetExpandedIntel = useCallback((id: string | null) => setExpandedIntel(id), []);
 
   const roomCode = room || 'PA1';
   const roomNames: Record<string, string> = { PA1: 'PACKET AREA 1', PR1: 'PRODUCTION ROOM 1', PR2: 'PRODUCTION ROOM 2' };
@@ -1464,7 +1465,7 @@ export default function RoomDashboard() {
         </View>
 
         {/* 4. EQUIPMENT INTELLIGENCE */}
-        <EquipmentIntelligence />
+        <EquipmentIntelligence expanded={expandedIntel} setExpanded={handleSetExpandedIntel} />
 
         {/* 5. SIM CONTROLS */}
         <View style={[mS.card, { borderColor: HUD.purple + '40' }]}>
