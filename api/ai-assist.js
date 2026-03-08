@@ -472,12 +472,25 @@ module.exports = async (req, res) => {
     const userContent = [];
 
     if (image) {
+      // Strip data URL prefix if present (e.g. "data:image/jpeg;base64,...")
+      // The Anthropic API requires raw base64 only — no prefix
+      let imageData = image.data || '';
+      if (imageData.includes(',')) {
+        imageData = imageData.split(',')[1];
+      }
+
+      // Validate we actually have data
+      if (!imageData || imageData.length < 100) {
+        console.error('[ai-assist] Image data missing or too small');
+        return res.status(400).json({ error: 'Invalid image data — please try again' });
+      }
+
       userContent.push({
         type: 'image',
         source: {
           type: 'base64',
           media_type: image.media_type || 'image/jpeg',
-          data: image.data,
+          data: imageData,
         },
       });
     }
