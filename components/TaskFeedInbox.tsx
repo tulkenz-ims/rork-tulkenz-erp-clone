@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo } from 'react';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { useWorkOrdersQuery } from '@/hooks/useSupabaseWorkOrders';
 import {
   View,
@@ -116,6 +116,24 @@ export default function TaskFeedInbox({
   const [showNotInvolved, setShowNotInvolved] = useState(false);
   const [completionNotes, setCompletionNotes] = useState('');
   const [isCompleting, setIsCompleting] = useState(false);
+
+  // ─── FIX: track when we've navigated away for a form fill ───────
+  // When the screen regains focus (user returns from the form),
+  // useFocusEffect will see pendingDecision=true and open the
+  // PostFormDecisionModal automatically.
+  const [pendingDecision, setPendingDecision] = useState(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (pendingDecision && selectedTask) {
+        setPendingDecision(false);
+        // Refresh task data so formsCompleted count is up to date
+        refetch();
+        setShowDecisionModal(true);
+      }
+    }, [pendingDecision, selectedTask])
+  );
+  // ────────────────────────────────────────────────────────────────
 
   const isMaintenanceDept = requiresFullWorkOrder !== undefined 
     ? requiresFullWorkOrder 
@@ -314,6 +332,12 @@ export default function TaskFeedInbox({
     setShowFormPicker(false);
     setShowDecisionModal(false);
 
+    // ─── FIX: mark that we expect a decision modal on return ────
+    // This flag is read by useFocusEffect when the user navigates
+    // back from the form, triggering PostFormDecisionModal to open.
+    setPendingDecision(true);
+    // ────────────────────────────────────────────────────────────
+
     // Delay navigation until the modal has fully dismissed.
     // Without this, the modal unmount triggers a focus/blur cycle on web
     // that swallows the router.push, leaving the user on the dashboard.
@@ -327,6 +351,7 @@ export default function TaskFeedInbox({
     // Just close — don't jump to decision modal
     // User can tap task again to reopen picker or complete
     setSelectedTask(null);
+    setPendingDecision(false);
   }, []);
 
   const handleFormPickerComplete = useCallback(() => {
@@ -414,6 +439,7 @@ export default function TaskFeedInbox({
       onTaskCompleted?.(selectedTask);
       setShowDecisionModal(false);
       setSelectedTask(null);
+      setPendingDecision(false);
 
       // Force refresh post detail
       queryClient.invalidateQueries({ queryKey: ['task_feed_post_detail'] });
@@ -457,6 +483,7 @@ export default function TaskFeedInbox({
       onTaskCompleted?.(selectedTask);
       setShowNotInvolved(false);
       setSelectedTask(null);
+      setPendingDecision(false);
 
       Alert.alert(
         'Verified',
@@ -474,6 +501,7 @@ export default function TaskFeedInbox({
   const handleDecisionEscalate = useCallback(() => {
     // Close decision, the parent page handles escalation
     setShowDecisionModal(false);
+    setPendingDecision(false);
     // Navigate to post detail where escalation modal lives
     if (selectedTask?.postId) {
       router.push(`/(tabs)/taskfeed/${selectedTask.postId}`);
@@ -508,6 +536,7 @@ export default function TaskFeedInbox({
       setShowCompleteModal(false);
       setSelectedTask(null);
       setCompletionNotes('');
+      setPendingDecision(false);
 
       Alert.alert(
         'Task Completed',
@@ -573,6 +602,7 @@ export default function TaskFeedInbox({
 
       setShowWorkOrderModal(false);
       setSelectedTask(null);
+      setPendingDecision(false);
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert(
@@ -1096,7 +1126,11 @@ export default function TaskFeedInbox({
       {/* Post-Form Decision Modal */}
       <PostFormDecisionModal
         visible={showDecisionModal}
-        onClose={() => setShowDecisionModal(false)}
+        onClose={() => {
+          setShowDecisionModal(false);
+          setSelectedTask(null);
+          setPendingDecision(false);
+        }}
         task={selectedTask}
         departmentCode={departmentCode}
         departmentName={getDepartmentName(departmentCode)}
