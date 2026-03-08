@@ -170,52 +170,50 @@ function PulsingDot({ color, size = 8 }: { color: string; size?: number }) {
 const HB_POINTS = 48; // number of columns in the waveform
 
 function HeartbeatMonitor({ bpm, sensors, color = HUD.green, onBeat }: { bpm: number; sensors: any[]; color?: string; onBeat?: () => void }) {
-  const sweepX = useRef(new Animated.Value(0)).current;
+  const onBeatRef = useRef(onBeat);
+  useEffect(() => { onBeatRef.current = onBeat; }, [onBeat]);
+
   const [waveData, setWaveData] = useState<number[]>(() => Array.from({ length: HB_POINTS }, () => 0.5));
   const waveRef = useRef<number[]>(Array.from({ length: HB_POINTS }, () => 0.5));
   const tickRef = useRef(0);
-  const lastBeatPhaseRef = useRef(false); // tracks if we were in spike zone last tick
+  const lastBeatPhaseRef = useRef(false);
+  const bpmRef = useRef(bpm);
+  useEffect(() => { bpmRef.current = bpm; }, [bpm]);
 
-  const buildWaveformTick = useCallback(() => {
-    tickRef.current += 1;
-    const t = tickRef.current;
-    const bpmNorm = Math.min(Math.max((bpm || 0) / 70, 0), 1);
-    const phase = (t % 20) / 20;
-    let sample = 0.5;
-    if (phase < 0.08) sample = 0.5 + 0.08 * Math.sin(phase / 0.08 * Math.PI);
-    else if (phase < 0.18) sample = 0.5 - 0.04 * Math.sin((phase - 0.08) / 0.10 * Math.PI);
-    else if (phase < 0.22) sample = 0.5 + (0.45 * bpmNorm + 0.1) * Math.sin((phase - 0.18) / 0.04 * Math.PI);
-    else if (phase < 0.28) sample = 0.5 - 0.12 * Math.sin((phase - 0.22) / 0.06 * Math.PI);
-    else if (phase < 0.45) sample = 0.5 + 0.18 * Math.sin((phase - 0.28) / 0.17 * Math.PI);
-    sample += (Math.random() - 0.5) * 0.01;
-    sample = Math.min(Math.max(sample, 0.02), 0.98);
-
-    // Fire onBeat on the leading edge of the QRS spike
-    const inSpike = phase >= 0.18 && phase < 0.22;
-    if (inSpike && !lastBeatPhaseRef.current && onBeat) onBeat();
-    lastBeatPhaseRef.current = inSpike;
-
-    const next = [...waveRef.current.slice(1), sample];
-    waveRef.current = next;
-    setWaveData([...next]);
-  }, [bpm, onBeat]);
-
+  // Interval never restarts — reads bpm and onBeat from refs
   useEffect(() => {
-    const interval = setInterval(buildWaveformTick, 100); // 10fps update
-    return () => clearInterval(interval);
-  }, [buildWaveformTick]);
+    const interval = setInterval(() => {
+      tickRef.current += 1;
+      const t = tickRef.current;
+      const bpmNorm = Math.min(Math.max((bpmRef.current || 0) / 70, 0), 1);
+      const phase = (t % 20) / 20;
+      let sample = 0.5;
+      if (phase < 0.08) sample = 0.5 + 0.08 * Math.sin(phase / 0.08 * Math.PI);
+      else if (phase < 0.18) sample = 0.5 - 0.04 * Math.sin((phase - 0.08) / 0.10 * Math.PI);
+      else if (phase < 0.22) sample = 0.5 + (0.45 * bpmNorm + 0.1) * Math.sin((phase - 0.18) / 0.04 * Math.PI);
+      else if (phase < 0.28) sample = 0.5 - 0.12 * Math.sin((phase - 0.22) / 0.06 * Math.PI);
+      else if (phase < 0.45) sample = 0.5 + 0.18 * Math.sin((phase - 0.28) / 0.17 * Math.PI);
+      sample += (Math.random() - 0.5) * 0.015;
+      sample = Math.min(Math.max(sample, 0.02), 0.98);
 
-  // Sweep line animation
+      const inSpike = phase >= 0.18 && phase < 0.22;
+      if (inSpike && !lastBeatPhaseRef.current) onBeatRef.current?.();
+      lastBeatPhaseRef.current = inSpike;
+
+      waveRef.current = [...waveRef.current.slice(1), sample];
+      setWaveData([...waveRef.current]);
+    }, 100);
+    return () => clearInterval(interval);
+  }, []); // ← empty deps: interval starts once, never restarts
+
   const sweepAnim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     Animated.loop(Animated.timing(sweepAnim, { toValue: 1, duration: 2000, useNativeDriver: true })).start();
   }, []);
 
   const chartW = W - 64;
-  const chartH = 48;
-  const barW = Math.floor(chartW / HB_POINTS) - 0.5;
-
-  // Determine if there's a critical state to flash
+  const chartH = 52;
+  const barW = Math.max(1, Math.floor((chartW - HB_POINTS * 0.5) / HB_POINTS));
   const hasCrit = sensors.some(s => s.status === 'critical');
   const lineColor = hasCrit ? HUD.red : bpm === 0 ? HUD.textDim : color;
 
@@ -234,39 +232,43 @@ function HeartbeatMonitor({ bpm, sensors, color = HUD.green, onBeat }: { bpm: nu
         )}
       </View>
 
-      <View style={[hbS.chart, { height: chartH }]}>
-        {/* Grid lines */}
+      {/* EKG waveform — absolute-positioned bars so height is explicit */}
+      <View style={{ height: chartH, backgroundColor: HUD.bg, borderRadius: 8, overflow: 'hidden', marginBottom: 8 }}>
         {[0.25, 0.5, 0.75].map(f => (
           <View key={f} style={[hbS.gridLine, { top: chartH * f }]} />
         ))}
-        {/* Waveform bars */}
-        <View style={hbS.barsRow}>
-          {waveData.map((v, i) => {
-            const barH = Math.max(2, v * chartH);
-            const centerY = chartH / 2;
-            const isSpike = v > 0.7 || v < 0.25;
-            const barColor = isSpike ? lineColor : lineColor + '70';
-            return (
-              <View key={i} style={{ width: barW, height: chartH, justifyContent: 'center', alignItems: 'center' }}>
-                <View style={{ width: barW, height: barH, borderRadius: 1, backgroundColor: barColor, shadowColor: isSpike ? lineColor : 'transparent', shadowOffset: { width: 0, height: 0 }, shadowOpacity: isSpike ? 0.9 : 0, shadowRadius: 3 }} />
-              </View>
-            );
-          })}
-        </View>
-        {/* Sweep cursor */}
+        {waveData.map((v, i) => {
+          const barH = Math.max(2, v * chartH);
+          const isSpike = v > 0.68 || v < 0.28;
+          return (
+            <View key={i} style={{
+              position: 'absolute',
+              bottom: 0,
+              left: i * (barW + 0.5),
+              width: barW,
+              height: barH,
+              borderRadius: 1,
+              backgroundColor: isSpike ? lineColor : lineColor + '55',
+              shadowColor: isSpike ? lineColor : 'transparent',
+              shadowOffset: { width: 0, height: 0 },
+              shadowOpacity: isSpike ? 0.9 : 0,
+              shadowRadius: 4,
+            }} />
+          );
+        })}
         <Animated.View style={[hbS.sweep, { backgroundColor: lineColor, transform: [{ translateX: sweepAnim.interpolate({ inputRange: [0, 1], outputRange: [0, chartW] }) }] }]} />
       </View>
 
-      {/* Scrolling sensor ticker — cycles through ALL sensors */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={hbS.ticker}>
+      {/* Scrollable sensor ticker — all sensors */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
         <View style={{ flexDirection: 'row', gap: 6 }}>
           {sensors.map(s => {
             const col = SC[s.status] || HUD.textDim;
             return (
-              <View key={s.id || s.sensor_name} style={[hbS.tickerItem, { borderColor: col + '40', backgroundColor: col + '08' }]}>
-                <View style={[hbS.footerDot, { backgroundColor: col, shadowColor: col, shadowOpacity: s.status === 'critical' ? 1 : 0, shadowRadius: 4, shadowOffset: { width: 0, height: 0 } }]} />
-                <Text style={hbS.footerLabel} numberOfLines={1}>{s.sensor_name}</Text>
-                <Text style={[hbS.footerVal, { color: col }]}>{s.value?.toFixed(1) ?? '—'}<Text style={{ fontSize: 8, fontWeight: '400' }}> {s.unit}</Text></Text>
+              <View key={s.sensor_id || s.sensor_name} style={[hbS.tickerItem, { borderColor: col + '40', backgroundColor: col + '08' }]}>
+                <View style={[hbS.dot, { backgroundColor: col }]} />
+                <Text style={hbS.tickerLabel}>{s.sensor_name}</Text>
+                <Text style={[hbS.tickerVal, { color: col }]}>{s.value?.toFixed(1) ?? '—'}<Text style={{ fontSize: 8 }}> {s.unit}</Text></Text>
               </View>
             );
           })}
@@ -282,15 +284,12 @@ const hbS = StyleSheet.create({
   bpmLabel: { fontSize: 10, fontWeight: '700', color: HUD.textSec, letterSpacing: 1 },
   critPill: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 8, borderWidth: 1 },
   critTxt: { fontSize: 8, fontWeight: '900', letterSpacing: 1 },
-  chart: { position: 'relative', backgroundColor: HUD.bg, borderRadius: 8, overflow: 'hidden', marginBottom: 8 },
   gridLine: { position: 'absolute', left: 0, right: 0, height: 1, backgroundColor: HUD.grid },
-  barsRow: { flexDirection: 'row', alignItems: 'center', height: '100%', gap: 0.5 },
-  sweep: { position: 'absolute', top: 0, bottom: 0, width: 2, opacity: 0.4, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.8, shadowRadius: 4 },
-  ticker: { marginTop: 0 },
+  sweep: { position: 'absolute', top: 0, bottom: 0, width: 2, opacity: 0.35, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.8, shadowRadius: 4 },
   tickerItem: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 8, borderWidth: 1, paddingHorizontal: 8, paddingVertical: 5 },
-  footerDot: { width: 5, height: 5, borderRadius: 3 },
-  footerLabel: { fontSize: 9, color: HUD.textSec, flex: 1 },
-  footerVal: { fontSize: 10, fontWeight: '700' },
+  dot: { width: 5, height: 5, borderRadius: 3 },
+  tickerLabel: { fontSize: 9, color: HUD.textSec },
+  tickerVal: { fontSize: 10, fontWeight: '700' },
 });
 
 // ══════════════════════════ AUTO-POST TOAST ══════════════════════════
@@ -611,55 +610,231 @@ const tfS = StyleSheet.create({
   successSub: { fontSize: 13, color: HUD.textSec, textAlign: 'center', letterSpacing: 0.5 },
 });
 
-// ══════════════════════════ A1200 SCHEMATIC ══════════════════════════
+// ══════════════════════════ PA1 PRODUCTION FLOW SCHEMATIC ══════════════════
+// Two-row layout matching actual PA1 flow:
+// Row 1 (ingredient input): SUPERSACK → AUGER/SCREWFEED → HOPPER (+ MAGNETS)
+// Row 2 (packaging output): CONVEYOR → AVATAR A1200 VFFS → PACKOUT AREA
+// The A1200 is tappable and opens the full equipment manual
+
+function PA1Schematic({ activeSystem, onSelectSystem, sensors }: {
+  activeSystem: string | null;
+  onSelectSystem: (id: string) => void;
+  sensors: any[];
+}) {
+  const schW = W - 48;
+  const scanX = useScan(schW, 5000);
+
+  // Sensor value lookup helpers
+  const getSensor = (name: string) => sensors.find(s => s.sensor_name?.toLowerCase().includes(name.toLowerCase()));
+  const augerSpeed = getSensor('Auger Speed');
+  const augerTemp = getSensor('Auger Motor');
+  const hopperLevel = getSensor('Hopper Level');
+  const airPressure = getSensor('Air Pressure');
+  const vertSeal = getSensor('Vertical Seal');
+  const bpm = getSensor('Bags Per Minute');
+
+  // Equipment nodes — positioned in a flow left→right across two rows
+  // Row heights: row0 y=4, row1 y=68. Total height = 128.
+  const colW = Math.floor((schW - 16) / 6); // 6 columns
+  const nodes = [
+    // Row 0: ingredient side
+    { id: 'supersack',   label: 'SUPER\nSACK',       col: 0, row: 0, color: HUD.purple,  sys: false, icon: '⬛' },
+    { id: 'auger',       label: 'AUGER /\nSCREWFEED', col: 1, row: 0, color: HUD.cyan,    sys: true,  sensorVal: augerSpeed ? `${augerSpeed.value?.toFixed(0)} RPM` : null, sensorStatus: augerSpeed?.status },
+    { id: 'hopper',      label: 'HOPPER',             col: 2, row: 0, color: HUD.amber,   sys: false, sensorVal: hopperLevel ? `${hopperLevel.value?.toFixed(0)}%` : null, sensorStatus: hopperLevel?.status },
+    { id: 'magnets',     label: 'MAGNETS',            col: 3, row: 0, color: HUD.red,     sys: false },
+    // Row 1: packaging side
+    { id: 'conveyor',    label: 'CONVEYOR\nFEED',     col: 1, row: 1, color: HUD.green,   sys: false },
+    { id: 'avatar_a1200',label: 'AVATAR\nA1200 VFFS', col: 2, row: 1, color: HUD.cyan,    sys: true,  sensorVal: bpm ? `${bpm.value?.toFixed(0)} BPM` : null, sensorStatus: bpm?.status, isMachine: true },
+    { id: 'packout',     label: 'PACKOUT\nAREA',      col: 3, row: 1, color: HUD.green,   sys: false },
+  ];
+
+  const nodeW = colW - 8;
+  const nodeH = 46;
+  const rowY = [6, 72];
+  const totalH = 126;
+
+  // Flow arrows (from→to by id)
+  const arrows: { fromCol: number; fromRow: number; toCol: number; toRow: number; color: string }[] = [
+    { fromCol: 0, fromRow: 0, toCol: 1, toRow: 0, color: HUD.purple },  // supersack→auger
+    { fromCol: 1, fromRow: 0, toCol: 2, toRow: 0, color: HUD.cyan },    // auger→hopper
+    { fromCol: 2, fromRow: 0, toCol: 3, toRow: 0, color: HUD.amber },   // hopper→magnets
+    { fromCol: 1, fromRow: 1, toCol: 2, toRow: 1, color: HUD.green },   // conveyor→a1200
+    { fromCol: 2, fromRow: 1, toCol: 3, toRow: 1, color: HUD.cyan },    // a1200→packout
+    // vertical drop: magnets→conveyor (col 2, row0 → col1, row1)
+    { fromCol: 3, fromRow: 0, toCol: 1, toRow: 1, color: HUD.amber },
+  ];
+
+  return (
+    <View style={pa1S.wrap}>
+      <View style={pa1S.head}>
+        <Activity size={12} color={HUD.cyan} />
+        <Text style={pa1S.headTitle}>PA1 · PRODUCTION FLOW</Text>
+        <Text style={pa1S.headSub}>TAP EQUIPMENT TO INSPECT</Text>
+      </View>
+
+      <View style={{ height: totalH, position: 'relative' }}>
+        {/* Grid */}
+        {[0.4].map(f => <View key={f} style={[pa1S.gH, { top: totalH * f }]} />)}
+
+        {/* Flow connectors */}
+        {arrows.map((a, i) => {
+          if (a.fromRow === a.toRow) {
+            // Horizontal arrow
+            const x1 = 8 + a.fromCol * colW + nodeW;
+            const x2 = 8 + a.toCol * colW;
+            const y = rowY[a.fromRow] + nodeH / 2;
+            return (
+              <View key={i} style={{ position: 'absolute', left: x1, top: y - 1, width: x2 - x1, height: 2, backgroundColor: a.color + '35' }}>
+                {/* Arrowhead */}
+                <View style={{ position: 'absolute', right: -4, top: -3, width: 0, height: 0, borderTopWidth: 4, borderBottomWidth: 4, borderLeftWidth: 6, borderTopColor: 'transparent', borderBottomColor: 'transparent', borderLeftColor: a.color + '70' }} />
+              </View>
+            );
+          } else {
+            // Vertical drop (magnets→conveyor area): draw an elbow
+            const x = 8 + 2.5 * colW; // midpoint
+            const y1 = rowY[a.fromRow] + nodeH;
+            const y2 = rowY[a.toRow];
+            return (
+              <View key={i}>
+                <View style={{ position: 'absolute', left: x, top: y1, width: 2, height: (y2 - y1) / 2, backgroundColor: a.color + '30' }} />
+                <View style={{ position: 'absolute', left: 8 + 1 * colW + nodeW, top: y1 + (y2 - y1) / 2 - 1, width: x - (8 + 1 * colW + nodeW), height: 2, backgroundColor: a.color + '30' }} />
+              </View>
+            );
+          }
+        })}
+
+        {/* Row labels */}
+        <Text style={[pa1S.rowLabel, { top: rowY[0] - 2 }]}>INGREDIENT FEED ↓</Text>
+        <Text style={[pa1S.rowLabel, { top: rowY[1] - 2 }]}>PACKAGING LINE →</Text>
+
+        {/* Nodes */}
+        {nodes.map(n => {
+          const x = 8 + n.col * colW;
+          const y = rowY[n.row];
+          const active = activeSystem === n.id;
+          const col = n.color;
+          const sCol = n.sensorStatus ? (SC[n.sensorStatus] || col) : col;
+          return (
+            <Pressable key={n.id} disabled={!n.sys}
+              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onSelectSystem(n.id); }}
+              style={[pa1S.node, {
+                left: x, top: y, width: nodeW, height: nodeH,
+                borderColor: active ? col : col + '50',
+                borderWidth: active ? 2 : 1,
+                backgroundColor: active ? col + '1c' : col + '09',
+                shadowColor: col, shadowOpacity: active ? 0.7 : 0.2,
+              }]}
+            >
+              {/* Corner brackets */}
+              <View style={[pa1S.cTL, { borderColor: col + (active ? 'ff' : '60') }]} />
+              <View style={[pa1S.cBR, { borderColor: col + (active ? 'ff' : '60') }]} />
+              {active && <View style={[pa1S.activeDot, { backgroundColor: col, shadowColor: col }]} />}
+              {n.isMachine && <View style={[pa1S.machineBadge, { backgroundColor: HUD.cyan + '20', borderColor: HUD.cyan + '40' }]}>
+                <Text style={{ fontSize: 5, color: HUD.cyan, fontWeight: '800' }}>VFFS</Text>
+              </View>}
+              <Text style={[pa1S.nodeLabel, { color: active ? col : col + 'cc' }]}>{n.label}</Text>
+              {n.sensorVal && (
+                <Text style={[pa1S.sensorVal, { color: sCol }]}>{n.sensorVal}</Text>
+              )}
+            </Pressable>
+          );
+        })}
+
+        {/* Scan line */}
+        <Animated.View style={[pa1S.scan, { transform: [{ translateX: scanX }] }]} pointerEvents="none" />
+      </View>
+
+      {/* Legend */}
+      <View style={pa1S.legend}>
+        {[
+          { col: HUD.purple, label: 'BULK INPUT' },
+          { col: HUD.cyan, label: 'METERING' },
+          { col: HUD.amber, label: 'HOPPER' },
+          { col: HUD.red, label: 'METAL SEP' },
+          { col: HUD.green, label: 'PACKAGING / OUTPUT' },
+        ].map(l => (
+          <View key={l.label} style={pa1S.legendItem}>
+            <View style={[pa1S.legendDot, { backgroundColor: l.col }]} />
+            <Text style={pa1S.legendTxt}>{l.label}</Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+const pa1S = StyleSheet.create({
+  wrap: { backgroundColor: HUD.bgCard, borderRadius: 14, borderWidth: 1, borderColor: HUD.borderBright, padding: 14, marginBottom: 14 },
+  head: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
+  headTitle: { fontSize: 11, fontWeight: '800', color: HUD.cyan, letterSpacing: 1.5, flex: 1 },
+  headSub: { fontSize: 9, color: HUD.textDim, letterSpacing: 1 },
+  gH: { position: 'absolute', left: 0, right: 0, height: 1, backgroundColor: HUD.grid },
+  rowLabel: { position: 'absolute', left: 0, fontSize: 6, fontWeight: '800', color: HUD.textDim, letterSpacing: 1.5 },
+  node: { position: 'absolute', borderRadius: 8, alignItems: 'center', justifyContent: 'center', shadowOffset: { width: 0, height: 0 }, shadowRadius: 8, elevation: 4 },
+  nodeLabel: { fontSize: 7, fontWeight: '800', textAlign: 'center', letterSpacing: 0.3, lineHeight: 10 },
+  sensorVal: { fontSize: 7, fontWeight: '700', marginTop: 2, letterSpacing: 0.3 },
+  cTL: { position: 'absolute', top: 2, left: 2, width: 6, height: 6, borderTopWidth: 1.5, borderLeftWidth: 1.5, borderRadius: 1 },
+  cBR: { position: 'absolute', bottom: 2, right: 2, width: 6, height: 6, borderBottomWidth: 1.5, borderRightWidth: 1.5, borderRadius: 1 },
+  activeDot: { position: 'absolute', top: 3, right: 3, width: 5, height: 5, borderRadius: 3, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 1, shadowRadius: 4 },
+  machineBadge: { position: 'absolute', top: 2, left: 2, paddingHorizontal: 3, paddingVertical: 1, borderRadius: 3, borderWidth: 1 },
+  scan: { position: 'absolute', top: 0, bottom: 0, width: 2, backgroundColor: HUD.cyan + '18', shadowColor: HUD.cyan, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.8, shadowRadius: 6 },
+  legend: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  legendDot: { width: 5, height: 5, borderRadius: 3 },
+  legendTxt: { fontSize: 8, color: HUD.textSec, fontWeight: '600' },
+});
+
+// Keep A1200Schematic for inside the Avatar modal (machine-internal view)
 function A1200Schematic({ activeSystem, onSelectSystem }: { activeSystem: string | null; onSelectSystem: (id: string) => void }) {
   const schW = W - 48;
   const scanX = useScan(schW, 4000);
 
-  const blocks = [
-    { id: 'film_unwind', label: 'FILM\nUNWIND', x: 2, y: 8, w: 60, h: 44, color: HUD.green, sys: true },
-    { id: 'forming', label: 'FORMING\nCOLLAR', x: 68, y: 8, w: 58, h: 44, color: HUD.textSec, sys: false },
-    { id: 'belt_drive', label: 'BELT\nDRIVE', x: 132, y: 8, w: 58, h: 44, color: HUD.cyan, sys: true },
-    { id: 'vertical_seal', label: 'VERT\nSEAL', x: 196, y: 8, w: 58, h: 44, color: HUD.amber, sys: true },
-    { id: 'endseal_jaw', label: 'ENDSEAL\nJAW', x: 260, y: 8, w: 62, h: 44, color: HUD.red, sys: true },
-    { id: 'filter_regulator', label: 'AIR /\nFILTER', x: 2, y: 64, w: 60, h: 38, color: HUD.purple, sys: true },
-    { id: 'plc', label: 'PLC\nHMI', x: 68, y: 64, w: 58, h: 38, color: HUD.textSec, sys: false },
-    { id: 'bag_out', label: 'BAGS\nOUT ↓', x: 260, y: 64, w: 62, h: 38, color: HUD.green, sys: false },
+  const colW = Math.floor((schW - 16) / 5);
+  const nodes = [
+    { id: 'film_unwind',     label: 'FILM\nUNWIND',     col: 0, row: 0, color: HUD.green, sys: true },
+    { id: 'belt_drive',      label: 'BELT\nDRIVE',      col: 1, row: 0, color: HUD.cyan,  sys: true },
+    { id: 'vertical_seal',   label: 'VERT\nSEAL',       col: 2, row: 0, color: HUD.amber, sys: true },
+    { id: 'endseal_jaw',     label: 'ENDSEAL\nJAW',     col: 3, row: 0, color: HUD.red,   sys: true },
+    { id: 'filter_regulator',label: 'AIR\nFILTER',      col: 0, row: 1, color: HUD.purple,sys: true },
+    { id: 'plc',             label: 'PLC\nHMI',         col: 1, row: 1, color: HUD.textSec,sys: false },
+    { id: 'bag_out',         label: 'BAGS\nOUT',        col: 3, row: 1, color: HUD.green, sys: false },
   ];
+  const nodeW = colW - 8;
+  const rowY = [6, 66];
+  const totalH = 118;
 
   return (
     <View style={schS.wrap}>
       <View style={schS.head}>
         <Cpu size={12} color={HUD.cyan} />
-        <Text style={schS.headTitle}>AVATAR A1200 / A2200 SCHEMATIC</Text>
+        <Text style={schS.headTitle}>AVATAR A1200 / A2200 — INTERNAL SYSTEMS</Text>
         <Text style={schS.headSub}>AFI 4110811</Text>
       </View>
-      <View style={[schS.map, { height: 116 }]}>
-        {[0.33, 0.66].map(f => <View key={`h${f}`} style={[schS.gH, { top: 116 * f }]} />)}
-        {[0.25, 0.5, 0.75].map(f => <View key={`v${f}`} style={[schS.gV, { left: schW * f }]} />)}
-        {/* Film path horizontal connector */}
-        <View style={{ position: 'absolute', top: 28, left: 62, width: 196, height: 2, backgroundColor: HUD.cyan + '20' }} />
-        {/* Air line vertical connector */}
-        <View style={{ position: 'absolute', top: 64, left: 32, width: 2, height: 38, backgroundColor: HUD.purple + '25' }} />
-
-        {blocks.map(b => {
-          const active = activeSystem === b.id;
-          const col = b.color;
+      <View style={{ height: totalH, position: 'relative' }}>
+        {[0.5].map(f => <View key={f} style={[schS.gH, { top: totalH * f }]} />)}
+        {/* Film path connector */}
+        {[1, 2, 3].map(c => (
+          <View key={c} style={{ position: 'absolute', top: rowY[0] + 22, left: 8 + (c - 1) * colW + nodeW, width: colW - nodeW, height: 2, backgroundColor: HUD.cyan + '20' }} />
+        ))}
+        {nodes.map(n => {
+          const x = 8 + n.col * colW;
+          const y = rowY[n.row];
+          const active = activeSystem === n.id;
+          const col = n.color;
           return (
-            <Pressable key={b.id} disabled={!b.sys}
-              style={[schS.block, { left: b.x, top: b.y, width: b.w, height: b.h, borderColor: active ? col : col + '45', borderWidth: active ? 2 : 1, backgroundColor: active ? col + '1a' : col + '07', shadowColor: col, shadowOpacity: active ? 0.7 : 0.15 }]}
-              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onSelectSystem(b.id); }}
+            <Pressable key={n.id} disabled={!n.sys}
+              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onSelectSystem(n.id); }}
+              style={[schS.block, { left: x, top: y, width: nodeW, height: 44, borderColor: active ? col : col + '45', borderWidth: active ? 2 : 1, backgroundColor: active ? col + '1a' : col + '07', shadowColor: col, shadowOpacity: active ? 0.7 : 0.15 }]}
             >
               <View style={[schS.cTL, { borderColor: col + (active ? 'ff' : '55') }]} />
               <View style={[schS.cBR, { borderColor: col + (active ? 'ff' : '55') }]} />
               {active && <View style={[schS.dot, { backgroundColor: col, shadowColor: col }]} />}
-              <Text style={[schS.bLabel, { color: active ? col : col + 'bb' }]}>{b.label}</Text>
+              <Text style={[schS.bLabel, { color: active ? col : col + 'bb' }]}>{n.label}</Text>
             </Pressable>
           );
         })}
         <Animated.View style={[schS.scan, { transform: [{ translateX: scanX }] }]} pointerEvents="none" />
       </View>
-      <Text style={schS.hint}>TAP A COMPONENT TO INSPECT  ·  TAPPABLE = SYSTEM WITH MANUAL DATA</Text>
+      <Text style={schS.hint}>TAP A SYSTEM TO VIEW PARTS · TROUBLESHOOT · REPAIR</Text>
     </View>
   );
 }
@@ -668,9 +843,7 @@ const schS = StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
   headTitle: { fontSize: 11, fontWeight: '800', color: HUD.cyan, letterSpacing: 1.5, flex: 1 },
   headSub: { fontSize: 9, color: HUD.textDim, letterSpacing: 1 },
-  map: { position: 'relative', width: '100%', overflow: 'hidden' },
   gH: { position: 'absolute', left: 0, right: 0, height: 1, backgroundColor: HUD.grid },
-  gV: { position: 'absolute', top: 0, bottom: 0, width: 1, backgroundColor: HUD.grid },
   block: { position: 'absolute', borderRadius: 8, alignItems: 'center', justifyContent: 'center', shadowOffset: { width: 0, height: 0 }, shadowRadius: 8, elevation: 4 },
   cTL: { position: 'absolute', top: 2, left: 2, width: 7, height: 7, borderTopWidth: 1.5, borderLeftWidth: 1.5, borderRadius: 1 },
   cBR: { position: 'absolute', bottom: 2, right: 2, width: 7, height: 7, borderBottomWidth: 1.5, borderRightWidth: 1.5, borderRadius: 1 },
@@ -938,8 +1111,8 @@ function HexMetric({ label, value, unit, color, icon, beatSignal, jitter = 0 }: 
   useEffect(() => {
     if (beatSignal === undefined || beatSignal === 0) return;
     const isCritical = color === HUD.red;
-    if (!isCritical) return; // only animate on critical state
 
+    // Always jitter the number slightly — makes it feel live
     if (jitter > 0) {
       const base = parseFloat(value);
       if (!isNaN(base)) {
@@ -948,14 +1121,18 @@ function HexMetric({ label, value, unit, color, icon, beatSignal, jitter = 0 }: 
         setLiveValue(Number.isInteger(base) ? Math.round(jittered).toString() : jittered.toFixed(1));
       }
     }
-    Animated.sequence([
-      Animated.timing(scaleAnim, { toValue: 1.08, duration: 80, useNativeDriver: true }),
-      Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, tension: 200, friction: 10 }),
-    ]).start();
-    Animated.sequence([
-      Animated.timing(glowAnim, { toValue: 1, duration: 80, useNativeDriver: false }),
-      Animated.timing(glowAnim, { toValue: 0, duration: 400, useNativeDriver: false }),
-    ]).start();
+
+    // Only pulse/glow animation when critical
+    if (isCritical) {
+      Animated.sequence([
+        Animated.timing(scaleAnim, { toValue: 1.08, duration: 80, useNativeDriver: true }),
+        Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, tension: 200, friction: 10 }),
+      ]).start();
+      Animated.sequence([
+        Animated.timing(glowAnim, { toValue: 1, duration: 80, useNativeDriver: false }),
+        Animated.timing(glowAnim, { toValue: 0, duration: 400, useNativeDriver: false }),
+      ]).start();
+    }
   }, [beatSignal]);
 
   return (
@@ -1161,10 +1338,16 @@ export default function RoomDashboard() {
           onBeat={() => setBeatSignal(b => b + 1)}
         />
 
-        {/* Line schematic — always visible on dashboard */}
-        <A1200Schematic
+        {/* PA1 production flow schematic */}
+        <PA1Schematic
           activeSystem={activeAlert ? (EVENT_SYSTEM[activeAlert.eventType] || null) : null}
-          onSelectSystem={(id) => { setAvatarPreSystem(id); setShowAvatarModal(true); }}
+          onSelectSystem={(id) => {
+            if (id === 'avatar_a1200' || A1200_SYSTEMS.find(s => s.id === id)) {
+              setAvatarPreSystem(id === 'avatar_a1200' ? undefined : id);
+              setShowAvatarModal(true);
+            }
+          }}
+          sensors={sensorReadings.filter(s => s.value != null)}
         />
 
         {/* Crit sensor banner */}
