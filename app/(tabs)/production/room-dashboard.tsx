@@ -232,51 +232,40 @@ function HeartbeatMonitor({ bpm, sensors, color = HUD.green, onBeat }: { bpm: nu
         )}
       </View>
 
-      {/* EKG waveform — bars centered on midline, deviation up/down */}
+      {/* EKG waveform — traced line: each column is a 3px dot at signal Y position */}
       <View style={{ height: chartH, backgroundColor: HUD.bg, borderRadius: 8, overflow: 'hidden', marginBottom: 8 }}>
-        {/* Midline */}
-        <View style={{ position: 'absolute', left: 0, right: 0, top: chartH / 2, height: 1, backgroundColor: lineColor + '25' }} />
-        {/* Grid thirds */}
-        {[0.25, 0.75].map(f => (
-          <View key={f} style={[hbS.gridLine, { top: chartH * f }]} />
+        {/* Grid lines */}
+        {[0.25, 0.5, 0.75].map(f => (
+          <View key={f} style={{ position: 'absolute', left: 0, right: 0, top: chartH * f, height: 1, backgroundColor: HUD.grid }} />
         ))}
-        {/* Centered bars — deviation from 0.5 midpoint */}
+        {/* Trace dots — Y position = signal value mapped to chart height */}
         {waveData.map((v, i) => {
-          const deviation = v - 0.5; // -0.5 to +0.5
-          const barH = Math.max(2, Math.abs(deviation) * chartH * 1.8);
-          const isUpSpike = deviation > 0.15;
-          const isDownSpike = deviation < -0.08;
-          const isActive = isUpSpike || isDownSpike;
-          const barColor = isActive ? lineColor : lineColor + '45';
-          // Position: center at midline, extend up for positive, down for negative
-          const topPos = deviation >= 0
-            ? chartH / 2 - barH
-            : chartH / 2;
+          const y = (1 - v) * (chartH - 4); // top=spike, bottom=dip, mid=baseline
+          const isSpike = v > 0.65;
+          const isDip = v < 0.35;
+          const isActive = isSpike || isDip;
+          const dotH = isSpike ? 4 : 2;
           return (
             <View key={i} style={{
               position: 'absolute',
-              top: topPos,
+              top: y,
               left: i * (barW + 0.5),
               width: barW,
-              height: barH,
+              height: dotH,
               borderRadius: 1,
-              backgroundColor: barColor,
-              shadowColor: isActive ? lineColor : 'transparent',
+              backgroundColor: isActive ? lineColor : lineColor + '80',
+              shadowColor: isSpike ? lineColor : 'transparent',
               shadowOffset: { width: 0, height: 0 },
-              shadowOpacity: isUpSpike ? 1 : 0,
-              shadowRadius: isUpSpike ? 6 : 0,
+              shadowOpacity: isSpike ? 1 : 0,
+              shadowRadius: isSpike ? 5 : 0,
             }} />
           );
         })}
-        {/* Sweep cursor — full width */}
+        {/* Sweep cursor */}
         <Animated.View style={{
           position: 'absolute', top: 0, bottom: 0, width: 1.5,
-          backgroundColor: lineColor,
-          opacity: 0.5,
-          shadowColor: lineColor,
-          shadowOffset: { width: 0, height: 0 },
-          shadowOpacity: 0.9,
-          shadowRadius: 4,
+          backgroundColor: lineColor, opacity: 0.4,
+          shadowColor: lineColor, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.9, shadowRadius: 4,
           transform: [{ translateX: sweepAnim.interpolate({ inputRange: [0, 1], outputRange: [0, chartW - 2] }) }],
         }} />
       </View>
