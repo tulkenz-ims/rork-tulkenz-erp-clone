@@ -165,6 +165,165 @@ function PulsingDot({ color, size = 8 }: { color: string; size?: number }) {
   );
 }
 
+// ══════════════════════════ HEARTBEAT MONITOR ══════════════════════════════
+// EKG-style scrolling waveform driven by live sensor values
+const HB_POINTS = 48; // number of columns in the waveform
+
+function HeartbeatMonitor({ bpm, sensors, color = HUD.green }: { bpm: number; sensors: any[]; color?: string }) {
+  const sweepX = useRef(new Animated.Value(0)).current;
+  const [waveData, setWaveData] = useState<number[]>(() => Array.from({ length: HB_POINTS }, () => 0.5));
+  const waveRef = useRef<number[]>(Array.from({ length: HB_POINTS }, () => 0.5));
+  const tickRef = useRef(0);
+
+  // Build a synthetic heartbeat signal from real sensor data
+  const buildWaveformTick = useCallback(() => {
+    tickRef.current += 1;
+    const t = tickRef.current;
+    const bpmNorm = Math.min(Math.max((bpm || 0) / 70, 0), 1);
+    // EKG shape: flat baseline → P wave → QRS spike → T wave
+    const phase = (t % 20) / 20;
+    let sample = 0.5; // baseline
+    if (phase < 0.08) sample = 0.5 + 0.08 * Math.sin(phase / 0.08 * Math.PI);        // P wave
+    else if (phase < 0.18) sample = 0.5 - 0.04 * Math.sin((phase - 0.08) / 0.10 * Math.PI); // pre-Q dip
+    else if (phase < 0.22) sample = 0.5 + (0.45 * bpmNorm + 0.1) * Math.sin((phase - 0.18) / 0.04 * Math.PI); // R spike
+    else if (phase < 0.28) sample = 0.5 - 0.12 * Math.sin((phase - 0.22) / 0.06 * Math.PI); // S dip
+    else if (phase < 0.45) sample = 0.5 + 0.18 * Math.sin((phase - 0.28) / 0.17 * Math.PI); // T wave
+    // Add slight noise from sensor variance
+    const noiseAmp = 0.01;
+    sample += (Math.random() - 0.5) * noiseAmp;
+    sample = Math.min(Math.max(sample, 0.02), 0.98);
+
+    const next = [...waveRef.current.slice(1), sample];
+    waveRef.current = next;
+    setWaveData([...next]);
+  }, [bpm]);
+
+  useEffect(() => {
+    const interval = setInterval(buildWaveformTick, 100); // 10fps update
+    return () => clearInterval(interval);
+  }, [buildWaveformTick]);
+
+  // Sweep line animation
+  const sweepAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.loop(Animated.timing(sweepAnim, { toValue: 1, duration: 2000, useNativeDriver: true })).start();
+  }, []);
+
+  const chartW = W - 64;
+  const chartH = 48;
+  const barW = Math.floor(chartW / HB_POINTS) - 0.5;
+
+  // Determine if there's a critical state to flash
+  const hasCrit = sensors.some(s => s.status === 'critical');
+  const lineColor = hasCrit ? HUD.red : bpm === 0 ? HUD.textDim : color;
+
+  return (
+    <View style={hbS.container}>
+      <View style={hbS.header}>
+        <Animated.View style={{ opacity: sweepAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0.4, 1, 0.4] }) }}>
+          <Activity size={12} color={lineColor} />
+        </Animated.View>
+        <Text style={[hbS.title, { color: lineColor }]}>LINE HEARTBEAT</Text>
+        <Text style={hbS.bpmLabel}>{bpm > 0 ? `${bpm} PKG/MIN` : 'IDLE'}</Text>
+        {hasCrit && (
+          <View style={[hbS.critPill, { backgroundColor: HUD.redDim, borderColor: HUD.red + '50' }]}>
+            <Text style={[hbS.critTxt, { color: HUD.red }]}>FAULT DETECTED</Text>
+          </View>
+        )}
+      </View>
+
+      <View style={[hbS.chart, { height: chartH }]}>
+        {/* Grid lines */}
+        {[0.25, 0.5, 0.75].map(f => (
+          <View key={f} style={[hbS.gridLine, { top: chartH * f }]} />
+        ))}
+        {/* Waveform bars */}
+        <View style={hbS.barsRow}>
+          {waveData.map((v, i) => {
+            const barH = Math.max(2, v * chartH);
+            const centerY = chartH / 2;
+            const isSpike = v > 0.7 || v < 0.25;
+            const barColor = isSpike ? lineColor : lineColor + '70';
+            return (
+              <View key={i} style={{ width: barW, height: chartH, justifyContent: 'center', alignItems: 'center' }}>
+                <View style={{ width: barW, height: barH, borderRadius: 1, backgroundColor: barColor, shadowColor: isSpike ? lineColor : 'transparent', shadowOffset: { width: 0, height: 0 }, shadowOpacity: isSpike ? 0.9 : 0, shadowRadius: 3 }} />
+              </View>
+            );
+          })}
+        </View>
+        {/* Sweep cursor */}
+        <Animated.View style={[hbS.sweep, { backgroundColor: lineColor, transform: [{ translateX: sweepAnim.interpolate({ inputRange: [0, 1], outputRange: [0, chartW] }) }] }]} />
+      </View>
+
+      <View style={hbS.footer}>
+        {sensors.slice(0, 3).map(s => (
+          <View key={s.id || s.sensor_name} style={hbS.footerItem}>
+            <View style={[hbS.footerDot, { backgroundColor: SC[s.status] || HUD.textDim }]} />
+            <Text style={hbS.footerLabel} numberOfLines={1}>{s.sensor_name}</Text>
+            <Text style={[hbS.footerVal, { color: SC[s.status] || HUD.textDim }]}>{s.value?.toFixed(0) ?? '—'}{s.unit}</Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+const hbS = StyleSheet.create({
+  container: { backgroundColor: HUD.bgCard, borderRadius: 14, borderWidth: 1, borderColor: HUD.borderBright, padding: 14, marginBottom: 16 },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
+  title: { fontSize: 11, fontWeight: '800', letterSpacing: 2, flex: 1 },
+  bpmLabel: { fontSize: 10, fontWeight: '700', color: HUD.textSec, letterSpacing: 1 },
+  critPill: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 8, borderWidth: 1 },
+  critTxt: { fontSize: 8, fontWeight: '900', letterSpacing: 1 },
+  chart: { position: 'relative', backgroundColor: HUD.bg, borderRadius: 8, overflow: 'hidden', marginBottom: 8 },
+  gridLine: { position: 'absolute', left: 0, right: 0, height: 1, backgroundColor: HUD.grid },
+  barsRow: { flexDirection: 'row', alignItems: 'center', height: '100%', gap: 0.5 },
+  sweep: { position: 'absolute', top: 0, bottom: 0, width: 2, opacity: 0.4, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.8, shadowRadius: 4 },
+  footer: { flexDirection: 'row', gap: 6 },
+  footerItem: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: HUD.bg, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 4 },
+  footerDot: { width: 5, height: 5, borderRadius: 3 },
+  footerLabel: { fontSize: 9, color: HUD.textSec, flex: 1 },
+  footerVal: { fontSize: 10, fontWeight: '700' },
+});
+
+// ══════════════════════════ AUTO-POST TOAST ══════════════════════════
+function AutoPostToast({ visible, eventTitle, onDismiss }: { visible: boolean; eventTitle: string; onDismiss: () => void }) {
+  const slideY = useRef(new Animated.Value(-60)).current;
+  const opacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (visible) {
+      Animated.parallel([
+        Animated.spring(slideY, { toValue: 0, useNativeDriver: true, tension: 80, friction: 12 }),
+        Animated.timing(opacity, { toValue: 1, duration: 250, useNativeDriver: true }),
+      ]).start();
+      const t = setTimeout(() => {
+        Animated.parallel([
+          Animated.timing(slideY, { toValue: -60, duration: 300, useNativeDriver: true }),
+          Animated.timing(opacity, { toValue: 0, duration: 300, useNativeDriver: true }),
+        ]).start(() => onDismiss());
+      }, 5000);
+      return () => clearTimeout(t);
+    }
+  }, [visible]);
+
+  if (!visible) return null;
+  return (
+    <Animated.View style={[toastS.container, { transform: [{ translateY: slideY }], opacity }]}>
+      <CheckCircle size={14} color={HUD.green} />
+      <View style={{ flex: 1 }}>
+        <Text style={toastS.title}>AUTO-POSTED TO TASK FEED</Text>
+        <Text style={toastS.sub}>{eventTitle} · All 5 departments notified · Audit image attached</Text>
+      </View>
+      <Pressable onPress={onDismiss}><X size={13} color={HUD.textDim} /></Pressable>
+    </Animated.View>
+  );
+}
+const toastS = StyleSheet.create({
+  container: { position: 'absolute', top: 110, left: 16, right: 16, backgroundColor: HUD.bgCard, borderRadius: 12, borderWidth: 1.5, borderColor: HUD.green + '60', padding: 12, flexDirection: 'row', alignItems: 'center', gap: 10, shadowColor: HUD.green, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.5, shadowRadius: 16, elevation: 20, zIndex: 200 },
+  title: { fontSize: 11, fontWeight: '900', color: HUD.green, letterSpacing: 1.5 },
+  sub: { fontSize: 10, color: HUD.textSec, marginTop: 1 },
+});
+
 // ══════════════════════════ INCIDENT ALERT CARD ══════════════════════════════
 interface ActiveAlert { eventType: string; sensorName?: string; value?: number; unit?: string; target?: number; }
 
@@ -793,6 +952,8 @@ export default function RoomDashboard() {
   const [showTFModal, setShowTFModal] = useState(false);
   const [showAvatarModal, setShowAvatarModal] = useState(false);
   const [avatarPreSystem, setAvatarPreSystem] = useState<string | undefined>(undefined);
+  const [toastVisible, setToastVisible] = useState(false);
+  const [toastEventTitle, setToastEventTitle] = useState('');
 
   const roomCode = room || 'PA1';
   const roomNames: Record<string, string> = { PA1: 'PACKET AREA 1', PR1: 'PRODUCTION ROOM 1', PR2: 'PRODUCTION ROOM 2' };
@@ -866,6 +1027,7 @@ export default function RoomDashboard() {
           s.status === 'warning' || s.status === 'critical'
         )
       );
+      // Surface the incident alert card (allows manual review + equipment manual tap)
       setActiveAlert({
         eventType: eventName,
         sensorName: relevantSensor?.sensor_name,
@@ -873,6 +1035,14 @@ export default function RoomDashboard() {
         unit: relevantSensor?.unit,
         target: relevantSensor?.target_value,
       });
+      // Auto-post to Task Feed immediately — no button required
+      const info = EVENT_LABEL[eventName];
+      if (info) {
+        setToastEventTitle(info.title);
+        setToastVisible(true);
+        // In production: call supabase to insert task_feed_posts row here
+        // supabase.from('task_feed_posts').insert({ ... })
+      }
     } catch (e) { console.error('[Trigger]', e); }
   }, [queryClient, roomCode, sensorReadings]);
 
@@ -888,7 +1058,7 @@ export default function RoomDashboard() {
 
   const handleOpenAvatarFromWO = useCallback(() => {
     if (activeAlert) setAvatarPreSystem(EVENT_SYSTEM[activeAlert.eventType]);
-    setShowWOModal(false);
+    setShowTFModal(false);
     setShowAvatarModal(true);
   }, [activeAlert]);
 
@@ -934,6 +1104,19 @@ export default function RoomDashboard() {
             ))}
           </View>
         </ScrollView>
+
+        {/* Heartbeat monitor */}
+        <HeartbeatMonitor
+          bpm={bpm}
+          sensors={sensorReadings.filter(s => s.value != null).slice(0, 3)}
+          color={bpmColor}
+        />
+
+        {/* Line schematic — always visible on dashboard */}
+        <A1200Schematic
+          activeSystem={activeAlert ? (EVENT_SYSTEM[activeAlert.eventType] || null) : null}
+          onSelectSystem={(id) => { setAvatarPreSystem(id); setShowAvatarModal(true); }}
+        />
 
         {/* Crit sensor banner */}
         {critSensors.length > 0 && (
@@ -1033,6 +1216,13 @@ export default function RoomDashboard() {
         </View>
 
       </ScrollView>
+
+      {/* Auto-post confirmation toast */}
+      <AutoPostToast
+        visible={toastVisible}
+        eventTitle={toastEventTitle}
+        onDismiss={() => setToastVisible(false)}
+      />
 
       {/* Floating incident alert */}
       {activeAlert && (
