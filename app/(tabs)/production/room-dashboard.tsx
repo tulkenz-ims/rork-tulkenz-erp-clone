@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, Pressable,
+  View, Text, StyleSheet, ScrollView, Pressable, TouchableOpacity,
   RefreshControl, Animated, Dimensions, Modal,
 } from 'react-native';
 import { useRouter, useLocalSearchParams, Stack } from 'expo-router';
@@ -1161,7 +1161,7 @@ const INTEL_COLORS: Record<IntelSeverity, string> = { critical: HUD.red, warning
 const INTEL_CAT_LABELS: Record<string, string> = { predictive: 'PREDICTIVE', operator: 'OPERATOR INTEL', product: 'PRODUCT HISTORY', history: 'MAINT LOG' };
 const INTEL_CAT_COLORS: Record<string, string> = { predictive: HUD.purple, operator: HUD.amber, product: HUD.green, history: HUD.textSec };
 
-function EquipmentIntelligence() {
+const EquipmentIntelligence = React.memo(function EquipmentIntelligence() {
   const [filter, setFilter] = useState<string>('all');
   const [expanded, setExpanded] = useState<string | null>(null);
   const categories = ['all', 'predictive', 'operator', 'product', 'history'];
@@ -1186,9 +1186,9 @@ function EquipmentIntelligence() {
             const active = filter === cat;
             const col = cat === 'all' ? HUD.purple : INTEL_CAT_COLORS[cat];
             return (
-              <Pressable key={cat} onPress={() => setFilter(cat)} style={[eiS.filterTab, { borderColor: active ? col : HUD.border, backgroundColor: active ? col + '20' : 'transparent' }]}>
+              <TouchableOpacity key={cat} onPress={() => setFilter(cat)} activeOpacity={0.7} style={[eiS.filterTab, { borderColor: active ? col : HUD.border, backgroundColor: active ? col + '20' : 'transparent' }]}>
                 <Text style={[eiS.filterTxt, { color: active ? col : HUD.textDim }]}>{cat === 'all' ? 'ALL' : INTEL_CAT_LABELS[cat]}</Text>
-              </Pressable>
+              </TouchableOpacity>
             );
           })}
         </View>
@@ -1200,11 +1200,12 @@ function EquipmentIntelligence() {
         const urgent = item.dueDays !== undefined && item.dueDays <= 7;
         return (
           <View key={item.id} style={[eiS.item, { borderLeftColor: sevCol }]}>
-            <Pressable
+            <TouchableOpacity
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 setExpanded(prev => prev === item.id ? null : item.id);
               }}
+              activeOpacity={0.7}
               style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6 }}
             >
               <View style={{ flex: 1 }}>
@@ -1221,7 +1222,7 @@ function EquipmentIntelligence() {
                 <Text style={[eiS.itemTitle, { color: sevCol }]}>{item.title}</Text>
               </View>
               <ChevronDown size={14} color={isOpen ? HUD.cyan : HUD.textDim} />
-            </Pressable>
+            </TouchableOpacity>
             {isOpen && (
               <View style={{ marginTop: 8 }}>
                 <Text style={eiS.itemBody}>{item.body}</Text>
@@ -1236,7 +1237,7 @@ function EquipmentIntelligence() {
       })}
     </View>
   );
-}
+});
 const eiS = StyleSheet.create({
   wrap: { backgroundColor: HUD.bgCard, borderRadius: 14, borderWidth: 1, borderColor: HUD.borderBright, padding: 14, marginBottom: 14 },
   head: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
