@@ -150,6 +150,7 @@ export function useAIActions() {
     departments = ALL_DEPARTMENTS,
     priority = 'medium',
     isProductionHold = false,
+    photoUrl,
   }: {
     templateKey: string;
     templateName: string;
@@ -159,6 +160,7 @@ export function useAIActions() {
     departments?: string[];
     priority?: string;
     isProductionHold?: boolean;
+    photoUrl?: string | null;
   }): Promise<ActionResult> => {
     if (!organizationId) return { success: false, message: 'No organization selected' };
 
