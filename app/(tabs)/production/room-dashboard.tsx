@@ -1419,7 +1419,7 @@ export default function RoomDashboard() {
             </View>
           )}
         </View>
-        <Pressable style={mS.tickBtn} onPress={handleTick}><Zap size={16} color={HUD.purple} /></Pressable>
+        <TouchableOpacity activeOpacity={0.6} style={mS.tickBtn} onPress={handleTick}><Zap size={16} color={HUD.purple} /></TouchableOpacity>
       </View>
 
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 120 }} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={andonColor} />}>
@@ -1475,8 +1475,9 @@ export default function RoomDashboard() {
             <Text style={[mS.cardCount, { color: HUD.purple + '80' }]}>DEMO MODE</Text>
           </View>
 
-          <Pressable
-            style={({ pressed }) => [mS.avatarBtn, { backgroundColor: pressed ? HUD.cyanDim : HUD.bgCardAlt }]}
+          <TouchableOpacity
+            activeOpacity={0.7}
+            style={[mS.avatarBtn, { backgroundColor: HUD.bgCardAlt }]}
             onPress={() => { setAvatarPreSystem(undefined); setShowAvatarModal(true); }}
           >
             <Cpu size={15} color={HUD.cyan} />
@@ -1485,7 +1486,7 @@ export default function RoomDashboard() {
               <Text style={{ fontSize: 10, color: HUD.textSec, marginTop: 1 }}>Schematic · Parts · Troubleshooting · Repair</Text>
             </View>
             <ChevronRight size={15} color={HUD.cyan} />
-          </Pressable>
+          </TouchableOpacity>
 
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
             {[
@@ -1498,22 +1499,24 @@ export default function RoomDashboard() {
               { e: 'hopper_low',           l: 'HOPPER LOW',       c: HUD.amber, r: ['PA1', 'PR1', 'PR2'] },
               { e: 'scheduled_break',      l: 'SCHED BREAK',      c: HUD.cyan,  r: ['PA1', 'PR1', 'PR2'] },
             ].filter(x => x.r.includes(roomCode)).map(x => (
-              <Pressable key={x.e}
-                style={({ pressed }) => [mS.simBtn, { borderColor: x.c + '50', backgroundColor: pressed ? x.c + '30' : x.c + '12' }]}
+              <TouchableOpacity key={x.e}
+                activeOpacity={0.6}
+                style={[mS.simBtn, { borderColor: x.c + '50', backgroundColor: x.c + '12' }]}
                 onPress={() => handleTriggerEvent(x.e)}
               >
                 <Text style={[mS.simBtnTxt, { color: x.c }]}>{x.l}</Text>
-              </Pressable>
+              </TouchableOpacity>
             ))}
           </View>
 
-          <Pressable
-            style={({ pressed }) => [mS.tickFull, { backgroundColor: pressed ? HUD.purple + '40' : HUD.purple + '15', borderColor: HUD.purple + '50' }]}
+          <TouchableOpacity
+            activeOpacity={0.6}
+            style={[mS.tickFull, { backgroundColor: HUD.purple + '15', borderColor: HUD.purple + '50' }]}
             onPress={handleTick}
           >
             <Zap size={15} color={HUD.purple} />
             <Text style={[mS.tickFullTxt, { color: HUD.purple }]}>ADVANCE TICK{tickCount > 0 ? ` · ${tickCount}` : ''}</Text>
-          </Pressable>
+          </TouchableOpacity>
         </View>
 
       </ScrollView>
