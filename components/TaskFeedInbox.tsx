@@ -287,9 +287,9 @@ export default function TaskFeedInbox({
         setShowCompleteModal(true);
       }
     } else if (task.status === 'in_progress') {
-      // Task already started — show form picker to attach more forms
-      // User can hit "Complete Task" button in picker to go to decision/release
-      setShowFormPicker(true);
+  // Task already in progress — go straight to decision/completion modal
+  // User can still add more forms via "Another Form" inside the decision modal
+  setShowDecisionModal(true);
     } else {
       // Pending task — show form picker to start
       setShowFormPicker(true);
