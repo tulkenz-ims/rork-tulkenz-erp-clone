@@ -313,6 +313,13 @@ export default function AIAssistButton() {
           userDepartment: user?.department || 'unknown',
           currentRoom: null,
           activeRecordId: null,
+          // Local date as YYMMDD so server generates correct post number regardless of UTC offset
+          localDate: (() => {
+            const n = new Date();
+            return String(n.getFullYear()).slice(-2) +
+              String(n.getMonth() + 1).padStart(2, '0') +
+              String(n.getDate()).padStart(2, '0');
+          })(),
         },
         // Send PRIOR history only — ai-assist.js appends the current message itself
         conversation: conversationHistoryRef.current.slice(-10),
