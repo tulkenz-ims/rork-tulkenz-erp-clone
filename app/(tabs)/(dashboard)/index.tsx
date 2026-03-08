@@ -37,7 +37,6 @@ import {
   Microscope,
   HardHat,
   Zap,
-  Monitor,
 } from 'lucide-react-native';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { useUser } from '@/contexts/UserContext';
@@ -390,14 +389,6 @@ export default function ExecutiveDashboard() {
                   desc="Checked in now"
                   color={HUD.cyan}
                   onPress={() => router.push('/timeclock')}
-                />
-                <QuickBtn
-                  icon={<Monitor size={16} color={HUD.purple} />}
-                  stat="PA1"
-                  label="Room Dashboard"
-                  desc="Live production"
-                  color={HUD.purple}
-                  onPress={() => router.push('/production/room-dashboard?room=PA1')}
                 />
                 <QuickBtn
                   icon={<Siren size={16} color={HUD.red} />}
