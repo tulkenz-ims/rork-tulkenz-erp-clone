@@ -30,6 +30,7 @@ interface AIActionParams {
 // ══════════════════════════════════════════════════════════════════
 
 function generatePostNumber(): string {
+  // Runs in the browser — new Date() is already local time, so post number date is correct
   const now = new Date();
   const yy = String(now.getFullYear()).slice(-2);
   const mm = String(now.getMonth() + 1).padStart(2, '0');
@@ -71,6 +72,24 @@ const ROOM_NAMES: Record<string, string> = {
 // Templates that dispatch to all 5 departments
 const ALL_DEPARTMENTS = ['1001', '1002', '1003', '1004', '1005'];
 
+// Map AI room codes → full location label matching the template dropdown values
+const ROOM_TO_LOCATION_LABEL: Record<string, string> = {
+  'PR1': 'Production Room 1',
+  'PR2': 'Production Room 2',
+  'PA1': 'Packet Area 1',
+  'PA2': 'Packet Area 2',
+  'BB1': 'Big Blend',
+  'SB1': 'Small Blend',
+};
+
+// Map AI production line values → template dropdown values
+const LINE_TO_LABEL: Record<string, string> = {
+  'Line 1': 'line_1',
+  'Line 2': 'line_2',
+  'Line 3': 'line_3',
+  'N/A':    'not_applicable',
+};
+
 // Reporting department per template category
 const TEMPLATE_REPORTING_DEPT: Record<string, { code: string; name: string }> = {
   broken_glove:           { code: '1004', name: 'Quality' },
@@ -94,6 +113,29 @@ export function useAIActions() {
   const { user } = useUser();
   const router = useRouter();
   const queryClient = useQueryClient();
+
+  // ─────────────────────────────────────────────
+  // SHARED: Look up template from Supabase by name
+  // Returns { id, snapshot } or null if not found
+  // ─────────────────────────────────────────────
+
+  const lookupTemplate = useCallback(async (templateName: string) => {
+    if (!organizationId) return null;
+    try {
+      const { data, error } = await supabase
+        .from('task_feed_templates')
+        .select('*')
+        .eq('organization_id', organizationId)
+        .ilike('name', templateName)
+        .eq('is_active', true)
+        .limit(1)
+        .single();
+      if (error || !data) return null;
+      return { id: data.id, snapshot: data };
+    } catch {
+      return null;
+    }
+  }, [organizationId]);
 
   // ─────────────────────────────────────────────
   // SHARED: Insert a Task Feed post + dept tasks
@@ -123,22 +165,27 @@ export function useAIActions() {
     const postNumber = generatePostNumber();
     const reportingDept = TEMPLATE_REPORTING_DEPT[templateKey] || { code: '1004', name: 'Quality' };
 
+    // Resolve full location label (PR1 → Production Room 1)
+    const resolvedLocation = location
+      ? (ROOM_TO_LOCATION_LABEL[location] || location)
+      : null;
+
+    // Look up template to get real template_id and snapshot
+    const template = await lookupTemplate(templateName);
+
     try {
       const { data: post, error: postError } = await supabase
         .from('task_feed_posts')
         .insert({
           organization_id: organizationId,
           post_number: postNumber,
-          template_id: null,
+          template_id: template?.id || null,
           template_name: templateName,
+          template_snapshot: template?.snapshot || null,
           created_by_id: user?.id || null,
           created_by_name: user?.name || 'AI Assistant',
-          location_name: location || null,
-          form_data: {
-            source: 'ai_assist',
-            template_key: templateKey,
-            ...formData,
-          },
+          location_name: resolvedLocation,
+          form_data: formData,
           notes: `[AI] ${notes}`,
           status: 'pending',
           total_departments: departments.length,
@@ -187,29 +234,36 @@ export function useAIActions() {
       console.error('[AIActions] insertTaskFeedPost error:', err);
       return { success: false, message: err.message || 'Failed to create task feed post' };
     }
-  }, [organizationId, user, queryClient]);
+  }, [organizationId, user, queryClient, lookupTemplate]);
 
   // ─────────────────────────────────────────────
   // TEMPLATE: Broken Glove
   // ─────────────────────────────────────────────
 
   const createBrokenGlove = useCallback(async (params: AIActionParams): Promise<ActionResult> => {
+    // Map AI values → real template form_data field names/values
+    const locationLabel = ROOM_TO_LOCATION_LABEL[params.location as string] || params.location as string;
+    const gloveTypeLower = (params.glove_type as string || '').toLowerCase().replace('-', '_').replace(' ', '_');
+    const fragmentFound = (params.missing_fragment_found as string || '').toLowerCase().startsWith('yes') ? 'yes' : 'no';
+    const lineValue = LINE_TO_LABEL[params.production_line as string] || 'not_applicable';
+    const severity = fragmentFound === 'no' ? 'critical' : 'high';
+
     return insertTaskFeedPost({
       templateKey: 'broken_glove',
       templateName: 'Broken Glove',
       location: params.location as string,
-      notes: `Broken Glove at ${params.location}. Type: ${params.glove_type}. Fragment: ${params.missing_fragment_found}. ${params.description}`,
+      notes: `Broken Glove at ${locationLabel}. Type: ${params.glove_type}. Fragment: ${params.missing_fragment_found}. ${params.description}`,
       formData: {
-        location: params.location,
-        glove_type: params.glove_type,
-        missing_fragment_found: params.missing_fragment_found,
+        location: locationLabel,
+        glove_type: gloveTypeLower,
+        fragment_found: fragmentFound,
         description: params.description,
-        production_line: params.production_line,
-        immediate_action_taken: params.immediate_action_taken,
-        production_stopped: params.production_stopped,
-        additional_notes: params.additional_notes || 'N/A',
+        severity,
+        production_line: lineValue,
+        immediate_action: params.immediate_action_taken,
+        productionStopped: params.production_stopped ? 'Yes' : 'No',
       },
-      priority: (params.missing_fragment_found === 'No - fragment missing') ? 'critical' : 'high',
+      priority: severity,
       isProductionHold: params.production_stopped as boolean,
       departments: ALL_DEPARTMENTS,
     });
