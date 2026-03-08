@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,11 +10,9 @@ import {
   AlertTriangle,
   ChevronRight,
   TrendingUp,
-  TrendingDown,
-  Minus,
-  Users,
   Package,
   Radio,
+  Timer,
 } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
@@ -39,6 +37,12 @@ interface RoomStatus {
   updated_at: string;
 }
 
+interface DowntimeEvent {
+  room_code: string;
+  started_at: string;
+  reason: string | null;
+}
+
 // ══════════════════════════════════ CONSTANTS ══════════════════════════════════
 
 const ANDON_COLORS: Record<string, string> = {
@@ -55,13 +59,39 @@ const STATUS_LABELS: Record<string, string> = {
   cleaning: 'CLEANING',
   loto: 'LOTO',
   setup: 'SETUP',
+  down: 'DOWN',
 };
 
-const ROOM_ICONS: Record<string, string> = {
-  PA1: '📦',
-  PR1: '🏭',
-  PR2: '🏭',
-};
+// ══════════════════════════════════ DOWNTIME TIMER HOOK ══════════════════════════════════
+
+function useDowntimeTimers(events: DowntimeEvent[]) {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (events.length === 0) return;
+    const interval = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, [events.length]);
+
+  // Returns a map of room_code → formatted elapsed string
+  return useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const ev of events) {
+      const elapsed = Math.max(0, Math.floor((now - new Date(ev.started_at).getTime()) / 1000));
+      const h = Math.floor(elapsed / 3600);
+      const m = Math.floor((elapsed % 3600) / 60);
+      const s = elapsed % 60;
+      if (h > 0) {
+        map[ev.room_code] = `${h}h ${m}m ${s}s`;
+      } else if (m > 0) {
+        map[ev.room_code] = `${m}m ${s}s`;
+      } else {
+        map[ev.room_code] = `${s}s`;
+      }
+    }
+    return map;
+  }, [now, events]);
+}
 
 // ══════════════════════════════════ COMPONENT ══════════════════════════════════
 
@@ -93,6 +123,41 @@ export default function LineStatusWidget() {
     refetchInterval: 10000,
     staleTime: 5000,
   });
+
+  // ── Fetch active downtime events ──
+  const { data: downtimeEvents = [] } = useQuery({
+    queryKey: ['production_events_active', organizationId],
+    queryFn: async () => {
+      if (!organizationId) return [];
+      const { data, error } = await supabase
+        .from('production_events')
+        .select('room_code, started_at, reason')
+        .eq('organization_id', organizationId)
+        .eq('event_type', 'line_stopped')
+        .is('ended_at', null)
+        .order('started_at', { ascending: false });
+      if (error) {
+        console.error('[LineStatusWidget] Downtime events error:', error);
+        return [];
+      }
+      // Keep only the most recent event per room
+      const seen = new Set<string>();
+      const deduped: DowntimeEvent[] = [];
+      for (const ev of (data || [])) {
+        if (!seen.has(ev.room_code)) {
+          seen.add(ev.room_code);
+          deduped.push(ev as DowntimeEvent);
+        }
+      }
+      return deduped;
+    },
+    enabled: !!organizationId,
+    refetchInterval: 15000,
+    staleTime: 5000,
+  });
+
+  // ── Live ticking timers ──
+  const downtimeTimers = useDowntimeTimers(downtimeEvents);
 
   // ── Derived stats ──
   const anyIssue = rooms.some(r => r.andon_color === 'red' || r.andon_color === 'yellow');
@@ -146,7 +211,7 @@ export default function LineStatusWidget() {
           </View>
         </View>
         <View style={[
-          styles.overallBadge, 
+          styles.overallBadge,
           { backgroundColor: anyIssue ? '#EF4444' : runningCount > 0 ? '#10B981' : '#6B7280' }
         ]}>
           <View style={styles.pulseDot} />
@@ -161,10 +226,12 @@ export default function LineStatusWidget() {
         {rooms.map(room => {
           const andonColor = ANDON_COLORS[room.andon_color] || '#6B7280';
           const isRunning = room.status === 'running';
-          const bpmPercent = room.target_bags_per_minute > 0 
-            ? (room.bags_per_minute / room.target_bags_per_minute) * 100 
+          const isDown = room.status === 'down';
+          const bpmPercent = room.target_bags_per_minute > 0
+            ? (room.bags_per_minute / room.target_bags_per_minute) * 100
             : 0;
           const bpmColor = bpmPercent >= 90 ? '#10B981' : bpmPercent >= 70 ? '#F59E0B' : bpmPercent > 0 ? '#EF4444' : '#6B7280';
+          const downtimeLabel = downtimeTimers[room.room_code];
 
           return (
             <Pressable
@@ -230,18 +297,26 @@ export default function LineStatusWidget() {
                 </View>
               </View>
 
-              {/* BPM progress bar */}
+              {/* BPM progress bar (running only) */}
               {isRunning && room.target_bags_per_minute > 0 && (
                 <View style={styles.bpmBar}>
                   <View style={[styles.bpmTrack, { backgroundColor: colors.backgroundSecondary }]}>
                     <View style={[
-                      styles.bpmFill, 
-                      { 
+                      styles.bpmFill,
+                      {
                         width: `${Math.min(100, bpmPercent)}%`,
                         backgroundColor: bpmColor,
                       }
                     ]} />
                   </View>
+                </View>
+              )}
+
+              {/* ── Downtime counter (DOWN rooms only) ── */}
+              {isDown && downtimeLabel && (
+                <View style={styles.downtimeBadge}>
+                  <Timer size={10} color="#EF4444" />
+                  <Text style={styles.downtimeText}>Down {downtimeLabel}</Text>
                 </View>
               )}
 
@@ -406,6 +481,23 @@ const createStyles = (colors: any) => StyleSheet.create({
   bpmFill: {
     height: '100%' as any,
     borderRadius: 2,
+  },
+  downtimeBadge: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 4,
+    marginTop: 8,
+    backgroundColor: '#EF444420',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    alignSelf: 'flex-start' as const,
+  },
+  downtimeText: {
+    fontSize: 10,
+    fontWeight: '700' as const,
+    color: '#EF4444',
+    letterSpacing: 0.3,
   },
   tapIndicator: {
     position: 'absolute' as const,
