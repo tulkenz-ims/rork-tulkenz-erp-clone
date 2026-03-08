@@ -169,31 +169,32 @@ function PulsingDot({ color, size = 8 }: { color: string; size?: number }) {
 // EKG-style scrolling waveform driven by live sensor values
 const HB_POINTS = 48; // number of columns in the waveform
 
-function HeartbeatMonitor({ bpm, sensors, color = HUD.green, onBeat }: { bpm: number; sensors: any[]; color?: string; onBeat?: () => void }) {
+function HeartbeatMonitor({ bpm, color, onBeat }: { bpm: number; color: string; onBeat?: () => void }) {
   const onBeatRef = useRef(onBeat);
   useEffect(() => { onBeatRef.current = onBeat; }, [onBeat]);
 
-  const [waveData, setWaveData] = useState<number[]>(() => Array.from({ length: HB_POINTS }, () => 0.5));
-  const waveRef = useRef<number[]>(Array.from({ length: HB_POINTS }, () => 0.5));
+  const [waveData, setWaveData] = useState<number[]>(() => Array.from({ length: HB_POINTS }, (_, i) => 0.3 + 0.4 * Math.sin(i * 0.4)));
+  const waveRef = useRef<number[]>(Array.from({ length: HB_POINTS }, (_, i) => 0.3 + 0.4 * Math.sin(i * 0.4)));
   const tickRef = useRef(0);
   const lastBeatPhaseRef = useRef(false);
   const bpmRef = useRef(bpm);
+  const colorRef = useRef(color);
   useEffect(() => { bpmRef.current = bpm; }, [bpm]);
+  useEffect(() => { colorRef.current = color; }, [color]);
 
-  // Interval never restarts — reads bpm and onBeat from refs
   useEffect(() => {
     const interval = setInterval(() => {
       tickRef.current += 1;
       const t = tickRef.current;
       const bpmNorm = Math.min(Math.max((bpmRef.current || 0) / 70, 0), 1);
       const phase = (t % 20) / 20;
-      let sample = 0.5;
-      if (phase < 0.08) sample = 0.5 + 0.08 * Math.sin(phase / 0.08 * Math.PI);
-      else if (phase < 0.18) sample = 0.5 - 0.04 * Math.sin((phase - 0.08) / 0.10 * Math.PI);
-      else if (phase < 0.22) sample = 0.5 + (0.45 * bpmNorm + 0.1) * Math.sin((phase - 0.18) / 0.04 * Math.PI);
-      else if (phase < 0.28) sample = 0.5 - 0.12 * Math.sin((phase - 0.22) / 0.06 * Math.PI);
-      else if (phase < 0.45) sample = 0.5 + 0.18 * Math.sin((phase - 0.28) / 0.17 * Math.PI);
-      sample += (Math.random() - 0.5) * 0.015;
+      let sample = 0.35;
+      if (phase < 0.08) sample = 0.35 + 0.06 * Math.sin(phase / 0.08 * Math.PI);
+      else if (phase < 0.18) sample = 0.32;
+      else if (phase < 0.22) sample = 0.35 + (0.55 * bpmNorm + 0.2) * Math.sin((phase - 0.18) / 0.04 * Math.PI);
+      else if (phase < 0.28) sample = 0.22 * Math.sin((phase - 0.22) / 0.06 * Math.PI);
+      else if (phase < 0.45) sample = 0.35 + 0.15 * Math.sin((phase - 0.28) / 0.17 * Math.PI);
+      sample += (Math.random() - 0.5) * 0.03;
       sample = Math.min(Math.max(sample, 0.02), 0.98);
 
       const inSpike = phase >= 0.18 && phase < 0.22;
@@ -204,87 +205,37 @@ function HeartbeatMonitor({ bpm, sensors, color = HUD.green, onBeat }: { bpm: nu
       setWaveData([...waveRef.current]);
     }, 100);
     return () => clearInterval(interval);
-  }, []); // ← empty deps: interval starts once, never restarts
-
-  const sweepAnim = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    Animated.loop(Animated.timing(sweepAnim, { toValue: 1, duration: 2000, useNativeDriver: true })).start();
   }, []);
 
   const chartW = W - 64;
-  const chartH = 52;
-  const barW = Math.max(1, Math.floor((chartW - HB_POINTS * 0.5) / HB_POINTS));
-  const hasCrit = sensors.some(s => s.status === 'critical');
-  const lineColor = hasCrit ? HUD.red : bpm === 0 ? HUD.textDim : color;
+  const chartH = 44;
+  const barW = Math.max(1, Math.floor(chartW / HB_POINTS));
 
   return (
     <View style={hbS.container}>
       <View style={hbS.header}>
-        <Animated.View style={{ opacity: sweepAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0.4, 1, 0.4] }) }}>
-          <Activity size={12} color={lineColor} />
-        </Animated.View>
-        <Text style={[hbS.title, { color: lineColor }]}>LINE HEARTBEAT</Text>
+        <Activity size={12} color={color} />
+        <Text style={[hbS.title, { color }]}>LINE HEARTBEAT</Text>
         <Text style={hbS.bpmLabel}>{bpm > 0 ? `${bpm} PKG/MIN` : 'IDLE'}</Text>
-        {hasCrit && (
-          <View style={[hbS.critPill, { backgroundColor: HUD.redDim, borderColor: HUD.red + '50' }]}>
-            <Text style={[hbS.critTxt, { color: HUD.red }]}>FAULT DETECTED</Text>
-          </View>
-        )}
       </View>
-
-      {/* EKG waveform — traced line: each column is a 3px dot at signal Y position */}
-      <View style={{ height: chartH, backgroundColor: HUD.bg, borderRadius: 8, overflow: 'hidden', marginBottom: 8 }}>
-        {/* Grid lines */}
-        {[0.25, 0.5, 0.75].map(f => (
-          <View key={f} style={{ position: 'absolute', left: 0, right: 0, top: chartH * f, height: 1, backgroundColor: HUD.grid }} />
-        ))}
-        {/* Trace dots — Y position = signal value mapped to chart height */}
+      {/* Solid flowing bars — grow from bottom, tops trace the waveform */}
+      <View style={{ height: chartH, backgroundColor: HUD.bg, borderRadius: 8, overflow: 'hidden' }}>
         {waveData.map((v, i) => {
-          const y = (1 - v) * (chartH - 4); // top=spike, bottom=dip, mid=baseline
-          const isSpike = v > 0.65;
-          const isDip = v < 0.35;
-          const isActive = isSpike || isDip;
-          const dotH = isSpike ? 4 : 2;
+          const barH = Math.max(2, v * chartH);
+          const isSpike = v > 0.6;
           return (
             <View key={i} style={{
               position: 'absolute',
-              top: y,
-              left: i * (barW + 0.5),
-              width: barW,
-              height: dotH,
+              bottom: 0,
+              left: i * barW,
+              width: barW - 0.5,
+              height: barH,
+              backgroundColor: isSpike ? color : color + '70',
               borderRadius: 1,
-              backgroundColor: isActive ? lineColor : lineColor + '80',
-              shadowColor: isSpike ? lineColor : 'transparent',
-              shadowOffset: { width: 0, height: 0 },
-              shadowOpacity: isSpike ? 1 : 0,
-              shadowRadius: isSpike ? 5 : 0,
             }} />
           );
         })}
-        {/* Sweep cursor */}
-        <Animated.View style={{
-          position: 'absolute', top: 0, bottom: 0, width: 1.5,
-          backgroundColor: lineColor, opacity: 0.4,
-          shadowColor: lineColor, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.9, shadowRadius: 4,
-          transform: [{ translateX: sweepAnim.interpolate({ inputRange: [0, 1], outputRange: [0, chartW - 2] }) }],
-        }} />
       </View>
-
-      {/* Scrollable sensor ticker — all sensors */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-        <View style={{ flexDirection: 'row', gap: 6 }}>
-          {sensors.map(s => {
-            const col = SC[s.status] || HUD.textDim;
-            return (
-              <View key={s.sensor_id || s.sensor_name} style={[hbS.tickerItem, { borderColor: col + '40', backgroundColor: col + '08' }]}>
-                <View style={[hbS.dot, { backgroundColor: col }]} />
-                <Text style={hbS.tickerLabel}>{s.sensor_name}</Text>
-                <Text style={[hbS.tickerVal, { color: col }]}>{s.value?.toFixed(1) ?? '—'}<Text style={{ fontSize: 8 }}> {s.unit}</Text></Text>
-              </View>
-            );
-          })}
-        </View>
-      </ScrollView>
     </View>
   );
 }
@@ -292,15 +243,7 @@ const hbS = StyleSheet.create({
   container: { backgroundColor: HUD.bgCard, borderRadius: 14, borderWidth: 1, borderColor: HUD.borderBright, padding: 14, marginBottom: 16 },
   header: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
   title: { fontSize: 11, fontWeight: '800', letterSpacing: 2, flex: 1 },
-  bpmLabel: { fontSize: 10, fontWeight: '700', color: HUD.textSec, letterSpacing: 1 },
-  critPill: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 8, borderWidth: 1 },
-  critTxt: { fontSize: 8, fontWeight: '900', letterSpacing: 1 },
-  gridLine: { position: 'absolute', left: 0, right: 0, height: 1, backgroundColor: HUD.grid },
-  sweep: { position: 'absolute', top: 0, bottom: 0, width: 2, opacity: 0.35, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.8, shadowRadius: 4 },
-  tickerItem: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 8, borderWidth: 1, paddingHorizontal: 8, paddingVertical: 5 },
-  dot: { width: 5, height: 5, borderRadius: 3 },
-  tickerLabel: { fontSize: 9, color: HUD.textSec },
-  tickerVal: { fontSize: 10, fontWeight: '700' },
+  bpmLabel: { fontSize: 11, fontWeight: '800', color: HUD.textSec, letterSpacing: 1 },
 });
 
 // ══════════════════════════ AUTO-POST TOAST ══════════════════════════
@@ -627,36 +570,44 @@ const tfS = StyleSheet.create({
 // Row 2 (packaging output): CONVEYOR → AVATAR A1200 VFFS → PACKOUT AREA
 // The A1200 is tappable and opens the full equipment manual
 
-function PA1Schematic({ activeSystem, onSelectSystem, sensors }: {
+function PA1Schematic({ activeSystem, onSelectSystem, sensors, beatSignal }: {
   activeSystem: string | null;
   onSelectSystem: (id: string) => void;
   sensors: any[];
+  beatSignal: number;
 }) {
   const schW = W - 48;
   const scanX = useScan(schW, 5000);
 
-  // Sensor value lookup helpers
   const getSensor = (name: string) => sensors.find(s => s.sensor_name?.toLowerCase().includes(name.toLowerCase()));
   const augerSpeed = getSensor('Auger Speed');
-  const augerTemp = getSensor('Auger Motor');
   const hopperLevel = getSensor('Hopper Level');
-  const airPressure = getSensor('Air Pressure');
-  const vertSeal = getSensor('Vertical Seal');
-  const bpm = getSensor('Bags Per Minute');
+  const bpmSensor = getSensor('Bags Per Minute');
 
-  // Equipment nodes — positioned in a flow left→right across two rows
-  // Row heights: row0 y=4, row1 y=68. Total height = 128.
-  const colW = Math.floor((schW - 16) / 6); // 6 columns
+  // Live jittered values for node display
+  const [augerVal, setAugerVal] = useState(augerSpeed?.value ?? null);
+  const [hopperVal, setHopperVal] = useState(hopperLevel?.value ?? null);
+  const [bpmVal, setBpmVal] = useState(bpmSensor?.value ?? null);
+  useEffect(() => { setAugerVal(augerSpeed?.value ?? null); }, [augerSpeed?.value]);
+  useEffect(() => { setHopperVal(hopperLevel?.value ?? null); }, [hopperLevel?.value]);
+  useEffect(() => { setBpmVal(bpmSensor?.value ?? null); }, [bpmSensor?.value]);
+
+  useEffect(() => {
+    if (!beatSignal) return;
+    if (augerSpeed?.value != null) setAugerVal(v => v != null ? v + (Math.random() - 0.5) * v * 0.012 : v);
+    if (hopperLevel?.value != null) setHopperVal(v => v != null ? Math.min(99, Math.max(0, v + (Math.random() - 0.5) * 0.8)) : v);
+    if (bpmSensor?.value != null) setBpmVal(v => v != null ? v + (Math.random() - 0.5) * v * 0.01 : v);
+  }, [beatSignal]);
+
+  const colW = Math.floor((schW - 16) / 6);
   const nodes = [
-    // Row 0: ingredient side
-    { id: 'supersack',   label: 'SUPER\nSACK',       col: 0, row: 0, color: HUD.purple,  sys: false, icon: '⬛' },
-    { id: 'auger',       label: 'AUGER /\nSCREWFEED', col: 1, row: 0, color: HUD.cyan,    sys: true,  sensorVal: augerSpeed ? `${augerSpeed.value?.toFixed(0)} RPM` : null, sensorStatus: augerSpeed?.status },
-    { id: 'hopper',      label: 'HOPPER',             col: 2, row: 0, color: HUD.amber,   sys: false, sensorVal: hopperLevel ? `${hopperLevel.value?.toFixed(0)}%` : null, sensorStatus: hopperLevel?.status },
-    { id: 'magnets',     label: 'MAGNETS',            col: 3, row: 0, color: HUD.red,     sys: false },
-    // Row 1: packaging side
-    { id: 'conveyor',    label: 'CONVEYOR\nFEED',     col: 1, row: 1, color: HUD.green,   sys: false },
-    { id: 'avatar_a1200',label: 'AVATAR\nA1200 VFFS', col: 2, row: 1, color: HUD.cyan,    sys: true,  sensorVal: bpm ? `${bpm.value?.toFixed(0)} BPM` : null, sensorStatus: bpm?.status, isMachine: true },
-    { id: 'packout',     label: 'PACKOUT\nAREA',      col: 3, row: 1, color: HUD.green,   sys: false },
+    { id: 'supersack',    label: 'SUPER\nSACK',        col: 0, row: 0, color: HUD.purple, sys: false },
+    { id: 'auger',        label: 'AUGER /\nSCREWFEED',  col: 1, row: 0, color: HUD.cyan,   sys: true,  sensorVal: augerVal != null ? `${augerVal.toFixed(0)} RPM` : null, sensorStatus: augerSpeed?.status },
+    { id: 'hopper',       label: 'HOPPER',              col: 2, row: 0, color: HUD.amber,  sys: false, sensorVal: hopperVal != null ? `${hopperVal.toFixed(0)}% FULL` : null, sensorStatus: hopperLevel?.status },
+    { id: 'magnets',      label: 'MAGNETS',             col: 3, row: 0, color: HUD.red,    sys: false },
+    { id: 'conveyor',     label: 'CONVEYOR\nFEED',      col: 1, row: 1, color: HUD.green,  sys: false },
+    { id: 'avatar_a1200', label: 'AVATAR\nA1200 VFFS',  col: 2, row: 1, color: HUD.cyan,   sys: true,  sensorVal: bpmVal != null ? `${bpmVal.toFixed(0)} PKG/MIN` : null, sensorStatus: bpmSensor?.status, isMachine: true },
+    { id: 'packout',      label: 'PACKOUT\nAREA',       col: 3, row: 1, color: HUD.green,  sys: false },
   ];
 
   const nodeW = colW - 8;
@@ -1107,66 +1058,82 @@ const avS = StyleSheet.create({
 });
 
 // ══════════════════════════ HEX METRIC CARD ══════════════════════════
-function HexMetric({ label, value, unit, color, icon, beatSignal, jitter = 0 }: {
-  label: string; value: string; unit: string; color: string; icon: React.ReactNode;
-  beatSignal?: number; jitter?: number;
-}) {
+// ══════════════════════════ SENSOR SCORECARD ═════════════════════════════
+const BASELINES: Record<string, { min: number; max: number; label: string }> = {
+  'Auger Speed':        { min: 110, max: 135, label: 'TARGET 120 RPM' },
+  'Auger Motor Temp':   { min: 100, max: 160, label: 'MAX 160°F' },
+  'Auger Vibration':    { min: 0,   max: 4,   label: 'MAX 4 mm/s' },
+  'Hopper Level':       { min: 20,  max: 90,  label: '20–90%' },
+  'Bags Per Minute':    { min: 50,  max: 65,  label: 'TARGET 60' },
+  'Vertical Seal Temp': { min: 270, max: 310, label: '270–310°F' },
+  'Front Endseal Temp': { min: 270, max: 310, label: '270–310°F' },
+  'Rear Endseal Temp':  { min: 270, max: 310, label: '270–310°F' },
+  'Air Pressure':       { min: 65,  max: 80,  label: '65–80 PSI' },
+  'Film Tension':       { min: 12,  max: 22,  label: '12–22 N' },
+  'Encoder Speed':      { min: 9,   max: 14,  label: '9–14 m/min' },
+  'Metal Detector':     { min: 0,   max: 0.5, label: 'REJECTS < 1' },
+  'Bag Weight':         { min: 4.8, max: 5.2, label: '5.0 ± 0.2 lb' },
+};
+
+function SensorCard({ sensor, beatSignal }: { sensor: any; beatSignal: number }) {
   const scaleAnim = useRef(new Animated.Value(1)).current;
-  const glowAnim = useRef(new Animated.Value(0)).current;
-  const [liveValue, setLiveValue] = useState(value);
+  const [liveVal, setLiveVal] = useState<number>(sensor.value);
+  const valRef = useRef<number>(sensor.value);
+  useEffect(() => { valRef.current = sensor.value; setLiveVal(sensor.value); }, [sensor.value]);
 
-  // Sync base value
-  useEffect(() => { setLiveValue(value); }, [value]);
+  const col = SC[sensor.status] || HUD.textDim;
+  const isCrit = sensor.status === 'critical';
+  const baseline = BASELINES[sensor.sensor_name];
 
-  // On each beat: pulse scale + apply jitter to displayed number
   useEffect(() => {
-    if (beatSignal === undefined || beatSignal === 0) return;
-    const isCritical = color === HUD.red;
-
-    // Always jitter the number slightly — makes it feel live
-    if (jitter > 0) {
-      const base = parseFloat(value);
-      if (!isNaN(base)) {
-        const delta = (Math.random() - 0.5) * 2 * jitter;
-        const jittered = base + delta;
-        setLiveValue(Number.isInteger(base) ? Math.round(jittered).toString() : jittered.toFixed(1));
-      }
-    }
-
-    // Only pulse/glow animation when critical
-    if (isCritical) {
+    if (!beatSignal) return;
+    const base = valRef.current;
+    if (base != null) setLiveVal(base + (Math.random() - 0.5) * base * 0.016);
+    if (isCrit) {
       Animated.sequence([
-        Animated.timing(scaleAnim, { toValue: 1.08, duration: 80, useNativeDriver: true }),
+        Animated.timing(scaleAnim, { toValue: 1.05, duration: 80, useNativeDriver: true }),
         Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, tension: 200, friction: 10 }),
-      ]).start();
-      Animated.sequence([
-        Animated.timing(glowAnim, { toValue: 1, duration: 80, useNativeDriver: false }),
-        Animated.timing(glowAnim, { toValue: 0, duration: 400, useNativeDriver: false }),
       ]).start();
     }
   }, [beatSignal]);
 
+  const baselinePct = useMemo(() => {
+    if (!baseline || liveVal == null) return null;
+    const { min, max } = baseline;
+    if (max === min) return null;
+    return Math.min(Math.max((liveVal - min) / (max - min), 0), 1);
+  }, [liveVal, baseline]);
+
   return (
-    <Animated.View style={[hxS.card, {
-      borderColor: glowAnim.interpolate({ inputRange: [0, 1], outputRange: [color + '40', color + 'cc'] }),
-      shadowColor: color,
-      shadowOpacity: glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.3, 0.8] }),
-      transform: [{ scale: scaleAnim }],
-    }]}>
-      <View style={[hxS.icon, { backgroundColor: color + '15' }]}>{icon}</View>
-      <Text style={[hxS.value, { color }]}>{liveValue}</Text>
-      <Text style={[hxS.unit, { color: color + 'aa' }]}>{unit}</Text>
-      <Text style={hxS.label}>{label}</Text>
+    <Animated.View style={[scS.card, { borderColor: isCrit ? col : col + '35', shadowColor: col, transform: [{ scale: scaleAnim }] }]}>
+      <View style={[scS.statusBar, { backgroundColor: col }]} />
+      <Text style={scS.name} numberOfLines={2}>{sensor.sensor_name}</Text>
+      <Text style={[scS.value, { color: col }]}>{liveVal != null ? liveVal.toFixed(1) : '—'}</Text>
+      <Text style={[scS.unit, { color: col + 'aa' }]}>{sensor.unit || ''}</Text>
+      {baselinePct != null && (
+        <View style={scS.baseWrap}>
+          <View style={scS.baseTrack}>
+            <View style={[scS.baseFill, { width: `${baselinePct * 100}%`, backgroundColor: col }]} />
+          </View>
+          <Text style={scS.baseLbl}>{baseline!.label}</Text>
+        </View>
+      )}
     </Animated.View>
   );
 }
-const hxS = StyleSheet.create({
-  card: { width: 90, paddingVertical: 14, paddingHorizontal: 6, borderRadius: 12, borderWidth: 1, alignItems: 'center', gap: 3, marginRight: 10, backgroundColor: HUD.bgCard, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 5 },
-  icon: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  value: { fontSize: 21, fontWeight: '800', letterSpacing: -0.5 },
-  unit: { fontSize: 8, fontWeight: '600', letterSpacing: 1 },
-  label: { fontSize: 8, fontWeight: '700', color: HUD.textSec, letterSpacing: 0.5, textAlign: 'center' },
+const scS = StyleSheet.create({
+  card: { width: (W - 48) / 3 - 6, borderRadius: 12, borderWidth: 1, backgroundColor: HUD.bgCard, padding: 10, marginBottom: 8, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.25, shadowRadius: 8, elevation: 4, overflow: 'hidden' },
+  statusBar: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, borderTopLeftRadius: 12, borderBottomLeftRadius: 12 },
+  name: { fontSize: 8, fontWeight: '700', color: HUD.textSec, letterSpacing: 0.4, marginBottom: 3, paddingLeft: 8 },
+  value: { fontSize: 22, fontWeight: '900', letterSpacing: -0.5, paddingLeft: 8 },
+  unit: { fontSize: 9, fontWeight: '600', letterSpacing: 0.5, paddingLeft: 8, marginBottom: 6 },
+  baseWrap: { paddingLeft: 8, paddingRight: 4 },
+  baseTrack: { height: 2, backgroundColor: HUD.border, borderRadius: 1, overflow: 'hidden', marginBottom: 3 },
+  baseFill: { height: '100%', borderRadius: 1 },
+  baseLbl: { fontSize: 7, color: HUD.textDim, fontWeight: '600', letterSpacing: 0.3 },
 });
+
+
 
 // ══════════════════════════ TYPES ══════════════════════════════════════
 interface RoomStatus { status: string; andon_color: string; bags_today: number; bags_per_minute: number; target_bags_per_minute: number; uptime_percent: number; updated_at: string; }
@@ -1329,27 +1296,14 @@ export default function RoomDashboard() {
 
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 120 }} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={andonColor} />}>
 
-        {/* Metrics */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
-          <View style={{ flexDirection: 'row' }}>
-            <HexMetric label="BAGS/MIN" value={bpm.toString()} unit={`/ ${target}`} color={bpmColor} icon={<Package size={14} color={bpmColor} />} beatSignal={beatSignal} jitter={1.5} />
-            <HexMetric label="TODAY" value={(roomStatus?.bags_today || 0).toLocaleString()} unit="BAGS" color={HUD.cyan} icon={<BarChart2 size={14} color={HUD.cyan} />} beatSignal={beatSignal} jitter={0} />
-            <HexMetric label="UPTIME" value={`${roomStatus?.uptime_percent || 0}%`} unit="OEE" color={uptColor} icon={<TrendingUp size={14} color={uptColor} />} beatSignal={beatSignal} jitter={0.4} />
-            {sensorReadings.filter(s => s.value != null).slice(0, 4).map(s => (
-              <HexMetric key={s.id} label={s.sensor_name.length > 9 ? s.sensor_name.substring(0, 8) + '…' : s.sensor_name} value={s.value.toFixed(1)} unit={s.unit || ''} color={SC[s.status] || HUD.textDim} icon={s.sensor_type === 'temperature' ? <Thermometer size={14} color={SC[s.status]} /> : <Gauge size={14} color={SC[s.status]} />} beatSignal={beatSignal} jitter={s.value * 0.008} />
-            ))}
-          </View>
-        </ScrollView>
-
-        {/* Heartbeat monitor */}
+        {/* 1. HEARTBEAT — visual only, color = line health */}
         <HeartbeatMonitor
           bpm={bpm}
-          sensors={sensorReadings.filter(s => s.value != null)}
           color={bpmColor}
           onBeat={() => setBeatSignal(b => b + 1)}
         />
 
-        {/* PA1 production flow schematic */}
+        {/* 2. PA1 PRODUCTION FLOW */}
         <PA1Schematic
           activeSystem={activeAlert ? (EVENT_SYSTEM[activeAlert.eventType] || null) : null}
           onSelectSystem={(id) => {
@@ -1359,62 +1313,30 @@ export default function RoomDashboard() {
             }
           }}
           sensors={sensorReadings.filter(s => s.value != null)}
+          beatSignal={beatSignal}
         />
 
-        {/* Crit sensor banner */}
-        {critSensors.length > 0 && (
-          <View style={mS.critBanner}>
-            <AlertTriangle size={13} color={HUD.red} />
-            <Text style={mS.critBannerTxt}>{critSensors.length} CRITICAL: {critSensors.map(s => s.sensor_name).join(' · ')}</Text>
-          </View>
-        )}
-
-        {/* Sensor matrix */}
+        {/* 3. SENSOR SCORECARD GRID */}
         <View style={mS.card}>
           <View style={mS.cardHead}>
             <Activity size={12} color={HUD.cyan} />
             <Text style={mS.cardTitle}>SENSOR MATRIX</Text>
             <Text style={mS.cardCount}>{sensorReadings.filter(s => s.value != null).length} ACTIVE</Text>
-          </View>
-          {sensorReadings.filter(s => s.value != null).map((s, i, arr) => {
-            const col = SC[s.status] || HUD.textDim;
-            return (
-              <View key={s.id} style={[mS.sRow, i < arr.length - 1 && { borderBottomWidth: 1, borderBottomColor: HUD.border }]}>
-                <View style={[mS.sBar, { backgroundColor: col, shadowColor: col }]} />
-                <View style={{ flex: 1 }}>
-                  <Text style={mS.sName}>{s.sensor_name}</Text>
-                  <Text style={mS.sEquip}>{s.equipment_name}</Text>
-                </View>
-                <Text style={[mS.sVal, { color: col }]}>{s.value.toFixed(1)}<Text style={{ fontSize: 10, fontWeight: '400' }}> {s.unit}</Text></Text>
+            {critSensors.length > 0 && (
+              <View style={[mS.pill, { backgroundColor: HUD.redDim, borderColor: HUD.red + '50' }]}>
+                <AlertTriangle size={9} color={HUD.red} />
+                <Text style={[mS.pillTxt, { color: HUD.red }]}>{critSensors.length} CRIT</Text>
               </View>
-            );
-          })}
+            )}
+          </View>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+            {sensorReadings.filter(s => s.value != null).map(s => (
+              <SensorCard key={s.sensor_id || s.id} sensor={s} beatSignal={beatSignal} />
+            ))}
+          </View>
         </View>
 
-        {/* Events */}
-        {productionEvents.length > 0 && (
-          <View style={mS.card}>
-            <View style={mS.cardHead}>
-              <Radio size={12} color={HUD.amber} />
-              <Text style={[mS.cardTitle, { color: HUD.amber }]}>EVENT LOG</Text>
-              <Text style={[mS.cardCount, { color: HUD.amber + '80' }]}>{productionEvents.length} RECORDS</Text>
-            </View>
-            {productionEvents.slice(0, 6).map(evt => {
-              const col = evt.event_type === 'equipment_fault' ? HUD.red : evt.category === 'scheduled' ? HUD.cyan : HUD.amber;
-              return (
-                <View key={evt.id} style={[mS.evtRow, { borderLeftColor: col }]}>
-                  <View style={[mS.evtDot, { backgroundColor: col, shadowColor: col }]} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={mS.evtReason} numberOfLines={1}>{evt.reason || evt.event_type}</Text>
-                    <Text style={mS.evtTime}>{new Date(evt.started_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}{evt.equipment_name ? ` · ${evt.equipment_name}` : ''}</Text>
-                  </View>
-                </View>
-              );
-            })}
-          </View>
-        )}
-
-        {/* Sim + Equipment Avatar */}
+        {/* 4. SIM CONTROLS */}
         <View style={[mS.card, { borderColor: HUD.purple + '40' }]}>
           <View style={mS.cardHead}>
             <Zap size={12} color={HUD.purple} />
@@ -1422,7 +1344,6 @@ export default function RoomDashboard() {
             <Text style={[mS.cardCount, { color: HUD.purple + '80' }]}>DEMO MODE</Text>
           </View>
 
-          {/* Equipment manual shortcut */}
           <Pressable
             style={({ pressed }) => [mS.avatarBtn, { backgroundColor: pressed ? HUD.cyanDim : HUD.bgCardAlt }]}
             onPress={() => { setAvatarPreSystem(undefined); setShowAvatarModal(true); }}
@@ -1430,29 +1351,35 @@ export default function RoomDashboard() {
             <Cpu size={15} color={HUD.cyan} />
             <View style={{ flex: 1 }}>
               <Text style={{ fontSize: 12, fontWeight: '800', color: HUD.cyan }}>AVATAR A1200 EQUIPMENT INTELLIGENCE</Text>
-              <Text style={{ fontSize: 10, color: HUD.textSec, marginTop: 1 }}>Tap to view schematic · parts · troubleshooting · repair</Text>
+              <Text style={{ fontSize: 10, color: HUD.textSec, marginTop: 1 }}>Schematic · Parts · Troubleshooting · Repair</Text>
             </View>
             <ChevronRight size={15} color={HUD.cyan} />
           </Pressable>
 
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
             {[
-              { e: 'seal_temp_drift', l: 'SEAL TEMP DRIFT', c: HUD.amber, r: ['PA1'] },
-              { e: 'air_pressure_drop', l: 'AIR PRESSURE', c: HUD.red, r: ['PA1', 'PR1', 'PR2'] },
-              { e: 'film_jam', l: 'FILM JAM', c: HUD.red, r: ['PA1'] },
-              { e: 'auger_slowdown', l: 'AUGER SLOWDOWN', c: HUD.amber, r: ['PA1', 'PR1', 'PR2'] },
-              { e: 'vibration_spike', l: 'VIBRATION SPIKE', c: HUD.amber, r: ['PR1', 'PR2'] },
-              { e: 'metal_detect_rejects', l: 'METAL REJECTS', c: HUD.red, r: ['PR1', 'PR2'] },
-              { e: 'hopper_low', l: 'HOPPER LOW', c: HUD.amber, r: ['PA1', 'PR1', 'PR2'] },
-              { e: 'scheduled_break', l: 'SCHED BREAK', c: HUD.cyan, r: ['PA1', 'PR1', 'PR2'] },
+              { e: 'seal_temp_drift',      l: 'SEAL TEMP DRIFT',  c: HUD.amber, r: ['PA1'] },
+              { e: 'air_pressure_drop',    l: 'AIR PRESSURE',     c: HUD.red,   r: ['PA1', 'PR1', 'PR2'] },
+              { e: 'film_jam',             l: 'FILM JAM',         c: HUD.red,   r: ['PA1'] },
+              { e: 'auger_slowdown',       l: 'AUGER SLOWDOWN',   c: HUD.amber, r: ['PA1', 'PR1', 'PR2'] },
+              { e: 'vibration_spike',      l: 'VIBRATION SPIKE',  c: HUD.amber, r: ['PR1', 'PR2'] },
+              { e: 'metal_detect_rejects', l: 'METAL REJECTS',    c: HUD.red,   r: ['PR1', 'PR2'] },
+              { e: 'hopper_low',           l: 'HOPPER LOW',       c: HUD.amber, r: ['PA1', 'PR1', 'PR2'] },
+              { e: 'scheduled_break',      l: 'SCHED BREAK',      c: HUD.cyan,  r: ['PA1', 'PR1', 'PR2'] },
             ].filter(x => x.r.includes(roomCode)).map(x => (
-              <Pressable key={x.e} style={({ pressed }) => [mS.simBtn, { borderColor: x.c + '50', backgroundColor: pressed ? x.c + '30' : x.c + '12' }]} onPress={() => handleTriggerEvent(x.e)}>
+              <Pressable key={x.e}
+                style={({ pressed }) => [mS.simBtn, { borderColor: x.c + '50', backgroundColor: pressed ? x.c + '30' : x.c + '12' }]}
+                onPress={() => handleTriggerEvent(x.e)}
+              >
                 <Text style={[mS.simBtnTxt, { color: x.c }]}>{x.l}</Text>
               </Pressable>
             ))}
           </View>
 
-          <Pressable style={({ pressed }) => [mS.tickFull, { backgroundColor: pressed ? HUD.purple + '40' : HUD.purple + '15', borderColor: HUD.purple + '50' }]} onPress={handleTick}>
+          <Pressable
+            style={({ pressed }) => [mS.tickFull, { backgroundColor: pressed ? HUD.purple + '40' : HUD.purple + '15', borderColor: HUD.purple + '50' }]}
+            onPress={handleTick}
+          >
             <Zap size={15} color={HUD.purple} />
             <Text style={[mS.tickFullTxt, { color: HUD.purple }]}>ADVANCE TICK{tickCount > 0 ? ` · ${tickCount}` : ''}</Text>
           </Pressable>
