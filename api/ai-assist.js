@@ -491,13 +491,16 @@ module.exports = async (req, res) => {
       text: (command || 'What do you see in this image?') + contextStr,
     });
 
-    // Build full message history for multi-turn support
+    // Build full message history
+    // conversation = prior turns only (current message NOT included)
+    // We append the current user message here
     const messages = [];
 
-    if (conversation && Array.isArray(conversation)) {
+    if (conversation && Array.isArray(conversation) && conversation.length > 0) {
       conversation.forEach((msg) => messages.push(msg));
     }
 
+    // Always append current user message last
     messages.push({ role: 'user', content: userContent });
 
     // Call Claude with tools
@@ -572,10 +575,14 @@ module.exports = async (req, res) => {
     return res.status(200).json(result);
 
   } catch (err) {
-    console.error('[ai-assist] Error:', err);
+    console.error('[ai-assist] Error type:', err?.constructor?.name);
+    console.error('[ai-assist] Error message:', err?.message);
+    console.error('[ai-assist] Error status:', err?.status);
+    console.error('[ai-assist] Error body:', JSON.stringify(err?.error || err?.body || {}));
     return res.status(500).json({
       error: 'AI processing failed',
       details: err.message,
+      type: err?.constructor?.name,
     });
   }
 };
