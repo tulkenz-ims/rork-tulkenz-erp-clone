@@ -1,628 +1,852 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  Pressable,
-  RefreshControl,
-  Animated,
-  Dimensions,
-  Alert,
+  View, Text, StyleSheet, ScrollView, Pressable,
+  RefreshControl, Animated, Dimensions, Modal,
 } from 'react-native';
 import { useRouter, useLocalSearchParams, Stack } from 'expo-router';
 import {
-  ChevronLeft,
-  Activity,
-  Thermometer,
-  Gauge,
-  Package,
-  AlertTriangle,
-  CheckCircle,
-  XCircle,
-  TrendingUp,
-  Zap,
-  Radio,
-  Cpu,
-  Layers,
-  BarChart2,
+  ChevronLeft, Activity, Thermometer, Gauge, Package,
+  AlertTriangle, TrendingUp, Zap, Cpu, BarChart2,
+  Wrench, ChevronDown, ChevronRight, X, CheckCircle,
+  Radio, Layers, Box,
 } from 'lucide-react-native';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import { supabase } from '@/lib/supabase';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const { width: W } = Dimensions.get('window');
 
 // ══════════════════════════════════ THEME ══════════════════════════════════
-
 const HUD = {
-  bg:          '#020912',
-  bgCard:      '#050f1e',
-  bgCardAlt:   '#071525',
-  cyan:        '#00e5ff',
-  cyanDim:     '#00e5ff22',
-  cyanMid:     '#00e5ff55',
-  green:       '#00ff88',
-  greenDim:    '#00ff8822',
-  amber:       '#ffb800',
-  amberDim:    '#ffb80022',
-  red:         '#ff2d55',
-  redDim:      '#ff2d5522',
-  purple:      '#7b61ff',
-  purpleDim:   '#7b61ff22',
-  text:        '#e0f4ff',
-  textSec:     '#7aa8c8',
-  textDim:     '#3a6080',
-  border:      '#0d2840',
-  borderBright:'#1a4060',
-  grid:        '#0a1f35',
+  bg: '#020912', bgCard: '#050f1e', bgCardAlt: '#071525',
+  cyan: '#00e5ff', cyanDim: '#00e5ff22', cyanMid: '#00e5ff55',
+  green: '#00ff88', greenDim: '#00ff8822',
+  amber: '#ffb800', amberDim: '#ffb80022',
+  red: '#ff2d55', redDim: '#ff2d5522',
+  purple: '#7b61ff', purpleDim: '#7b61ff22',
+  text: '#e0f4ff', textSec: '#7aa8c8', textDim: '#3a6080',
+  border: '#0d2840', borderBright: '#1a4060', grid: '#0a1f35',
 };
+const SC: Record<string, string> = { normal: HUD.green, warning: HUD.amber, critical: HUD.red, idle: HUD.textDim };
+const AC: Record<string, string> = { green: HUD.green, yellow: HUD.amber, red: HUD.red, blue: HUD.cyan, gray: HUD.textDim };
 
-const STATUS_COLOR: Record<string, string> = {
-  normal:   HUD.green,
-  warning:  HUD.amber,
-  critical: HUD.red,
-  idle:     HUD.textDim,
-};
-
-const ANDON_COLOR: Record<string, string> = {
-  green:  HUD.green,
-  yellow: HUD.amber,
-  red:    HUD.red,
-  blue:   HUD.cyan,
-  gray:   HUD.textDim,
-};
-
-// ══════════════════════════════════ TYPES ══════════════════════════════════
-
-interface RoomEquipment {
-  id: string; equipment_name: string; equipment_type: string;
-  display_order: number; position_x: number; position_y: number;
-  position_width: number; position_height: number;
-  status: string; status_color: string; equipment_id: string | null;
-}
-interface SensorReading {
-  id: string; sensor_id: string; sensor_name: string; sensor_type: string;
-  unit: string; value: number; status: string; target_value: number;
-  warning_low: number; warning_high: number; critical_low: number; critical_high: number;
-  recorded_at: string; equipment_name: string; room_equipment_id: string;
-}
-interface RoomStatus {
-  status: string; andon_color: string; bags_today: number;
-  bags_per_minute: number; target_bags_per_minute: number;
-  uptime_percent: number; personnel_count: number;
-  current_run_number: string | null; updated_at: string;
-}
-interface ProductionEvent {
-  id: string; event_type: string; category: string; reason: string;
-  equipment_name: string; started_at: string; ended_at: string | null;
-  duration_seconds: number | null;
-}
-
-// ══════════════════════════════════ ANIMATED HOOKS ══════════════════════════
-
-function usePulse(duration = 1800) {
-  const anim = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(anim, { toValue: 1, duration, useNativeDriver: true }),
-        Animated.timing(anim, { toValue: 0, duration, useNativeDriver: true }),
-      ])
-    ).start();
-  }, []);
-  return anim;
-}
-
-function useScan(width: number, duration = 3000) {
-  const anim = useRef(new Animated.Value(-40)).current;
-  useEffect(() => {
-    Animated.loop(
-      Animated.timing(anim, { toValue: width + 40, duration, useNativeDriver: true })
-    ).start();
-  }, [width]);
-  return anim;
-}
-
-// ══════════════════════════════════ SUB COMPONENTS ══════════════════════════
-
-function PulsingDot({ color, size = 8 }: { color: string; size?: number }) {
-  const pulse = usePulse(1600);
-  const opacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1] });
-  const scale = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1.2] });
-  return (
-    <Animated.View style={{
-      width: size, height: size, borderRadius: size / 2,
-      backgroundColor: color, opacity,
-      transform: [{ scale }],
-    }} />
-  );
-}
-
-function GlowBorder({ color, children, style }: { color: string; children: React.ReactNode; style?: any }) {
-  return (
-    <View style={[{
-      borderRadius: 12, borderWidth: 1,
-      borderColor: color + '60',
-      shadowColor: color,
-      shadowOffset: { width: 0, height: 0 },
-      shadowOpacity: 0.4,
-      shadowRadius: 8,
-      elevation: 6,
-      backgroundColor: HUD.bgCard,
-    }, style]}>
-      {children}
-    </View>
-  );
-}
-
-function HexMetric({ label, value, unit, color, icon }: {
-  label: string; value: string; unit: string; color: string; icon: React.ReactNode;
-}) {
-  return (
-    <View style={[hexStyles.card, { borderColor: color + '40', shadowColor: color }]}>
-      <View style={[hexStyles.iconWrap, { backgroundColor: color + '15' }]}>{icon}</View>
-      <Text style={[hexStyles.value, { color }]}>{value}</Text>
-      <Text style={[hexStyles.unit, { color: color + 'aa' }]}>{unit}</Text>
-      <Text style={hexStyles.label}>{label}</Text>
-    </View>
-  );
-}
-
-const hexStyles = StyleSheet.create({
-  card: {
-    width: 92, paddingVertical: 14, paddingHorizontal: 8,
-    borderRadius: 12, borderWidth: 1,
-    alignItems: 'center', gap: 3, marginRight: 10,
-    backgroundColor: HUD.bgCard,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.35, shadowRadius: 10, elevation: 5,
+// ══════════════════════════════ A1200 MANUAL DATA ══════════════════════════
+// Avatar A1200/A2200 Installation & Maintenance Manual — AFI Publication 4110811
+const A1200_SYSTEMS = [
+  {
+    id: 'belt_drive', name: 'Belt Drive System', short: 'Belt Drive', color: HUD.cyan,
+    events: ['film_jam', 'auger_slowdown', 'vibration_spike'],
+    desc: 'Dual symmetrical belt drives pull packaging film through the machine at controlled speed.',
+    parts: [
+      { pn: 'AVT-BD-101', name: 'Drive Belt', stock: 2, min: 2 },
+      { pn: 'AVT-BD-102', name: 'Drive Motor', stock: 1, min: 1 },
+      { pn: 'AVT-BD-103', name: 'Belt Tensioner Assy', stock: 1, min: 1 },
+      { pn: 'AVT-BD-104', name: 'Idler Roller (Sm)', stock: 6, min: 4 },
+      { pn: 'AVT-BD-105', name: 'Large Idler Pulley', stock: 2, min: 1 },
+      { pn: 'AVT-BD-106', name: 'Drive Gear', stock: 1, min: 1 },
+    ],
+    troubleshooting: [
+      { symptom: 'Film not advancing or binding up', steps: ['Check belt tension — loosen tensioner bolt, pivot, inspect belt surface', 'Verify both drive motors run at same speed via PLC outputs', 'Inspect belt for cracks, fraying, or glazing', 'Confirm pneumatic cylinder moves belt drive in/out freely', 'Check motor controller outputs in main electrical enclosure'] },
+      { symptom: 'Vertical seal quality degrading', steps: ['Uneven belt speed between left/right sets causes film skew', 'Compare PLC output signals to both motor controllers', 'Inspect all idler rollers for flat spots or seized bearings'] },
+    ],
+    repair: ['LOCKOUT: Disconnect electrical AND pneumatic connections', 'Open front door of A1200/A2200', 'Remove 2 knobs retaining vertical sealing element assembly', 'Slide sealing assembly off mounting posts — support it, do not hang from connections', 'Loosen tensioner bolt and pivot to release belt tension', 'Remove worn belt from drive system', 'Position new belt — adjust tensioner so belt is tight — tighten tensioner bolt', 'Reinstall vertical sealing assembly on mounting posts', 'Close door, reconnect all connections, power on and test'],
   },
-  iconWrap: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  value: { fontSize: 22, fontWeight: '800', letterSpacing: -0.5 },
-  unit: { fontSize: 9, fontWeight: '600', letterSpacing: 1 },
-  label: { fontSize: 9, fontWeight: '700', color: HUD.textSec, letterSpacing: 0.5, textAlign: 'center' },
+  {
+    id: 'vertical_seal', name: 'Vertical Sealing Assembly', short: 'Vert Seal', color: HUD.amber,
+    events: ['seal_temp_drift'],
+    desc: 'Creates the vertical seam as film travels down the forming collar. Auto-Tuning PID controls heating element to ±1°F.',
+    parts: [
+      { pn: 'AVT-VS-201', name: 'Heating Element (Vert)', stock: 2, min: 1 },
+      { pn: 'AVT-VS-202', name: 'Thermocouple', stock: 3, min: 2 },
+      { pn: 'AVT-VS-203', name: 'Pneumatic Cylinder', stock: 1, min: 1 },
+      { pn: 'AVT-VS-204', name: 'Quick-Connect Fitting', stock: 6, min: 4 },
+      { pn: 'AVT-VS-205', name: '220V Solid-State Relay', stock: 2, min: 1 },
+    ],
+    troubleshooting: [
+      { symptom: 'Cannot control sealing temperature', steps: ['Check PLC output connections to heating element relay — must be secure', 'Verify correct voltage at relay coil side — energized = switch side closes', 'Inspect thermocouple wiring in black electrical box for kinks or damage', 'Confirm programmed temp setpoint is correct for film type', 'After element or TC replacement: run AutoTune from TEMPERATURE menu'] },
+      { symptom: 'Partial vertical seal', steps: ['Check side-to-side film roll positioning on unwind shaft', 'Verify film is tracking straight through the machine', 'Inspect forming collar for damage or misalignment', 'Check sealing element surface for contamination or wear'] },
+      { symptom: 'Seals opening easily after filling', steps: ['Verify temperature setpoint matches film specification', 'Check sealing dwell time in PLC settings', 'Inspect heating element for hot/cold spots'] },
+    ],
+    repair: ['LOCKOUT: Disconnect electrical AND pneumatic connections', 'Open front door — remove 2 knobs from mounting posts', 'Pull vertical sealing assembly off mounting posts', 'Rotate assembly 180° facing forward — place back on posts loosely', 'Open black electrical box — remove 4 screws on cover', 'Label, loosen, and disconnect thermocouple connections inside box', 'Remove cable ties securing thermocouple to machine', 'Loosen thermocouple at jaw and slide out', 'Slide new thermocouple into vertical sealing jaw — tighten', 'Route cable to black box, connect, reinstall cover', 'Restore assembly to normal orientation, reinstall knobs', 'Reconnect all connections — power on — run AutoTune'],
+  },
+  {
+    id: 'endseal_jaw', name: 'Endseal Jaw / Knife', short: 'Endseal', color: HUD.red,
+    events: ['film_jam', 'metal_detect_rejects'],
+    desc: 'Creates top + bottom seals simultaneously. Pneumatic knife blade cuts completed bags free.',
+    parts: [
+      { pn: 'AVT-EJ-301', name: 'Heating Element (Front)', stock: 2, min: 1 },
+      { pn: 'AVT-EJ-302', name: 'Heating Element (Rear)', stock: 1, min: 1 },
+      { pn: 'AVT-EJ-303', name: 'Knife Blade', stock: 4, min: 2 },
+      { pn: 'AVT-EJ-304', name: 'Knife Cylinder', stock: 1, min: 1 },
+      { pn: 'AVT-EJ-305', name: 'Endseal Jaw Pneumatic Cyl.', stock: 1, min: 1 },
+      { pn: 'AVT-EJ-306', name: 'Bag Deflator Pad', stock: 4, min: 2 },
+      { pn: 'AVT-EJ-307', name: 'Jaw Plastic Bushings', stock: 6, min: 4 },
+    ],
+    troubleshooting: [
+      { symptom: 'Jaw not closing / not functioning', steps: ['Confirm compressed air is reaching jaw cylinder', 'Verify air can vent from opposite side of cylinder', 'Check PLC output voltage to electric/pneumatic solenoids', 'Use TEST button on valve block to manually test solenoid function', 'Inspect front jaw plastic bushings — replace if damaged or contaminated'] },
+      { symptom: 'Incomplete or weak end seals', steps: ['Verify temperature setpoint matches film spec for both elements', 'Check bag deflator position — foam pads should LEAD seals by ¼"', 'Ensure bag deflators are not pushing product up into endseal zone'] },
+    ],
+    repair: ['LOCKOUT: Disconnect electrical AND pneumatic connections', 'Open front door to access endseal jaws', 'KNIFE BLADE: Remove 2 mounting bolts — slide blade out', 'Install new blade with cutting edge facing REAR of machine — tighten bolts', 'HEATING ELEMENT: Open left side door', 'Label and disconnect element connections in black electrical box', 'Remove element from endseal jaw', 'Install new element, route wires, connect inside box, reinstall cover', 'Close all doors, reconnect connections', 'Power on — run AutoTune for affected endseal temperature channel'],
+  },
+  {
+    id: 'filter_regulator', name: 'Filter / Regulator', short: 'Air System', color: HUD.purple,
+    events: ['air_pressure_drop'],
+    desc: 'Filters moisture and debris from compressed air supply. Also functions as electronic dump valve on E-stop.',
+    parts: [
+      { pn: 'AVT-FR-401', name: 'Filter/Regulator Assembly', stock: 1, min: 1 },
+      { pn: 'AVT-FR-402', name: 'Electronic Dump Valve', stock: 1, min: 1 },
+      { pn: 'AVT-FR-403', name: 'Filter Element', stock: 3, min: 2 },
+      { pn: 'AVT-FR-404', name: 'Air Supply QC Fitting ½"', stock: 4, min: 2 },
+    ],
+    troubleshooting: [
+      { symptom: 'Air pressure drops after machine starts', steps: ['Check compressed air supply line for restrictions or damage', 'Inspect internal air lines for leaks — use soapy water test on all fittings', 'Verify filter element is not clogged (inspect monthly per PM schedule)', 'Confirm air supply spec: 70 PSI @ 25 SCFM (laminate) or 45 SCFM (poly)', 'Check main air supply compressor and refrigerated dryer'] },
+      { symptom: 'Pneumatic component not actuating', steps: ['Check PLC I/O LEDs activating at correct timing', 'Test valve using TEST button on electric/pneumatic valve block', 'Check valve block solenoid electrical connections at block assembly', 'Confirm air pressure is at spec before the valve block'] },
+    ],
+    repair: ['LOCKOUT: Disconnect electrical AND pneumatic connections', 'Disconnect air line from Filter/Regulator', 'Disconnect electrical connection from electronic dump valve', 'Remove mounting bolts from base frame', 'Remove dump valve from old unit', 'Assemble dump valve onto new Filter/Regulator', 'Mount in position — tighten bolts', 'Connect air lines to quick-connect fittings and electrical connections', 'Adjust air pressure: CW = increase, CCW = decrease — target 70 PSI', 'Power on and test all pneumatic functions'],
+  },
+  {
+    id: 'film_unwind', name: 'Film Unwind / Encoder', short: 'Film Feed', color: HUD.green,
+    events: ['film_jam', 'hopper_low'],
+    desc: 'Holds and feeds film roll. Encoder accurate to 0.001" monitors belt slippage. Photoeye reads registration marks.',
+    parts: [
+      { pn: 'AVT-FU-501', name: 'Film Brake Rotor', stock: 1, min: 1 },
+      { pn: 'AVT-FU-502', name: 'Brake Caliper', stock: 1, min: 1 },
+      { pn: 'AVT-FU-503', name: 'Conical Locking Collars', stock: 4, min: 2 },
+      { pn: 'AVT-FU-504', name: 'Encoder Assembly', stock: 1, min: 1 },
+      { pn: 'AVT-FU-505', name: 'Photoeye Sensing Tip', stock: 2, min: 1 },
+    ],
+    troubleshooting: [
+      { symptom: 'Film tracking off-center or misaligned', steps: ['Use measuring scale on shaft flat to center film roll', 'Secure conical locking collars in centered position after adjusting', 'Adjust film tracking knob — right side, behind electrical box', 'Note 2:1 ratio: 1" knob adjustment = 2" film shift'] },
+      { symptom: 'Photoeye not detecting registration marks', steps: ['Check output LED — must illuminate when mark is at sensing block', 'Flashing LED = short circuit condition', 'Advance film manually — monitor bar graph LEDs on photoeye controller', 'Confirm LIGHT film with DARK registration marks (A1200 requirement)', 'Adjust sensing tip angle to 10–15° perpendicular to film surface'] },
+    ],
+    repair: ['LOCKOUT: Disconnect electrical AND pneumatic connections', 'Open right side electrical panel door', 'Locate encoder/photoeye cable connection at PLC', 'Label and disconnect cable', 'Remove wire ties securing cable along base frame', 'Pull cable back to component — bundle so it cannot tangle with moving parts', 'Loosen hex head screw (encoder) or mounting bolt (photoeye)', 'Remove old component and install new one', 'Route cable to panel following original path — secure all cable ties', 'Connect to PLC — reconnect all power', 'Calibrate photoeye: advance film so mark is NOT under sensor, press white button on controller'],
+  },
+];
+
+const EVENT_SYSTEM: Record<string, string> = {
+  seal_temp_drift: 'vertical_seal',
+  air_pressure_drop: 'filter_regulator',
+  auger_slowdown: 'belt_drive',
+  film_jam: 'belt_drive',
+  vibration_spike: 'belt_drive',
+  metal_detect_rejects: 'endseal_jaw',
+  hopper_low: 'film_unwind',
+};
+
+const EVENT_LABEL: Record<string, { title: string; desc: string; severity: string }> = {
+  seal_temp_drift: { title: 'SEAL TEMP DRIFT', desc: 'Vertical seal temperature deviation detected', severity: 'warning' },
+  air_pressure_drop: { title: 'AIR PRESSURE DROP', desc: 'Pneumatic pressure below specification', severity: 'critical' },
+  auger_slowdown: { title: 'AUGER SLOWDOWN', desc: 'Belt drive speed anomaly detected', severity: 'warning' },
+  film_jam: { title: 'FILM JAM', desc: 'Film feed obstruction or belt drive fault', severity: 'critical' },
+  vibration_spike: { title: 'VIBRATION SPIKE', desc: 'Abnormal vibration on belt drive assembly', severity: 'warning' },
+  metal_detect_rejects: { title: 'METAL REJECTS', desc: 'Metal detector reject count elevated', severity: 'critical' },
+  hopper_low: { title: 'HOPPER LOW', desc: 'Film supply / hopper level alert', severity: 'warning' },
+  scheduled_break: { title: 'SCHEDULED BREAK', desc: 'Scheduled production break', severity: 'warning' },
+};
+
+// ══════════════════════════════ ANIMATED HOOKS ══════════════════════════════
+function usePulse(ms = 1800) {
+  const a = useRef(new Animated.Value(0)).current;
+  useEffect(() => { Animated.loop(Animated.sequence([Animated.timing(a, { toValue: 1, duration: ms, useNativeDriver: true }), Animated.timing(a, { toValue: 0, duration: ms, useNativeDriver: true })])).start(); }, []);
+  return a;
+}
+function useScan(width: number, ms = 3200) {
+  const a = useRef(new Animated.Value(-40)).current;
+  useEffect(() => { Animated.loop(Animated.timing(a, { toValue: width + 40, duration: ms, useNativeDriver: true })).start(); }, [width]);
+  return a;
+}
+
+// ══════════════════════════════ SMALL COMPONENTS ══════════════════════════════
+function PulsingDot({ color, size = 8 }: { color: string; size?: number }) {
+  const p = usePulse(1600);
+  return (
+    <Animated.View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: color, opacity: p.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1] }), transform: [{ scale: p.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1.2] }) }] }} />
+  );
+}
+
+// ══════════════════════════ INCIDENT ALERT CARD ══════════════════════════════
+interface ActiveAlert { eventType: string; sensorName?: string; value?: number; unit?: string; target?: number; }
+
+function IncidentAlertCard({ alert, onCreatePost, onDismiss }: { alert: ActiveAlert; onCreatePost: () => void; onDismiss: () => void; }) {
+  const info = EVENT_LABEL[alert.eventType] || { title: alert.eventType.toUpperCase(), desc: 'Sensor alert detected', severity: 'warning' };
+  const color = info.severity === 'critical' ? HUD.red : HUD.amber;
+  const slideY = useRef(new Animated.Value(80)).current;
+  const fadeIn = useRef(new Animated.Value(0)).current;
+  const pulse = usePulse(900);
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.spring(slideY, { toValue: 0, useNativeDriver: true, tension: 70, friction: 12 }),
+      Animated.timing(fadeIn, { toValue: 1, duration: 300, useNativeDriver: true }),
+    ]).start();
+  }, []);
+
+  return (
+    <Animated.View style={[aS.container, { borderColor: color + '70', shadowColor: color, transform: [{ translateY: slideY }], opacity: fadeIn }]}>
+      <View style={aS.header}>
+        <Animated.View style={{ opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.5, 1] }) }}>
+          <AlertTriangle size={15} color={color} />
+        </Animated.View>
+        <Text style={[aS.title, { color }]}>{info.title}</Text>
+        <View style={[aS.sevPill, { backgroundColor: color + '20', borderColor: color + '50' }]}>
+          <Text style={[aS.sevText, { color }]}>{info.severity.toUpperCase()}</Text>
+        </View>
+        <Pressable onPress={onDismiss} style={aS.xBtn}><X size={14} color={HUD.textDim} /></Pressable>
+      </View>
+      <Text style={aS.desc}>{info.desc}</Text>
+      {alert.sensorName && alert.value != null && (
+        <View style={[aS.sensorRow, { borderColor: color + '30', backgroundColor: color + '0a' }]}>
+          <Text style={aS.sensorLabel}>{alert.sensorName}</Text>
+          <Text style={[aS.sensorVal, { color }]}>{alert.value.toFixed(1)} {alert.unit || ''}</Text>
+          {alert.target != null && <Text style={aS.sensorTarget}>TGT: {alert.target}{alert.unit || ''}</Text>}
+        </View>
+      )}
+      <Pressable style={({ pressed }) => [aS.cta, { backgroundColor: pressed ? color + '35' : color + '18', borderColor: color + '60' }]} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onCreatePost(); }}>
+        <Wrench size={14} color={color} />
+        <Text style={[aS.ctaText, { color }]}>POST TO TASK FEED · ALL DEPTS + AUDIT IMAGE</Text>
+        <ChevronRight size={14} color={color} />
+      </Pressable>
+    </Animated.View>
+  );
+}
+const aS = StyleSheet.create({
+  container: { position: 'absolute', bottom: 90, left: 16, right: 16, backgroundColor: HUD.bgCard, borderRadius: 16, borderWidth: 2, padding: 14, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.6, shadowRadius: 24, elevation: 24, zIndex: 100 },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 5 },
+  title: { fontSize: 13, fontWeight: '900', letterSpacing: 1.5, flex: 1 },
+  sevPill: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6, borderWidth: 1 },
+  sevText: { fontSize: 8, fontWeight: '800', letterSpacing: 1 },
+  xBtn: { padding: 4 },
+  desc: { fontSize: 12, color: HUD.textSec, marginBottom: 8, letterSpacing: 0.2 },
+  sensorRow: { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 8, borderWidth: 1, padding: 8, marginBottom: 10 },
+  sensorLabel: { fontSize: 11, fontWeight: '600', color: HUD.textSec, flex: 1 },
+  sensorVal: { fontSize: 16, fontWeight: '900' },
+  sensorTarget: { fontSize: 10, color: HUD.textDim },
+  cta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 11, paddingHorizontal: 14, borderRadius: 10, borderWidth: 1 },
+  ctaText: { fontSize: 11, fontWeight: '900', letterSpacing: 0.8, flex: 1, textAlign: 'center' },
 });
 
-function ArcGauge({ value, min, max, color, size = 60 }: {
-  value: number; min: number; max: number; color: string; size?: number;
+// ══════════════════════════ WORK ORDER MODAL ══════════════════════════════
+// Departments that receive every ACTIVE FAULT post
+const FAULT_DEPARTMENTS = [
+  { id: '1001', name: 'Maintenance', color: HUD.cyan },
+  { id: '1002', name: 'Sanitation', color: HUD.green },
+  { id: '1003', name: 'Production', color: HUD.amber },
+  { id: '1004', name: 'Quality', color: HUD.purple },
+  { id: '1005', name: 'Safety', color: HUD.red },
+];
+
+function TaskFeedPostModal({ visible, alert, roomCode, onClose, onOpenAvatar }: {
+  visible: boolean; alert: ActiveAlert | null; roomCode: string;
+  onClose: () => void; onOpenAvatar: () => void;
 }) {
-  const pct = Math.min(1, Math.max(0, (value - min) / (max - min)));
-  const filled = Math.round(pct * 12);
-  const segments = Array.from({ length: 12 }, (_, i) => i < filled);
+  const info = alert ? (EVENT_LABEL[alert.eventType] || { title: alert.eventType, desc: '', severity: 'warning' }) : null;
+  const color = info?.severity === 'critical' ? HUD.red : HUD.amber;
+  const systemId = alert ? EVENT_SYSTEM[alert.eventType] : null;
+  const system = systemId ? A1200_SYSTEMS.find(s => s.id === systemId) : null;
+  const [submitted, setSubmitted] = useState(false);
+
+  const postTime = useMemo(() => new Date().toLocaleString(), [visible]);
+
+  const aiDescription = useMemo(() => {
+    if (!alert || !info || !system) return '';
+    const sensorLine = alert.sensorName && alert.value != null
+      ? `\nSensor reading at detection: ${alert.sensorName} = ${alert.value.toFixed(1)} ${alert.unit || ''} (target: ${alert.target ?? '—'}${alert.unit || ''})`
+      : '';
+    return `ACTIVE FAULT — ${info.title}\n\nEquipment: Avatar A1200 / A2200 VFFS\nAffected System: ${system.name}\nRoom: ${roomCode}\nDetected: ${postTime}${sensorLine}\n\nThis post was auto-generated by TulKenz OPS sensor monitoring. All listed departments are required to acknowledge. Maintenance to investigate and resolve. Safety, Quality, Sanitation, and Production to assess impact on operations and compliance.\n\nSee Equipment Intelligence for troubleshooting steps, affected parts, and repair procedures.`;
+  }, [alert, info, system, postTime, roomCode]);
+
+  if (!visible || !alert || !info) return null;
+
+  const handleSubmit = () => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setSubmitted(true);
+    setTimeout(() => { setSubmitted(false); onClose(); }, 1800);
+  };
+
   return (
-    <View style={{ width: size, height: size / 2 + 8, alignItems: 'center' }}>
-      <View style={{ flexDirection: 'row', gap: 2, flexWrap: 'nowrap' }}>
-        {segments.map((on, i) => (
-          <View key={i} style={{
-            width: (size - 24) / 12, height: 6, borderRadius: 2,
-            backgroundColor: on ? color : HUD.border,
-          }} />
-        ))}
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      <View style={tfS.container}>
+        {/* Header */}
+        <View style={tfS.header}>
+          <View style={{ flex: 1 }}>
+            <Text style={tfS.eyebrow}>TASK FEED  ·  TULSENZ OPS</Text>
+            <Text style={tfS.title}>ACTIVE FAULT POST</Text>
+          </View>
+          <Pressable onPress={onClose} style={tfS.closeBtn}><X size={20} color={HUD.textSec} /></Pressable>
+        </View>
+
+        {submitted ? (
+          // Success state
+          <View style={tfS.successScreen}>
+            <CheckCircle size={48} color={HUD.green} />
+            <Text style={tfS.successTitle}>POST SUBMITTED</Text>
+            <Text style={tfS.successSub}>Sent to all 5 departments · Audit trail recorded</Text>
+          </View>
+        ) : (
+          <ScrollView contentContainerStyle={{ padding: 20, gap: 14 }}>
+
+            {/* AI banner */}
+            <View style={[tfS.aiBanner, { borderColor: HUD.cyan + '40', backgroundColor: HUD.cyanDim }]}>
+              <Cpu size={12} color={HUD.cyan} />
+              <View style={{ flex: 1 }}>
+                <Text style={[tfS.aiTitle, { color: HUD.cyan }]}>AI-GENERATED TASK FEED POST</Text>
+                <Text style={[tfS.aiSub, { color: HUD.textSec }]}>Auto-filled from sensor event · {postTime}</Text>
+              </View>
+              <View style={[tfS.sevPill, { backgroundColor: color + '20', borderColor: color + '50' }]}>
+                <PulsingDot color={color} size={5} />
+                <Text style={[tfS.sevTxt, { color }]}>{info.severity.toUpperCase()}</Text>
+              </View>
+            </View>
+
+            {/* Template type */}
+            <View style={tfS.fBlock}>
+              <Text style={tfS.label}>TEMPLATE TYPE</Text>
+              <View style={[tfS.fieldRow, { borderColor: color + '50', backgroundColor: color + '0a' }]}>
+                <AlertTriangle size={14} color={color} />
+                <Text style={[tfS.fieldTxt, { color: HUD.text }]}>ACTIVE FAULT — Equipment Issue</Text>
+                <View style={[tfS.lockedBadge, { backgroundColor: HUD.borderBright }]}>
+                  <Text style={tfS.lockedTxt}>AI SET</Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Equipment — taps to Avatar */}
+            <View style={tfS.fBlock}>
+              <Text style={tfS.label}>EQUIPMENT  <Text style={{ color: HUD.cyan, letterSpacing: 0, fontWeight: '700' }}>← TAP TO VIEW MANUAL</Text></Text>
+              <Pressable
+                style={({ pressed }) => [tfS.fieldRow, tfS.equipBtn, { borderColor: HUD.cyan + '60', backgroundColor: pressed ? HUD.cyanDim : HUD.bgCardAlt }]}
+                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onOpenAvatar(); }}
+              >
+                <Box size={14} color={HUD.cyan} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[tfS.fieldTxt, { color: HUD.cyan }]}>Avatar A1200 / A2200 VFFS</Text>
+                  {system && <Text style={{ fontSize: 10, color: HUD.textSec, marginTop: 1 }}>Affected: {system.name}</Text>}
+                </View>
+                <ChevronRight size={15} color={HUD.cyan} />
+              </Pressable>
+            </View>
+
+            {/* AI-attached image */}
+            <View style={tfS.fBlock}>
+              <Text style={tfS.label}>AUDIT IMAGE  <Text style={{ color: HUD.green, letterSpacing: 0, fontWeight: '700' }}>← AI-ATTACHED</Text></Text>
+              <View style={[tfS.imageBox, { borderColor: HUD.green + '40', backgroundColor: HUD.green + '06' }]}>
+                {/* Simulated sensor snapshot */}
+                <View style={tfS.imagePlaceholder}>
+                  <View style={tfS.imgGrid}>
+                    {Array.from({ length: 6 }).map((_, i) => (
+                      <View key={i} style={[tfS.imgBar, { height: 12 + Math.sin(i * 1.3) * 8, backgroundColor: i === 3 ? color : HUD.cyan + '60' }]} />
+                    ))}
+                  </View>
+                  <View style={[tfS.imgAlertOverlay, { borderColor: color + '60' }]}>
+                    <AlertTriangle size={10} color={color} />
+                    <Text style={[tfS.imgAlertTxt, { color }]}>{info.title}</Text>
+                  </View>
+                  <Text style={tfS.imgTimestamp}>{postTime}</Text>
+                </View>
+                <View style={{ flex: 1, gap: 3 }}>
+                  <Text style={[tfS.imgLabel, { color: HUD.green }]}>AI SENSOR SNAPSHOT</Text>
+                  <Text style={tfS.imgDesc}>Auto-captured at time of fault detection. Includes sensor telemetry, room state, and alert classification. Required for SQF / BRCGS audit trail.</Text>
+                  <View style={[tfS.auditBadge, { backgroundColor: HUD.green + '18', borderColor: HUD.green + '40' }]}>
+                    <CheckCircle size={9} color={HUD.green} />
+                    <Text style={[tfS.auditBadgeTxt, { color: HUD.green }]}>AUDIT COMPLIANT</Text>
+                  </View>
+                </View>
+              </View>
+            </View>
+
+            {/* Departments — all 5 pre-selected */}
+            <View style={tfS.fBlock}>
+              <Text style={tfS.label}>NOTIFIED DEPARTMENTS  <Text style={{ color: HUD.cyan, letterSpacing: 0, fontWeight: '700' }}>ALL REQUIRED</Text></Text>
+              <View style={tfS.deptGrid}>
+                {FAULT_DEPARTMENTS.map(d => (
+                  <View key={d.id} style={[tfS.deptChip, { borderColor: d.color + '50', backgroundColor: d.color + '12' }]}>
+                    <CheckCircle size={11} color={d.color} />
+                    <Text style={[tfS.deptTxt, { color: d.color }]}>{d.name}</Text>
+                  </View>
+                ))}
+              </View>
+              <Text style={tfS.deptNote}>All departments must acknowledge. This is protocol for every Active Fault post.</Text>
+            </View>
+
+            {/* AI description */}
+            <View style={tfS.fBlock}>
+              <Text style={tfS.label}>AI-GENERATED POST BODY</Text>
+              <View style={[tfS.descBox, { borderColor: HUD.borderBright }]}>
+                <Text style={tfS.descTxt}>{aiDescription}</Text>
+              </View>
+            </View>
+
+            {/* PM / Work Order option */}
+            <View style={[tfS.pmNote, { borderColor: HUD.purple + '40', backgroundColor: HUD.purpleDim }]}>
+              <Wrench size={12} color={HUD.purple} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 10, fontWeight: '800', color: HUD.purple, letterSpacing: 1.5, marginBottom: 3 }}>PM TEMPLATE AVAILABLE</Text>
+                <Text style={{ fontSize: 11, color: HUD.textSec }}>A recurring Preventive Maintenance work order template can be configured for this equipment. Maintenance tab → PM Schedules → Avatar A1200.</Text>
+              </View>
+            </View>
+
+            {/* Submit */}
+            <Pressable
+              style={({ pressed }) => [tfS.submit, { backgroundColor: pressed ? color + '40' : color + '20', borderColor: color }]}
+              onPress={handleSubmit}
+            >
+              <CheckCircle size={18} color={color} />
+              <Text style={[tfS.submitTxt, { color }]}>POST TO ALL 5 DEPARTMENTS · AUDIT TRAIL</Text>
+            </Pressable>
+
+          </ScrollView>
+        )}
       </View>
-      <Text style={{ color, fontSize: 13, fontWeight: '800', marginTop: 4 }}>
-        {typeof value === 'number' ? value.toFixed(1) : '--'}
-      </Text>
-    </View>
+    </Modal>
   );
 }
+const tfS = StyleSheet.create({
+  container: { flex: 1, backgroundColor: HUD.bg },
+  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: 20, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: HUD.borderBright, gap: 12 },
+  eyebrow: { fontSize: 9, fontWeight: '800', color: HUD.textDim, letterSpacing: 2, marginBottom: 3 },
+  title: { fontSize: 20, fontWeight: '900', color: HUD.text },
+  closeBtn: { padding: 8, backgroundColor: HUD.bgCardAlt, borderRadius: 10, borderWidth: 1, borderColor: HUD.borderBright },
+  aiBanner: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 12, borderWidth: 1 },
+  aiTitle: { fontSize: 11, fontWeight: '900', letterSpacing: 1.5 },
+  aiSub: { fontSize: 10, marginTop: 2 },
+  sevPill: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10, borderWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 5 },
+  sevTxt: { fontSize: 9, fontWeight: '800', letterSpacing: 1 },
+  label: { fontSize: 9, fontWeight: '800', color: HUD.textDim, letterSpacing: 2, marginBottom: 5 },
+  fBlock: { gap: 0 },
+  fieldRow: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: HUD.bgCardAlt, borderRadius: 10, borderWidth: 1, padding: 12 },
+  fieldTxt: { fontSize: 13, fontWeight: '600', flex: 1 },
+  equipBtn: {},
+  lockedBadge: { paddingHorizontal: 6, paddingVertical: 3, borderRadius: 5 },
+  lockedTxt: { fontSize: 8, fontWeight: '800', color: HUD.textSec, letterSpacing: 1 },
+  imageBox: { flexDirection: 'row', gap: 12, padding: 12, borderRadius: 10, borderWidth: 1, alignItems: 'flex-start' },
+  imagePlaceholder: { width: 72, height: 72, backgroundColor: HUD.bg, borderRadius: 8, borderWidth: 1, borderColor: HUD.borderBright, padding: 6, justifyContent: 'flex-end', overflow: 'hidden', gap: 4 },
+  imgGrid: { flexDirection: 'row', alignItems: 'flex-end', gap: 4, marginBottom: 4 },
+  imgBar: { flex: 1, borderRadius: 2, minHeight: 4 },
+  imgAlertOverlay: { flexDirection: 'row', alignItems: 'center', gap: 3, borderWidth: 1, borderRadius: 4, paddingHorizontal: 3, paddingVertical: 2 },
+  imgAlertTxt: { fontSize: 6, fontWeight: '800', letterSpacing: 0.3 },
+  imgTimestamp: { fontSize: 5, color: HUD.textDim, marginTop: 2 },
+  imgLabel: { fontSize: 10, fontWeight: '900', letterSpacing: 1 },
+  imgDesc: { fontSize: 10, color: HUD.textSec, lineHeight: 14, flex: 1 },
+  auditBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 6, paddingVertical: 3, borderRadius: 6, borderWidth: 1, alignSelf: 'flex-start', marginTop: 4 },
+  auditBadgeTxt: { fontSize: 8, fontWeight: '800', letterSpacing: 1 },
+  deptGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 6 },
+  deptChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 20, borderWidth: 1 },
+  deptTxt: { fontSize: 11, fontWeight: '800' },
+  deptNote: { fontSize: 10, color: HUD.textDim, fontStyle: 'italic' as any },
+  descBox: { backgroundColor: HUD.bgCardAlt, borderRadius: 10, borderWidth: 1, padding: 12 },
+  descTxt: { fontSize: 11, color: HUD.textSec, lineHeight: 17 },
+  pmNote: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, padding: 12, borderRadius: 10, borderWidth: 1 },
+  submit: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, padding: 16, borderRadius: 14, borderWidth: 2, marginTop: 4, marginBottom: 20 },
+  submitTxt: { fontSize: 13, fontWeight: '900', letterSpacing: 0.8 },
+  successScreen: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14, padding: 40 },
+  successTitle: { fontSize: 24, fontWeight: '900', color: HUD.green, letterSpacing: 2 },
+  successSub: { fontSize: 13, color: HUD.textSec, textAlign: 'center', letterSpacing: 0.5 },
+});
 
-// ══════════════════════════════════ EQUIPMENT MAP ══════════════════════════
+// ══════════════════════════ A1200 SCHEMATIC ══════════════════════════
+function A1200Schematic({ activeSystem, onSelectSystem }: { activeSystem: string | null; onSelectSystem: (id: string) => void }) {
+  const schW = W - 48;
+  const scanX = useScan(schW, 4000);
 
-function EquipmentSchematic({
-  equipment, sensorsByEquipment, equipmentStatus, selectedEquipment, onSelect, andonColor,
-}: {
-  equipment: RoomEquipment[];
-  sensorsByEquipment: Record<string, SensorReading[]>;
-  equipmentStatus: Record<string, string>;
-  selectedEquipment: string | null;
-  onSelect: (name: string | null) => void;
-  andonColor: string;
-}) {
-  const mapW = SCREEN_WIDTH - 32;
-  const mapH = 160;
-  const scanX = useScan(mapW, 3500);
-  const pulse = usePulse(2000);
-
-  const maxX = Math.max(...equipment.map(e => e.position_x + e.position_width), 750);
-  const scaleX = mapW / maxX;
+  const blocks = [
+    { id: 'film_unwind', label: 'FILM\nUNWIND', x: 2, y: 8, w: 60, h: 44, color: HUD.green, sys: true },
+    { id: 'forming', label: 'FORMING\nCOLLAR', x: 68, y: 8, w: 58, h: 44, color: HUD.textSec, sys: false },
+    { id: 'belt_drive', label: 'BELT\nDRIVE', x: 132, y: 8, w: 58, h: 44, color: HUD.cyan, sys: true },
+    { id: 'vertical_seal', label: 'VERT\nSEAL', x: 196, y: 8, w: 58, h: 44, color: HUD.amber, sys: true },
+    { id: 'endseal_jaw', label: 'ENDSEAL\nJAW', x: 260, y: 8, w: 62, h: 44, color: HUD.red, sys: true },
+    { id: 'filter_regulator', label: 'AIR /\nFILTER', x: 2, y: 64, w: 60, h: 38, color: HUD.purple, sys: true },
+    { id: 'plc', label: 'PLC\nHMI', x: 68, y: 64, w: 58, h: 38, color: HUD.textSec, sys: false },
+    { id: 'bag_out', label: 'BAGS\nOUT ↓', x: 260, y: 64, w: 62, h: 38, color: HUD.green, sys: false },
+  ];
 
   return (
-    <View style={schematicStyles.container}>
-      {/* Header */}
-      <View style={schematicStyles.header}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <Cpu size={13} color={HUD.cyan} />
-          <Text style={schematicStyles.title}>EQUIPMENT SCHEMATIC</Text>
-        </View>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <PulsingDot color={andonColor} size={7} />
-          <Text style={[schematicStyles.liveText, { color: andonColor }]}>LIVE FEED</Text>
-        </View>
+    <View style={schS.wrap}>
+      <View style={schS.head}>
+        <Cpu size={12} color={HUD.cyan} />
+        <Text style={schS.headTitle}>AVATAR A1200 / A2200 SCHEMATIC</Text>
+        <Text style={schS.headSub}>AFI 4110811</Text>
       </View>
+      <View style={[schS.map, { height: 116 }]}>
+        {[0.33, 0.66].map(f => <View key={`h${f}`} style={[schS.gH, { top: 116 * f }]} />)}
+        {[0.25, 0.5, 0.75].map(f => <View key={`v${f}`} style={[schS.gV, { left: schW * f }]} />)}
+        {/* Film path horizontal connector */}
+        <View style={{ position: 'absolute', top: 28, left: 62, width: 196, height: 2, backgroundColor: HUD.cyan + '20' }} />
+        {/* Air line vertical connector */}
+        <View style={{ position: 'absolute', top: 64, left: 32, width: 2, height: 38, backgroundColor: HUD.purple + '25' }} />
 
-      {/* Flow label */}
-      <View style={schematicStyles.flowRow}>
-        {['INTAKE', '→', 'PROCESS', '→', 'SEAL', '→', 'DETECT', '→', 'PACK'].map((t, i) => (
-          <Text key={i} style={[schematicStyles.flowItem, t === '→' ? { color: HUD.textDim } : { color: HUD.textSec }]}>{t}</Text>
-        ))}
-      </View>
-
-      {/* Map area */}
-      <View style={[schematicStyles.mapArea, { height: mapH }]}>
-        {/* Grid lines */}
-        {[0.25, 0.5, 0.75].map(f => (
-          <View key={f} style={[schematicStyles.gridLine, { top: mapH * f }]} />
-        ))}
-        {/* Vertical grid */}
-        {[0.2, 0.4, 0.6, 0.8].map(f => (
-          <View key={f} style={[schematicStyles.gridLineV, { left: mapW * f }]} />
-        ))}
-
-        {/* Floor line */}
-        <View style={[schematicStyles.floor, { top: mapH - 12, shadowColor: andonColor }]} />
-
-        {/* Connections */}
-        {equipment.length > 1 && equipment.slice(0, -1).map((eq, i) => {
-          const next = equipment[i + 1];
-          const x1 = (eq.position_x + eq.position_width) * scaleX;
-          const x2 = next.position_x * scaleX;
-          const y = mapH * 0.52;
-          const w = x2 - x1;
-          if (w < 2) return null;
+        {blocks.map(b => {
+          const active = activeSystem === b.id;
+          const col = b.color;
           return (
-            <View key={`pipe-${i}`} style={{
-              position: 'absolute', left: x1, top: y - 1,
-              width: w, height: 3,
-              backgroundColor: andonColor + '30',
-              shadowColor: andonColor, shadowOffset: { width: 0, height: 0 },
-              shadowOpacity: 0.6, shadowRadius: 4,
-            }}>
-              {/* Pipe arrow */}
-              <View style={{
-                position: 'absolute', right: 0, top: -3,
-                width: 0, height: 0,
-                borderLeftWidth: 6, borderLeftColor: andonColor + '60',
-                borderTopWidth: 4, borderTopColor: 'transparent',
-                borderBottomWidth: 4, borderBottomColor: 'transparent',
-              }} />
-            </View>
-          );
-        })}
-
-        {/* Equipment blocks */}
-        {equipment.map(eq => {
-          const status = equipmentStatus[eq.equipment_name] || 'idle';
-          const color = STATUS_COLOR[status] || HUD.textDim;
-          const isSelected = selectedEquipment === eq.equipment_name;
-          const sensors = sensorsByEquipment[eq.equipment_name] || [];
-          const primarySensor = sensors[0];
-
-          const x = eq.position_x * scaleX;
-          const w = Math.max(eq.position_width * scaleX, 52);
-          const y = eq.position_y * (mapH / 100);
-          const h = Math.max(eq.position_height * (mapH / 100), 48);
-
-          return (
-            <Pressable
-              key={eq.id}
-              style={[schematicStyles.equipBlock, {
-                left: x, top: y, width: w, height: h,
-                borderColor: isSelected ? color : color + '40',
-                borderWidth: isSelected ? 2 : 1,
-                backgroundColor: isSelected ? color + '18' : color + '08',
-                shadowColor: color,
-                shadowOpacity: isSelected ? 0.6 : 0.2,
-              }]}
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                onSelect(isSelected ? null : eq.equipment_name);
-              }}
+            <Pressable key={b.id} disabled={!b.sys}
+              style={[schS.block, { left: b.x, top: b.y, width: b.w, height: b.h, borderColor: active ? col : col + '45', borderWidth: active ? 2 : 1, backgroundColor: active ? col + '1a' : col + '07', shadowColor: col, shadowOpacity: active ? 0.7 : 0.15 }]}
+              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onSelectSystem(b.id); }}
             >
-              {/* Corner accents */}
-              <View style={[schematicStyles.cornerTL, { borderColor: color }]} />
-              <View style={[schematicStyles.cornerBR, { borderColor: color }]} />
-
-              {/* Status dot */}
-              {status !== 'idle' && (
-                <View style={[schematicStyles.statusDot, { backgroundColor: color, shadowColor: color }]} />
-              )}
-
-              <Text style={[schematicStyles.equipName, { color: isSelected ? color : color + 'cc' }]} numberOfLines={2}>
-                {eq.equipment_name.replace(' - PA1', '').replace(' - PR1', '').replace(' - PR2', '')}
-              </Text>
-
-              {primarySensor?.value != null && (
-                <Text style={[schematicStyles.equipVal, { color: STATUS_COLOR[primarySensor.status] || HUD.textDim }]}>
-                  {primarySensor.value.toFixed(0)}{primarySensor.unit?.replace('°F', '°').replace('bags/min', '/m').replace('ft/min', 'ft').replace('mm/s', 'mm') || ''}
-                </Text>
-              )}
-
-              {status === 'critical' && (
-                <View style={schematicStyles.critBadge}>
-                  <Text style={schematicStyles.critText}>!</Text>
-                </View>
-              )}
+              <View style={[schS.cTL, { borderColor: col + (active ? 'ff' : '55') }]} />
+              <View style={[schS.cBR, { borderColor: col + (active ? 'ff' : '55') }]} />
+              {active && <View style={[schS.dot, { backgroundColor: col, shadowColor: col }]} />}
+              <Text style={[schS.bLabel, { color: active ? col : col + 'bb' }]}>{b.label}</Text>
             </Pressable>
           );
         })}
-
-        {/* Scanning line */}
-        <Animated.View
-          style={[schematicStyles.scanLine, {
-            transform: [{ translateX: scanX }],
-            shadowColor: HUD.cyan,
-          }]}
-          pointerEvents="none"
-        />
+        <Animated.View style={[schS.scan, { transform: [{ translateX: scanX }] }]} pointerEvents="none" />
       </View>
+      <Text style={schS.hint}>TAP A COMPONENT TO INSPECT  ·  TAPPABLE = SYSTEM WITH MANUAL DATA</Text>
     </View>
   );
 }
-
-const schematicStyles = StyleSheet.create({
-  container: {
-    backgroundColor: HUD.bgCard, borderRadius: 14,
-    borderWidth: 1, borderColor: HUD.borderBright,
-    padding: 14, marginBottom: 16,
-    shadowColor: HUD.cyan, shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.1, shadowRadius: 12, elevation: 4,
-  },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
-  title: { fontSize: 11, fontWeight: '800', color: HUD.cyan, letterSpacing: 2 },
-  liveText: { fontSize: 9, fontWeight: '800', letterSpacing: 2 },
-  flowRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 10 },
-  flowItem: { fontSize: 8, fontWeight: '700', letterSpacing: 1 },
-  mapArea: { position: 'relative', width: '100%', overflow: 'hidden' },
-  gridLine: { position: 'absolute', left: 0, right: 0, height: 1, backgroundColor: HUD.grid },
-  gridLineV: { position: 'absolute', top: 0, bottom: 0, width: 1, backgroundColor: HUD.grid },
-  floor: {
-    position: 'absolute', left: 0, right: 0, height: 2,
-    backgroundColor: HUD.borderBright,
-    shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.8, shadowRadius: 6, elevation: 2,
-  },
-  equipBlock: {
-    position: 'absolute', borderRadius: 8,
-    padding: 5, alignItems: 'center', justifyContent: 'center',
-    shadowOffset: { width: 0, height: 0 }, shadowRadius: 8, elevation: 4,
-  },
-  cornerTL: {
-    position: 'absolute', top: 2, left: 2, width: 8, height: 8,
-    borderTopWidth: 1.5, borderLeftWidth: 1.5, borderRadius: 1,
-  },
-  cornerBR: {
-    position: 'absolute', bottom: 2, right: 2, width: 8, height: 8,
-    borderBottomWidth: 1.5, borderRightWidth: 1.5, borderRadius: 1,
-  },
-  statusDot: {
-    position: 'absolute', top: 4, right: 4, width: 6, height: 6, borderRadius: 3,
-    shadowOffset: { width: 0, height: 0 }, shadowOpacity: 1, shadowRadius: 4, elevation: 3,
-  },
-  equipName: { fontSize: 7, fontWeight: '700', textAlign: 'center', letterSpacing: 0.3 },
-  equipVal: { fontSize: 11, fontWeight: '900', marginTop: 1 },
-  critBadge: {
-    position: 'absolute', bottom: 3, left: 3,
-    width: 12, height: 12, borderRadius: 6,
-    backgroundColor: HUD.red, alignItems: 'center', justifyContent: 'center',
-  },
-  critText: { fontSize: 8, fontWeight: '900', color: '#fff' },
-  scanLine: {
-    position: 'absolute', top: 0, bottom: 0, width: 2,
-    backgroundColor: HUD.cyan + '30',
-    shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.8, shadowRadius: 6, elevation: 5,
-  },
+const schS = StyleSheet.create({
+  wrap: { backgroundColor: HUD.bgCard, borderRadius: 14, borderWidth: 1, borderColor: HUD.borderBright, padding: 14, marginBottom: 14 },
+  head: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
+  headTitle: { fontSize: 11, fontWeight: '800', color: HUD.cyan, letterSpacing: 1.5, flex: 1 },
+  headSub: { fontSize: 9, color: HUD.textDim, letterSpacing: 1 },
+  map: { position: 'relative', width: '100%', overflow: 'hidden' },
+  gH: { position: 'absolute', left: 0, right: 0, height: 1, backgroundColor: HUD.grid },
+  gV: { position: 'absolute', top: 0, bottom: 0, width: 1, backgroundColor: HUD.grid },
+  block: { position: 'absolute', borderRadius: 8, alignItems: 'center', justifyContent: 'center', shadowOffset: { width: 0, height: 0 }, shadowRadius: 8, elevation: 4 },
+  cTL: { position: 'absolute', top: 2, left: 2, width: 7, height: 7, borderTopWidth: 1.5, borderLeftWidth: 1.5, borderRadius: 1 },
+  cBR: { position: 'absolute', bottom: 2, right: 2, width: 7, height: 7, borderBottomWidth: 1.5, borderRightWidth: 1.5, borderRadius: 1 },
+  dot: { position: 'absolute', top: 3, right: 3, width: 6, height: 6, borderRadius: 3, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 1, shadowRadius: 4 },
+  bLabel: { fontSize: 7, fontWeight: '800', textAlign: 'center', letterSpacing: 0.3, lineHeight: 10 },
+  scan: { position: 'absolute', top: 0, bottom: 0, width: 2, backgroundColor: HUD.cyan + '20', shadowColor: HUD.cyan, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.8, shadowRadius: 6 },
+  hint: { fontSize: 8, color: HUD.textDim, letterSpacing: 1, marginTop: 8, textAlign: 'center', fontWeight: '700' },
 });
 
-// ══════════════════════════════════ EQUIPMENT DETAIL ════════════════════════
-
-function EquipmentDetailPanel({
-  name, status, sensors,
-}: { name: string; status: string; sensors: SensorReading[] }) {
-  const color = STATUS_COLOR[status] || HUD.textDim;
+// ══════════════════════════ SYSTEM DETAIL PANEL ══════════════════════════
+function SystemDetailPanel({ system, highlightEvent }: { system: typeof A1200_SYSTEMS[0]; highlightEvent?: string }) {
+  const [tab, setTab] = useState<'parts' | 'trouble' | 'repair'>('parts');
+  const col = system.color;
+  const isFault = system.events.includes(highlightEvent || '');
 
   return (
-    <GlowBorder color={color} style={{ marginBottom: 16 }}>
-      <View style={detailStyles.header}>
-        <View style={{ flex: 1 }}>
-          <Text style={detailStyles.eyebrow}>SELECTED EQUIPMENT</Text>
-          <Text style={[detailStyles.name, { color }]}>{name}</Text>
-        </View>
-        <View style={[detailStyles.statusPill, { backgroundColor: color + '18', borderColor: color + '50' }]}>
-          <PulsingDot color={color} size={6} />
-          <Text style={[detailStyles.statusText, { color }]}>{status.toUpperCase()}</Text>
-        </View>
-      </View>
-
-      {/* Sensor grid */}
-      <View style={detailStyles.sensorGrid}>
-        {sensors.map(s => {
-          const sc = STATUS_COLOR[s.status] || HUD.textDim;
-          const pct = s.critical_high
-            ? Math.min(100, Math.max(0, ((s.value - (s.critical_low || 0)) / ((s.critical_high) - (s.critical_low || 0))) * 100))
-            : 50;
-
-          return (
-            <View key={s.id} style={[detailStyles.sensorCard, { borderColor: sc + '30', backgroundColor: sc + '08' }]}>
-              <Text style={[detailStyles.sensorName, { color: HUD.textSec }]} numberOfLines={2}>{s.sensor_name}</Text>
-              <Text style={[detailStyles.sensorVal, { color: sc }]}>
-                {s.value != null ? s.value.toFixed(1) : '--'}
-                <Text style={detailStyles.sensorUnit}> {s.unit}</Text>
-              </Text>
-              {/* Bar */}
-              <View style={detailStyles.barTrack}>
-                <View style={[detailStyles.barFill, { width: `${pct}%` as any, backgroundColor: sc }]} />
-              </View>
-              <Text style={detailStyles.targetLabel}>TGT: {s.target_value}{s.unit}</Text>
-            </View>
-          );
-        })}
-
-        {sensors.length === 0 && (
-          <Text style={{ color: HUD.textDim, fontSize: 12, padding: 16 }}>No sensors on this equipment</Text>
+    <View style={sdS.wrap}>
+      <View style={[sdS.sysHead, { borderLeftColor: col }]}>
+        {isFault && (
+          <View style={[sdS.faultFlag, { backgroundColor: col + '20', borderColor: col + '50' }]}>
+            <AlertTriangle size={10} color={col} />
+            <Text style={[sdS.faultText, { color: col }]}>ACTIVE FAULT SYSTEM</Text>
+          </View>
         )}
+        <Text style={[sdS.sysName, { color: col }]}>{system.name}</Text>
+        <Text style={sdS.sysDesc}>{system.desc}</Text>
       </View>
-    </GlowBorder>
+
+      <View style={sdS.tabBar}>
+        {(['parts', 'trouble', 'repair'] as const).map(t => (
+          <Pressable key={t} style={[sdS.tab, tab === t && { borderBottomColor: col, borderBottomWidth: 2 }]} onPress={() => setTab(t)}>
+            <Text style={[sdS.tabTxt, { color: tab === t ? col : HUD.textDim }]}>
+              {t === 'parts' ? 'PARTS' : t === 'trouble' ? 'TROUBLESHOOT' : 'REPAIR STEPS'}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+
+      {tab === 'parts' && (
+        <View style={sdS.content}>
+          <View style={sdS.pHead}>
+            <Text style={[sdS.colH, { flex: 1.2 }]}>PART #</Text>
+            <Text style={[sdS.colH, { flex: 2 }]}>DESCRIPTION</Text>
+            <Text style={[sdS.colH, { textAlign: 'right' }]}>QTY</Text>
+          </View>
+          {system.parts.map(p => {
+            const low = p.stock <= p.min;
+            const sc = low ? HUD.red : HUD.green;
+            return (
+              <View key={p.pn} style={[sdS.pRow, { borderBottomColor: HUD.border }]}>
+                <Text style={[sdS.pn, { flex: 1.2 }]}>{p.pn}</Text>
+                <Text style={[sdS.pName, { flex: 2 }]}>{p.name}</Text>
+                <View style={[sdS.stockBadge, { backgroundColor: sc + '20', borderColor: sc + '50' }]}>
+                  {low && <AlertTriangle size={8} color={sc} />}
+                  <Text style={[sdS.stockNum, { color: sc }]}>{p.stock}</Text>
+                </View>
+              </View>
+            );
+          })}
+          <Text style={sdS.stockNote}>Red badge = at or below minimum stocking level</Text>
+        </View>
+      )}
+
+      {tab === 'trouble' && (
+        <View style={sdS.content}>
+          {system.troubleshooting.map((ts, i) => (
+            <View key={i} style={sdS.tsBlock}>
+              <View style={[sdS.symptomRow, { borderLeftColor: col }]}>
+                <AlertTriangle size={11} color={col} />
+                <Text style={[sdS.symptom, { color: col }]}>{ts.symptom}</Text>
+              </View>
+              {ts.steps.map((s, j) => (
+                <View key={j} style={sdS.sRow}>
+                  <Text style={[sdS.sNum, { color: col }]}>{j + 1}</Text>
+                  <Text style={sdS.sTxt}>{s}</Text>
+                </View>
+              ))}
+            </View>
+          ))}
+        </View>
+      )}
+
+      {tab === 'repair' && (
+        <View style={sdS.content}>
+          <View style={[sdS.lockBanner, { borderColor: HUD.red + '50', backgroundColor: HUD.redDim }]}>
+            <AlertTriangle size={12} color={HUD.red} />
+            <Text style={{ fontSize: 11, color: HUD.red, fontWeight: '700', flex: 1 }}>LOCKOUT / TAGOUT REQUIRED BEFORE ALL REPAIR WORK</Text>
+          </View>
+          {system.repair.map((step, i) => {
+            const isLO = step.startsWith('LOCKOUT');
+            return (
+              <View key={i} style={[sdS.rRow, isLO && { backgroundColor: HUD.redDim, borderRadius: 8, padding: 8 }]}>
+                <View style={[sdS.rCircle, { backgroundColor: col + '20', borderColor: col + '50' }]}>
+                  <Text style={[sdS.rNum, { color: col }]}>{i + 1}</Text>
+                </View>
+                <Text style={[sdS.rTxt, isLO && { color: HUD.red, fontWeight: '700' }]}>{step}</Text>
+              </View>
+            );
+          })}
+        </View>
+      )}
+    </View>
   );
 }
-
-const detailStyles = StyleSheet.create({
-  header: {
-    flexDirection: 'row', alignItems: 'flex-start',
-    padding: 16, paddingBottom: 12,
-    borderBottomWidth: 1, borderBottomColor: HUD.border,
-  },
-  eyebrow: { fontSize: 9, fontWeight: '700', color: HUD.textDim, letterSpacing: 2, marginBottom: 3 },
-  name: { fontSize: 18, fontWeight: '800', letterSpacing: 0.3 },
-  statusPill: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 10, paddingVertical: 6,
-    borderRadius: 20, borderWidth: 1,
-  },
-  statusText: { fontSize: 10, fontWeight: '800', letterSpacing: 1.5 },
-  sensorGrid: {
-    flexDirection: 'row', flexWrap: 'wrap', gap: 10, padding: 12,
-  },
-  sensorCard: {
-    width: (SCREEN_WIDTH - 32 - 36 - 24) / 2,
-    padding: 12, borderRadius: 10, borderWidth: 1, gap: 4,
-  },
-  sensorName: { fontSize: 10, fontWeight: '600', letterSpacing: 0.3 },
-  sensorVal: { fontSize: 20, fontWeight: '900' },
-  sensorUnit: { fontSize: 11, fontWeight: '400' },
-  barTrack: { height: 4, borderRadius: 2, backgroundColor: HUD.border, overflow: 'hidden' },
-  barFill: { height: '100%', borderRadius: 2 },
-  targetLabel: { fontSize: 9, color: HUD.textDim, letterSpacing: 0.5 },
+const sdS = StyleSheet.create({
+  wrap: { backgroundColor: HUD.bgCard, borderRadius: 14, borderWidth: 1, borderColor: HUD.borderBright, overflow: 'hidden', marginBottom: 14 },
+  sysHead: { padding: 14, borderLeftWidth: 3, gap: 4 },
+  faultFlag: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, borderWidth: 1, alignSelf: 'flex-start', marginBottom: 4 },
+  faultText: { fontSize: 9, fontWeight: '900', letterSpacing: 1.5 },
+  sysName: { fontSize: 17, fontWeight: '900' },
+  sysDesc: { fontSize: 12, color: HUD.textSec, lineHeight: 17 },
+  tabBar: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: HUD.border },
+  tab: { flex: 1, paddingVertical: 10, alignItems: 'center', borderBottomWidth: 2, borderBottomColor: 'transparent' },
+  tabTxt: { fontSize: 10, fontWeight: '800', letterSpacing: 1 },
+  content: { padding: 14, gap: 8 },
+  pHead: { flexDirection: 'row', paddingBottom: 6, borderBottomWidth: 1, borderBottomColor: HUD.borderBright, gap: 4 },
+  colH: { fontSize: 9, fontWeight: '800', color: HUD.textDim, letterSpacing: 1.5 },
+  pRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, gap: 4 },
+  pn: { fontSize: 9, color: HUD.textDim, fontWeight: '600' },
+  pName: { fontSize: 12, color: HUD.text },
+  stockBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6, borderWidth: 1 },
+  stockNum: { fontSize: 12, fontWeight: '800' },
+  stockNote: { fontSize: 10, color: HUD.textDim, marginTop: 4, fontStyle: 'italic' as any },
+  tsBlock: { gap: 5, marginBottom: 12 },
+  symptomRow: { flexDirection: 'row', alignItems: 'center', gap: 8, borderLeftWidth: 3, paddingLeft: 10, paddingVertical: 5 },
+  symptom: { fontSize: 13, fontWeight: '800', flex: 1 },
+  sRow: { flexDirection: 'row', gap: 8, paddingLeft: 6 },
+  sNum: { fontSize: 11, fontWeight: '900', width: 16, marginTop: 1 },
+  sTxt: { fontSize: 12, color: HUD.textSec, lineHeight: 18, flex: 1 },
+  lockBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderRadius: 8, borderWidth: 1, marginBottom: 6 },
+  rRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 6 },
+  rCircle: { width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', borderWidth: 1, flexShrink: 0 },
+  rNum: { fontSize: 10, fontWeight: '900' },
+  rTxt: { fontSize: 12, color: HUD.textSec, lineHeight: 18, flex: 1, paddingTop: 2 },
 });
 
-// ══════════════════════════════════ MAIN SCREEN ══════════════════════════════
+// ══════════════════════════ EQUIPMENT AVATAR MODAL ══════════════════════════
+function EquipmentAvatarModal({ visible, preSelectSystem, highlightEvent, onClose }: { visible: boolean; preSelectSystem?: string; highlightEvent?: string; onClose: () => void; }) {
+  const [selected, setSelected] = useState<string | null>(preSelectSystem || null);
+  const scrollRef = useRef<ScrollView>(null);
+  useEffect(() => { if (preSelectSystem) setSelected(preSelectSystem); }, [preSelectSystem]);
+  const system = selected ? A1200_SYSTEMS.find(s => s.id === selected) : null;
 
+  const handleSelect = (id: string) => {
+    setSelected(id);
+    setTimeout(() => scrollRef.current?.scrollTo({ y: 360, animated: true }), 150);
+  };
+
+  if (!visible) return null;
+
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
+      <View style={avS.container}>
+        <View style={avS.header}>
+          <View style={{ flex: 1 }}>
+            <Text style={avS.eyebrow}>EQUIPMENT INTELLIGENCE · TULSENZ OPS</Text>
+            <Text style={avS.mainTitle}>AVATAR A1200 / A2200</Text>
+            <Text style={avS.subTitle}>VERTICAL FORM-FILL-SEAL  ·  AFI PUB 4110811  ·  ISSUE 1  ·  JULY 2015</Text>
+          </View>
+          <View style={{ alignItems: 'flex-end', gap: 8 }}>
+            {highlightEvent && (
+              <View style={[avS.faultBadge, { backgroundColor: HUD.amberDim, borderColor: HUD.amber + '60' }]}>
+                <PulsingDot color={HUD.amber} size={6} />
+                <Text style={[avS.faultBadgeText, { color: HUD.amber }]}>ACTIVE FAULT</Text>
+              </View>
+            )}
+            <Pressable onPress={onClose} style={avS.closeBtn}><X size={18} color={HUD.textSec} /></Pressable>
+          </View>
+        </View>
+
+        <ScrollView ref={scrollRef} contentContainerStyle={{ padding: 16, paddingBottom: 60 }}>
+          {/* Machine specs strip */}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }}>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {[
+                { l: 'MODEL', v: 'A1200 / A2200' },
+                { l: 'PKG RANGE', v: '2"×2" → 8"×14"' },
+                { l: 'MAX SPEED', v: '70 PKG/MIN' },
+                { l: 'AIR SPEC', v: '70 PSI' },
+                { l: 'SEAL CTRL', v: '±1°F PID' },
+                { l: 'ENCODER', v: '0.001" ACC' },
+                { l: 'FILM TYPES', v: 'LAMI + POLY' },
+              ].map(s => (
+                <View key={s.l} style={avS.specChip}>
+                  <Text style={avS.specL}>{s.l}</Text>
+                  <Text style={avS.specV}>{s.v}</Text>
+                </View>
+              ))}
+            </View>
+          </ScrollView>
+
+          {/* Schematic */}
+          <A1200Schematic activeSystem={selected} onSelectSystem={handleSelect} />
+
+          {/* System navigator */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <Layers size={12} color={HUD.cyan} />
+            <Text style={{ fontSize: 11, fontWeight: '800', color: HUD.cyan, letterSpacing: 2, flex: 1 }}>SYSTEM NAVIGATOR</Text>
+            <Text style={{ fontSize: 9, color: HUD.textDim, letterSpacing: 1 }}>{A1200_SYSTEMS.length} SUBSYSTEMS</Text>
+          </View>
+
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }}>
+            <View style={{ flexDirection: 'row', gap: 8, paddingRight: 16 }}>
+              {A1200_SYSTEMS.map(s => {
+                const active = selected === s.id;
+                const hasFault = s.events.includes(highlightEvent || '');
+                return (
+                  <Pressable key={s.id}
+                    style={[avS.sysChip, { backgroundColor: active ? s.color + '22' : HUD.bgCard, borderColor: hasFault ? s.color : active ? s.color + '80' : HUD.borderBright, borderWidth: hasFault || active ? 2 : 1 }]}
+                    onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); handleSelect(s.id); }}
+                  >
+                    {hasFault && <AlertTriangle size={10} color={s.color} />}
+                    <Text style={[avS.sysChipTxt, { color: active ? s.color : hasFault ? s.color : HUD.textSec }]}>{s.short}</Text>
+                    {active && <ChevronDown size={10} color={s.color} />}
+                  </Pressable>
+                );
+              })}
+            </View>
+          </ScrollView>
+
+          {system ? (
+            <SystemDetailPanel system={system} highlightEvent={highlightEvent} />
+          ) : (
+            <View style={avS.noSel}>
+              <Cpu size={28} color={HUD.textDim} />
+              <Text style={avS.noSelTxt}>TAP A COMPONENT IN THE SCHEMATIC{'\n'}OR SELECT A SYSTEM ABOVE TO VIEW{'\n'}PARTS · TROUBLESHOOTING · REPAIR</Text>
+            </View>
+          )}
+        </ScrollView>
+      </View>
+    </Modal>
+  );
+}
+const avS = StyleSheet.create({
+  container: { flex: 1, backgroundColor: HUD.bg },
+  header: { flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 16, paddingTop: 54, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: HUD.borderBright, gap: 10 },
+  eyebrow: { fontSize: 9, fontWeight: '800', color: HUD.textDim, letterSpacing: 2, marginBottom: 3 },
+  mainTitle: { fontSize: 22, fontWeight: '900', color: HUD.cyan, letterSpacing: 1 },
+  subTitle: { fontSize: 9, color: HUD.textSec, letterSpacing: 0.8, marginTop: 2 },
+  faultBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10, borderWidth: 1 },
+  faultBadgeText: { fontSize: 9, fontWeight: '900', letterSpacing: 1 },
+  closeBtn: { padding: 8, backgroundColor: HUD.bgCardAlt, borderRadius: 10, borderWidth: 1, borderColor: HUD.borderBright },
+  specChip: { backgroundColor: HUD.bgCard, borderRadius: 10, borderWidth: 1, borderColor: HUD.borderBright, paddingHorizontal: 12, paddingVertical: 8, alignItems: 'center', gap: 2 },
+  specL: { fontSize: 8, fontWeight: '800', color: HUD.textDim, letterSpacing: 1.5 },
+  specV: { fontSize: 11, fontWeight: '800', color: HUD.text },
+  sysChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20 },
+  sysChipTxt: { fontSize: 11, fontWeight: '800', letterSpacing: 0.5 },
+  noSel: { alignItems: 'center', justifyContent: 'center', paddingVertical: 40, gap: 12 },
+  noSelTxt: { fontSize: 11, color: HUD.textDim, textAlign: 'center', letterSpacing: 1, lineHeight: 18 },
+});
+
+// ══════════════════════════ HEX METRIC CARD ══════════════════════════
+function HexMetric({ label, value, unit, color, icon }: { label: string; value: string; unit: string; color: string; icon: React.ReactNode }) {
+  return (
+    <View style={[hxS.card, { borderColor: color + '40', shadowColor: color }]}>
+      <View style={[hxS.icon, { backgroundColor: color + '15' }]}>{icon}</View>
+      <Text style={[hxS.value, { color }]}>{value}</Text>
+      <Text style={[hxS.unit, { color: color + 'aa' }]}>{unit}</Text>
+      <Text style={hxS.label}>{label}</Text>
+    </View>
+  );
+}
+const hxS = StyleSheet.create({
+  card: { width: 90, paddingVertical: 14, paddingHorizontal: 6, borderRadius: 12, borderWidth: 1, alignItems: 'center', gap: 3, marginRight: 10, backgroundColor: HUD.bgCard, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 5 },
+  icon: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  value: { fontSize: 21, fontWeight: '800', letterSpacing: -0.5 },
+  unit: { fontSize: 8, fontWeight: '600', letterSpacing: 1 },
+  label: { fontSize: 8, fontWeight: '700', color: HUD.textSec, letterSpacing: 0.5, textAlign: 'center' },
+});
+
+// ══════════════════════════ TYPES ══════════════════════════════════════
+interface RoomStatus { status: string; andon_color: string; bags_today: number; bags_per_minute: number; target_bags_per_minute: number; uptime_percent: number; updated_at: string; }
+interface SensorReading { id: string; sensor_id: string; sensor_name: string; sensor_type: string; unit: string; value: number; status: string; target_value: number; recorded_at: string; equipment_name: string; room_equipment_id: string; }
+interface RoomEquipment { id: string; equipment_name: string; position_x: number; position_y: number; position_width: number; position_height: number; status: string; display_order: number; }
+interface ProductionEvent { id: string; event_type: string; category: string; reason: string; equipment_name: string; started_at: string; }
+
+// ══════════════════════════════════ MAIN SCREEN ══════════════════════════════
 export default function RoomDashboard() {
   const router = useRouter();
   const { room } = useLocalSearchParams<{ room: string }>();
-  const orgContext = useOrganization();
-  const organizationId = orgContext?.organizationId || '';
+  const orgCtx = useOrganization();
+  const organizationId = orgCtx?.organizationId || '';
   const queryClient = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
-  const [selectedEquipment, setSelectedEquipment] = useState<string | null>(null);
   const [tickCount, setTickCount] = useState(0);
-  const scrollRef = useRef<ScrollView>(null);
+  const [activeAlert, setActiveAlert] = useState<ActiveAlert | null>(null);
+  const [showTFModal, setShowTFModal] = useState(false);
+  const [showAvatarModal, setShowAvatarModal] = useState(false);
+  const [avatarPreSystem, setAvatarPreSystem] = useState<string | undefined>(undefined);
 
   const roomCode = room || 'PA1';
   const roomNames: Record<string, string> = { PA1: 'PACKET AREA 1', PR1: 'PRODUCTION ROOM 1', PR2: 'PRODUCTION ROOM 2' };
   const roomName = roomNames[roomCode] || roomCode;
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      queryClient.invalidateQueries({ queryKey: ['room-dashboard', roomCode] });
-    }, 10000);
-    return () => clearInterval(interval);
+    const t = setInterval(() => queryClient.invalidateQueries({ queryKey: ['rdb', roomCode] }), 10000);
+    return () => clearInterval(t);
   }, [roomCode, queryClient]);
 
-  const { data: equipment = [], isLoading: equipLoading } = useQuery({
-    queryKey: ['room-dashboard', roomCode, 'equipment'],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('room_equipment').select('*')
-        .eq('organization_id', organizationId).eq('room_code', roomCode).order('display_order');
-      if (error) throw error;
-      return (data || []) as RoomEquipment[];
-    },
+  const { data: equipment = [] } = useQuery<RoomEquipment[]>({
+    queryKey: ['rdb', roomCode, 'equip'],
+    queryFn: async () => { const { data, error } = await supabase.from('room_equipment').select('*').eq('organization_id', organizationId).eq('room_code', roomCode).order('display_order'); if (error) throw error; return data || []; },
     enabled: !!organizationId,
   });
 
-  const { data: sensorReadings = [] } = useQuery({
-    queryKey: ['room-dashboard', roomCode, 'sensors'],
+  const { data: sensorReadings = [] } = useQuery<SensorReading[]>({
+    queryKey: ['rdb', roomCode, 'sensors'],
     queryFn: async () => {
-      const { data: sensors, error: sErr } = await supabase.from('equipment_sensors')
-        .select('id, room_equipment_id, sensor_name, sensor_type, unit, target_value, warning_low, warning_high, critical_low, critical_high')
-        .eq('organization_id', organizationId).eq('room_code', roomCode);
-      if (sErr) throw sErr;
-      if (!sensors || !sensors.length) return [];
-      const ids = sensors.map(s => s.id);
-      const { data: readings } = await supabase.from('sensor_readings')
-        .select('sensor_id, value, status, recorded_at')
-        .eq('organization_id', organizationId).eq('room_code', roomCode)
-        .in('sensor_id', ids).order('recorded_at', { ascending: false }).limit(ids.length * 2);
+      const { data: sensors } = await supabase.from('equipment_sensors').select('*').eq('organization_id', organizationId).eq('room_code', roomCode);
+      if (!sensors?.length) return [];
+      const { data: readings } = await supabase.from('sensor_readings').select('sensor_id, value, status, recorded_at').eq('organization_id', organizationId).eq('room_code', roomCode).in('sensor_id', sensors.map(s => s.id)).order('recorded_at', { ascending: false }).limit(sensors.length * 2);
       const equipMap: Record<string, string> = {};
       equipment.forEach(e => { equipMap[e.id] = e.equipment_name; });
-      const latestMap: Record<string, any> = {};
-      (readings || []).forEach(r => { if (!latestMap[r.sensor_id]) latestMap[r.sensor_id] = r; });
-      return sensors.map(s => ({
-        ...s, value: latestMap[s.id]?.value ?? null,
-        status: latestMap[s.id]?.status ?? 'idle',
-        recorded_at: latestMap[s.id]?.recorded_at ?? null,
-        equipment_name: equipMap[s.room_equipment_id] || 'Unknown',
-      })) as SensorReading[];
+      const latest: Record<string, any> = {};
+      (readings || []).forEach(r => { if (!latest[r.sensor_id]) latest[r.sensor_id] = r; });
+      return sensors.map(s => ({ ...s, value: latest[s.id]?.value ?? null, status: latest[s.id]?.status ?? 'idle', recorded_at: latest[s.id]?.recorded_at ?? null, equipment_name: equipMap[s.room_equipment_id] || 'Unknown' }));
     },
     enabled: !!organizationId && equipment.length > 0,
     refetchInterval: 10000,
   });
 
-  const { data: roomStatus } = useQuery({
-    queryKey: ['room-dashboard', roomCode, 'status'],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('room_status').select('*')
-        .eq('organization_id', organizationId).eq('room_code', roomCode).single();
-      if (error) return null;
-      return data as RoomStatus;
-    },
+  const { data: roomStatus } = useQuery<RoomStatus | null>({
+    queryKey: ['rdb', roomCode, 'status'],
+    queryFn: async () => { const { data } = await supabase.from('room_status').select('*').eq('organization_id', organizationId).eq('room_code', roomCode).single(); return data; },
     enabled: !!organizationId,
     refetchInterval: 10000,
   });
 
-  const { data: productionEvents = [] } = useQuery({
-    queryKey: ['room-dashboard', roomCode, 'events'],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('production_events').select('*')
-        .eq('organization_id', organizationId).eq('room_code', roomCode)
-        .order('started_at', { ascending: false }).limit(20);
-      if (error) return [];
-      return (data || []) as ProductionEvent[];
-    },
+  const { data: productionEvents = [] } = useQuery<ProductionEvent[]>({
+    queryKey: ['rdb', roomCode, 'events'],
+    queryFn: async () => { const { data } = await supabase.from('production_events').select('*').eq('organization_id', organizationId).eq('room_code', roomCode).order('started_at', { ascending: false }).limit(12); return data || []; },
     enabled: !!organizationId,
     refetchInterval: 15000,
   });
 
-  const sensorsByEquipment = useMemo(() => {
-    const map: Record<string, SensorReading[]> = {};
-    sensorReadings.forEach(s => {
-      if (!map[s.equipment_name]) map[s.equipment_name] = [];
-      map[s.equipment_name].push(s);
-    });
-    return map;
-  }, [sensorReadings]);
+  const andonColor = AC[roomStatus?.andon_color || 'gray'] || HUD.textDim;
+  const bpm = roomStatus?.bags_per_minute || 0;
+  const target = roomStatus?.target_bags_per_minute || 1;
+  const bpmColor = bpm >= target * 0.9 ? HUD.green : bpm >= target * 0.7 ? HUD.amber : HUD.red;
+  const uptColor = (roomStatus?.uptime_percent || 0) >= 90 ? HUD.green : (roomStatus?.uptime_percent || 0) >= 75 ? HUD.amber : HUD.red;
+  const critSensors = sensorReadings.filter(s => s.status === 'critical' && s.value != null);
 
-  const equipmentStatus = useMemo(() => {
-    const map: Record<string, string> = {};
-    equipment.forEach(e => {
-      const sensors = sensorsByEquipment[e.equipment_name] || [];
-      if (!sensors.length) { map[e.equipment_name] = 'idle'; return; }
-      const hasCrit = sensors.some(s => s.status === 'critical');
-      const hasWarn = sensors.some(s => s.status === 'warning');
-      map[e.equipment_name] = hasCrit ? 'critical' : hasWarn ? 'warning' : 'normal';
-    });
-    return map;
-  }, [equipment, sensorsByEquipment]);
-
-  const andonColor = ANDON_COLOR[roomStatus?.andon_color || 'gray'] || HUD.textDim;
-
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await queryClient.invalidateQueries({ queryKey: ['room-dashboard', roomCode] });
-    setRefreshing(false);
-  }, [queryClient, roomCode]);
-
-  const handleTick = useCallback(async () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    try {
-      const res = await fetch('https://app.tulkenz.net/api/simulator?action=tick', { method: 'POST' });
-      const json = await res.json();
-      setTickCount(json.tick || tickCount + 1);
-      await queryClient.invalidateQueries({ queryKey: ['room-dashboard', roomCode] });
-    } catch (err: any) {
-      Alert.alert('Tick Error', err.message || 'Failed to connect to simulator');
-    }
-  }, [queryClient, roomCode, tickCount]);
+  const onRefresh = useCallback(async () => { setRefreshing(true); await queryClient.invalidateQueries({ queryKey: ['rdb', roomCode] }); setRefreshing(false); }, [queryClient, roomCode]);
 
   const handleTriggerEvent = useCallback(async (eventName: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
@@ -632,199 +856,131 @@ export default function RoomDashboard() {
         await new Promise(r => setTimeout(r, 500));
         await fetch('https://app.tulkenz.net/api/simulator?action=tick', { method: 'POST' });
       }
-      await queryClient.invalidateQueries({ queryKey: ['room-dashboard', roomCode] });
-    } catch (err) { console.error('[RoomDashboard] Trigger error:', err); }
-  }, [queryClient, roomCode]);
+      await queryClient.invalidateQueries({ queryKey: ['rdb', roomCode] });
+      // Find relevant sensor to surface in alert
+      const relevantSensor = sensorReadings.find(s =>
+        s.value != null && (
+          (eventName === 'seal_temp_drift' && s.sensor_type === 'temperature') ||
+          (eventName === 'air_pressure_drop' && s.sensor_type === 'pressure') ||
+          (['auger_slowdown', 'film_jam', 'vibration_spike'].includes(eventName) && s.sensor_type === 'speed') ||
+          s.status === 'warning' || s.status === 'critical'
+        )
+      );
+      setActiveAlert({
+        eventType: eventName,
+        sensorName: relevantSensor?.sensor_name,
+        value: relevantSensor?.value,
+        unit: relevantSensor?.unit,
+        target: relevantSensor?.target_value,
+      });
+    } catch (e) { console.error('[Trigger]', e); }
+  }, [queryClient, roomCode, sensorReadings]);
 
-  const bpm = roomStatus?.bags_per_minute || 0;
-  const target = roomStatus?.target_bags_per_minute || 1;
-  const bpmColor = bpm >= target * 0.9 ? HUD.green : bpm >= target * 0.7 ? HUD.amber : HUD.red;
-  const uptime = roomStatus?.uptime_percent || 0;
-  const uptimeColor = uptime >= 90 ? HUD.green : uptime >= 75 ? HUD.amber : HUD.red;
+  const handleTick = useCallback(async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    try {
+      const res = await fetch('https://app.tulkenz.net/api/simulator?action=tick', { method: 'POST' });
+      const json = await res.json();
+      setTickCount(json.tick || tickCount + 1);
+      await queryClient.invalidateQueries({ queryKey: ['rdb', roomCode] });
+    } catch (e) { console.error('[Tick]', e); }
+  }, [queryClient, roomCode, tickCount]);
 
-  const criticalSensors = sensorReadings.filter(s => s.status === 'critical' && s.value != null);
-  const warningSensors = sensorReadings.filter(s => s.status === 'warning' && s.value != null);
+  const handleOpenAvatarFromWO = useCallback(() => {
+    if (activeAlert) setAvatarPreSystem(EVENT_SYSTEM[activeAlert.eventType]);
+    setShowWOModal(false);
+    setShowAvatarModal(true);
+  }, [activeAlert]);
 
   return (
-    <View style={mainStyles.container}>
+    <View style={mS.container}>
       <Stack.Screen options={{ headerShown: false }} />
 
-      {/* ── HUD Header ── */}
-      <View style={[mainStyles.header, { borderBottomColor: andonColor + '60', shadowColor: andonColor }]}>
-        {/* Grid overlay */}
-        <View style={mainStyles.headerGrid} pointerEvents="none">
-          {[0.2, 0.4, 0.6, 0.8].map(f => (
-            <View key={f} style={[mainStyles.headerGridLine, { left: `${f * 100}%` as any }]} />
-          ))}
-        </View>
-
-        <Pressable style={mainStyles.backBtn} onPress={() => router.back()}>
+      {/* HUD Header */}
+      <View style={[mS.header, { borderBottomColor: andonColor + '60', shadowColor: andonColor }]}>
+        <Pressable style={mS.backBtn} onPress={() => router.back()}>
           <ChevronLeft size={22} color={HUD.cyan} />
         </Pressable>
-
         <View style={{ flex: 1 }}>
-          <Text style={mainStyles.roomCode}>{roomCode}</Text>
-          <Text style={[mainStyles.roomName, { color: andonColor }]}>{roomName}</Text>
-          <Text style={mainStyles.roomSub}>
-            {roomStatus?.updated_at
-              ? `SYS SYNC • ${new Date(roomStatus.updated_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' })}`
-              : 'AWAITING SIGNAL'}
-          </Text>
+          <Text style={mS.roomCode}>{roomCode}</Text>
+          <Text style={[mS.roomName, { color: andonColor }]}>{roomName}</Text>
+          <Text style={mS.roomSub}>{roomStatus?.updated_at ? `SYS SYNC · ${new Date(roomStatus.updated_at).toLocaleTimeString()}` : 'AWAITING SIGNAL'}</Text>
         </View>
-
         <View style={{ alignItems: 'flex-end', gap: 6 }}>
-          <View style={[mainStyles.statusPill, { backgroundColor: andonColor + '18', borderColor: andonColor + '50' }]}>
+          <View style={[mS.pill, { backgroundColor: andonColor + '18', borderColor: andonColor + '50' }]}>
             <PulsingDot color={andonColor} size={7} />
-            <Text style={[mainStyles.statusPillText, { color: andonColor }]}>
-              {(roomStatus?.status || 'IDLE').toUpperCase()}
-            </Text>
+            <Text style={[mS.pillTxt, { color: andonColor }]}>{(roomStatus?.status || 'IDLE').toUpperCase()}</Text>
           </View>
-          {criticalSensors.length > 0 && (
-            <View style={[mainStyles.alertPill, { backgroundColor: HUD.red + '18', borderColor: HUD.red + '50' }]}>
+          {critSensors.length > 0 && (
+            <View style={[mS.pill, { backgroundColor: HUD.redDim, borderColor: HUD.red + '50' }]}>
               <AlertTriangle size={10} color={HUD.red} />
-              <Text style={[mainStyles.alertPillText, { color: HUD.red }]}>{criticalSensors.length} CRIT</Text>
+              <Text style={[mS.pillTxt, { color: HUD.red }]}>{critSensors.length} CRIT</Text>
             </View>
           )}
         </View>
-
-        <Pressable style={mainStyles.tickBtn} onPress={handleTick}>
-          <Zap size={16} color={HUD.purple} />
-        </Pressable>
+        <Pressable style={mS.tickBtn} onPress={handleTick}><Zap size={16} color={HUD.purple} /></Pressable>
       </View>
 
-      <ScrollView
-        ref={scrollRef}
-        style={{ flex: 1, backgroundColor: HUD.bg }}
-        contentContainerStyle={{ padding: 16, paddingBottom: 80 }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={andonColor} />}
-      >
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 120 }} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={andonColor} />}>
 
-        {/* ── Metrics Strip ── */}
+        {/* Metrics */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
           <View style={{ flexDirection: 'row' }}>
-            <HexMetric
-              label="BAGS/MIN"
-              value={bpm.toString()}
-              unit={`/ ${target}`}
-              color={bpmColor}
-              icon={<Package size={14} color={bpmColor} />}
-            />
-            <HexMetric
-              label="TODAY"
-              value={(roomStatus?.bags_today || 0).toLocaleString()}
-              unit="BAGS"
-              color={HUD.cyan}
-              icon={<BarChart2 size={14} color={HUD.cyan} />}
-            />
-            <HexMetric
-              label="UPTIME"
-              value={`${uptime}%`}
-              unit="OEE"
-              color={uptimeColor}
-              icon={<TrendingUp size={14} color={uptimeColor} />}
-            />
-            {sensorReadings.filter(s => ['temperature', 'pressure'].includes(s.sensor_type) && s.value != null).slice(0, 4).map(s => (
-              <HexMetric
-                key={s.id}
-                label={s.sensor_name.length > 10 ? s.sensor_name.substring(0, 9) + '…' : s.sensor_name}
-                value={s.value.toFixed(0)}
-                unit={s.unit || ''}
-                color={STATUS_COLOR[s.status] || HUD.textDim}
-                icon={s.sensor_type === 'temperature'
-                  ? <Thermometer size={14} color={STATUS_COLOR[s.status]} />
-                  : <Gauge size={14} color={STATUS_COLOR[s.status]} />}
-              />
+            <HexMetric label="BAGS/MIN" value={bpm.toString()} unit={`/ ${target}`} color={bpmColor} icon={<Package size={14} color={bpmColor} />} />
+            <HexMetric label="TODAY" value={(roomStatus?.bags_today || 0).toLocaleString()} unit="BAGS" color={HUD.cyan} icon={<BarChart2 size={14} color={HUD.cyan} />} />
+            <HexMetric label="UPTIME" value={`${roomStatus?.uptime_percent || 0}%`} unit="OEE" color={uptColor} icon={<TrendingUp size={14} color={uptColor} />} />
+            {sensorReadings.filter(s => s.value != null).slice(0, 4).map(s => (
+              <HexMetric key={s.id} label={s.sensor_name.length > 9 ? s.sensor_name.substring(0, 8) + '…' : s.sensor_name} value={s.value.toFixed(0)} unit={s.unit || ''} color={SC[s.status] || HUD.textDim} icon={s.sensor_type === 'temperature' ? <Thermometer size={14} color={SC[s.status]} /> : <Gauge size={14} color={SC[s.status]} />} />
             ))}
           </View>
         </ScrollView>
 
-        {/* ── Alert Banner (critical only) ── */}
-        {criticalSensors.length > 0 && (
-          <View style={mainStyles.alertBanner}>
-            <AlertTriangle size={14} color={HUD.red} />
-            <Text style={mainStyles.alertBannerText}>
-              {criticalSensors.length} CRITICAL SENSOR{criticalSensors.length > 1 ? 'S' : ''}: {criticalSensors.map(s => s.sensor_name).join(' · ')}
-            </Text>
+        {/* Crit sensor banner */}
+        {critSensors.length > 0 && (
+          <View style={mS.critBanner}>
+            <AlertTriangle size={13} color={HUD.red} />
+            <Text style={mS.critBannerTxt}>{critSensors.length} CRITICAL: {critSensors.map(s => s.sensor_name).join(' · ')}</Text>
           </View>
         )}
 
-        {/* ── Schematic ── */}
-        <EquipmentSchematic
-          equipment={equipment}
-          sensorsByEquipment={sensorsByEquipment}
-          equipmentStatus={equipmentStatus}
-          selectedEquipment={selectedEquipment}
-          onSelect={setSelectedEquipment}
-          andonColor={andonColor}
-        />
-
-        {/* ── Selected Equipment Panel ── */}
-        {selectedEquipment && (
-          <EquipmentDetailPanel
-            name={selectedEquipment}
-            status={equipmentStatus[selectedEquipment] || 'idle'}
-            sensors={sensorsByEquipment[selectedEquipment] || []}
-          />
-        )}
-
-        {/* ── All Sensors ── */}
-        <View style={mainStyles.sectionCard}>
-          <View style={mainStyles.sectionHeader}>
-            <Activity size={13} color={HUD.cyan} />
-            <Text style={mainStyles.sectionTitle}>SENSOR MATRIX</Text>
-            <Text style={mainStyles.sectionCount}>{sensorReadings.filter(s => s.value != null).length} ACTIVE</Text>
+        {/* Sensor matrix */}
+        <View style={mS.card}>
+          <View style={mS.cardHead}>
+            <Activity size={12} color={HUD.cyan} />
+            <Text style={mS.cardTitle}>SENSOR MATRIX</Text>
+            <Text style={mS.cardCount}>{sensorReadings.filter(s => s.value != null).length} ACTIVE</Text>
           </View>
-
-          {sensorReadings.filter(s => s.value != null).map((sensor, i) => {
-            const sc = STATUS_COLOR[sensor.status] || HUD.textDim;
-            const isLast = i === sensorReadings.filter(s => s.value != null).length - 1;
+          {sensorReadings.filter(s => s.value != null).map((s, i, arr) => {
+            const col = SC[s.status] || HUD.textDim;
             return (
-              <View key={sensor.id} style={[mainStyles.sensorRow, !isLast && { borderBottomColor: HUD.border, borderBottomWidth: 1 }]}>
-                <View style={[mainStyles.sensorIndicator, { backgroundColor: sc, shadowColor: sc }]} />
+              <View key={s.id} style={[mS.sRow, i < arr.length - 1 && { borderBottomWidth: 1, borderBottomColor: HUD.border }]}>
+                <View style={[mS.sBar, { backgroundColor: col, shadowColor: col }]} />
                 <View style={{ flex: 1 }}>
-                  <Text style={[mainStyles.sensorName, { color: HUD.text }]}>{sensor.sensor_name}</Text>
-                  <Text style={mainStyles.sensorEquip}>{sensor.equipment_name}</Text>
+                  <Text style={mS.sName}>{s.sensor_name}</Text>
+                  <Text style={mS.sEquip}>{s.equipment_name}</Text>
                 </View>
-                <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={[mainStyles.sensorVal, { color: sc }]}>
-                    {sensor.value.toFixed(1)} <Text style={{ fontSize: 10, fontWeight: '400' }}>{sensor.unit}</Text>
-                  </Text>
-                  {sensor.status !== 'normal' && sensor.status !== 'idle' && (
-                    <View style={[mainStyles.statusMini, { backgroundColor: sc + '20', borderColor: sc + '50' }]}>
-                      <Text style={[mainStyles.statusMiniText, { color: sc }]}>{sensor.status.toUpperCase()}</Text>
-                    </View>
-                  )}
-                </View>
+                <Text style={[mS.sVal, { color: col }]}>{s.value.toFixed(1)}<Text style={{ fontSize: 10, fontWeight: '400' }}> {s.unit}</Text></Text>
               </View>
             );
           })}
         </View>
 
-        {/* ── Events ── */}
+        {/* Events */}
         {productionEvents.length > 0 && (
-          <View style={mainStyles.sectionCard}>
-            <View style={mainStyles.sectionHeader}>
-              <Radio size={13} color={HUD.amber} />
-              <Text style={[mainStyles.sectionTitle, { color: HUD.amber }]}>EVENT LOG</Text>
-              <Text style={[mainStyles.sectionCount, { color: HUD.amber + '80' }]}>{productionEvents.length} RECORDS</Text>
+          <View style={mS.card}>
+            <View style={mS.cardHead}>
+              <Radio size={12} color={HUD.amber} />
+              <Text style={[mS.cardTitle, { color: HUD.amber }]}>EVENT LOG</Text>
+              <Text style={[mS.cardCount, { color: HUD.amber + '80' }]}>{productionEvents.length} RECORDS</Text>
             </View>
-            {productionEvents.slice(0, 8).map(evt => {
-              const isScheduled = evt.category === 'scheduled';
-              const color = isScheduled ? HUD.cyan : evt.event_type === 'equipment_fault' ? HUD.red : HUD.amber;
+            {productionEvents.slice(0, 6).map(evt => {
+              const col = evt.event_type === 'equipment_fault' ? HUD.red : evt.category === 'scheduled' ? HUD.cyan : HUD.amber;
               return (
-                <View key={evt.id} style={[mainStyles.eventRow, { borderLeftColor: color }]}>
-                  <View style={[mainStyles.eventDot, { backgroundColor: color, shadowColor: color }]} />
+                <View key={evt.id} style={[mS.evtRow, { borderLeftColor: col }]}>
+                  <View style={[mS.evtDot, { backgroundColor: col, shadowColor: col }]} />
                   <View style={{ flex: 1 }}>
-                    <Text style={[mainStyles.eventReason, { color: HUD.text }]} numberOfLines={2}>{evt.reason || evt.event_type}</Text>
-                    <Text style={mainStyles.eventTime}>
-                      {new Date(evt.started_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
-                      {evt.equipment_name ? ` · ${evt.equipment_name}` : ''}
-                    </Text>
-                  </View>
-                  <View style={[mainStyles.eventBadge, { backgroundColor: color + '18', borderColor: color + '40' }]}>
-                    <Text style={[mainStyles.eventBadgeText, { color }]}>
-                      {isScheduled ? 'SCHED' : evt.event_type === 'equipment_fault' ? 'FAULT' : 'WARN'}
-                    </Text>
+                    <Text style={mS.evtReason} numberOfLines={1}>{evt.reason || evt.event_type}</Text>
+                    <Text style={mS.evtTime}>{new Date(evt.started_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}{evt.equipment_name ? ` · ${evt.equipment_name}` : ''}</Text>
                   </View>
                 </View>
               );
@@ -832,134 +988,109 @@ export default function RoomDashboard() {
           </View>
         )}
 
-        {/* ── Simulator ── */}
-        <View style={[mainStyles.sectionCard, { borderColor: HUD.purple + '40' }]}>
-          <View style={mainStyles.sectionHeader}>
-            <Zap size={13} color={HUD.purple} />
-            <Text style={[mainStyles.sectionTitle, { color: HUD.purple }]}>SIM CONTROLS</Text>
-            <Text style={[mainStyles.sectionCount, { color: HUD.purple + '80' }]}>DEMO MODE</Text>
+        {/* Sim + Equipment Avatar */}
+        <View style={[mS.card, { borderColor: HUD.purple + '40' }]}>
+          <View style={mS.cardHead}>
+            <Zap size={12} color={HUD.purple} />
+            <Text style={[mS.cardTitle, { color: HUD.purple }]}>SIM CONTROLS</Text>
+            <Text style={[mS.cardCount, { color: HUD.purple + '80' }]}>DEMO MODE</Text>
           </View>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+
+          {/* Equipment manual shortcut */}
+          <Pressable
+            style={({ pressed }) => [mS.avatarBtn, { backgroundColor: pressed ? HUD.cyanDim : HUD.bgCardAlt }]}
+            onPress={() => { setAvatarPreSystem(undefined); setShowAvatarModal(true); }}
+          >
+            <Cpu size={15} color={HUD.cyan} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 12, fontWeight: '800', color: HUD.cyan }}>AVATAR A1200 EQUIPMENT INTELLIGENCE</Text>
+              <Text style={{ fontSize: 10, color: HUD.textSec, marginTop: 1 }}>Tap to view schematic · parts · troubleshooting · repair</Text>
+            </View>
+            <ChevronRight size={15} color={HUD.cyan} />
+          </Pressable>
+
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
             {[
-              { event: 'seal_temp_drift', label: 'SEAL TEMP DRIFT', color: HUD.amber, rooms: ['PA1'] },
-              { event: 'air_pressure_drop', label: 'AIR PRESSURE DROP', color: HUD.red, rooms: ['PA1', 'PR1', 'PR2'] },
-              { event: 'auger_slowdown', label: 'AUGER SLOWDOWN', color: HUD.amber, rooms: ['PA1', 'PR1', 'PR2'] },
-              { event: 'film_jam', label: 'FILM JAM', color: HUD.red, rooms: ['PA1'] },
-              { event: 'vibration_spike', label: 'VIBRATION SPIKE', color: HUD.amber, rooms: ['PR1', 'PR2'] },
-              { event: 'metal_detect_rejects', label: 'METAL REJECTS', color: HUD.red, rooms: ['PR1', 'PR2'] },
-              { event: 'hopper_low', label: 'HOPPER LOW', color: HUD.amber, rooms: ['PA1', 'PR1', 'PR2'] },
-              { event: 'scheduled_break', label: 'SCHED BREAK', color: HUD.cyan, rooms: ['PA1', 'PR1', 'PR2'] },
-            ].filter(e => e.rooms.includes(roomCode)).map(evt => (
-              <Pressable
-                key={evt.event}
-                style={({ pressed }) => [mainStyles.simBtn, {
-                  borderColor: evt.color + '50',
-                  backgroundColor: pressed ? evt.color + '30' : evt.color + '12',
-                }]}
-                onPress={() => handleTriggerEvent(evt.event)}
-              >
-                <Text style={[mainStyles.simBtnText, { color: evt.color }]}>{evt.label}</Text>
+              { e: 'seal_temp_drift', l: 'SEAL TEMP DRIFT', c: HUD.amber, r: ['PA1'] },
+              { e: 'air_pressure_drop', l: 'AIR PRESSURE', c: HUD.red, r: ['PA1', 'PR1', 'PR2'] },
+              { e: 'film_jam', l: 'FILM JAM', c: HUD.red, r: ['PA1'] },
+              { e: 'auger_slowdown', l: 'AUGER SLOWDOWN', c: HUD.amber, r: ['PA1', 'PR1', 'PR2'] },
+              { e: 'vibration_spike', l: 'VIBRATION SPIKE', c: HUD.amber, r: ['PR1', 'PR2'] },
+              { e: 'metal_detect_rejects', l: 'METAL REJECTS', c: HUD.red, r: ['PR1', 'PR2'] },
+              { e: 'hopper_low', l: 'HOPPER LOW', c: HUD.amber, r: ['PA1', 'PR1', 'PR2'] },
+              { e: 'scheduled_break', l: 'SCHED BREAK', c: HUD.cyan, r: ['PA1', 'PR1', 'PR2'] },
+            ].filter(x => x.r.includes(roomCode)).map(x => (
+              <Pressable key={x.e} style={({ pressed }) => [mS.simBtn, { borderColor: x.c + '50', backgroundColor: pressed ? x.c + '30' : x.c + '12' }]} onPress={() => handleTriggerEvent(x.e)}>
+                <Text style={[mS.simBtnTxt, { color: x.c }]}>{x.l}</Text>
               </Pressable>
             ))}
           </View>
-          <Pressable
-            style={({ pressed }) => [mainStyles.tickBtnFull, {
-              backgroundColor: pressed ? HUD.purple + '40' : HUD.purple + '15',
-              borderColor: HUD.purple + '50',
-            }]}
-            onPress={handleTick}
-          >
-            <Zap size={16} color={HUD.purple} />
-            <Text style={[mainStyles.tickBtnText, { color: HUD.purple }]}>
-              ADVANCE TICK{tickCount > 0 ? ` · ${tickCount}` : ''}
-            </Text>
+
+          <Pressable style={({ pressed }) => [mS.tickFull, { backgroundColor: pressed ? HUD.purple + '40' : HUD.purple + '15', borderColor: HUD.purple + '50' }]} onPress={handleTick}>
+            <Zap size={15} color={HUD.purple} />
+            <Text style={[mS.tickFullTxt, { color: HUD.purple }]}>ADVANCE TICK{tickCount > 0 ? ` · ${tickCount}` : ''}</Text>
           </Pressable>
         </View>
 
       </ScrollView>
+
+      {/* Floating incident alert */}
+      {activeAlert && (
+        <IncidentAlertCard
+          alert={activeAlert}
+          onCreatePost={() => setShowTFModal(true)}
+          onDismiss={() => setActiveAlert(null)}
+        />
+      )}
+
+      {/* Task Feed Post Modal */}
+      <TaskFeedPostModal
+        visible={showTFModal}
+        alert={activeAlert}
+        roomCode={roomCode}
+        onClose={() => setShowTFModal(false)}
+        onOpenAvatar={handleOpenAvatarFromWO}
+      />
+
+      {/* Equipment Avatar Modal */}
+      <EquipmentAvatarModal
+        visible={showAvatarModal}
+        preSelectSystem={avatarPreSystem}
+        highlightEvent={activeAlert?.eventType}
+        onClose={() => setShowAvatarModal(false)}
+      />
     </View>
   );
 }
 
-// ══════════════════════════════════ STYLES ══════════════════════════════════
-
-const mainStyles = StyleSheet.create({
+const mS = StyleSheet.create({
   container: { flex: 1, backgroundColor: HUD.bg },
-  header: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 12, paddingTop: 54, paddingBottom: 14,
-    borderBottomWidth: 2, gap: 10,
-    backgroundColor: HUD.bgCard,
-    shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.3, shadowRadius: 16, elevation: 8,
-    overflow: 'hidden',
-  },
-  headerGrid: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
-  headerGridLine: { position: 'absolute', top: 0, bottom: 0, width: 1, backgroundColor: HUD.grid },
+  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingTop: 54, paddingBottom: 14, borderBottomWidth: 2, gap: 10, backgroundColor: HUD.bgCard, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.3, shadowRadius: 16, elevation: 8 },
   backBtn: { padding: 8, backgroundColor: HUD.cyanDim, borderRadius: 10, borderWidth: 1, borderColor: HUD.cyanMid },
   roomCode: { fontSize: 10, fontWeight: '800', color: HUD.textDim, letterSpacing: 3 },
   roomName: { fontSize: 17, fontWeight: '900', letterSpacing: 1 },
   roomSub: { fontSize: 9, color: HUD.textDim, letterSpacing: 1.5, marginTop: 2 },
-  statusPill: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    paddingHorizontal: 8, paddingVertical: 4,
-    borderRadius: 20, borderWidth: 1,
-  },
-  statusPillText: { fontSize: 9, fontWeight: '800', letterSpacing: 1.5 },
-  alertPill: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 7, paddingVertical: 3,
-    borderRadius: 20, borderWidth: 1,
-  },
-  alertPillText: { fontSize: 9, fontWeight: '800', letterSpacing: 1 },
-  tickBtn: {
-    width: 38, height: 38, borderRadius: 10,
-    backgroundColor: HUD.purpleDim, borderWidth: 1, borderColor: HUD.purple + '40',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  alertBanner: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: HUD.red + '15', borderWidth: 1, borderColor: HUD.red + '40',
-    borderRadius: 10, padding: 12, marginBottom: 14,
-  },
-  alertBannerText: { fontSize: 11, fontWeight: '700', color: HUD.red, flex: 1, letterSpacing: 0.5 },
-  sectionCard: {
-    backgroundColor: HUD.bgCard, borderRadius: 14,
-    borderWidth: 1, borderColor: HUD.borderBright,
-    padding: 14, marginBottom: 16,
-  },
-  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 },
-  sectionTitle: { fontSize: 11, fontWeight: '800', color: HUD.cyan, letterSpacing: 2, flex: 1 },
-  sectionCount: { fontSize: 9, fontWeight: '700', color: HUD.textDim, letterSpacing: 1 },
-  sensorRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, gap: 10 },
-  sensorIndicator: {
-    width: 6, height: 32, borderRadius: 3,
-    shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.8, shadowRadius: 4, elevation: 3,
-  },
-  sensorName: { fontSize: 13, fontWeight: '600' },
-  sensorEquip: { fontSize: 10, color: HUD.textDim, marginTop: 1, letterSpacing: 0.3 },
-  sensorVal: { fontSize: 15, fontWeight: '800' },
-  statusMini: {
-    paddingHorizontal: 5, paddingVertical: 2, borderRadius: 4, borderWidth: 1, marginTop: 2,
-  },
-  statusMiniText: { fontSize: 8, fontWeight: '800', letterSpacing: 1 },
-  eventRow: {
-    flexDirection: 'row', alignItems: 'flex-start',
-    paddingVertical: 10, paddingLeft: 12,
-    borderLeftWidth: 2, gap: 10, marginBottom: 4,
-  },
-  eventDot: {
-    width: 7, height: 7, borderRadius: 4, marginTop: 4,
-    shadowOffset: { width: 0, height: 0 }, shadowOpacity: 1, shadowRadius: 4, elevation: 3,
-  },
-  eventReason: { fontSize: 12, fontWeight: '600', lineHeight: 17 },
-  eventTime: { fontSize: 10, color: HUD.textDim, marginTop: 2, letterSpacing: 0.5 },
-  eventBadge: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 5, borderWidth: 1 },
-  eventBadgeText: { fontSize: 8, fontWeight: '800', letterSpacing: 1 },
+  pill: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 20, borderWidth: 1 },
+  pillTxt: { fontSize: 9, fontWeight: '800', letterSpacing: 1.5 },
+  tickBtn: { width: 38, height: 38, borderRadius: 10, backgroundColor: HUD.purpleDim, borderWidth: 1, borderColor: HUD.purple + '40', alignItems: 'center', justifyContent: 'center' },
+  critBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: HUD.red + '15', borderWidth: 1, borderColor: HUD.red + '40', borderRadius: 10, padding: 10, marginBottom: 14 },
+  critBannerTxt: { fontSize: 11, fontWeight: '700', color: HUD.red, flex: 1 },
+  card: { backgroundColor: HUD.bgCard, borderRadius: 14, borderWidth: 1, borderColor: HUD.borderBright, padding: 14, marginBottom: 16 },
+  cardHead: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
+  cardTitle: { fontSize: 11, fontWeight: '800', color: HUD.cyan, letterSpacing: 2, flex: 1 },
+  cardCount: { fontSize: 9, fontWeight: '700', color: HUD.textDim, letterSpacing: 1 },
+  sRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 9, gap: 10 },
+  sBar: { width: 5, height: 32, borderRadius: 3, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.8, shadowRadius: 4 },
+  sName: { fontSize: 13, fontWeight: '600', color: HUD.text },
+  sEquip: { fontSize: 10, color: HUD.textDim, marginTop: 1 },
+  sVal: { fontSize: 15, fontWeight: '800' },
+  evtRow: { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 9, paddingLeft: 10, borderLeftWidth: 2, gap: 8, marginBottom: 2 },
+  evtDot: { width: 7, height: 7, borderRadius: 4, marginTop: 3, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 1, shadowRadius: 4 },
+  evtReason: { fontSize: 12, fontWeight: '600', color: HUD.text },
+  evtTime: { fontSize: 10, color: HUD.textDim, marginTop: 1 },
+  avatarBtn: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 10, borderWidth: 1, borderColor: HUD.cyan + '50' },
   simBtn: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, borderWidth: 1 },
-  simBtnText: { fontSize: 10, fontWeight: '800', letterSpacing: 1 },
-  tickBtnFull: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 8, padding: 13, borderRadius: 10, borderWidth: 1,
-  },
-  tickBtnText: { fontSize: 13, fontWeight: '800', letterSpacing: 1.5 },
+  simBtnTxt: { fontSize: 10, fontWeight: '800', letterSpacing: 1 },
+  tickFull: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 12, borderRadius: 10, borderWidth: 1, marginTop: 10 },
+  tickFullTxt: { fontSize: 13, fontWeight: '800', letterSpacing: 1.5 },
 });
