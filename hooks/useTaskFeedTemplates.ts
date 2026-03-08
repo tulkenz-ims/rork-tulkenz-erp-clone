@@ -1552,11 +1552,19 @@ export function useDeleteTaskFeedPost(callbacks?: MutationCallbacks<string>) {
 
       // If post had a production hold, reset room_status back to normal
       if (post.is_production_hold && post.production_line) {
+        const { data: currentRoom } = await supabase
+          .from('room_status')
+          .select('target_bags_per_minute')
+          .eq('organization_id', post.organization_id)
+          .eq('room_code', post.production_line)
+          .single();
+
         await supabase
           .from('room_status')
           .update({
             status: 'running',
             andon_color: 'green',
+            bags_per_minute: currentRoom?.target_bags_per_minute || 0,
             updated_at: new Date().toISOString(),
             updated_by: user ? `${user.first_name} ${user.last_name}` : 'System',
           })
