@@ -183,7 +183,7 @@ export function useAIActions() {
           template_name: templateName,
           template_snapshot: template?.snapshot || null,
           created_by_id: user?.id || null,
-          created_by_name: user?.name || 'AI Assistant',
+          created_by_name: (user ? `${user.first_name} ${user.last_name}`.trim() : 'AI Assistant'),
           location_name: resolvedLocation,
           form_data: formData,
           notes: `[AI] ${notes}`,
@@ -218,12 +218,50 @@ export function useAIActions() {
 
       if (deptError) console.error('[AIActions] Dept tasks error:', deptError);
 
+      // ── Insert task_verifications row so the feed list screen can see this post ──
+      // The task feed index screen renders from useTaskVerificationsQuery (task_verifications table).
+      // Without this row, the post exists in task_feed_posts but never appears in the feed.
+      try {
+        const verificationInsert: Record<string, any> = {
+          organization_id: organizationId,
+          department_code: reportingDept.code,
+          department_name: reportingDept.name,
+          location_name: resolvedLocation || 'Not Specified',
+          category_id: `tf-${templateName.toLowerCase().replace(/\s+/g, '_')}`,
+          category_name: templateName,
+          action: templateName,
+          notes: notes || null,
+          employee_id: user?.id || null,
+          employee_name: (user ? `${user.first_name} ${user.last_name}`.trim() : 'AI Assistant'),
+          status: 'flagged',
+          source_type: 'task_feed_post',
+          source_id: post.id,
+          source_number: postNumber,
+        };
+
+        if (photoUrl) {
+          verificationInsert.photo_uri = photoUrl;
+        }
+
+        const { error: verifyError } = await supabase
+          .from('task_verifications')
+          .insert(verificationInsert);
+
+        if (verifyError) {
+          // Non-blocking — post was created, just log
+          console.error('[AIActions] task_verifications insert error (non-fatal):', verifyError.message);
+        }
+      } catch (verifyErr: any) {
+        console.error('[AIActions] task_verifications insert threw (non-fatal):', verifyErr?.message);
+      }
+
       // Invalidate all task feed related queries regardless of exact key used in screens
       queryClient.invalidateQueries({ queryKey: ['task_feed'] });
       queryClient.invalidateQueries({ queryKey: ['task_feed_posts'] });
       queryClient.invalidateQueries({ queryKey: ['task_feed_department_tasks'] });
       queryClient.invalidateQueries({ queryKey: ['taskFeed'] });
       queryClient.invalidateQueries({ queryKey: ['taskFeedPosts'] });
+      queryClient.invalidateQueries({ queryKey: ['task_verifications'] });
 
       return {
         success: true,
@@ -577,7 +615,7 @@ export function useAIActions() {
           template_id: null,
           template_name: `Pre-Op: ${roomName}`,
           created_by_id: user?.id || null,
-          created_by_name: user?.name || 'AI Assistant',
+          created_by_name: (user ? `${user.first_name} ${user.last_name}`.trim() : 'AI Assistant'),
           location_name: roomName,
           form_data: {
             source: 'ai_assist',
@@ -585,11 +623,11 @@ export function useAIActions() {
             type: 'pre_op',
             room,
             room_name: roomName,
-            initiated_by: user?.name || 'AI Assistant',
+            initiated_by: (user ? `${user.first_name} ${user.last_name}`.trim() : 'AI Assistant'),
             initiated_at: new Date().toISOString(),
             checklist_items: getPreOpChecklist(room),
           },
-          notes: `[AI] Pre-Op inspection initiated for ${roomName} by ${user?.name || 'AI Assistant'}`,
+          notes: `[AI] Pre-Op inspection initiated for ${roomName} by ${(user ? `${user.first_name} ${user.last_name}`.trim() : 'AI Assistant')}`,
           status: 'pending',
           total_departments: 5,
           completed_departments: 0,
@@ -679,7 +717,7 @@ export function useAIActions() {
           post_number: postNumber,
           template_name: `WO: ${params.title || 'Work Order'}`,
           created_by_id: user?.id || null,
-          created_by_name: user?.name || 'AI Assistant',
+          created_by_name: (user ? `${user.first_name} ${user.last_name}`.trim() : 'AI Assistant'),
           location_name: (params.equipment_name as string) || null,
           form_data: {
             source: 'ai_assist',
@@ -867,7 +905,7 @@ export function useAIActions() {
           product: (params.product as string) || '',
           status: 'running',
           started_at: new Date().toISOString(),
-          started_by: user?.name || 'AI Assistant',
+          started_by: (user ? `${user.first_name} ${user.last_name}`.trim() : 'AI Assistant'),
           bag_count: 0,
         })
         .select('id, run_number')
@@ -912,7 +950,7 @@ export function useAIActions() {
       await supabase.from('production_runs').update({
         status: 'completed',
         ended_at: new Date().toISOString(),
-        ended_by: user?.name || 'AI Assistant',
+        ended_by: (user ? `${user.first_name} ${user.last_name}`.trim() : 'AI Assistant'),
       }).eq('id', run.id);
 
       await changeRoomStatus({ room, status: 'idle' });
@@ -956,7 +994,7 @@ export function useAIActions() {
           status,
           andon_color: statusColors[status] || 'gray',
           updated_at: new Date().toISOString(),
-          updated_by: user?.name || 'AI Assistant',
+          updated_by: (user ? `${user.first_name} ${user.last_name}`.trim() : 'AI Assistant'),
         }, { onConflict: 'organization_id,room_code' });
 
       if (error) console.warn('[AIActions] Room status (table may not exist):', error.message);
