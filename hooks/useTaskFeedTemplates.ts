@@ -1550,6 +1550,20 @@ export function useDeleteTaskFeedPost(callbacks?: MutationCallbacks<string>) {
         // Continue anyway
       }
 
+      // If post had a production hold, reset room_status back to normal
+      if (post.is_production_hold && post.production_line) {
+        await supabase
+          .from('room_status')
+          .update({
+            status: 'running',
+            andon_color: 'green',
+            updated_at: new Date().toISOString(),
+            updated_by: user ? `${user.first_name} ${user.last_name}` : 'System',
+          })
+          .eq('organization_id', post.organization_id)
+          .eq('room_code', post.production_line);
+      }
+
       // Finally delete the post
       const { error: deleteError } = await supabase
         .from('task_feed_posts')
@@ -1569,6 +1583,7 @@ export function useDeleteTaskFeedPost(callbacks?: MutationCallbacks<string>) {
       queryClient.invalidateQueries({ queryKey: ['task_feed_posts_with_tasks'] });
       queryClient.invalidateQueries({ queryKey: ['task_feed_department_tasks'] });
       queryClient.invalidateQueries({ queryKey: ['task_verifications'] });
+      queryClient.invalidateQueries({ queryKey: ['room_status'] });
       queryClient.invalidateQueries({ queryKey: ['task_verification_stats'] });
       callbacks?.onSuccess?.(postId);
     },
