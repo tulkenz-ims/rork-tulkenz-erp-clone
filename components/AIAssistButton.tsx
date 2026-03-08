@@ -30,6 +30,11 @@ import {
   MessageCircle,
   Bot,
   User,
+  Navigation,
+  ClipboardList,
+  Thermometer,
+  Bug,
+  Shield,
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useUser } from '@/contexts/UserContext';
@@ -40,45 +45,85 @@ import * as Speech from 'expo-speech';
 import * as FileSystem from 'expo-file-system';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// ══════════════════════════════════ TYPES ══════════════════════════════════
+// ══════════════════════════════════════════════════════════════════
+// TYPES
+// ══════════════════════════════════════════════════════════════════
 
 interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   text: string;
-  action?: string;
+  toolName?: string;
   params?: Record<string, unknown>;
   image?: string;
   timestamp: Date;
+  isResult?: boolean;
+}
+
+// Raw Claude-format message for conversation history (sent to API)
+interface ConversationTurn {
+  role: 'user' | 'assistant';
+  content: any;
 }
 
 interface AIResponse {
   success: boolean;
   action: string;
-  speech: string;
+  tool_name: string | null;
+  speech: string | null;
   params: Record<string, unknown>;
+  needs_photo?: boolean;
+  conversation_continue?: boolean;
+  assistant_message?: ConversationTurn;
 }
 
-// ══════════════════════════════════ CONFIG ══════════════════════════════════
+// ══════════════════════════════════════════════════════════════════
+// CONFIG
+// ══════════════════════════════════════════════════════════════════
 
 const AI_ASSIST_URL = '/api/ai-assist';
 
-const ACTION_ICONS: Record<string, { icon: any; color: string }> = {
-  create_task_feed_post: { icon: Zap, color: '#F97316' },
-  start_pre_op: { icon: CheckCircle, color: '#10B981' },
-  complete_checklist_item: { icon: CheckCircle, color: '#10B981' },
-  create_work_order: { icon: Wrench, color: '#3B82F6' },
-  lookup_part: { icon: Package, color: '#F59E0B' },
-  lookup_equipment: { icon: Wrench, color: '#3B82F6' },
-  diagnose_issue: { icon: AlertTriangle, color: '#EF4444' },
-  start_production_run: { icon: Zap, color: '#8B5CF6' },
-  change_room_status: { icon: Zap, color: '#06B6D4' },
-  search: { icon: Search, color: '#8B5CF6' },
-  info: { icon: MessageCircle, color: '#6366F1' },
-  clarify: { icon: MessageCircle, color: '#F59E0B' },
+// Maps tool_name → icon + color for the action badge
+const TOOL_ICONS: Record<string, { icon: any; color: string; label: string }> = {
+  // Task Feed templates
+  create_task_feed_post_broken_glove:        { icon: AlertTriangle, color: '#F97316', label: 'Broken Glove' },
+  create_task_feed_post_foreign_material:    { icon: AlertTriangle, color: '#EF4444', label: 'Foreign Material' },
+  create_task_feed_post_chemical_spill:      { icon: AlertTriangle, color: '#F59E0B', label: 'Chemical Spill' },
+  create_task_feed_post_employee_injury:     { icon: Shield,         color: '#EF4444', label: 'Employee Injury' },
+  create_task_feed_post_equipment_breakdown: { icon: Wrench,         color: '#3B82F6', label: 'Equipment Breakdown' },
+  create_task_feed_post_metal_detector_reject:{ icon: AlertTriangle, color: '#8B5CF6', label: 'Metal Detector Reject' },
+  create_task_feed_post_pest_sighting:       { icon: Bug,            color: '#84CC16', label: 'Pest Sighting' },
+  create_task_feed_post_temperature_deviation:{ icon: Thermometer,   color: '#06B6D4', label: 'Temp Deviation' },
+  create_task_feed_post_customer_complaint:  { icon: MessageCircle,  color: '#EC4899', label: 'Customer Complaint' },
+  create_task_feed_post_generic:             { icon: Zap,            color: '#F97316', label: 'Task Feed Post' },
+  create_task_feed_post:                     { icon: Zap,            color: '#F97316', label: 'Task Feed Post' },
+  // Query
+  query_task_feed:                           { icon: ClipboardList,  color: '#6366F1', label: 'Task Feed Query' },
+  // Work Orders / Pre-Op
+  create_work_order:                         { icon: Wrench,         color: '#3B82F6', label: 'Work Order' },
+  start_pre_op:                              { icon: CheckCircle,    color: '#10B981', label: 'Pre-Op' },
+  // Equipment / Parts
+  lookup_part:                               { icon: Package,        color: '#F59E0B', label: 'Parts Lookup' },
+  lookup_equipment:                          { icon: Wrench,         color: '#3B82F6', label: 'Equipment Lookup' },
+  diagnose_issue:                            { icon: AlertTriangle,  color: '#EF4444', label: 'Diagnosis' },
+  // Production
+  start_production_run:                      { icon: Zap,            color: '#8B5CF6', label: 'Production Run' },
+  end_production_run:                        { icon: Zap,            color: '#6366F1', label: 'End Run' },
+  change_room_status:                        { icon: Zap,            color: '#06B6D4', label: 'Room Status' },
+  // Navigation
+  navigate:                                  { icon: Navigation,     color: '#10B981', label: 'Navigate' },
+  // Utility
+  ask_clarification:                         { icon: MessageCircle,  color: '#F59E0B', label: 'Clarifying' },
+  general_response:                          { icon: MessageCircle,  color: '#6366F1', label: 'Info' },
+  // Legacy / fallback
+  info:                                      { icon: MessageCircle,  color: '#6366F1', label: 'Info' },
+  clarify:                                   { icon: MessageCircle,  color: '#F59E0B', label: 'Clarifying' },
+  search:                                    { icon: Search,         color: '#8B5CF6', label: 'Search' },
 };
 
-// ══════════════════════════════════ SPEECH RECOGNITION ══════════════════════════════════
+// ══════════════════════════════════════════════════════════════════
+// SPEECH RECOGNITION
+// ══════════════════════════════════════════════════════════════════
 
 function useSpeechRecognition() {
   const [isListening, setIsListening] = useState(false);
@@ -87,9 +132,10 @@ function useSpeechRecognition() {
 
   const startListening = useCallback(() => {
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      const SpeechRecognition =
+        (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       if (!SpeechRecognition) {
-        console.warn('[AIAssist] Speech recognition not supported in this browser');
+        console.warn('[AIAssist] Speech recognition not supported');
         return false;
       }
 
@@ -103,19 +149,13 @@ function useSpeechRecognition() {
         let interimTranscript = '';
         for (let i = event.resultIndex; i < event.results.length; i++) {
           const result = event.results[i];
-          if (result.isFinal) {
-            finalTranscript += result[0].transcript;
-          } else {
-            interimTranscript += result[0].transcript;
-          }
+          if (result.isFinal) finalTranscript += result[0].transcript;
+          else interimTranscript += result[0].transcript;
         }
         setTranscript(finalTranscript || interimTranscript);
       };
 
-      recognition.onend = () => {
-        setIsListening(false);
-      };
-
+      recognition.onend = () => setIsListening(false);
       recognition.onerror = (event: any) => {
         console.error('[AIAssist] Speech error:', event.error);
         setIsListening(false);
@@ -127,38 +167,44 @@ function useSpeechRecognition() {
       setTranscript('');
       return true;
     }
-
     return false;
   }, []);
 
   const stopListening = useCallback(() => {
-    if (recognitionRef.current) {
-      recognitionRef.current.stop();
-    }
+    if (recognitionRef.current) recognitionRef.current.stop();
     setIsListening(false);
   }, []);
 
   return { isListening, transcript, startListening, stopListening, setTranscript };
 }
 
-// ══════════════════════════════════ COMPONENT ══════════════════════════════════
+// ══════════════════════════════════════════════════════════════════
+// COMPONENT
+// ══════════════════════════════════════════════════════════════════
 
 export default function AIAssistButton() {
   const { colors } = useTheme();
   const { user } = useUser();
   const { executeAction: executeAIAction } = useAIActions();
+
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [textInput, setTextInput] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSpeechEnabled, setIsSpeechEnabled] = useState(true);
-  const [pendingImage, setPendingImage] = useState<{ uri: string; base64: string; mediaType: string } | null>(null);
+  const [pendingImage, setPendingImage] = useState<{
+    uri: string; base64: string; mediaType: string;
+  } | null>(null);
+
+  // Raw Claude-format history for multi-turn API calls
+  const conversationHistoryRef = useRef<ConversationTurn[]>([]);
 
   const scrollRef = useRef<ScrollView>(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
-  const { isListening, transcript, startListening, stopListening, setTranscript } = useSpeechRecognition();
+  const { isListening, transcript, startListening, stopListening, setTranscript } =
+    useSpeechRecognition();
 
-  // Load saved chat on mount (per-user)
+  // ── Load saved chat on mount ──
   useEffect(() => {
     const chatKey = `ai_chat_${user?.id || 'default'}`;
     AsyncStorage.getItem(chatKey).then(stored => {
@@ -171,7 +217,7 @@ export default function AIAssistButton() {
     });
   }, [user?.id]);
 
-  // Save chat whenever messages change (per-user)
+  // ── Save chat on change ──
   useEffect(() => {
     if (messages.length > 0) {
       const chatKey = `ai_chat_${user?.id || 'default'}`;
@@ -179,7 +225,7 @@ export default function AIAssistButton() {
     }
   }, [messages, user?.id]);
 
-  // Pulse animation for the floating button
+  // ── Pulse animation ──
   useEffect(() => {
     const pulse = Animated.loop(
       Animated.sequence([
@@ -191,21 +237,19 @@ export default function AIAssistButton() {
     return () => pulse.stop();
   }, [pulseAnim]);
 
-  // Auto-scroll to bottom when messages change
+  // ── Auto-scroll ──
   useEffect(() => {
     if (scrollRef.current && messages.length > 0) {
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
     }
   }, [messages]);
 
-  // When transcript changes from speech recognition, update text input
+  // ── Transcript → text input ──
   useEffect(() => {
-    if (transcript) {
-      setTextInput(transcript);
-    }
+    if (transcript) setTextInput(transcript);
   }, [transcript]);
 
-  // When speech recognition stops and we have a transcript, auto-send
+  // ── Auto-send when speech recognition stops ──
   useEffect(() => {
     if (!isListening && transcript && transcript.trim().length > 0) {
       handleSend(transcript.trim());
@@ -215,42 +259,22 @@ export default function AIAssistButton() {
 
   // ── Speak response ──
   const speakResponse = useCallback((text: string) => {
-    if (!isSpeechEnabled) return;
+    if (!isSpeechEnabled || !text) return;
     try {
-      Speech.speak(text, {
-        language: 'en-US',
-        pitch: 1.0,
-        rate: 0.95,
-      });
+      Speech.speak(text, { language: 'en-US', pitch: 1.0, rate: 0.95 });
     } catch (err) {
-      console.error('[AIAssist] Speech synthesis error:', err);
+      console.error('[AIAssist] Speech error:', err);
     }
   }, [isSpeechEnabled]);
 
-  // ── Execute AI action ──
-  const executeAction = useCallback(async (action: string, params: Record<string, unknown>) => {
-    console.log('[AIAssist] Execute:', action, params);
-    try {
-      const result = await executeAIAction(action, params);
-      if (!result.success) {
-        console.warn('[AIAssist] Action failed:', result.message);
-      } else {
-        console.log('[AIAssist] Action succeeded:', result.message);
-      }
-      return result;
-    } catch (err) {
-      console.error('[AIAssist] Action error:', err);
-    }
-  }, [executeAIAction]);
-
-  // ── Send command to AI ──
+  // ── Send command ──
   const handleSend = useCallback(async (commandText?: string) => {
     const text = commandText || textInput.trim();
     if (!text && !pendingImage) return;
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-    // Add user message
+    // Add user message to display
     const userMsg: ChatMessage = {
       id: `user-${Date.now()}`,
       role: 'user',
@@ -262,6 +286,31 @@ export default function AIAssistButton() {
     setTextInput('');
     setIsProcessing(true);
 
+    // Build user content for Claude conversation history
+    const userContent: any[] = [];
+    if (pendingImage) {
+      userContent.push({
+        type: 'image',
+        source: {
+          type: 'base64',
+          media_type: pendingImage.mediaType,
+          data: pendingImage.base64,
+        },
+      });
+    }
+    if (text) {
+      userContent.push({ type: 'text', text });
+    }
+
+    // Add to conversation history before sending
+    conversationHistoryRef.current = [
+      ...conversationHistoryRef.current,
+      { role: 'user', content: userContent.length === 1 && userContent[0].type === 'text'
+          ? userContent[0].text  // simple string for text-only turns
+          : userContent,
+      },
+    ];
+
     try {
       const body: Record<string, unknown> = {
         command: text,
@@ -269,11 +318,14 @@ export default function AIAssistButton() {
           screen: 'unknown',
           userName: user?.name || 'Operator',
           userRole: user?.role || 'operator',
+          userDepartment: user?.department || 'unknown',
           currentRoom: null,
+          activeRecordId: null,
         },
+        // Pass last 10 turns of history for multi-turn support
+        conversation: conversationHistoryRef.current.slice(-10),
       };
 
-      // Add image if pending
       if (pendingImage) {
         body.image = {
           data: pendingImage.base64,
@@ -294,78 +346,112 @@ export default function AIAssistButton() {
         throw new Error((data as any).error || 'AI request failed');
       }
 
-      // Add assistant message
+      // Add Claude's raw response to conversation history for next turn
+      if (data.assistant_message) {
+        conversationHistoryRef.current = [
+          ...conversationHistoryRef.current,
+          data.assistant_message,
+        ];
+        // Keep history bounded to last 20 turns
+        if (conversationHistoryRef.current.length > 20) {
+          conversationHistoryRef.current = conversationHistoryRef.current.slice(-20);
+        }
+      }
+
+      // ── Resolve the tool name ──
+      // New API returns tool_name; fall back to action for legacy compatibility
+      const toolName = data.tool_name || data.action;
+      const speechText = data.speech || 'Done.';
+
+      // Add Claude's response bubble
       const assistantMsg: ChatMessage = {
         id: `assistant-${Date.now()}`,
         role: 'assistant',
-        text: data.speech || 'Action executed.',
-        action: data.action,
+        text: speechText,
+        toolName,
         params: data.params,
         timestamp: new Date(),
       };
       setMessages(prev => [...prev, assistantMsg]);
+      speakResponse(speechText);
 
-      // Speak the response
-      speakResponse(data.speech);
+      // ── If clarification needed, stop here — user needs to reply ──
+      if (data.conversation_continue || toolName === 'ask_clarification' || toolName === 'clarify') {
+        setIsProcessing(false);
+        return;
+      }
 
-      // Execute the action
-      const actionResult = await executeAction(data.action, data.params);
-
-      // If the action returned useful data, show it as a follow-up message
-      if (actionResult && actionResult.success && actionResult.message && 
-          !['info', 'clarify'].includes(data.action)) {
-        const followUpMsg: ChatMessage = {
-          id: `result-${Date.now()}`,
+      // ── If photo needed, prompt user ──
+      if (data.needs_photo) {
+        const photoPromptMsg: ChatMessage = {
+          id: `photo-prompt-${Date.now()}`,
           role: 'assistant',
-          text: actionResult.message,
-          action: data.action,
-          params: actionResult.data as Record<string, unknown>,
+          text: '📷 A photo is required for this report. Tap the camera icon and attach one, then I\'ll submit the report.',
           timestamp: new Date(),
         };
-        setMessages(prev => [...prev, followUpMsg]);
+        setMessages(prev => [...prev, photoPromptMsg]);
+        speakResponse('A photo is required. Tap the camera icon to attach one.');
+        setIsProcessing(false);
+        return;
+      }
 
-        // Speak the result if it's different from Claude's original speech
-        if (actionResult.message !== data.speech) {
-          speakResponse(actionResult.message);
+      // ── Execute the tool action ──
+      if (toolName && !['info', 'general_response'].includes(toolName)) {
+        const actionResult = await executeAIAction(toolName, data.params || {});
+
+        if (actionResult && actionResult.success && actionResult.message &&
+            actionResult.message !== 'Information provided.' &&
+            actionResult.message !== 'Waiting for clarification.') {
+
+          const resultMsg: ChatMessage = {
+            id: `result-${Date.now()}`,
+            role: 'assistant',
+            text: actionResult.message,
+            toolName,
+            params: actionResult.data as Record<string, unknown>,
+            timestamp: new Date(),
+            isResult: true,
+          };
+          setMessages(prev => [...prev, resultMsg]);
+
+          if (actionResult.message !== speechText) {
+            speakResponse(actionResult.message);
+          }
+        } else if (actionResult && !actionResult.success) {
+          const errorMsg: ChatMessage = {
+            id: `error-${Date.now()}`,
+            role: 'assistant',
+            text: `⚠️ ${actionResult.message || 'Action failed. Please try again.'}`,
+            timestamp: new Date(),
+          };
+          setMessages(prev => [...prev, errorMsg]);
         }
-      } else if (actionResult && !actionResult.success) {
-        const errorFollowUp: ChatMessage = {
-          id: `error-${Date.now()}`,
-          role: 'assistant',
-          text: actionResult.message || 'Action failed.',
-          timestamp: new Date(),
-        };
-        setMessages(prev => [...prev, errorFollowUp]);
       }
 
     } catch (err: any) {
       console.error('[AIAssist] Error:', err);
-      const errorMsg: ChatMessage = {
+      setMessages(prev => [...prev, {
         id: `error-${Date.now()}`,
         role: 'assistant',
-        text: `Sorry, I had trouble processing that. ${err.message || 'Please try again.'}`,
+        text: `Sorry, I had trouble with that. ${err.message || 'Please try again.'}`,
         timestamp: new Date(),
-      };
-      setMessages(prev => [...prev, errorMsg]);
+      }]);
     } finally {
       setIsProcessing(false);
     }
-  }, [textInput, pendingImage, user, speakResponse, executeAction]);
+  }, [textInput, pendingImage, user, speakResponse, executeAIAction]);
 
-  // ── Mic button handler ──
+  // ── Mic ──
   const handleMicPress = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    if (isListening) {
-      stopListening();
-    } else {
+    if (isListening) stopListening();
+    else {
       const started = startListening();
-      if (!started) {
-        console.log('[AIAssist] Speech not available — use text input');
-      }
+      if (!started) console.log('[AIAssist] Speech unavailable — use text input');
     }
   }, [isListening, startListening, stopListening]);
 
-  // ── Camera handler ──
+  // ── Camera ──
   const handleCamera = useCallback(async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     try {
@@ -378,26 +464,19 @@ export default function AIAssistButton() {
       if (!result.canceled && result.assets[0]) {
         const asset = result.assets[0];
         let base64Data = asset.base64 || '';
-
         if (!base64Data && asset.uri) {
-          const fileData = await FileSystem.readAsStringAsync(asset.uri, {
+          base64Data = await FileSystem.readAsStringAsync(asset.uri, {
             encoding: FileSystem.EncodingType.Base64,
           });
-          base64Data = fileData;
         }
-
-        setPendingImage({
-          uri: asset.uri,
-          base64: base64Data,
-          mediaType: 'image/jpeg',
-        });
+        setPendingImage({ uri: asset.uri, base64: base64Data, mediaType: 'image/jpeg' });
       }
     } catch (err) {
       console.error('[AIAssist] Camera error:', err);
     }
   }, []);
 
-  // ── Open/Close ──
+  // ── Open / Close ──
   const handleOpen = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setIsOpen(true);
@@ -405,11 +484,11 @@ export default function AIAssistButton() {
       setMessages([{
         id: 'welcome',
         role: 'assistant',
-        text: 'Hey, I\'m your AI assistant. You can ask me anything about the facility — start a Pre-Op, look up a part, diagnose an issue, or just take a photo and I\'ll tell you what I see. How can I help?',
+        text: `Hey${user?.name ? ` ${user.name.split(' ')[0]}` : ''}, I'm your AI assistant. I can start a Pre-Op, report an issue, look up a part, diagnose equipment from a photo, or navigate anywhere in the app. What do you need?`,
         timestamp: new Date(),
       }]);
     }
-  }, [messages.length]);
+  }, [messages.length, user?.name]);
 
   const handleClose = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -423,23 +502,28 @@ export default function AIAssistButton() {
     setMessages([]);
     setPendingImage(null);
     setTextInput('');
+    conversationHistoryRef.current = [];
     AsyncStorage.removeItem(`ai_chat_${user?.id || 'default'}`).catch(() => {});
   }, [user?.id]);
 
-  // ── Render action badge ──
-  const renderActionBadge = (action?: string) => {
-    if (!action) return null;
-    const config = ACTION_ICONS[action] || { icon: MessageCircle, color: '#6366F1' };
+  // ── Action badge ──
+  const renderActionBadge = (toolName?: string) => {
+    if (!toolName || ['info', 'general_response'].includes(toolName)) return null;
+    const config = TOOL_ICONS[toolName] || { icon: MessageCircle, color: '#6366F1', label: toolName.replace(/_/g, ' ') };
     const IconComp = config.icon;
     return (
       <View style={[styles.actionBadge, { backgroundColor: config.color + '20', borderColor: config.color + '40' }]}>
         <IconComp size={12} color={config.color} />
         <Text style={[styles.actionBadgeText, { color: config.color }]}>
-          {action.replace(/_/g, ' ')}
+          {config.label}
         </Text>
       </View>
     );
   };
+
+  // ══════════════════════════════════════════════════════════════════
+  // RENDER
+  // ══════════════════════════════════════════════════════════════════
 
   return (
     <>
@@ -482,12 +566,11 @@ export default function AIAssistButton() {
             <View style={styles.headerRight}>
               <Pressable
                 style={[styles.headerBtn, { backgroundColor: isSpeechEnabled ? '#8B5CF620' : colors.backgroundSecondary }]}
-                onPress={() => {
-                  setIsSpeechEnabled(!isSpeechEnabled);
-                  if (isSpeechEnabled) Speech.stop();
-                }}
+                onPress={() => { setIsSpeechEnabled(!isSpeechEnabled); if (isSpeechEnabled) Speech.stop(); }}
               >
-                {isSpeechEnabled ? <Volume2 size={18} color="#8B5CF6" /> : <VolumeX size={18} color={colors.textSecondary} />}
+                {isSpeechEnabled
+                  ? <Volume2 size={18} color="#8B5CF6" />
+                  : <VolumeX size={18} color={colors.textSecondary} />}
               </Pressable>
               <Pressable
                 style={[styles.headerBtn, { backgroundColor: colors.backgroundSecondary }]}
@@ -514,9 +597,18 @@ export default function AIAssistButton() {
                 style={[
                   styles.messageBubble,
                   msg.role === 'user' ? styles.userBubble : styles.assistantBubble,
+                  msg.isResult && styles.resultBubble,
                   {
-                    backgroundColor: msg.role === 'user' ? '#8B5CF6' : colors.surface,
-                    borderColor: msg.role === 'user' ? '#8B5CF6' : colors.border,
+                    backgroundColor: msg.role === 'user'
+                      ? '#8B5CF6'
+                      : msg.isResult
+                        ? colors.backgroundSecondary
+                        : colors.surface,
+                    borderColor: msg.role === 'user'
+                      ? '#8B5CF6'
+                      : msg.isResult
+                        ? '#10B98140'
+                        : colors.border,
                   },
                 ]}
               >
@@ -526,31 +618,44 @@ export default function AIAssistButton() {
                     { backgroundColor: msg.role === 'user' ? 'rgba(255,255,255,0.2)' : '#8B5CF620' },
                   ]}>
                     {msg.role === 'user'
-                      ? <User size={14} color={msg.role === 'user' ? '#FFFFFF' : '#8B5CF6'} />
+                      ? <User size={14} color="#FFFFFF" />
                       : <Bot size={14} color="#8B5CF6" />}
                   </View>
-                  <Text style={[styles.messageRole, { color: msg.role === 'user' ? 'rgba(255,255,255,0.7)' : colors.textSecondary }]}>
+                  <Text style={[
+                    styles.messageRole,
+                    { color: msg.role === 'user' ? 'rgba(255,255,255,0.7)' : colors.textSecondary },
+                  ]}>
                     {msg.role === 'user' ? (user?.name || 'You') : 'Claude'}
                   </Text>
-                  <Text style={[styles.messageTime, { color: msg.role === 'user' ? 'rgba(255,255,255,0.5)' : colors.textTertiary }]}>
+                  <Text style={[
+                    styles.messageTime,
+                    { color: msg.role === 'user' ? 'rgba(255,255,255,0.5)' : colors.textTertiary },
+                  ]}>
                     {msg.timestamp.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
                   </Text>
                 </View>
+
                 {msg.image && (
                   <Image source={{ uri: msg.image }} style={styles.messageImage} />
                 )}
+
                 <Text style={[
                   styles.messageText,
                   { color: msg.role === 'user' ? '#FFFFFF' : colors.text },
                 ]}>
                   {msg.text}
                 </Text>
-                {msg.role === 'assistant' && renderActionBadge(msg.action)}
+
+                {msg.role === 'assistant' && renderActionBadge(msg.toolName)}
               </View>
             ))}
 
             {isProcessing && (
-              <View style={[styles.messageBubble, styles.assistantBubble, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <View style={[
+                styles.messageBubble,
+                styles.assistantBubble,
+                { backgroundColor: colors.surface, borderColor: colors.border },
+              ]}>
                 <View style={styles.typingRow}>
                   <ActivityIndicator size="small" color="#8B5CF6" />
                   <Text style={[styles.typingText, { color: colors.textSecondary }]}>Thinking...</Text>
@@ -559,7 +664,10 @@ export default function AIAssistButton() {
             )}
 
             {isListening && (
-              <View style={[styles.listeningBanner, { backgroundColor: '#8B5CF615', borderColor: '#8B5CF640' }]}>
+              <View style={[
+                styles.listeningBanner,
+                { backgroundColor: '#8B5CF615', borderColor: '#8B5CF640' },
+              ]}>
                 <Mic size={16} color="#8B5CF6" />
                 <Text style={[styles.listeningText, { color: '#8B5CF6' }]}>
                   {transcript || 'Listening...'}
@@ -570,9 +678,14 @@ export default function AIAssistButton() {
 
           {/* Pending Image Preview */}
           {pendingImage && (
-            <View style={[styles.imagePreview, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={[
+              styles.imagePreview,
+              { backgroundColor: colors.surface, borderColor: colors.border },
+            ]}>
               <Image source={{ uri: pendingImage.uri }} style={styles.imagePreviewThumb} />
-              <Text style={[styles.imagePreviewText, { color: colors.text }]}>Photo attached — type or speak your question</Text>
+              <Text style={[styles.imagePreviewText, { color: colors.text }]}>
+                Photo attached — type or speak your question
+              </Text>
               <Pressable onPress={() => setPendingImage(null)}>
                 <X size={18} color={colors.textSecondary} />
               </Pressable>
@@ -580,7 +693,10 @@ export default function AIAssistButton() {
           )}
 
           {/* Input Area */}
-          <View style={[styles.inputArea, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
+          <View style={[
+            styles.inputArea,
+            { backgroundColor: colors.surface, borderTopColor: colors.border },
+          ]}>
             <Pressable
               style={[styles.inputBtn, { backgroundColor: '#06B6D420' }]}
               onPress={handleCamera}
@@ -589,19 +705,23 @@ export default function AIAssistButton() {
             </Pressable>
 
             <Pressable
-              style={[
-                styles.micButton,
-                {
-                  backgroundColor: isListening ? '#EF4444' : '#8B5CF6',
-                },
-              ]}
+              style={[styles.micButton, { backgroundColor: isListening ? '#EF4444' : '#8B5CF6' }]}
               onPress={handleMicPress}
             >
-              {isListening ? <MicOff size={22} color="#FFFFFF" /> : <Mic size={22} color="#FFFFFF" />}
+              {isListening
+                ? <MicOff size={22} color="#FFFFFF" />
+                : <Mic size={22} color="#FFFFFF" />}
             </Pressable>
 
             <TextInput
-              style={[styles.textInput, { backgroundColor: colors.backgroundSecondary, color: colors.text, borderColor: colors.border }]}
+              style={[
+                styles.textInput,
+                {
+                  backgroundColor: colors.backgroundSecondary,
+                  color: colors.text,
+                  borderColor: colors.border,
+                },
+              ]}
               placeholder="Type or tap mic to speak..."
               placeholderTextColor={colors.textSecondary}
               value={textInput}
@@ -612,11 +732,17 @@ export default function AIAssistButton() {
             />
 
             <Pressable
-              style={[styles.sendBtn, { backgroundColor: textInput.trim() || pendingImage ? '#8B5CF6' : colors.border }]}
+              style={[
+                styles.sendBtn,
+                { backgroundColor: (textInput.trim() || pendingImage) ? '#8B5CF6' : colors.border },
+              ]}
               onPress={() => handleSend()}
               disabled={(!textInput.trim() && !pendingImage) || isProcessing}
             >
-              <Send size={18} color={textInput.trim() || pendingImage ? '#FFFFFF' : colors.textTertiary} />
+              <Send
+                size={18}
+                color={(textInput.trim() || pendingImage) ? '#FFFFFF' : colors.textTertiary}
+              />
             </Pressable>
           </View>
         </KeyboardAvoidingView>
@@ -625,7 +751,9 @@ export default function AIAssistButton() {
   );
 }
 
-// ══════════════════════════════════ STYLES ══════════════════════════════════
+// ══════════════════════════════════════════════════════════════════
+// STYLES
+// ══════════════════════════════════════════════════════════════════
 
 const styles = StyleSheet.create({
   floatingButton: {
@@ -647,9 +775,7 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 10,
   },
-  modalContainer: {
-    flex: 1,
-  },
+  modalContainer: { flex: 1 },
   header: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
@@ -671,13 +797,8 @@ const styles = StyleSheet.create({
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
   },
-  headerTitle: {
-    fontSize: 17,
-    fontWeight: '700' as const,
-  },
-  headerSub: {
-    fontSize: 12,
-  },
+  headerTitle: { fontSize: 17, fontWeight: '700' as const },
+  headerSub: { fontSize: 12 },
   headerRight: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
@@ -690,16 +811,9 @@ const styles = StyleSheet.create({
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
   },
-  closeBtn: {
-    padding: 8,
-  },
-  messageList: {
-    flex: 1,
-  },
-  messageContent: {
-    padding: 16,
-    gap: 10,
-  },
+  closeBtn: { padding: 8 },
+  messageList: { flex: 1 },
+  messageContent: { padding: 16, gap: 10 },
   messageBubble: {
     borderRadius: 14,
     padding: 14,
@@ -714,6 +828,9 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start' as const,
     borderBottomLeftRadius: 4,
   },
+  resultBubble: {
+    borderLeftWidth: 3,
+  },
   messageHeader: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
@@ -727,18 +844,9 @@ const styles = StyleSheet.create({
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
   },
-  messageRole: {
-    fontSize: 11,
-    fontWeight: '600' as const,
-    flex: 1,
-  },
-  messageTime: {
-    fontSize: 10,
-  },
-  messageText: {
-    fontSize: 14,
-    lineHeight: 21,
-  },
+  messageRole: { fontSize: 11, fontWeight: '600' as const, flex: 1 },
+  messageTime: { fontSize: 10 },
+  messageText: { fontSize: 14, lineHeight: 21 },
   messageImage: {
     width: 180,
     height: 180,
@@ -767,10 +875,7 @@ const styles = StyleSheet.create({
     alignItems: 'center' as const,
     gap: 8,
   },
-  typingText: {
-    fontSize: 13,
-    fontStyle: 'italic' as const,
-  },
+  typingText: { fontSize: 13, fontStyle: 'italic' as const },
   listeningBanner: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
@@ -780,11 +885,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignSelf: 'stretch' as any,
   },
-  listeningText: {
-    fontSize: 14,
-    fontWeight: '500' as const,
-    flex: 1,
-  },
+  listeningText: { fontSize: 14, fontWeight: '500' as const, flex: 1 },
   imagePreview: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
@@ -792,15 +893,8 @@ const styles = StyleSheet.create({
     gap: 10,
     borderTopWidth: 1,
   },
-  imagePreviewThumb: {
-    width: 44,
-    height: 44,
-    borderRadius: 8,
-  },
-  imagePreviewText: {
-    fontSize: 13,
-    flex: 1,
-  },
+  imagePreviewThumb: { width: 44, height: 44, borderRadius: 8 },
+  imagePreviewText: { fontSize: 13, flex: 1 },
   inputArea: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
