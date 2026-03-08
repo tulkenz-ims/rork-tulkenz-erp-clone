@@ -169,34 +169,36 @@ function PulsingDot({ color, size = 8 }: { color: string; size?: number }) {
 // EKG-style scrolling waveform driven by live sensor values
 const HB_POINTS = 48; // number of columns in the waveform
 
-function HeartbeatMonitor({ bpm, sensors, color = HUD.green }: { bpm: number; sensors: any[]; color?: string }) {
+function HeartbeatMonitor({ bpm, sensors, color = HUD.green, onBeat }: { bpm: number; sensors: any[]; color?: string; onBeat?: () => void }) {
   const sweepX = useRef(new Animated.Value(0)).current;
   const [waveData, setWaveData] = useState<number[]>(() => Array.from({ length: HB_POINTS }, () => 0.5));
   const waveRef = useRef<number[]>(Array.from({ length: HB_POINTS }, () => 0.5));
   const tickRef = useRef(0);
+  const lastBeatPhaseRef = useRef(false); // tracks if we were in spike zone last tick
 
-  // Build a synthetic heartbeat signal from real sensor data
   const buildWaveformTick = useCallback(() => {
     tickRef.current += 1;
     const t = tickRef.current;
     const bpmNorm = Math.min(Math.max((bpm || 0) / 70, 0), 1);
-    // EKG shape: flat baseline → P wave → QRS spike → T wave
     const phase = (t % 20) / 20;
-    let sample = 0.5; // baseline
-    if (phase < 0.08) sample = 0.5 + 0.08 * Math.sin(phase / 0.08 * Math.PI);        // P wave
-    else if (phase < 0.18) sample = 0.5 - 0.04 * Math.sin((phase - 0.08) / 0.10 * Math.PI); // pre-Q dip
-    else if (phase < 0.22) sample = 0.5 + (0.45 * bpmNorm + 0.1) * Math.sin((phase - 0.18) / 0.04 * Math.PI); // R spike
-    else if (phase < 0.28) sample = 0.5 - 0.12 * Math.sin((phase - 0.22) / 0.06 * Math.PI); // S dip
-    else if (phase < 0.45) sample = 0.5 + 0.18 * Math.sin((phase - 0.28) / 0.17 * Math.PI); // T wave
-    // Add slight noise from sensor variance
-    const noiseAmp = 0.01;
-    sample += (Math.random() - 0.5) * noiseAmp;
+    let sample = 0.5;
+    if (phase < 0.08) sample = 0.5 + 0.08 * Math.sin(phase / 0.08 * Math.PI);
+    else if (phase < 0.18) sample = 0.5 - 0.04 * Math.sin((phase - 0.08) / 0.10 * Math.PI);
+    else if (phase < 0.22) sample = 0.5 + (0.45 * bpmNorm + 0.1) * Math.sin((phase - 0.18) / 0.04 * Math.PI);
+    else if (phase < 0.28) sample = 0.5 - 0.12 * Math.sin((phase - 0.22) / 0.06 * Math.PI);
+    else if (phase < 0.45) sample = 0.5 + 0.18 * Math.sin((phase - 0.28) / 0.17 * Math.PI);
+    sample += (Math.random() - 0.5) * 0.01;
     sample = Math.min(Math.max(sample, 0.02), 0.98);
+
+    // Fire onBeat on the leading edge of the QRS spike
+    const inSpike = phase >= 0.18 && phase < 0.22;
+    if (inSpike && !lastBeatPhaseRef.current && onBeat) onBeat();
+    lastBeatPhaseRef.current = inSpike;
 
     const next = [...waveRef.current.slice(1), sample];
     waveRef.current = next;
     setWaveData([...next]);
-  }, [bpm]);
+  }, [bpm, onBeat]);
 
   useEffect(() => {
     const interval = setInterval(buildWaveformTick, 100); // 10fps update
@@ -915,14 +917,53 @@ const avS = StyleSheet.create({
 });
 
 // ══════════════════════════ HEX METRIC CARD ══════════════════════════
-function HexMetric({ label, value, unit, color, icon }: { label: string; value: string; unit: string; color: string; icon: React.ReactNode }) {
+function HexMetric({ label, value, unit, color, icon, beatSignal, jitter = 0 }: {
+  label: string; value: string; unit: string; color: string; icon: React.ReactNode;
+  beatSignal?: number; jitter?: number;
+}) {
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const glowAnim = useRef(new Animated.Value(0)).current;
+  const [liveValue, setLiveValue] = useState(value);
+
+  // Sync base value
+  useEffect(() => { setLiveValue(value); }, [value]);
+
+  // On each beat: pulse scale + apply jitter to displayed number
+  useEffect(() => {
+    if (beatSignal === undefined || beatSignal === 0) return;
+    // Jitter the displayed number slightly
+    if (jitter > 0) {
+      const base = parseFloat(value);
+      if (!isNaN(base)) {
+        const delta = (Math.random() - 0.5) * 2 * jitter;
+        const jittered = base + delta;
+        setLiveValue(Number.isInteger(base) ? Math.round(jittered).toString() : jittered.toFixed(1));
+      }
+    }
+    // Scale pulse
+    Animated.sequence([
+      Animated.timing(scaleAnim, { toValue: 1.08, duration: 80, useNativeDriver: true }),
+      Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, tension: 200, friction: 10 }),
+    ]).start();
+    // Glow flash
+    Animated.sequence([
+      Animated.timing(glowAnim, { toValue: 1, duration: 80, useNativeDriver: false }),
+      Animated.timing(glowAnim, { toValue: 0, duration: 400, useNativeDriver: false }),
+    ]).start();
+  }, [beatSignal]);
+
   return (
-    <View style={[hxS.card, { borderColor: color + '40', shadowColor: color }]}>
+    <Animated.View style={[hxS.card, {
+      borderColor: glowAnim.interpolate({ inputRange: [0, 1], outputRange: [color + '40', color + 'cc'] }),
+      shadowColor: color,
+      shadowOpacity: glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.3, 0.8] }),
+      transform: [{ scale: scaleAnim }],
+    }]}>
       <View style={[hxS.icon, { backgroundColor: color + '15' }]}>{icon}</View>
-      <Text style={[hxS.value, { color }]}>{value}</Text>
+      <Text style={[hxS.value, { color }]}>{liveValue}</Text>
       <Text style={[hxS.unit, { color: color + 'aa' }]}>{unit}</Text>
       <Text style={hxS.label}>{label}</Text>
-    </View>
+    </Animated.View>
   );
 }
 const hxS = StyleSheet.create({
@@ -954,6 +995,7 @@ export default function RoomDashboard() {
   const [avatarPreSystem, setAvatarPreSystem] = useState<string | undefined>(undefined);
   const [toastVisible, setToastVisible] = useState(false);
   const [toastEventTitle, setToastEventTitle] = useState('');
+  const [beatSignal, setBeatSignal] = useState(0);
 
   const roomCode = room || 'PA1';
   const roomNames: Record<string, string> = { PA1: 'PACKET AREA 1', PR1: 'PRODUCTION ROOM 1', PR2: 'PRODUCTION ROOM 2' };
@@ -1096,11 +1138,11 @@ export default function RoomDashboard() {
         {/* Metrics */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
           <View style={{ flexDirection: 'row' }}>
-            <HexMetric label="BAGS/MIN" value={bpm.toString()} unit={`/ ${target}`} color={bpmColor} icon={<Package size={14} color={bpmColor} />} />
-            <HexMetric label="TODAY" value={(roomStatus?.bags_today || 0).toLocaleString()} unit="BAGS" color={HUD.cyan} icon={<BarChart2 size={14} color={HUD.cyan} />} />
-            <HexMetric label="UPTIME" value={`${roomStatus?.uptime_percent || 0}%`} unit="OEE" color={uptColor} icon={<TrendingUp size={14} color={uptColor} />} />
+            <HexMetric label="BAGS/MIN" value={bpm.toString()} unit={`/ ${target}`} color={bpmColor} icon={<Package size={14} color={bpmColor} />} beatSignal={beatSignal} jitter={1.5} />
+            <HexMetric label="TODAY" value={(roomStatus?.bags_today || 0).toLocaleString()} unit="BAGS" color={HUD.cyan} icon={<BarChart2 size={14} color={HUD.cyan} />} beatSignal={beatSignal} jitter={0} />
+            <HexMetric label="UPTIME" value={`${roomStatus?.uptime_percent || 0}%`} unit="OEE" color={uptColor} icon={<TrendingUp size={14} color={uptColor} />} beatSignal={beatSignal} jitter={0.4} />
             {sensorReadings.filter(s => s.value != null).slice(0, 4).map(s => (
-              <HexMetric key={s.id} label={s.sensor_name.length > 9 ? s.sensor_name.substring(0, 8) + '…' : s.sensor_name} value={s.value.toFixed(0)} unit={s.unit || ''} color={SC[s.status] || HUD.textDim} icon={s.sensor_type === 'temperature' ? <Thermometer size={14} color={SC[s.status]} /> : <Gauge size={14} color={SC[s.status]} />} />
+              <HexMetric key={s.id} label={s.sensor_name.length > 9 ? s.sensor_name.substring(0, 8) + '…' : s.sensor_name} value={s.value.toFixed(1)} unit={s.unit || ''} color={SC[s.status] || HUD.textDim} icon={s.sensor_type === 'temperature' ? <Thermometer size={14} color={SC[s.status]} /> : <Gauge size={14} color={SC[s.status]} />} beatSignal={beatSignal} jitter={s.value * 0.008} />
             ))}
           </View>
         </ScrollView>
@@ -1110,6 +1152,7 @@ export default function RoomDashboard() {
           bpm={bpm}
           sensors={sensorReadings.filter(s => s.value != null).slice(0, 3)}
           color={bpmColor}
+          onBeat={() => setBeatSignal(b => b + 1)}
         />
 
         {/* Line schematic — always visible on dashboard */}
