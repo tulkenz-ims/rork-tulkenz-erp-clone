@@ -317,7 +317,10 @@ export function useAIActions() {
     if (result.success && params.create_work_order_requested) {
       await createWorkOrder({
         title: `Breakdown: ${params.equipment_name}`,
+        // Pass equipment name so pre-start validation is satisfied
         equipment_name: params.equipment_name,
+        // Pass location so the work order location field is pre-filled
+        location: params.location,
         description: `${params.symptom}\nImmediate action: ${params.immediate_action_taken}\nTask Feed Post: ${result.data?.post_number}`,
         priority: params.production_impact === 'Line Down' ? 'critical' : 'high',
         type: 'reactive',
@@ -563,7 +566,6 @@ export function useAIActions() {
 
       await supabase.from('task_feed_department_tasks').insert(deptTasks);
 
-      // Invalidate all task feed related queries regardless of exact key used in screens
       queryClient.invalidateQueries({ queryKey: ['task_feed'] });
       queryClient.invalidateQueries({ queryKey: ['task_feed_posts'] });
       queryClient.invalidateQueries({ queryKey: ['task_feed_department_tasks'] });
@@ -583,6 +585,10 @@ export function useAIActions() {
 
   // ─────────────────────────────────────────────
   // CREATE WORK ORDER
+  //
+  // equipment defaults to 'N/A' (never null) so the pre-start
+  // validation in WorkOrderDetail is always satisfied.
+  // location is passed through from the caller when available.
   // ─────────────────────────────────────────────
 
   const createWorkOrder = useCallback(async (params: AIActionParams): Promise<ActionResult> => {
@@ -592,6 +598,16 @@ export function useAIActions() {
       const woType = (params.type as string) || 'reactive';
       const prefix = woType === 'preventive' ? 'PM' : 'RE';
       const woNumber = generateWONumber(prefix);
+
+      // Resolve equipment: use provided name, or fall back to 'N/A'
+      // so the WorkOrderDetail pre-start validation is never blocked
+      // for issues where no specific equipment is involved.
+      const equipmentValue = (params.equipment_name as string)?.trim() || 'N/A';
+
+      // Resolve location: use provided location label (room name or free text)
+      const locationValue = (params.location as string)
+        ? (ROOM_TO_LOCATION_LABEL[params.location as string] || (params.location as string))
+        : null;
 
       const { data: wo, error: woError } = await supabase
         .from('work_orders')
@@ -604,9 +620,12 @@ export function useAIActions() {
           priority: (params.priority as string) || 'medium',
           type: woType,
           source: 'ai_assist',
+          source_id: (params.source_post_id as string) || null,
           equipment_id: (params.equipment_id as string) || null,
-          equipment: (params.equipment_name as string) || null,
+          equipment: equipmentValue,
+          location: locationValue,
           assigned_to: null,
+          assigned_name: null,
           due_date: new Date().toISOString().split('T')[0],
           department: '1001',
           department_name: 'Maintenance',
@@ -626,7 +645,7 @@ export function useAIActions() {
           template_name: `WO: ${params.title || 'Work Order'}`,
           created_by_id: user?.id || null,
           created_by_name: (user ? `${user.first_name} ${user.last_name}`.trim() : 'AI Assistant'),
-          location_name: (params.equipment_name as string) || null,
+          location_name: locationValue || equipmentValue || null,
           form_data: {
             source: 'ai_assist',
             template_key: 'work_order',
@@ -661,7 +680,6 @@ export function useAIActions() {
       }
 
       queryClient.invalidateQueries({ queryKey: ['work_orders'] });
-      // Invalidate all task feed related queries regardless of exact key used in screens
       queryClient.invalidateQueries({ queryKey: ['task_feed'] });
       queryClient.invalidateQueries({ queryKey: ['task_feed_posts'] });
       queryClient.invalidateQueries({ queryKey: ['task_feed_department_tasks'] });
@@ -670,7 +688,7 @@ export function useAIActions() {
 
       return {
         success: true,
-        message: `Work Order ${woNumber} created. Posted to Task Feed as ${postNumber}.`,
+        message: `Work Order ${woNumber} created. Equipment: ${equipmentValue}. Location: ${locationValue || 'not set'}. Posted to Task Feed as ${postNumber}.`,
         data: { work_order_number: woNumber, work_order_id: wo.id, post_number: postNumber },
       };
     } catch (err: any) {
