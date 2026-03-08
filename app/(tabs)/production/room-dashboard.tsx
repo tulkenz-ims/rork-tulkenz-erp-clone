@@ -1146,13 +1146,13 @@ interface IntelItem { id: string; category: 'predictive' | 'operator' | 'product
 
 const INTEL_DATA: IntelItem[] = [
   { id: 'bearing-1', category: 'predictive', severity: 'warning', title: 'Main Drive Bearing — End of Life', body: 'Historical avg life: 320 hrs. Current runtime: 304 hrs. Projected failure window: 2 weeks. Order P/N 5027-A before next PM.', dueLabel: addDays(14), dueDays: 14, source: 'PM History · 8 data points' },
-  { id: 'heatband-1', category: 'predictive', severity: 'warning', title: 'Vertical Seal Heat Bands — Pre/Post Run Change', body: 'Product: Chike Protein Coffee (10 oz). Historical protocol: change all 4 heat bands before AND after this SKU. 4 bands on-hand (P/N 5044-HB). Schedule 45 min per changeover.', dueLabel: 'Next run start', dueDays: 0, source: 'Product History · 12 runs' },
+  { id: 'heatband-1', category: 'predictive', severity: 'warning', title: 'Vertical Seal Heat Bands — Pre/Post Run Change', body: 'Product: Protein Powder Blend (10 oz). Historical protocol: change all 4 heat bands before AND after this SKU. 4 bands on-hand (P/N 5044-HB). Schedule 45 min per changeover.', dueLabel: 'Next run start', dueDays: 0, source: 'Product History · 12 runs' },
   { id: 'filter-1', category: 'predictive', severity: 'warning', title: 'Air Filter Element — Change Due', body: 'Last changed 87 days ago. Recommended interval: 90 days. Current air pressure trending 2 PSI low — may be related. P/N 5033-F in stock (qty 3).', dueLabel: addDays(3), dueDays: 3, source: 'PM Schedule · Quarterly' },
   { id: 'film-tension', category: 'predictive', severity: 'info', title: 'Film Dancer Roller — Inspect at Next PM', body: 'Avg replacement interval: 180 days. Last replaced: 147 days ago. Inspect at next scheduled PM. P/N 5031-C in stock (qty 2).', dueLabel: addDays(33), dueDays: 33, source: 'Maintenance Log' },
-  { id: 'op-1', category: 'operator', severity: 'warning', title: 'Operator Pattern — J. Martinez: +52% Downtime', body: 'When J. Martinez operates PA1, avg downtime is 52% above line baseline (28 min/shift vs 18 min avg). Common cause: manual film tension overrides. Recommend retraining on auto-tension calibration procedure.', source: 'Labor Analytics · 90-day window' },
-  { id: 'op-2', category: 'operator', severity: 'info', title: 'Operator Pattern — T. Williams: High Efficiency', body: 'T. Williams consistently achieves 96–100% OEE on this line. Runs avg 3.2 PKG/min above target. Recommended as peer trainer for film threading and tension calibration.', source: 'Labor Analytics · 90-day window' },
-  { id: 'prod-1', category: 'product', severity: 'warning', title: 'Chike 10 oz — Seal Temp Sensitivity', body: 'This SKU requires vertical seal temp 285–292°F (tighter than standard 270–310). Temps above 295°F cause seal blowouts at 8–12 min into run. Alert maintenance if temp exceeds 293°F.', source: 'Quality History · 7 runs' },
-  { id: 'prod-2', category: 'product', severity: 'info', title: 'Chike 10 oz — Auger Speed Baseline', body: 'Optimal auger: 118–122 RPM for this SKU. Below 115 causes underfill; above 127 causes product bridging in hopper. Current: 124.9 RPM — within spec, monitor.', source: 'Product Spec · QA-verified' },
+  { id: 'op-1', category: 'operator', severity: 'warning', title: 'Operator Pattern — Operator A: +52% Downtime', body: 'When Operator A operates PA1, avg downtime is 52% above line baseline (28 min/shift vs 18 min avg). Common cause: manual film tension overrides. Recommend retraining on auto-tension calibration procedure.', source: 'Labor Analytics · 90-day window' },
+  { id: 'op-2', category: 'operator', severity: 'info', title: 'Operator Pattern — Operator B: High Efficiency', body: 'Operator B consistently achieves 96–100% OEE on this line. Runs avg 3.2 PKG/min above target. Recommended as peer trainer for film threading and tension calibration.', source: 'Labor Analytics · 90-day window' },
+  { id: 'prod-1', category: 'product', severity: 'warning', title: '10 oz Powder SKU — Seal Temp Sensitivity', body: 'This SKU requires vertical seal temp 285–292°F (tighter than standard 270–310). Temps above 295°F cause seal blowouts at 8–12 min into run. Alert maintenance if temp exceeds 293°F.', source: 'Quality History · 7 runs' },
+  { id: 'prod-2', category: 'product', severity: 'info', title: '10 oz Powder SKU — Auger Speed Baseline', body: 'Optimal auger: 118–122 RPM for this SKU. Below 115 causes underfill; above 127 causes product bridging in hopper. Current: 124.9 RPM — within spec, monitor.', source: 'Product Spec · QA-verified' },
   { id: 'hist-1', category: 'history', severity: 'info', title: 'Last Unplanned Downtime — Film Jam (34 min)', body: 'Root cause: spliced roll not trimmed flush at splice point. Corrective action: added splice inspection step to job setup SOP. Repeat incidents since corrective action: 0.', dueLabel: '11 days ago', source: 'Work Order WO-4421' },
   { id: 'hist-2', category: 'history', severity: 'info', title: 'Last PM Completed — Full Service', body: 'Belt tension adjusted, drive chain lubricated, front endseal gasket replaced, all sensors calibrated. Completed on schedule. Runtime since PM: 304 hrs.', dueLabel: '38 days ago', source: 'PM Record PM-0218' },
 ];
@@ -1178,7 +1178,7 @@ function EquipmentIntelligence() {
       </View>
       <View style={eiS.machineRow}>
         <View style={eiS.machinePill}><Text style={eiS.machineLabel}>AVATAR A1200 VFFS</Text></View>
-        <Text style={eiS.machineDetail}>PA1 · S/N A1200-0042 · 304 hrs since PM</Text>
+        <Text style={eiS.machineDetail}>PA1 · S/N A1200-#### · 304 hrs since PM</Text>
       </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
         <View style={{ flexDirection: 'row', gap: 6 }}>
@@ -1199,29 +1199,39 @@ function EquipmentIntelligence() {
         const isOpen = expanded === item.id;
         const urgent = item.dueDays !== undefined && item.dueDays <= 7;
         return (
-          <Pressable key={item.id} onPress={() => setExpanded(isOpen ? null : item.id)} style={[eiS.item, { borderLeftColor: sevCol }]}>
-            <View style={eiS.itemHead}>
-              <View style={[eiS.catPill, { backgroundColor: catCol + '15', borderColor: catCol + '40' }]}>
-                <Text style={[eiS.catTxt, { color: catCol }]}>{INTEL_CAT_LABELS[item.category]}</Text>
-              </View>
-              {item.dueLabel && (
-                <View style={[eiS.duePill, { backgroundColor: urgent ? HUD.redDim : HUD.bgCardAlt, borderColor: urgent ? HUD.red + '50' : HUD.border }]}>
-                  <Text style={[eiS.dueTxt, { color: urgent ? HUD.red : HUD.textSec }]}>{item.dueLabel}</Text>
+          <View key={item.id} style={[eiS.item, { borderLeftColor: sevCol }]}>
+            <Pressable
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setExpanded(prev => prev === item.id ? null : item.id);
+              }}
+              style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6 }}
+            >
+              <View style={{ flex: 1 }}>
+                <View style={eiS.itemHead}>
+                  <View style={[eiS.catPill, { backgroundColor: catCol + '15', borderColor: catCol + '40' }]}>
+                    <Text style={[eiS.catTxt, { color: catCol }]}>{INTEL_CAT_LABELS[item.category]}</Text>
+                  </View>
+                  {item.dueLabel && (
+                    <View style={[eiS.duePill, { backgroundColor: urgent ? HUD.redDim : HUD.bgCardAlt, borderColor: urgent ? HUD.red + '50' : HUD.border }]}>
+                      <Text style={[eiS.dueTxt, { color: urgent ? HUD.red : HUD.textSec }]}>{item.dueLabel}</Text>
+                    </View>
+                  )}
                 </View>
-              )}
-              <ChevronDown size={12} color={HUD.textDim} style={{ marginLeft: 'auto' }} />
-            </View>
-            <Text style={[eiS.itemTitle, { color: sevCol }]}>{item.title}</Text>
+                <Text style={[eiS.itemTitle, { color: sevCol }]}>{item.title}</Text>
+              </View>
+              <ChevronDown size={14} color={isOpen ? HUD.cyan : HUD.textDim} />
+            </Pressable>
             {isOpen && (
-              <>
+              <View style={{ marginTop: 8 }}>
                 <Text style={eiS.itemBody}>{item.body}</Text>
                 <View style={eiS.sourceRow}>
                   <Layers size={9} color={HUD.textDim} />
                   <Text style={eiS.sourceTxt}>{item.source}</Text>
                 </View>
-              </>
+              </View>
             )}
-          </Pressable>
+          </View>
         );
       })}
     </View>
