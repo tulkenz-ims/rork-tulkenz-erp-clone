@@ -1121,19 +1121,135 @@ function SensorCard({ sensor, beatSignal }: { sensor: any; beatSignal: number })
     </Animated.View>
   );
 }
+const CARD_COLS = 4;
+const CARD_W = Math.floor((W - 32 - (CARD_COLS - 1) * 6) / CARD_COLS);
 const scS = StyleSheet.create({
-  card: { width: (W - 48) / 3 - 6, borderRadius: 12, borderWidth: 1, backgroundColor: HUD.bgCard, padding: 10, marginBottom: 8, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.25, shadowRadius: 8, elevation: 4, overflow: 'hidden' },
-  statusBar: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, borderTopLeftRadius: 12, borderBottomLeftRadius: 12 },
-  name: { fontSize: 8, fontWeight: '700', color: HUD.textSec, letterSpacing: 0.4, marginBottom: 3, paddingLeft: 8 },
-  value: { fontSize: 22, fontWeight: '900', letterSpacing: -0.5, paddingLeft: 8 },
-  unit: { fontSize: 9, fontWeight: '600', letterSpacing: 0.5, paddingLeft: 8, marginBottom: 6 },
-  baseWrap: { paddingLeft: 8, paddingRight: 4 },
-  baseTrack: { height: 2, backgroundColor: HUD.border, borderRadius: 1, overflow: 'hidden', marginBottom: 3 },
+  card: { width: CARD_W, borderRadius: 10, borderWidth: 1, backgroundColor: HUD.bgCard, padding: 8, marginBottom: 6, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.25, shadowRadius: 6, elevation: 4, overflow: 'hidden' },
+  statusBar: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, borderTopLeftRadius: 10, borderBottomLeftRadius: 10 },
+  name: { fontSize: 7, fontWeight: '700', color: HUD.textSec, letterSpacing: 0.3, marginBottom: 2, paddingLeft: 6 },
+  value: { fontSize: 17, fontWeight: '900', letterSpacing: -0.5, paddingLeft: 6 },
+  unit: { fontSize: 8, fontWeight: '600', letterSpacing: 0.3, paddingLeft: 6, marginBottom: 4 },
+  baseWrap: { paddingLeft: 6, paddingRight: 3 },
+  baseTrack: { height: 2, backgroundColor: HUD.border, borderRadius: 1, overflow: 'hidden', marginBottom: 2 },
   baseFill: { height: '100%', borderRadius: 1 },
-  baseLbl: { fontSize: 7, color: HUD.textDim, fontWeight: '600', letterSpacing: 0.3 },
+  baseLbl: { fontSize: 6, color: HUD.textDim, fontWeight: '600', letterSpacing: 0.2 },
 });
 
 
+
+// ══════════════════════════ EQUIPMENT INTELLIGENCE ═══════════════════════════
+const TODAY_D = new Date();
+const addDays = (d: number) => { const dt = new Date(TODAY_D); dt.setDate(dt.getDate() + d); return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); };
+
+type IntelSeverity = 'critical' | 'warning' | 'info';
+interface IntelItem { id: string; category: 'predictive' | 'operator' | 'product' | 'history'; severity: IntelSeverity; title: string; body: string; dueLabel?: string; dueDays?: number; source: string; }
+
+const INTEL_DATA: IntelItem[] = [
+  { id: 'bearing-1', category: 'predictive', severity: 'warning', title: 'Main Drive Bearing — End of Life', body: 'Historical avg life: 320 hrs. Current runtime: 304 hrs. Projected failure window: 2 weeks. Order P/N 5027-A before next PM.', dueLabel: addDays(14), dueDays: 14, source: 'PM History · 8 data points' },
+  { id: 'heatband-1', category: 'predictive', severity: 'warning', title: 'Vertical Seal Heat Bands — Pre/Post Run Change', body: 'Product: Chike Protein Coffee (10 oz). Historical protocol: change all 4 heat bands before AND after this SKU. 4 bands on-hand (P/N 5044-HB). Schedule 45 min per changeover.', dueLabel: 'Next run start', dueDays: 0, source: 'Product History · 12 runs' },
+  { id: 'filter-1', category: 'predictive', severity: 'warning', title: 'Air Filter Element — Change Due', body: 'Last changed 87 days ago. Recommended interval: 90 days. Current air pressure trending 2 PSI low — may be related. P/N 5033-F in stock (qty 3).', dueLabel: addDays(3), dueDays: 3, source: 'PM Schedule · Quarterly' },
+  { id: 'film-tension', category: 'predictive', severity: 'info', title: 'Film Dancer Roller — Inspect at Next PM', body: 'Avg replacement interval: 180 days. Last replaced: 147 days ago. Inspect at next scheduled PM. P/N 5031-C in stock (qty 2).', dueLabel: addDays(33), dueDays: 33, source: 'Maintenance Log' },
+  { id: 'op-1', category: 'operator', severity: 'warning', title: 'Operator Pattern — J. Martinez: +52% Downtime', body: 'When J. Martinez operates PA1, avg downtime is 52% above line baseline (28 min/shift vs 18 min avg). Common cause: manual film tension overrides. Recommend retraining on auto-tension calibration procedure.', source: 'Labor Analytics · 90-day window' },
+  { id: 'op-2', category: 'operator', severity: 'info', title: 'Operator Pattern — T. Williams: High Efficiency', body: 'T. Williams consistently achieves 96–100% OEE on this line. Runs avg 3.2 PKG/min above target. Recommended as peer trainer for film threading and tension calibration.', source: 'Labor Analytics · 90-day window' },
+  { id: 'prod-1', category: 'product', severity: 'warning', title: 'Chike 10 oz — Seal Temp Sensitivity', body: 'This SKU requires vertical seal temp 285–292°F (tighter than standard 270–310). Temps above 295°F cause seal blowouts at 8–12 min into run. Alert maintenance if temp exceeds 293°F.', source: 'Quality History · 7 runs' },
+  { id: 'prod-2', category: 'product', severity: 'info', title: 'Chike 10 oz — Auger Speed Baseline', body: 'Optimal auger: 118–122 RPM for this SKU. Below 115 causes underfill; above 127 causes product bridging in hopper. Current: 124.9 RPM — within spec, monitor.', source: 'Product Spec · QA-verified' },
+  { id: 'hist-1', category: 'history', severity: 'info', title: 'Last Unplanned Downtime — Film Jam (34 min)', body: 'Root cause: spliced roll not trimmed flush at splice point. Corrective action: added splice inspection step to job setup SOP. Repeat incidents since corrective action: 0.', dueLabel: '11 days ago', source: 'Work Order WO-4421' },
+  { id: 'hist-2', category: 'history', severity: 'info', title: 'Last PM Completed — Full Service', body: 'Belt tension adjusted, drive chain lubricated, front endseal gasket replaced, all sensors calibrated. Completed on schedule. Runtime since PM: 304 hrs.', dueLabel: '38 days ago', source: 'PM Record PM-0218' },
+];
+
+const INTEL_COLORS: Record<IntelSeverity, string> = { critical: HUD.red, warning: HUD.amber, info: HUD.cyan };
+const INTEL_CAT_LABELS: Record<string, string> = { predictive: 'PREDICTIVE', operator: 'OPERATOR INTEL', product: 'PRODUCT HISTORY', history: 'MAINT LOG' };
+const INTEL_CAT_COLORS: Record<string, string> = { predictive: HUD.purple, operator: HUD.amber, product: HUD.green, history: HUD.textSec };
+
+function EquipmentIntelligence() {
+  const [filter, setFilter] = useState<string>('all');
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const categories = ['all', 'predictive', 'operator', 'product', 'history'];
+  const items = filter === 'all' ? INTEL_DATA : INTEL_DATA.filter(i => i.category === filter);
+  const warnCount = INTEL_DATA.filter(i => i.severity === 'warning').length;
+  return (
+    <View style={eiS.wrap}>
+      <View style={eiS.head}>
+        <Cpu size={13} color={HUD.purple} />
+        <Text style={eiS.title}>EQUIPMENT INTELLIGENCE</Text>
+        <View style={[eiS.badge, { backgroundColor: HUD.amber + '20', borderColor: HUD.amber + '50' }]}>
+          <Text style={[eiS.badgeTxt, { color: HUD.amber }]}>{warnCount} ALERTS</Text>
+        </View>
+      </View>
+      <View style={eiS.machineRow}>
+        <View style={eiS.machinePill}><Text style={eiS.machineLabel}>AVATAR A1200 VFFS</Text></View>
+        <Text style={eiS.machineDetail}>PA1 · S/N A1200-0042 · 304 hrs since PM</Text>
+      </View>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
+        <View style={{ flexDirection: 'row', gap: 6 }}>
+          {categories.map(cat => {
+            const active = filter === cat;
+            const col = cat === 'all' ? HUD.purple : INTEL_CAT_COLORS[cat];
+            return (
+              <Pressable key={cat} onPress={() => setFilter(cat)} style={[eiS.filterTab, { borderColor: active ? col : HUD.border, backgroundColor: active ? col + '20' : 'transparent' }]}>
+                <Text style={[eiS.filterTxt, { color: active ? col : HUD.textDim }]}>{cat === 'all' ? 'ALL' : INTEL_CAT_LABELS[cat]}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </ScrollView>
+      {items.map(item => {
+        const sevCol = INTEL_COLORS[item.severity];
+        const catCol = INTEL_CAT_COLORS[item.category];
+        const isOpen = expanded === item.id;
+        const urgent = item.dueDays !== undefined && item.dueDays <= 7;
+        return (
+          <Pressable key={item.id} onPress={() => setExpanded(isOpen ? null : item.id)} style={[eiS.item, { borderLeftColor: sevCol }]}>
+            <View style={eiS.itemHead}>
+              <View style={[eiS.catPill, { backgroundColor: catCol + '15', borderColor: catCol + '40' }]}>
+                <Text style={[eiS.catTxt, { color: catCol }]}>{INTEL_CAT_LABELS[item.category]}</Text>
+              </View>
+              {item.dueLabel && (
+                <View style={[eiS.duePill, { backgroundColor: urgent ? HUD.redDim : HUD.bgCardAlt, borderColor: urgent ? HUD.red + '50' : HUD.border }]}>
+                  <Text style={[eiS.dueTxt, { color: urgent ? HUD.red : HUD.textSec }]}>{item.dueLabel}</Text>
+                </View>
+              )}
+              <ChevronDown size={12} color={HUD.textDim} style={{ marginLeft: 'auto' }} />
+            </View>
+            <Text style={[eiS.itemTitle, { color: sevCol }]}>{item.title}</Text>
+            {isOpen && (
+              <>
+                <Text style={eiS.itemBody}>{item.body}</Text>
+                <View style={eiS.sourceRow}>
+                  <Layers size={9} color={HUD.textDim} />
+                  <Text style={eiS.sourceTxt}>{item.source}</Text>
+                </View>
+              </>
+            )}
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+const eiS = StyleSheet.create({
+  wrap: { backgroundColor: HUD.bgCard, borderRadius: 14, borderWidth: 1, borderColor: HUD.borderBright, padding: 14, marginBottom: 14 },
+  head: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
+  title: { fontSize: 11, fontWeight: '800', color: HUD.purple, letterSpacing: 1.5, flex: 1 },
+  badge: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 8, borderWidth: 1 },
+  badgeTxt: { fontSize: 8, fontWeight: '800', letterSpacing: 0.5 },
+  machineRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
+  machinePill: { backgroundColor: HUD.cyan + '15', borderRadius: 6, borderWidth: 1, borderColor: HUD.cyan + '40', paddingHorizontal: 8, paddingVertical: 3 },
+  machineLabel: { fontSize: 9, fontWeight: '900', color: HUD.cyan, letterSpacing: 1 },
+  machineDetail: { fontSize: 9, color: HUD.textSec, flex: 1 },
+  filterTab: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1 },
+  filterTxt: { fontSize: 8, fontWeight: '800', letterSpacing: 0.8 },
+  item: { backgroundColor: HUD.bg, borderRadius: 8, padding: 10, marginBottom: 8, borderWidth: 1, borderColor: HUD.border, borderLeftWidth: 3 },
+  itemHead: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 5, flexWrap: 'wrap' },
+  catPill: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5, borderWidth: 1 },
+  catTxt: { fontSize: 7, fontWeight: '800', letterSpacing: 0.8 },
+  duePill: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5, borderWidth: 1 },
+  dueTxt: { fontSize: 7, fontWeight: '700' },
+  itemTitle: { fontSize: 12, fontWeight: '800', marginBottom: 4 },
+  itemBody: { fontSize: 11, color: HUD.textSec, lineHeight: 17, marginBottom: 6 },
+  sourceRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  sourceTxt: { fontSize: 9, color: HUD.textDim, fontWeight: '600', fontStyle: 'italic' },
+});
 
 // ══════════════════════════ TYPES ══════════════════════════════════════
 interface RoomStatus { status: string; andon_color: string; bags_today: number; bags_per_minute: number; target_bags_per_minute: number; uptime_percent: number; updated_at: string; }
@@ -1336,7 +1452,10 @@ export default function RoomDashboard() {
           </View>
         </View>
 
-        {/* 4. SIM CONTROLS */}
+        {/* 4. EQUIPMENT INTELLIGENCE */}
+        <EquipmentIntelligence />
+
+        {/* 5. SIM CONTROLS */}
         <View style={[mS.card, { borderColor: HUD.purple + '40' }]}>
           <View style={mS.cardHead}>
             <Zap size={12} color={HUD.purple} />
