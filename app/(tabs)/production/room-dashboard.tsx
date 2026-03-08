@@ -1142,7 +1142,8 @@ const TODAY_D = new Date();
 const addDays = (d: number) => { const dt = new Date(TODAY_D); dt.setDate(dt.getDate() + d); return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); };
 
 type IntelSeverity = 'critical' | 'warning' | 'info';
-interface IntelItem { id: string; category: 'predictive' | 'operator' | 'product' | 'history'; severity: IntelSeverity; title: string; body: string; dueLabel?: string; dueDays?: number; source: string; }
+interface IntelIncident { date: string; event: string; result: string; }
+interface IntelItem { id: string; category: 'predictive' | 'operator' | 'product' | 'history'; severity: IntelSeverity; title: string; body: string; dueLabel?: string; dueDays?: number; source: string; incidents?: IntelIncident[]; }
 
 const INTEL_DATA: IntelItem[] = [
   { id: 'bearing-1', category: 'predictive', severity: 'warning', title: 'Main Drive Bearing — End of Life', body: 'Historical avg life: 320 hrs. Current runtime: 304 hrs. Projected failure window: 2 weeks. Order P/N 5027-A before next PM.', dueLabel: addDays(14), dueDays: 14, source: 'PM History · 8 data points' },
@@ -1152,7 +1153,17 @@ const INTEL_DATA: IntelItem[] = [
   { id: 'op-1', category: 'operator', severity: 'warning', title: 'Operator Pattern — Operator A: +52% Downtime', body: 'When Operator A operates PA1, avg downtime is 52% above line baseline (28 min/shift vs 18 min avg). Common cause: manual film tension overrides. Recommend retraining on auto-tension calibration procedure.', source: 'Labor Analytics · 90-day window' },
   { id: 'op-2', category: 'operator', severity: 'info', title: 'Operator Pattern — Operator B: High Efficiency', body: 'Operator B consistently achieves 96–100% OEE on this line. Runs avg 3.2 PKG/min above target. Recommended as peer trainer for film threading and tension calibration.', source: 'Labor Analytics · 90-day window' },
   { id: 'prod-1', category: 'product', severity: 'warning', title: '10 oz Powder SKU — Seal Temp Sensitivity', body: 'This SKU requires vertical seal temp 285–292°F (tighter than standard 270–310). Temps above 295°F cause seal blowouts at 8–12 min into run. Alert maintenance if temp exceeds 293°F.', source: 'Quality History · 7 runs' },
-  { id: 'prod-2', category: 'product', severity: 'info', title: '10 oz Powder SKU — Auger Speed Baseline', body: 'Optimal auger: 118–122 RPM for this SKU. Below 115 causes underfill; above 127 causes product bridging in hopper. Current: 124.9 RPM — within spec, monitor.', source: 'Product Spec · QA-verified' },
+  { id: 'prod-2', category: 'product', severity: 'warning',
+    title: 'Auger Over-Speed — Damage & Shutdown Pattern',
+    body: 'Historically, when auger runs above 127 RPM for more than 20 continuous minutes, damage to the auger flight or drive coupling occurs within 48 hours — typically resulting in a full line shutdown. Current reading: 124.9 RPM. Monitor closely.',
+    source: 'Work Order History · 4 incidents',
+    incidents: [
+      { date: 'Jan 14, 2025', event: 'Auger ran 131 RPM for ~35 min during high-volume run', result: 'Drive coupling sheared — 6.5 hr shutdown, WO-4108' },
+      { date: 'Sep 3, 2024',  event: 'Auger at 129 RPM, operator overrode auto-limit', result: 'Auger flight cracked — 4 hr shutdown, WO-3847' },
+      { date: 'May 22, 2024', event: 'Speed crept to 128 RPM after encoder recalibration', result: 'Bearing failure 31 hrs later — 9 hr shutdown, WO-3601' },
+      { date: 'Nov 8, 2023',  event: 'New operator set auger to 133 RPM to chase throughput', result: 'Motor overtemp + coupling damage — 11 hr shutdown, WO-3312' },
+    ],
+  },
   { id: 'hist-1', category: 'history', severity: 'info', title: 'Last Unplanned Downtime — Film Jam (34 min)', body: 'Root cause: spliced roll not trimmed flush at splice point. Corrective action: added splice inspection step to job setup SOP. Repeat incidents since corrective action: 0.', dueLabel: '11 days ago', source: 'Work Order WO-4421' },
   { id: 'hist-2', category: 'history', severity: 'info', title: 'Last PM Completed — Full Service', body: 'Belt tension adjusted, drive chain lubricated, front endseal gasket replaced, all sensors calibrated. Completed on schedule. Runtime since PM: 304 hrs.', dueLabel: '38 days ago', source: 'PM Record PM-0218' },
 ];
@@ -1223,6 +1234,22 @@ const EquipmentIntelligence = React.memo(function EquipmentIntelligence({ expand
             {isOpen && (
               <View style={{ marginTop: 8 }}>
                 <Text style={eiS.itemBody}>{item.body}</Text>
+                {item.incidents && item.incidents.length > 0 && (
+                  <View style={eiS.incidentWrap}>
+                    <Text style={eiS.incidentHeader}>INCIDENT HISTORY</Text>
+                    {item.incidents.map((inc, idx) => (
+                      <View key={idx} style={eiS.incidentRow}>
+                        <View style={eiS.incidentLeft}>
+                          <Text style={eiS.incidentDate}>{inc.date}</Text>
+                          <Text style={eiS.incidentEvent}>{inc.event}</Text>
+                        </View>
+                        <View style={eiS.incidentResult}>
+                          <Text style={eiS.incidentResultTxt}>{inc.result}</Text>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                )}
                 <View style={eiS.sourceRow}>
                   <Layers size={9} color={HUD.textDim} />
                   <Text style={eiS.sourceTxt}>{item.source}</Text>
@@ -1257,6 +1284,14 @@ const eiS = StyleSheet.create({
   itemBody: { fontSize: 11, color: HUD.textSec, lineHeight: 17, marginBottom: 6 },
   sourceRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   sourceTxt: { fontSize: 9, color: HUD.textDim, fontWeight: '600', fontStyle: 'italic' },
+  incidentWrap: { marginTop: 10, marginBottom: 8, borderRadius: 8, borderWidth: 1, borderColor: HUD.red + '30', backgroundColor: HUD.red + '06', overflow: 'hidden' },
+  incidentHeader: { fontSize: 8, fontWeight: '900', color: HUD.red, letterSpacing: 1.5, paddingHorizontal: 10, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: HUD.red + '25', backgroundColor: HUD.red + '10' },
+  incidentRow: { flexDirection: 'row', gap: 8, padding: 8, borderBottomWidth: 1, borderBottomColor: HUD.red + '15' },
+  incidentLeft: { flex: 1.4 },
+  incidentDate: { fontSize: 8, fontWeight: '800', color: HUD.amber, letterSpacing: 0.3, marginBottom: 2 },
+  incidentEvent: { fontSize: 9, color: HUD.textSec, lineHeight: 13 },
+  incidentResult: { flex: 2 },
+  incidentResultTxt: { fontSize: 9, color: HUD.red + 'cc', lineHeight: 13, fontWeight: '600' },
 });
 
 // ══════════════════════════ TYPES ══════════════════════════════════════
