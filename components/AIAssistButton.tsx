@@ -346,11 +346,20 @@ export default function AIAssistButton() {
       // requires the next user message to have a matching tool_result block.
       // Since we do plain conversational follow-ups, we store a plain text
       // version of the assistant turn to avoid the API rejecting the next call.
+      //
+      // Also: NEVER store raw image base64 in history — it bloats the payload
+      // and causes the API to fail on subsequent calls. Replace image blocks
+      // with a lightweight text placeholder instead.
+      const userContentForHistory = userContent.map((block: any) =>
+        block.type === 'image'
+          ? { type: 'text', text: '[Photo attached by user]' }
+          : block
+      );
       const userTurn: ConversationTurn = {
         role: 'user',
-        content: userContent.length === 1 && userContent[0].type === 'text'
-          ? userContent[0].text
-          : userContent,
+        content: userContentForHistory.length === 1 && userContentForHistory[0].type === 'text'
+          ? userContentForHistory[0].text
+          : userContentForHistory,
       };
 
       if (data.assistant_message) {
