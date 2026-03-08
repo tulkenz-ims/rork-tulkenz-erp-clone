@@ -313,11 +313,15 @@ export default function TaskFeedInbox({
 
     setShowFormPicker(false);
     setShowDecisionModal(false);
-    
-    // Navigate to the form
-    router.push(form.route as any);
-  }, [selectedTask, startTaskMutation, linkFormMutation, departmentCode, router]);
 
+    // Delay navigation until the modal has fully dismissed.
+    // Without this, the modal unmount triggers a focus/blur cycle on web
+    // that swallows the router.push, leaving the user on the dashboard.
+    setTimeout(() => {
+      router.push(form.route as any);
+    }, 300);
+  }, [selectedTask, startTaskMutation, linkFormMutation, departmentCode, router]);
+  
   const handleFormPickerClose = useCallback(() => {
     setShowFormPicker(false);
     // Just close — don't jump to decision modal
