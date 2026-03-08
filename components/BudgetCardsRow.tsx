@@ -1,7 +1,21 @@
-import React, { useMemo } from 'react';
+import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { DollarSign } from 'lucide-react-native';
-import { useTheme } from '@/contexts/ThemeContext';
+
+const HUD = {
+  bgCard:       '#050f1e',
+  bgCardAlt:    '#071525',
+  cyan:         '#00e5ff',
+  green:        '#00ff88',
+  amber:        '#ffb800',
+  red:          '#ff2d55',
+  purple:       '#7b61ff',
+  text:         '#e0f4ff',
+  textSec:      '#7aa8c8',
+  textDim:      '#3a6080',
+  border:       '#0d2840',
+  borderBright: '#1a4060',
+};
 
 interface Budget {
   id?: string;
@@ -14,161 +28,57 @@ interface Budget {
   fiscalYear?: number;
 }
 
-interface BudgetCardsRowProps {
-  budgets: Budget[];
-}
-
-export default function BudgetCardsRow({ budgets }: BudgetCardsRowProps) {
-  const { colors } = useTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
-
+export default function BudgetCardsRow({ budgets }: { budgets: Budget[] }) {
   if (budgets.length === 0) return null;
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <View style={styles.titleRow}>
-          <DollarSign size={15} color="#10B981" />
-          <Text style={styles.title}>Department Budgets</Text>
-        </View>
-        <Text style={styles.subtitle}>FY{budgets[0]?.fiscalYear || new Date().getFullYear()}</Text>
-      </View>
-      <View style={styles.grid}>
-        {budgets.map((b, idx) => {
-          const usedPct = b.amount > 0 ? Math.round((b.spent / b.amount) * 100) : 0;
-          const barColor = usedPct > 100 ? '#EF4444' : usedPct > 80 ? '#F59E0B' : '#10B981';
-          const barWidth = Math.min(usedPct, 100);
+    <View style={S.grid}>
+      {budgets.map((b, idx) => {
+        const usedPct = b.amount > 0 ? Math.round((b.spent / b.amount) * 100) : 0;
+        const col = usedPct > 100 ? HUD.red : usedPct > 80 ? HUD.amber : HUD.green;
+        const barWidth = Math.min(usedPct, 100);
 
-          return (
-            <View key={idx} style={styles.card}>
-              <Text style={styles.deptName} numberOfLines={1}>
-                {b.departmentName || b.departmentCode}
-              </Text>
-
-              <View style={styles.valueRow}>
-                <Text style={[styles.pctValue, { color: barColor }]}>{usedPct}</Text>
-                <Text style={[styles.pctSign, { color: barColor }]}>%</Text>
-                <Text style={styles.usedLabel}>used</Text>
+        return (
+          <View key={idx} style={[S.card, { borderColor: col + '35', shadowColor: col }]}>
+            <View style={[S.leftBar, { backgroundColor: col }]} />
+            <Text style={S.deptName} numberOfLines={1}>{b.departmentName || b.departmentCode}</Text>
+            <View style={S.valueRow}>
+              <Text style={[S.pctValue, { color: col }]}>{usedPct}</Text>
+              <Text style={[S.pctSign, { color: col }]}>%</Text>
+              <Text style={S.usedLabel}>used</Text>
+            </View>
+            <View style={S.barTrack}>
+              <View style={[S.barFill, { width: `${barWidth}%` as any, backgroundColor: col }]} />
+            </View>
+            <View style={S.detailRow}>
+              <View>
+                <Text style={S.detailLabel}>BUDGET</Text>
+                <Text style={S.detailValue}>${(b.amount / 1000).toFixed(0)}K</Text>
               </View>
-
-              {/* Progress bar */}
-              <View style={styles.barTrack}>
-                <View style={[styles.barFill, { width: `${barWidth}%`, backgroundColor: barColor }]} />
-              </View>
-
-              <View style={styles.detailRow}>
-                <View style={styles.detailItem}>
-                  <Text style={styles.detailLabel}>Budget</Text>
-                  <Text style={styles.detailValue}>${(b.amount / 1000).toFixed(0)}K</Text>
-                </View>
-                <View style={styles.detailItem}>
-                  <Text style={styles.detailLabel}>Remaining</Text>
-                  <Text style={[styles.detailValue, { color: barColor }]}>
-                    ${(b.remaining / 1000).toFixed(0)}K
-                  </Text>
-                </View>
+              <View style={{ alignItems: 'flex-end' }}>
+                <Text style={S.detailLabel}>REMAINING</Text>
+                <Text style={[S.detailValue, { color: col }]}>${(b.remaining / 1000).toFixed(0)}K</Text>
               </View>
             </View>
-          );
-        })}
-      </View>
+          </View>
+        );
+      })}
     </View>
   );
 }
 
-const createStyles = (colors: any) => StyleSheet.create({
-  container: {
-    marginBottom: 16,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
-    paddingHorizontal: 2,
-  },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  title: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  subtitle: {
-    fontSize: 12,
-    color: colors.textTertiary,
-  },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingVertical: 14,
-    paddingHorizontal: 12,
-    flexGrow: 1,
-    flexBasis: '10%',
-    minWidth: 120,
-  },
-  deptName: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.textSecondary,
-    marginBottom: 8,
-  },
-  valueRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: 2,
-    marginBottom: 8,
-  },
-  pctValue: {
-    fontSize: 26,
-    fontWeight: '800',
-    letterSpacing: -0.5,
-  },
-  pctSign: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  usedLabel: {
-    fontSize: 11,
-    color: colors.textTertiary,
-    marginLeft: 4,
-  },
-  barTrack: {
-    height: 4,
-    backgroundColor: colors.border,
-    borderRadius: 2,
-    marginBottom: 10,
-    overflow: 'hidden',
-  },
-  barFill: {
-    height: '100%',
-    borderRadius: 2,
-  },
-  detailRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  detailItem: {
-    gap: 1,
-  },
-  detailLabel: {
-    fontSize: 9,
-    color: colors.textTertiary,
-    fontWeight: '500',
-  },
-  detailValue: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.text,
-  },
+const S = StyleSheet.create({
+  grid:       { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  card:       { backgroundColor: HUD.bgCardAlt, borderRadius: 12, borderWidth: 1, paddingVertical: 12, paddingHorizontal: 12, paddingLeft: 15, flexGrow: 1, flexBasis: '10%', minWidth: 120, overflow: 'hidden', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 },
+  leftBar:    { position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, borderTopLeftRadius: 12, borderBottomLeftRadius: 12 },
+  deptName:   { fontSize: 8, fontWeight: '800', color: HUD.textSec, marginBottom: 6, letterSpacing: 0.8, textTransform: 'uppercase' },
+  valueRow:   { flexDirection: 'row', alignItems: 'baseline', gap: 2, marginBottom: 8 },
+  pctValue:   { fontSize: 26, fontWeight: '900', letterSpacing: -0.5 },
+  pctSign:    { fontSize: 14, fontWeight: '700' },
+  usedLabel:  { fontSize: 10, color: HUD.textDim, marginLeft: 4, fontWeight: '600' },
+  barTrack:   { height: 3, backgroundColor: HUD.border, borderRadius: 2, marginBottom: 10, overflow: 'hidden' },
+  barFill:    { height: '100%' as any, borderRadius: 2 },
+  detailRow:  { flexDirection: 'row', justifyContent: 'space-between' },
+  detailLabel:{ fontSize: 7, color: HUD.textDim, fontWeight: '800', letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 2 },
+  detailValue:{ fontSize: 12, fontWeight: '800', color: HUD.text },
 });
