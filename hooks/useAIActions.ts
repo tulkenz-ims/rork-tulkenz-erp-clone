@@ -9,6 +9,7 @@ import { supabase } from '@/lib/supabase';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import { useUser } from '@/contexts/UserContext';
 import { useQueryClient } from '@tanstack/react-query';
+import { useCreateManualTaskFeedPost } from '@/hooks/useTaskFeedTemplates';
 
 // ══════════════════════════════════════════════════════════════════
 // TYPES
@@ -113,32 +114,14 @@ export function useAIActions() {
   const { user } = useUser();
   const router = useRouter();
   const queryClient = useQueryClient();
-
-  // ─────────────────────────────────────────────
-  // SHARED: Look up template from Supabase by name
-  // Returns { id, snapshot } or null if not found
-  // ─────────────────────────────────────────────
-
-  const lookupTemplate = useCallback(async (templateName: string) => {
-    if (!organizationId) return null;
-    try {
-      const { data, error } = await supabase
-        .from('task_feed_templates')
-        .select('*')
-        .eq('organization_id', organizationId)
-        .ilike('name', templateName)
-        .eq('is_active', true)
-        .limit(1)
-        .single();
-      if (error || !data) return null;
-      return { id: data.id, snapshot: data };
-    } catch {
-      return null;
-    }
-  }, [organizationId]);
+  const createManualPost = useCreateManualTaskFeedPost();
 
   // ─────────────────────────────────────────────
   // SHARED: Insert a Task Feed post + dept tasks
+  // Uses useCreateManualTaskFeedPost so all logic
+  // (photos, hold_status, notifications, task_verifications,
+  //  dept tasks, room_status) runs through the same code
+  // path as the manual Report Issue button.
   // ─────────────────────────────────────────────
 
   const insertTaskFeedPost = useCallback(async ({
@@ -164,117 +147,32 @@ export function useAIActions() {
   }): Promise<ActionResult> => {
     if (!organizationId) return { success: false, message: 'No organization selected' };
 
-    const postNumber = generatePostNumber();
     const reportingDept = TEMPLATE_REPORTING_DEPT[templateKey] || { code: '1004', name: 'Quality' };
-
-    // Resolve full location label (PR1 → Production Room 1)
-    const resolvedLocation = location
-      ? (ROOM_TO_LOCATION_LABEL[location] || location)
-      : null;
-
-    // Look up template to get real template_id and snapshot
-    const template = await lookupTemplate(templateName);
+    const resolvedLocation = location ? (ROOM_TO_LOCATION_LABEL[location] || location) : undefined;
 
     try {
-      const { data: post, error: postError } = await supabase
-        .from('task_feed_posts')
-        .insert({
-          organization_id: organizationId,
-          post_number: postNumber,
-          template_id: template?.id || null,
-          template_name: templateName,
-          template_snapshot: template?.snapshot || null,
-          created_by_id: user?.id || null,
-          created_by_name: (user ? `${user.first_name} ${user.last_name}`.trim() : 'AI Assistant'),
-          location_name: resolvedLocation,
-          form_data: formData,
-          notes: `[AI] ${notes}`,
-          status: 'pending',
-          total_departments: departments.length,
-          completed_departments: 0,
-          completion_rate: 0,
-          is_production_hold: isProductionHold,
-          reporting_department: reportingDept.code,
-          reporting_department_name: reportingDept.name,
-        })
-        .select('id')
-        .single();
-
-      if (postError) throw postError;
-
-      const deptTasks = departments.map((deptCode: string) => ({
-        organization_id: organizationId,
-        post_id: post.id,
-        post_number: postNumber,
-        department_code: deptCode,
-        department_name: DEPARTMENT_NAMES[deptCode] || `Dept ${deptCode}`,
-        status: 'pending',
-        module_reference_type: 'task_feed',
-        is_original: true,
-        priority,
-      }));
-
-      const { error: deptError } = await supabase
-        .from('task_feed_department_tasks')
-        .insert(deptTasks);
-
-      if (deptError) console.error('[AIActions] Dept tasks error:', deptError);
-
-      // ── Insert task_verifications row so the feed list screen can see this post ──
-      // The task feed index screen renders from useTaskVerificationsQuery (task_verifications table).
-      // Without this row, the post exists in task_feed_posts but never appears in the feed.
-      try {
-        const verificationInsert: Record<string, any> = {
-          organization_id: organizationId,
-          department_code: reportingDept.code,
-          department_name: reportingDept.name,
-          location_name: resolvedLocation || 'Not Specified',
-          category_id: `tf-${templateName.toLowerCase().replace(/\s+/g, '_')}`,
-          category_name: templateName,
-          action: templateName,
-          notes: notes || null,
-          employee_id: user?.id || null,
-          employee_name: (user ? `${user.first_name} ${user.last_name}`.trim() : 'AI Assistant'),
-          status: 'flagged',
-          source_type: 'task_feed_post',
-          source_id: post.id,
-          source_number: postNumber,
-        };
-
-        if (photoUrl) {
-          verificationInsert.photo_uri = photoUrl;
-        }
-
-        const { error: verifyError } = await supabase
-          .from('task_verifications')
-          .insert(verificationInsert);
-
-        if (verifyError) {
-          // Non-blocking — post was created, just log
-          console.error('[AIActions] task_verifications insert error (non-fatal):', verifyError.message);
-        }
-      } catch (verifyErr: any) {
-        console.error('[AIActions] task_verifications insert threw (non-fatal):', verifyErr?.message);
-      }
-
-      // Invalidate all task feed related queries regardless of exact key used in screens
-      queryClient.invalidateQueries({ queryKey: ['task_feed'] });
-      queryClient.invalidateQueries({ queryKey: ['task_feed_posts'] });
-      queryClient.invalidateQueries({ queryKey: ['task_feed_department_tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['taskFeed'] });
-      queryClient.invalidateQueries({ queryKey: ['taskFeedPosts'] });
-      queryClient.invalidateQueries({ queryKey: ['task_verifications'] });
+      const result = await createManualPost.mutateAsync({
+        buttonType: 'report_issue',
+        title: templateName,
+        departmentCode: reportingDept.code,
+        assignedDepartments: departments,
+        locationName: resolvedLocation || undefined,
+        formData: formData as Record<string, any>,
+        notes: `[AI] ${notes}`,
+        productionStopped: isProductionHold,
+        photoUrl: photoUrl || undefined,
+      });
 
       return {
         success: true,
-        message: `Post ${postNumber} created. ${departments.length} departments notified.`,
-        data: { post_number: postNumber, post_id: post.id },
+        message: `Post ${result.postNumber} created. ${result.totalDepartments} departments notified.`,
+        data: { post_number: result.postNumber, post_id: result.id },
       };
     } catch (err: any) {
       console.error('[AIActions] insertTaskFeedPost error:', err);
       return { success: false, message: err.message || 'Failed to create task feed post' };
     }
-  }, [organizationId, user, queryClient, lookupTemplate]);
+  }, [organizationId, createManualPost]);
 
   // ─────────────────────────────────────────────
   // TEMPLATE: Broken Glove
