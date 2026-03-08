@@ -143,6 +143,7 @@ export function useAIActions() {
     departments?: string[];
     priority?: string;
     isProductionHold?: boolean;
+    roomLine?: string | null;
     photoUrl?: string | null;
   }): Promise<ActionResult> => {
     if (!organizationId) return { success: false, message: 'No organization selected' };
@@ -160,6 +161,7 @@ export function useAIActions() {
         formData: formData as Record<string, any>,
         notes: `[AI] ${notes}`,
         productionStopped: isProductionHold,
+        roomLine: roomLine || undefined,
         photoUrl: photoUrl || undefined,
       });
 
@@ -203,6 +205,7 @@ export function useAIActions() {
       },
       priority: severity,
       isProductionHold: params.production_stopped as boolean,
+      roomLine: params.production_stopped ? params.location as string : undefined,
       departments: ALL_DEPARTMENTS,
     });
   }, [insertTaskFeedPost]);
@@ -229,6 +232,7 @@ export function useAIActions() {
       },
       priority: 'critical',
       isProductionHold: params.product_quarantined as boolean,
+      roomLine: params.product_quarantined ? params.location as string : undefined,
       departments: ALL_DEPARTMENTS,
     });
   }, [insertTaskFeedPost]);
@@ -254,6 +258,7 @@ export function useAIActions() {
       },
       priority: params.product_contact === 'Yes' ? 'critical' : 'high',
       isProductionHold: params.product_contact === 'Yes',
+      roomLine: params.product_contact === 'Yes' ? params.location as string : undefined,
       departments: ALL_DEPARTMENTS,
     });
   }, [insertTaskFeedPost]);
@@ -303,6 +308,7 @@ export function useAIActions() {
       },
       priority: params.production_impact === 'Line Down' ? 'critical' : 'high',
       isProductionHold: params.production_impact === 'Line Down',
+      roomLine: params.production_impact === 'Line Down' ? params.location as string : undefined,
       departments: ['1001', '1003'],
     });
 
@@ -341,6 +347,7 @@ export function useAIActions() {
       },
       priority: params.metal_found === 'Yes' ? 'critical' : 'high',
       isProductionHold: params.metal_found === 'Yes',
+      roomLine: params.metal_found === 'Yes' ? params.location as string : undefined,
       departments: ALL_DEPARTMENTS,
     });
   }, [insertTaskFeedPost]);
