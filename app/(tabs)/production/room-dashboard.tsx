@@ -1179,19 +1179,17 @@ const EquipmentIntelligence = React.memo(function EquipmentIntelligence({ expand
         <View style={eiS.machinePill}><Text style={eiS.machineLabel}>AVATAR A1200 VFFS</Text></View>
         <Text style={eiS.machineDetail}>PA1 · S/N A1200-#### · 304 hrs since PM</Text>
       </View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
-        <View style={{ flexDirection: 'row', gap: 6 }}>
-          {categories.map(cat => {
-            const active = filter === cat;
-            const col = cat === 'all' ? HUD.purple : INTEL_CAT_COLORS[cat];
-            return (
-              <TouchableOpacity key={cat} onPress={() => setFilter(cat)} activeOpacity={0.7} style={[eiS.filterTab, { borderColor: active ? col : HUD.border, backgroundColor: active ? col + '20' : 'transparent' }]}>
-                <Text style={[eiS.filterTxt, { color: active ? col : HUD.textDim }]}>{cat === 'all' ? 'ALL' : INTEL_CAT_LABELS[cat]}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      </ScrollView>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+        {categories.map(cat => {
+          const active = filter === cat;
+          const col = cat === 'all' ? HUD.purple : INTEL_CAT_COLORS[cat];
+          return (
+            <TouchableOpacity key={cat} onPress={() => setFilter(cat)} activeOpacity={0.7} style={[eiS.filterTab, { borderColor: active ? col : HUD.border, backgroundColor: active ? col + '20' : 'transparent' }]}>
+              <Text style={[eiS.filterTxt, { color: active ? col : HUD.textDim }]}>{cat === 'all' ? 'ALL' : INTEL_CAT_LABELS[cat]}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
       {items.map(item => {
         const sevCol = INTEL_COLORS[item.severity];
         const catCol = INTEL_CAT_COLORS[item.category];
@@ -1502,7 +1500,7 @@ export default function RoomDashboard() {
               <TouchableOpacity key={x.e}
                 activeOpacity={0.6}
                 style={[mS.simBtn, { borderColor: x.c + '50', backgroundColor: x.c + '12' }]}
-                onPress={() => handleTriggerEvent(x.e)}
+                onPressIn={() => handleTriggerEvent(x.e)}
               >
                 <Text style={[mS.simBtnTxt, { color: x.c }]}>{x.l}</Text>
               </TouchableOpacity>
@@ -1512,7 +1510,7 @@ export default function RoomDashboard() {
           <TouchableOpacity
             activeOpacity={0.6}
             style={[mS.tickFull, { backgroundColor: HUD.purple + '15', borderColor: HUD.purple + '50' }]}
-            onPress={handleTick}
+            onPressIn={handleTick}
           >
             <Zap size={15} color={HUD.purple} />
             <Text style={[mS.tickFullTxt, { color: HUD.purple }]}>ADVANCE TICK{tickCount > 0 ? ` · ${tickCount}` : ''}</Text>
