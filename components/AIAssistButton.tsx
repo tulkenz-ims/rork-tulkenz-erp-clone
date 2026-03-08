@@ -195,6 +195,7 @@ export default function AIAssistButton() {
   const [pendingImage, setPendingImage] = useState<{
     uri: string; base64: string; mediaType: string;
   } | null>(null);
+  const [showImageChoice, setShowImageChoice] = useState(false);
 
   // Raw Claude-format history for multi-turn API calls
   const conversationHistoryRef = useRef<ConversationTurn[]>([]);
@@ -473,6 +474,38 @@ export default function AIAssistButton() {
   // On native: use expo-image-picker
   const fileInputRef = useRef<any>(null);
 
+  // Web camera capture using getUserMedia
+  const handleWebCamera = useCallback(async () => {
+    setShowImageChoice(false);
+    try {
+      const stream = await (navigator as any).mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      // Create a video element to capture frame
+      const video = document.createElement('video');
+      video.srcObject = stream;
+      video.setAttribute('playsinline', 'true');
+      await video.play();
+      // Give camera a moment to focus
+      await new Promise(r => setTimeout(r, 800));
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth || 1280;
+      canvas.height = video.videoHeight || 720;
+      const ctx = canvas.getContext('2d');
+      ctx!.drawImage(video, 0, 0);
+      stream.getTracks().forEach((t: any) => t.stop());
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+      const base64Data = dataUrl.split(',')[1];
+      console.log(`[AIAssist] Web camera captured: ${Math.round(base64Data.length * 0.75 / 1024)}KB`);
+      setPendingImage({ uri: dataUrl, base64: base64Data, mediaType: 'image/jpeg' });
+    } catch (err) {
+      console.error('[AIAssist] Web camera error:', err);
+      // Fall back to file picker if camera denied
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+        fileInputRef.current.click();
+      }
+    }
+  }, []);
+
   const handleWebFilePicked = useCallback((e: any) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -492,12 +525,9 @@ export default function AIAssistButton() {
   const handleCamera = useCallback(async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
-    // Web: trigger hidden file input directly — bypasses expo-image-picker entirely
+    // Web: show choice between camera and file upload
     if (Platform.OS === 'web') {
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-        fileInputRef.current.click();
-      }
+      setShowImageChoice(true);
       return;
     }
 
@@ -818,6 +848,41 @@ export default function AIAssistButton() {
             onChange={handleWebFilePicked}
           />
         )}
+
+        {/* Image source choice sheet (web only) */}
+        {showImageChoice && (
+          <Pressable
+            style={styles.choiceOverlay}
+            onPress={() => setShowImageChoice(false)}
+          >
+            <View style={[styles.choiceSheet, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <Text style={[styles.choiceTitle, { color: colors.text }]}>Attach Photo</Text>
+              <Pressable
+                style={[styles.choiceBtn, { borderColor: colors.border }]}
+                onPress={handleWebCamera}
+              >
+                <Camera size={20} color="#8B5CF6" />
+                <Text style={[styles.choiceBtnText, { color: colors.text }]}>Take Photo</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.choiceBtn, { borderColor: colors.border }]}
+                onPress={() => {
+                  setShowImageChoice(false);
+                  if (fileInputRef.current) {
+                    fileInputRef.current.value = '';
+                    fileInputRef.current.click();
+                  }
+                }}
+              >
+                <Package size={20} color="#06B6D4" />
+                <Text style={[styles.choiceBtnText, { color: colors.text }]}>Choose from Files</Text>
+              </Pressable>
+              <Pressable onPress={() => setShowImageChoice(false)}>
+                <Text style={[styles.choiceCancel, { color: colors.textSecondary }]}>Cancel</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        )}
       </Modal>
     </>
   );
@@ -1003,5 +1068,44 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
+  },
+  choiceOverlay: {
+    position: 'absolute' as const,
+    top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end' as const,
+    zIndex: 99999,
+  },
+  choiceSheet: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    borderTopWidth: 1,
+    padding: 20,
+    paddingBottom: 40,
+    gap: 10,
+  },
+  choiceTitle: {
+    fontSize: 16,
+    fontWeight: '700' as const,
+    textAlign: 'center' as const,
+    marginBottom: 8,
+  },
+  choiceBtn: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 12,
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  choiceBtnText: {
+    fontSize: 15,
+    fontWeight: '500' as const,
+  },
+  choiceCancel: {
+    textAlign: 'center' as const,
+    fontSize: 14,
+    marginTop: 8,
+    padding: 8,
   },
 });
