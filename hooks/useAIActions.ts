@@ -171,8 +171,12 @@ export function useAIActions() {
 
       if (deptError) console.error('[AIActions] Dept tasks error:', deptError);
 
+      // Invalidate all task feed related queries regardless of exact key used in screens
+      queryClient.invalidateQueries({ queryKey: ['task_feed'] });
       queryClient.invalidateQueries({ queryKey: ['task_feed_posts'] });
       queryClient.invalidateQueries({ queryKey: ['task_feed_department_tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['taskFeed'] });
+      queryClient.invalidateQueries({ queryKey: ['taskFeedPosts'] });
 
       return {
         success: true,
@@ -559,8 +563,12 @@ export function useAIActions() {
 
       await supabase.from('task_feed_department_tasks').insert(deptTasks);
 
+      // Invalidate all task feed related queries regardless of exact key used in screens
+      queryClient.invalidateQueries({ queryKey: ['task_feed'] });
       queryClient.invalidateQueries({ queryKey: ['task_feed_posts'] });
       queryClient.invalidateQueries({ queryKey: ['task_feed_department_tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['taskFeed'] });
+      queryClient.invalidateQueries({ queryKey: ['taskFeedPosts'] });
 
       return {
         success: true,
@@ -653,8 +661,12 @@ export function useAIActions() {
       }
 
       queryClient.invalidateQueries({ queryKey: ['work_orders'] });
+      // Invalidate all task feed related queries regardless of exact key used in screens
+      queryClient.invalidateQueries({ queryKey: ['task_feed'] });
       queryClient.invalidateQueries({ queryKey: ['task_feed_posts'] });
       queryClient.invalidateQueries({ queryKey: ['task_feed_department_tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['taskFeed'] });
+      queryClient.invalidateQueries({ queryKey: ['taskFeedPosts'] });
 
       return {
         success: true,
