@@ -486,6 +486,10 @@ export default function AIAssistButton() {
             encoding: FileSystem.EncodingType.Base64,
           });
         }
+        // Strip data URL prefix if present — Anthropic API needs raw base64 only
+        if (base64Data.includes(',')) {
+          base64Data = base64Data.split(',')[1];
+        }
         setPendingImage({ uri: asset.uri, base64: base64Data, mediaType: 'image/jpeg' });
       }
     } catch (err) {
