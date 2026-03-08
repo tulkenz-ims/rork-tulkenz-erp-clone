@@ -472,24 +472,54 @@ export default function AIAssistButton() {
   const handleCamera = useCallback(async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     try {
-      const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaType ? ImagePicker.MediaType.Images : (ImagePicker as any).MediaTypeOptions.Images,
         quality: 0.7,
         base64: true,
+        allowsEditing: false,
       });
 
       if (!result.canceled && result.assets[0]) {
         const asset = result.assets[0];
         let base64Data = asset.base64 || '';
+
+        // On web: asset.base64 may be null; convert blob URI to base64 via fetch
         if (!base64Data && asset.uri) {
-          base64Data = await FileSystem.readAsStringAsync(asset.uri, {
-            encoding: FileSystem.EncodingType.Base64,
-          });
+          if (Platform.OS === 'web' && asset.uri.startsWith('blob:')) {
+            const blobResp = await fetch(asset.uri);
+            const blob = await blobResp.blob();
+            base64Data = await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onloadend = () => {
+                const result = reader.result as string;
+                // FileReader gives us full data URL — strip the prefix
+                resolve(result.includes(',') ? result.split(',')[1] : result);
+              };
+              reader.onerror = reject;
+              reader.readAsDataURL(blob);
+            });
+          } else {
+            // Native fallback
+            try {
+              base64Data = await FileSystem.readAsStringAsync(asset.uri, {
+                encoding: FileSystem.EncodingType.Base64,
+              });
+            } catch (fsErr) {
+              console.error('[AIAssist] FileSystem read failed:', fsErr);
+            }
+          }
         }
-        // Strip data URL prefix if present — Anthropic API needs raw base64 only
+
+        // Strip data URL prefix if still present
         if (base64Data.includes(',')) {
           base64Data = base64Data.split(',')[1];
         }
+
+        if (!base64Data || base64Data.length < 100) {
+          console.error('[AIAssist] Could not read image data');
+          return;
+        }
+
         setPendingImage({ uri: asset.uri, base64: base64Data, mediaType: 'image/jpeg' });
       }
     } catch (err) {
