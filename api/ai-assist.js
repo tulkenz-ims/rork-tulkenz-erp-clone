@@ -468,6 +468,12 @@ module.exports = async (req, res) => {
 
     const client = new Anthropic({ apiKey });
 
+    // Log image size for debugging
+    if (image) {
+      const sizeKB = Math.round((image.data || '').length * 0.75 / 1024);
+      console.log(`[ai-assist] Image received: ${sizeKB}KB, type: ${image.media_type}`);
+    }
+
     // Build user message
     const userContent = [];
 
