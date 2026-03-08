@@ -1314,7 +1314,6 @@ export default function WorkOrderDetail({
     const issues: string[] = [];
     if (!workOrder.equipment) issues.push('Equipment not specified');
     if (!workOrder.location) issues.push('Location not specified');
-    if (!workOrder.assignedName) issues.push('Not assigned to a technician');
     if (!workOrder.due_date) issues.push('Due date not set');
     if (workOrder.safety?.lotoRequired && (workOrder.safety?.lotoSteps || []).length === 0) {
       issues.push('LOTO required but no steps defined');
@@ -2756,7 +2755,7 @@ export default function WorkOrderDetail({
               {[
                 { label: 'Equipment identified', done: !!workOrder.equipment, value: workOrder.equipment || 'Not specified' },
                 { label: 'Location specified', done: !!workOrder.location, value: workOrder.location || 'Not specified' },
-                { label: 'Assigned to technician', done: !!workOrder.assignedName, value: workOrder.assignedName || 'Unassigned' },
+                { label: 'Assigned to technician (optional)', done: true, value: workOrder.assignedName || 'Assign after creating' },
                 { label: 'Due date set', done: !!workOrder.due_date, value: workOrder.due_date || 'Not set' },
                 { label: 'LOTO reviewed', done: !workOrder.safety?.lotoRequired || (workOrder.safety?.lotoSteps || []).length > 0, value: workOrder.safety?.lotoRequired ? `${(workOrder.safety?.lotoSteps || []).length} steps` : 'Not required' },
                 { label: 'PPN signature verified', done: isSignatureVerified(startWorkSignature), value: startWorkSignature?.employeeName || 'Not signed' },
