@@ -468,52 +468,62 @@ export default function AIAssistButton() {
     }
   }, [isListening, startListening, stopListening]);
 
-  // ── Camera ──
+  // ── Camera / Image Picker ──
+  // On web: use a hidden <input type="file"> — most reliable way to get base64 in browser
+  // On native: use expo-image-picker
+  const fileInputRef = useRef<any>(null);
+
+  const handleWebFilePicked = useCallback((e: any) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const dataUrl = reader.result as string;
+      // Strip "data:image/jpeg;base64," prefix — API needs raw base64 only
+      const base64Data = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
+      const mediaType = file.type || 'image/jpeg';
+      const objectUrl = URL.createObjectURL(file);
+      console.log(`[AIAssist] Web image loaded: ${Math.round(base64Data.length * 0.75 / 1024)}KB`);
+      setPendingImage({ uri: objectUrl, base64: base64Data, mediaType });
+    };
+    reader.readAsDataURL(file);
+  }, []);
+
   const handleCamera = useCallback(async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+    // Web: trigger hidden file input directly — bypasses expo-image-picker entirely
+    if (Platform.OS === 'web') {
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+        fileInputRef.current.click();
+      }
+      return;
+    }
+
+    // Native (iOS / Android)
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaType ? ImagePicker.MediaType.Images : (ImagePicker as any).MediaTypeOptions.Images,
+        mediaTypes: ['images'] as any,
         quality: 0.7,
         base64: true,
-        allowsEditing: false,
       });
 
       if (!result.canceled && result.assets[0]) {
         const asset = result.assets[0];
         let base64Data = asset.base64 || '';
 
-        // On web: asset.base64 may be null; convert blob URI to base64 via fetch
         if (!base64Data && asset.uri) {
-          if (Platform.OS === 'web' && asset.uri.startsWith('blob:')) {
-            const blobResp = await fetch(asset.uri);
-            const blob = await blobResp.blob();
-            base64Data = await new Promise<string>((resolve, reject) => {
-              const reader = new FileReader();
-              reader.onloadend = () => {
-                const result = reader.result as string;
-                // FileReader gives us full data URL — strip the prefix
-                resolve(result.includes(',') ? result.split(',')[1] : result);
-              };
-              reader.onerror = reject;
-              reader.readAsDataURL(blob);
+          try {
+            base64Data = await FileSystem.readAsStringAsync(asset.uri, {
+              encoding: FileSystem.EncodingType.Base64,
             });
-          } else {
-            // Native fallback
-            try {
-              base64Data = await FileSystem.readAsStringAsync(asset.uri, {
-                encoding: FileSystem.EncodingType.Base64,
-              });
-            } catch (fsErr) {
-              console.error('[AIAssist] FileSystem read failed:', fsErr);
-            }
+          } catch (fsErr) {
+            console.error('[AIAssist] FileSystem read failed:', fsErr);
           }
         }
 
-        // Strip data URL prefix if still present
-        if (base64Data.includes(',')) {
-          base64Data = base64Data.split(',')[1];
-        }
+        if (base64Data.includes(',')) base64Data = base64Data.split(',')[1];
 
         if (!base64Data || base64Data.length < 100) {
           console.error('[AIAssist] Could not read image data');
@@ -523,7 +533,7 @@ export default function AIAssistButton() {
         setPendingImage({ uri: asset.uri, base64: base64Data, mediaType: 'image/jpeg' });
       }
     } catch (err) {
-      console.error('[AIAssist] Camera error:', err);
+      console.error('[AIAssist] Image picker error:', err);
     }
   }, []);
 
@@ -797,6 +807,17 @@ export default function AIAssistButton() {
             </Pressable>
           </View>
         </KeyboardAvoidingView>
+
+        {/* Hidden file input for web image picking */}
+        {Platform.OS === 'web' && (
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            style={{ display: 'none' }}
+            onChange={handleWebFilePicked}
+          />
+        )}
       </Modal>
     </>
   );
