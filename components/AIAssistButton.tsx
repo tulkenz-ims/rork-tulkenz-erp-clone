@@ -286,7 +286,7 @@ export default function AIAssistButton() {
     setTextInput('');
     setIsProcessing(true);
 
-    // Build user content for Claude conversation history
+    // Build user content for Claude conversation history (NOT added yet — added after response)
     const userContent: any[] = [];
     if (pendingImage) {
       userContent.push({
@@ -302,15 +302,6 @@ export default function AIAssistButton() {
       userContent.push({ type: 'text', text });
     }
 
-    // Add to conversation history before sending
-    conversationHistoryRef.current = [
-      ...conversationHistoryRef.current,
-      { role: 'user', content: userContent.length === 1 && userContent[0].type === 'text'
-          ? userContent[0].text  // simple string for text-only turns
-          : userContent,
-      },
-    ];
-
     try {
       const body: Record<string, unknown> = {
         command: text,
@@ -322,7 +313,7 @@ export default function AIAssistButton() {
           currentRoom: null,
           activeRecordId: null,
         },
-        // Pass last 10 turns of history for multi-turn support
+        // Send PRIOR history only — ai-assist.js appends the current message itself
         conversation: conversationHistoryRef.current.slice(-10),
       };
 
@@ -346,13 +337,21 @@ export default function AIAssistButton() {
         throw new Error((data as any).error || 'AI request failed');
       }
 
-      // Add Claude's raw response to conversation history for next turn
+      // After successful response, add user turn + assistant turn to history
+      const userTurn: ConversationTurn = {
+        role: 'user',
+        content: userContent.length === 1 && userContent[0].type === 'text'
+          ? userContent[0].text
+          : userContent,
+      };
+
       if (data.assistant_message) {
         conversationHistoryRef.current = [
           ...conversationHistoryRef.current,
+          userTurn,
           data.assistant_message,
         ];
-        // Keep history bounded to last 20 turns
+        // Keep bounded to last 20 turns
         if (conversationHistoryRef.current.length > 20) {
           conversationHistoryRef.current = conversationHistoryRef.current.slice(-20);
         }
