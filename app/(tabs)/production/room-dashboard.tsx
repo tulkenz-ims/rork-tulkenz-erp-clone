@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -6,7 +6,7 @@ import {
   ScrollView,
   Pressable,
   RefreshControl,
-  ActivityIndicator,
+  Animated,
   Dimensions,
   Alert,
 } from 'react-native';
@@ -16,20 +16,17 @@ import {
   Activity,
   Thermometer,
   Gauge,
-  Wind,
   Package,
-  Clock,
-  Users,
   AlertTriangle,
   CheckCircle,
   XCircle,
   TrendingUp,
-  TrendingDown,
-  Minus,
   Zap,
   Radio,
+  Cpu,
+  Layers,
+  BarChart2,
 } from 'lucide-react-native';
-import { useTheme } from '@/contexts/ThemeContext';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import { supabase } from '@/lib/supabase';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -37,97 +34,470 @@ import * as Haptics from 'expo-haptics';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
+// ══════════════════════════════════ THEME ══════════════════════════════════
+
+const HUD = {
+  bg:          '#020912',
+  bgCard:      '#050f1e',
+  bgCardAlt:   '#071525',
+  cyan:        '#00e5ff',
+  cyanDim:     '#00e5ff22',
+  cyanMid:     '#00e5ff55',
+  green:       '#00ff88',
+  greenDim:    '#00ff8822',
+  amber:       '#ffb800',
+  amberDim:    '#ffb80022',
+  red:         '#ff2d55',
+  redDim:      '#ff2d5522',
+  purple:      '#7b61ff',
+  purpleDim:   '#7b61ff22',
+  text:        '#e0f4ff',
+  textSec:     '#7aa8c8',
+  textDim:     '#3a6080',
+  border:      '#0d2840',
+  borderBright:'#1a4060',
+  grid:        '#0a1f35',
+};
+
+const STATUS_COLOR: Record<string, string> = {
+  normal:   HUD.green,
+  warning:  HUD.amber,
+  critical: HUD.red,
+  idle:     HUD.textDim,
+};
+
+const ANDON_COLOR: Record<string, string> = {
+  green:  HUD.green,
+  yellow: HUD.amber,
+  red:    HUD.red,
+  blue:   HUD.cyan,
+  gray:   HUD.textDim,
+};
+
 // ══════════════════════════════════ TYPES ══════════════════════════════════
 
 interface RoomEquipment {
-  id: string;
-  equipment_name: string;
-  equipment_type: string;
-  display_order: number;
-  position_x: number;
-  position_y: number;
-  position_width: number;
-  position_height: number;
-  status: string;
-  status_color: string;
-  equipment_id: string | null;
+  id: string; equipment_name: string; equipment_type: string;
+  display_order: number; position_x: number; position_y: number;
+  position_width: number; position_height: number;
+  status: string; status_color: string; equipment_id: string | null;
 }
-
 interface SensorReading {
-  id: string;
-  sensor_id: string;
-  sensor_name: string;
-  sensor_type: string;
-  unit: string;
-  value: number;
-  status: string;
-  target_value: number;
-  warning_low: number;
-  warning_high: number;
-  critical_low: number;
-  critical_high: number;
-  recorded_at: string;
-  equipment_name: string;
-  room_equipment_id: string;
+  id: string; sensor_id: string; sensor_name: string; sensor_type: string;
+  unit: string; value: number; status: string; target_value: number;
+  warning_low: number; warning_high: number; critical_low: number; critical_high: number;
+  recorded_at: string; equipment_name: string; room_equipment_id: string;
 }
-
 interface RoomStatus {
-  status: string;
-  andon_color: string;
-  bags_today: number;
-  bags_per_minute: number;
-  target_bags_per_minute: number;
-  uptime_percent: number;
-  personnel_count: number;
-  current_run_number: string | null;
-  updated_at: string;
+  status: string; andon_color: string; bags_today: number;
+  bags_per_minute: number; target_bags_per_minute: number;
+  uptime_percent: number; personnel_count: number;
+  current_run_number: string | null; updated_at: string;
 }
-
 interface ProductionEvent {
-  id: string;
-  event_type: string;
-  category: string;
-  reason: string;
-  equipment_name: string;
-  started_at: string;
-  ended_at: string | null;
+  id: string; event_type: string; category: string; reason: string;
+  equipment_name: string; started_at: string; ended_at: string | null;
   duration_seconds: number | null;
 }
 
-// ══════════════════════════════════ STATUS COLORS ══════════════════════════════════
+// ══════════════════════════════════ ANIMATED HOOKS ══════════════════════════
 
-const STATUS_COLORS: Record<string, string> = {
-  normal: '#10B981',
-  warning: '#F59E0B',
-  critical: '#EF4444',
-  idle: '#6B7280',
-};
+function usePulse(duration = 1800) {
+  const anim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(anim, { toValue: 1, duration, useNativeDriver: true }),
+        Animated.timing(anim, { toValue: 0, duration, useNativeDriver: true }),
+      ])
+    ).start();
+  }, []);
+  return anim;
+}
 
-const ANDON_COLORS: Record<string, string> = {
-  green: '#10B981',
-  yellow: '#F59E0B',
-  red: '#EF4444',
-  blue: '#3B82F6',
-  gray: '#6B7280',
-};
+function useScan(width: number, duration = 3000) {
+  const anim = useRef(new Animated.Value(-40)).current;
+  useEffect(() => {
+    Animated.loop(
+      Animated.timing(anim, { toValue: width + 40, duration, useNativeDriver: true })
+    ).start();
+  }, [width]);
+  return anim;
+}
 
-const EQUIPMENT_COLORS: Record<string, string> = {
-  material_staging: '#64748B',
-  foreign_material: '#F59E0B',
-  conveyor: '#3B82F6',
-  vessel: '#8B5CF6',
-  packaging: '#EC4899',
-  filler: '#EC4899',
-  sealer: '#EF4444',
-  printer: '#06B6D4',
-  manual_station: '#10B981',
-  quality_control: '#F97316',
-};
+// ══════════════════════════════════ SUB COMPONENTS ══════════════════════════
 
-// ══════════════════════════════════ COMPONENT ══════════════════════════════════
+function PulsingDot({ color, size = 8 }: { color: string; size?: number }) {
+  const pulse = usePulse(1600);
+  const opacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1] });
+  const scale = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1.2] });
+  return (
+    <Animated.View style={{
+      width: size, height: size, borderRadius: size / 2,
+      backgroundColor: color, opacity,
+      transform: [{ scale }],
+    }} />
+  );
+}
+
+function GlowBorder({ color, children, style }: { color: string; children: React.ReactNode; style?: any }) {
+  return (
+    <View style={[{
+      borderRadius: 12, borderWidth: 1,
+      borderColor: color + '60',
+      shadowColor: color,
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: 0.4,
+      shadowRadius: 8,
+      elevation: 6,
+      backgroundColor: HUD.bgCard,
+    }, style]}>
+      {children}
+    </View>
+  );
+}
+
+function HexMetric({ label, value, unit, color, icon }: {
+  label: string; value: string; unit: string; color: string; icon: React.ReactNode;
+}) {
+  return (
+    <View style={[hexStyles.card, { borderColor: color + '40', shadowColor: color }]}>
+      <View style={[hexStyles.iconWrap, { backgroundColor: color + '15' }]}>{icon}</View>
+      <Text style={[hexStyles.value, { color }]}>{value}</Text>
+      <Text style={[hexStyles.unit, { color: color + 'aa' }]}>{unit}</Text>
+      <Text style={hexStyles.label}>{label}</Text>
+    </View>
+  );
+}
+
+const hexStyles = StyleSheet.create({
+  card: {
+    width: 92, paddingVertical: 14, paddingHorizontal: 8,
+    borderRadius: 12, borderWidth: 1,
+    alignItems: 'center', gap: 3, marginRight: 10,
+    backgroundColor: HUD.bgCard,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.35, shadowRadius: 10, elevation: 5,
+  },
+  iconWrap: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  value: { fontSize: 22, fontWeight: '800', letterSpacing: -0.5 },
+  unit: { fontSize: 9, fontWeight: '600', letterSpacing: 1 },
+  label: { fontSize: 9, fontWeight: '700', color: HUD.textSec, letterSpacing: 0.5, textAlign: 'center' },
+});
+
+function ArcGauge({ value, min, max, color, size = 60 }: {
+  value: number; min: number; max: number; color: string; size?: number;
+}) {
+  const pct = Math.min(1, Math.max(0, (value - min) / (max - min)));
+  const filled = Math.round(pct * 12);
+  const segments = Array.from({ length: 12 }, (_, i) => i < filled);
+  return (
+    <View style={{ width: size, height: size / 2 + 8, alignItems: 'center' }}>
+      <View style={{ flexDirection: 'row', gap: 2, flexWrap: 'nowrap' }}>
+        {segments.map((on, i) => (
+          <View key={i} style={{
+            width: (size - 24) / 12, height: 6, borderRadius: 2,
+            backgroundColor: on ? color : HUD.border,
+          }} />
+        ))}
+      </View>
+      <Text style={{ color, fontSize: 13, fontWeight: '800', marginTop: 4 }}>
+        {typeof value === 'number' ? value.toFixed(1) : '--'}
+      </Text>
+    </View>
+  );
+}
+
+// ══════════════════════════════════ EQUIPMENT MAP ══════════════════════════
+
+function EquipmentSchematic({
+  equipment, sensorsByEquipment, equipmentStatus, selectedEquipment, onSelect, andonColor,
+}: {
+  equipment: RoomEquipment[];
+  sensorsByEquipment: Record<string, SensorReading[]>;
+  equipmentStatus: Record<string, string>;
+  selectedEquipment: string | null;
+  onSelect: (name: string | null) => void;
+  andonColor: string;
+}) {
+  const mapW = SCREEN_WIDTH - 32;
+  const mapH = 160;
+  const scanX = useScan(mapW, 3500);
+  const pulse = usePulse(2000);
+
+  const maxX = Math.max(...equipment.map(e => e.position_x + e.position_width), 750);
+  const scaleX = mapW / maxX;
+
+  return (
+    <View style={schematicStyles.container}>
+      {/* Header */}
+      <View style={schematicStyles.header}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Cpu size={13} color={HUD.cyan} />
+          <Text style={schematicStyles.title}>EQUIPMENT SCHEMATIC</Text>
+        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <PulsingDot color={andonColor} size={7} />
+          <Text style={[schematicStyles.liveText, { color: andonColor }]}>LIVE FEED</Text>
+        </View>
+      </View>
+
+      {/* Flow label */}
+      <View style={schematicStyles.flowRow}>
+        {['INTAKE', '→', 'PROCESS', '→', 'SEAL', '→', 'DETECT', '→', 'PACK'].map((t, i) => (
+          <Text key={i} style={[schematicStyles.flowItem, t === '→' ? { color: HUD.textDim } : { color: HUD.textSec }]}>{t}</Text>
+        ))}
+      </View>
+
+      {/* Map area */}
+      <View style={[schematicStyles.mapArea, { height: mapH }]}>
+        {/* Grid lines */}
+        {[0.25, 0.5, 0.75].map(f => (
+          <View key={f} style={[schematicStyles.gridLine, { top: mapH * f }]} />
+        ))}
+        {/* Vertical grid */}
+        {[0.2, 0.4, 0.6, 0.8].map(f => (
+          <View key={f} style={[schematicStyles.gridLineV, { left: mapW * f }]} />
+        ))}
+
+        {/* Floor line */}
+        <View style={[schematicStyles.floor, { top: mapH - 12, shadowColor: andonColor }]} />
+
+        {/* Connections */}
+        {equipment.length > 1 && equipment.slice(0, -1).map((eq, i) => {
+          const next = equipment[i + 1];
+          const x1 = (eq.position_x + eq.position_width) * scaleX;
+          const x2 = next.position_x * scaleX;
+          const y = mapH * 0.52;
+          const w = x2 - x1;
+          if (w < 2) return null;
+          return (
+            <View key={`pipe-${i}`} style={{
+              position: 'absolute', left: x1, top: y - 1,
+              width: w, height: 3,
+              backgroundColor: andonColor + '30',
+              shadowColor: andonColor, shadowOffset: { width: 0, height: 0 },
+              shadowOpacity: 0.6, shadowRadius: 4,
+            }}>
+              {/* Pipe arrow */}
+              <View style={{
+                position: 'absolute', right: 0, top: -3,
+                width: 0, height: 0,
+                borderLeftWidth: 6, borderLeftColor: andonColor + '60',
+                borderTopWidth: 4, borderTopColor: 'transparent',
+                borderBottomWidth: 4, borderBottomColor: 'transparent',
+              }} />
+            </View>
+          );
+        })}
+
+        {/* Equipment blocks */}
+        {equipment.map(eq => {
+          const status = equipmentStatus[eq.equipment_name] || 'idle';
+          const color = STATUS_COLOR[status] || HUD.textDim;
+          const isSelected = selectedEquipment === eq.equipment_name;
+          const sensors = sensorsByEquipment[eq.equipment_name] || [];
+          const primarySensor = sensors[0];
+
+          const x = eq.position_x * scaleX;
+          const w = Math.max(eq.position_width * scaleX, 52);
+          const y = eq.position_y * (mapH / 100);
+          const h = Math.max(eq.position_height * (mapH / 100), 48);
+
+          return (
+            <Pressable
+              key={eq.id}
+              style={[schematicStyles.equipBlock, {
+                left: x, top: y, width: w, height: h,
+                borderColor: isSelected ? color : color + '40',
+                borderWidth: isSelected ? 2 : 1,
+                backgroundColor: isSelected ? color + '18' : color + '08',
+                shadowColor: color,
+                shadowOpacity: isSelected ? 0.6 : 0.2,
+              }]}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                onSelect(isSelected ? null : eq.equipment_name);
+              }}
+            >
+              {/* Corner accents */}
+              <View style={[schematicStyles.cornerTL, { borderColor: color }]} />
+              <View style={[schematicStyles.cornerBR, { borderColor: color }]} />
+
+              {/* Status dot */}
+              {status !== 'idle' && (
+                <View style={[schematicStyles.statusDot, { backgroundColor: color, shadowColor: color }]} />
+              )}
+
+              <Text style={[schematicStyles.equipName, { color: isSelected ? color : color + 'cc' }]} numberOfLines={2}>
+                {eq.equipment_name.replace(' - PA1', '').replace(' - PR1', '').replace(' - PR2', '')}
+              </Text>
+
+              {primarySensor?.value != null && (
+                <Text style={[schematicStyles.equipVal, { color: STATUS_COLOR[primarySensor.status] || HUD.textDim }]}>
+                  {primarySensor.value.toFixed(0)}{primarySensor.unit?.replace('°F', '°').replace('bags/min', '/m').replace('ft/min', 'ft').replace('mm/s', 'mm') || ''}
+                </Text>
+              )}
+
+              {status === 'critical' && (
+                <View style={schematicStyles.critBadge}>
+                  <Text style={schematicStyles.critText}>!</Text>
+                </View>
+              )}
+            </Pressable>
+          );
+        })}
+
+        {/* Scanning line */}
+        <Animated.View
+          style={[schematicStyles.scanLine, {
+            transform: [{ translateX: scanX }],
+            shadowColor: HUD.cyan,
+          }]}
+          pointerEvents="none"
+        />
+      </View>
+    </View>
+  );
+}
+
+const schematicStyles = StyleSheet.create({
+  container: {
+    backgroundColor: HUD.bgCard, borderRadius: 14,
+    borderWidth: 1, borderColor: HUD.borderBright,
+    padding: 14, marginBottom: 16,
+    shadowColor: HUD.cyan, shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.1, shadowRadius: 12, elevation: 4,
+  },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
+  title: { fontSize: 11, fontWeight: '800', color: HUD.cyan, letterSpacing: 2 },
+  liveText: { fontSize: 9, fontWeight: '800', letterSpacing: 2 },
+  flowRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 10 },
+  flowItem: { fontSize: 8, fontWeight: '700', letterSpacing: 1 },
+  mapArea: { position: 'relative', width: '100%', overflow: 'hidden' },
+  gridLine: { position: 'absolute', left: 0, right: 0, height: 1, backgroundColor: HUD.grid },
+  gridLineV: { position: 'absolute', top: 0, bottom: 0, width: 1, backgroundColor: HUD.grid },
+  floor: {
+    position: 'absolute', left: 0, right: 0, height: 2,
+    backgroundColor: HUD.borderBright,
+    shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.8, shadowRadius: 6, elevation: 2,
+  },
+  equipBlock: {
+    position: 'absolute', borderRadius: 8,
+    padding: 5, alignItems: 'center', justifyContent: 'center',
+    shadowOffset: { width: 0, height: 0 }, shadowRadius: 8, elevation: 4,
+  },
+  cornerTL: {
+    position: 'absolute', top: 2, left: 2, width: 8, height: 8,
+    borderTopWidth: 1.5, borderLeftWidth: 1.5, borderRadius: 1,
+  },
+  cornerBR: {
+    position: 'absolute', bottom: 2, right: 2, width: 8, height: 8,
+    borderBottomWidth: 1.5, borderRightWidth: 1.5, borderRadius: 1,
+  },
+  statusDot: {
+    position: 'absolute', top: 4, right: 4, width: 6, height: 6, borderRadius: 3,
+    shadowOffset: { width: 0, height: 0 }, shadowOpacity: 1, shadowRadius: 4, elevation: 3,
+  },
+  equipName: { fontSize: 7, fontWeight: '700', textAlign: 'center', letterSpacing: 0.3 },
+  equipVal: { fontSize: 11, fontWeight: '900', marginTop: 1 },
+  critBadge: {
+    position: 'absolute', bottom: 3, left: 3,
+    width: 12, height: 12, borderRadius: 6,
+    backgroundColor: HUD.red, alignItems: 'center', justifyContent: 'center',
+  },
+  critText: { fontSize: 8, fontWeight: '900', color: '#fff' },
+  scanLine: {
+    position: 'absolute', top: 0, bottom: 0, width: 2,
+    backgroundColor: HUD.cyan + '30',
+    shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.8, shadowRadius: 6, elevation: 5,
+  },
+});
+
+// ══════════════════════════════════ EQUIPMENT DETAIL ════════════════════════
+
+function EquipmentDetailPanel({
+  name, status, sensors,
+}: { name: string; status: string; sensors: SensorReading[] }) {
+  const color = STATUS_COLOR[status] || HUD.textDim;
+
+  return (
+    <GlowBorder color={color} style={{ marginBottom: 16 }}>
+      <View style={detailStyles.header}>
+        <View style={{ flex: 1 }}>
+          <Text style={detailStyles.eyebrow}>SELECTED EQUIPMENT</Text>
+          <Text style={[detailStyles.name, { color }]}>{name}</Text>
+        </View>
+        <View style={[detailStyles.statusPill, { backgroundColor: color + '18', borderColor: color + '50' }]}>
+          <PulsingDot color={color} size={6} />
+          <Text style={[detailStyles.statusText, { color }]}>{status.toUpperCase()}</Text>
+        </View>
+      </View>
+
+      {/* Sensor grid */}
+      <View style={detailStyles.sensorGrid}>
+        {sensors.map(s => {
+          const sc = STATUS_COLOR[s.status] || HUD.textDim;
+          const pct = s.critical_high
+            ? Math.min(100, Math.max(0, ((s.value - (s.critical_low || 0)) / ((s.critical_high) - (s.critical_low || 0))) * 100))
+            : 50;
+
+          return (
+            <View key={s.id} style={[detailStyles.sensorCard, { borderColor: sc + '30', backgroundColor: sc + '08' }]}>
+              <Text style={[detailStyles.sensorName, { color: HUD.textSec }]} numberOfLines={2}>{s.sensor_name}</Text>
+              <Text style={[detailStyles.sensorVal, { color: sc }]}>
+                {s.value != null ? s.value.toFixed(1) : '--'}
+                <Text style={detailStyles.sensorUnit}> {s.unit}</Text>
+              </Text>
+              {/* Bar */}
+              <View style={detailStyles.barTrack}>
+                <View style={[detailStyles.barFill, { width: `${pct}%` as any, backgroundColor: sc }]} />
+              </View>
+              <Text style={detailStyles.targetLabel}>TGT: {s.target_value}{s.unit}</Text>
+            </View>
+          );
+        })}
+
+        {sensors.length === 0 && (
+          <Text style={{ color: HUD.textDim, fontSize: 12, padding: 16 }}>No sensors on this equipment</Text>
+        )}
+      </View>
+    </GlowBorder>
+  );
+}
+
+const detailStyles = StyleSheet.create({
+  header: {
+    flexDirection: 'row', alignItems: 'flex-start',
+    padding: 16, paddingBottom: 12,
+    borderBottomWidth: 1, borderBottomColor: HUD.border,
+  },
+  eyebrow: { fontSize: 9, fontWeight: '700', color: HUD.textDim, letterSpacing: 2, marginBottom: 3 },
+  name: { fontSize: 18, fontWeight: '800', letterSpacing: 0.3 },
+  statusPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 10, paddingVertical: 6,
+    borderRadius: 20, borderWidth: 1,
+  },
+  statusText: { fontSize: 10, fontWeight: '800', letterSpacing: 1.5 },
+  sensorGrid: {
+    flexDirection: 'row', flexWrap: 'wrap', gap: 10, padding: 12,
+  },
+  sensorCard: {
+    width: (SCREEN_WIDTH - 32 - 36 - 24) / 2,
+    padding: 12, borderRadius: 10, borderWidth: 1, gap: 4,
+  },
+  sensorName: { fontSize: 10, fontWeight: '600', letterSpacing: 0.3 },
+  sensorVal: { fontSize: 20, fontWeight: '900' },
+  sensorUnit: { fontSize: 11, fontWeight: '400' },
+  barTrack: { height: 4, borderRadius: 2, backgroundColor: HUD.border, overflow: 'hidden' },
+  barFill: { height: '100%', borderRadius: 2 },
+  targetLabel: { fontSize: 9, color: HUD.textDim, letterSpacing: 0.5 },
+});
+
+// ══════════════════════════════════ MAIN SCREEN ══════════════════════════════
 
 export default function RoomDashboard() {
-  const { colors } = useTheme();
   const router = useRouter();
   const { room } = useLocalSearchParams<{ room: string }>();
   const orgContext = useOrganization();
@@ -135,16 +505,13 @@ export default function RoomDashboard() {
   const queryClient = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
   const [selectedEquipment, setSelectedEquipment] = useState<string | null>(null);
+  const [tickCount, setTickCount] = useState(0);
+  const scrollRef = useRef<ScrollView>(null);
 
   const roomCode = room || 'PA1';
-  const roomNames: Record<string, string> = {
-    PA1: 'Packet Area 1',
-    PR1: 'Production Room 1',
-    PR2: 'Production Room 2',
-  };
+  const roomNames: Record<string, string> = { PA1: 'PACKET AREA 1', PR1: 'PRODUCTION ROOM 1', PR2: 'PRODUCTION ROOM 2' };
   const roomName = roomNames[roomCode] || roomCode;
 
-  // ── Auto-refresh every 10 seconds ──
   useEffect(() => {
     const interval = setInterval(() => {
       queryClient.invalidateQueries({ queryKey: ['room-dashboard', roomCode] });
@@ -152,65 +519,36 @@ export default function RoomDashboard() {
     return () => clearInterval(interval);
   }, [roomCode, queryClient]);
 
-  // ── Fetch room equipment ──
   const { data: equipment = [], isLoading: equipLoading } = useQuery({
     queryKey: ['room-dashboard', roomCode, 'equipment'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('room_equipment')
-        .select('*')
-        .eq('organization_id', organizationId)
-        .eq('room_code', roomCode)
-        .order('display_order');
+      const { data, error } = await supabase.from('room_equipment').select('*')
+        .eq('organization_id', organizationId).eq('room_code', roomCode).order('display_order');
       if (error) throw error;
       return (data || []) as RoomEquipment[];
     },
     enabled: !!organizationId,
   });
 
-  // ── Fetch latest sensor readings ──
-  const { data: sensorReadings = [], isLoading: sensorsLoading } = useQuery({
+  const { data: sensorReadings = [] } = useQuery({
     queryKey: ['room-dashboard', roomCode, 'sensors'],
     queryFn: async () => {
-      // Get latest reading per sensor
-      const { data: sensors, error: sensorErr } = await supabase
-        .from('equipment_sensors')
+      const { data: sensors, error: sErr } = await supabase.from('equipment_sensors')
         .select('id, room_equipment_id, sensor_name, sensor_type, unit, target_value, warning_low, warning_high, critical_low, critical_high')
-        .eq('organization_id', organizationId)
-        .eq('room_code', roomCode);
-
-      if (sensorErr) throw sensorErr;
-      if (!sensors || sensors.length === 0) return [];
-
-      const sensorIds = sensors.map(s => s.id);
-
-      // Get latest reading for each sensor
-      const { data: readings, error: readErr } = await supabase
-        .from('sensor_readings')
+        .eq('organization_id', organizationId).eq('room_code', roomCode);
+      if (sErr) throw sErr;
+      if (!sensors || !sensors.length) return [];
+      const ids = sensors.map(s => s.id);
+      const { data: readings } = await supabase.from('sensor_readings')
         .select('sensor_id, value, status, recorded_at')
-        .eq('organization_id', organizationId)
-        .eq('room_code', roomCode)
-        .in('sensor_id', sensorIds)
-        .order('recorded_at', { ascending: false })
-        .limit(sensorIds.length * 2);
-
-      if (readErr) throw readErr;
-
-      // Get the equipment names
+        .eq('organization_id', organizationId).eq('room_code', roomCode)
+        .in('sensor_id', ids).order('recorded_at', { ascending: false }).limit(ids.length * 2);
       const equipMap: Record<string, string> = {};
       equipment.forEach(e => { equipMap[e.id] = e.equipment_name; });
-
-      // Merge: latest reading per sensor
       const latestMap: Record<string, any> = {};
-      (readings || []).forEach(r => {
-        if (!latestMap[r.sensor_id]) {
-          latestMap[r.sensor_id] = r;
-        }
-      });
-
+      (readings || []).forEach(r => { if (!latestMap[r.sensor_id]) latestMap[r.sensor_id] = r; });
       return sensors.map(s => ({
-        ...s,
-        value: latestMap[s.id]?.value ?? null,
+        ...s, value: latestMap[s.id]?.value ?? null,
         status: latestMap[s.id]?.status ?? 'idle',
         recorded_at: latestMap[s.id]?.recorded_at ?? null,
         equipment_name: equipMap[s.room_equipment_id] || 'Unknown',
@@ -220,16 +558,11 @@ export default function RoomDashboard() {
     refetchInterval: 10000,
   });
 
-  // ── Fetch room status ──
   const { data: roomStatus } = useQuery({
     queryKey: ['room-dashboard', roomCode, 'status'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('room_status')
-        .select('*')
-        .eq('organization_id', organizationId)
-        .eq('room_code', roomCode)
-        .single();
+      const { data, error } = await supabase.from('room_status').select('*')
+        .eq('organization_id', organizationId).eq('room_code', roomCode).single();
       if (error) return null;
       return data as RoomStatus;
     },
@@ -237,17 +570,12 @@ export default function RoomDashboard() {
     refetchInterval: 10000,
   });
 
-  // ── Fetch recent production events ──
   const { data: productionEvents = [] } = useQuery({
     queryKey: ['room-dashboard', roomCode, 'events'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('production_events')
-        .select('*')
-        .eq('organization_id', organizationId)
-        .eq('room_code', roomCode)
-        .order('started_at', { ascending: false })
-        .limit(20);
+      const { data, error } = await supabase.from('production_events').select('*')
+        .eq('organization_id', organizationId).eq('room_code', roomCode)
+        .order('started_at', { ascending: false }).limit(20);
       if (error) return [];
       return (data || []) as ProductionEvent[];
     },
@@ -255,7 +583,6 @@ export default function RoomDashboard() {
     refetchInterval: 15000,
   });
 
-  // ── Get sensor readings grouped by equipment ──
   const sensorsByEquipment = useMemo(() => {
     const map: Record<string, SensorReading[]> = {};
     sensorReadings.forEach(s => {
@@ -265,21 +592,19 @@ export default function RoomDashboard() {
     return map;
   }, [sensorReadings]);
 
-  // ── Get worst status per equipment ──
   const equipmentStatus = useMemo(() => {
     const map: Record<string, string> = {};
     equipment.forEach(e => {
       const sensors = sensorsByEquipment[e.equipment_name] || [];
-      if (sensors.length === 0) {
-        map[e.equipment_name] = 'idle';
-        return;
-      }
-      const hasCritical = sensors.some(s => s.status === 'critical');
-      const hasWarning = sensors.some(s => s.status === 'warning');
-      map[e.equipment_name] = hasCritical ? 'critical' : hasWarning ? 'warning' : 'normal';
+      if (!sensors.length) { map[e.equipment_name] = 'idle'; return; }
+      const hasCrit = sensors.some(s => s.status === 'critical');
+      const hasWarn = sensors.some(s => s.status === 'warning');
+      map[e.equipment_name] = hasCrit ? 'critical' : hasWarn ? 'warning' : 'normal';
     });
     return map;
   }, [equipment, sensorsByEquipment]);
+
+  const andonColor = ANDON_COLOR[roomStatus?.andon_color || 'gray'] || HUD.textDim;
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -287,316 +612,217 @@ export default function RoomDashboard() {
     setRefreshing(false);
   }, [queryClient, roomCode]);
 
-  // ── Call simulator tick ──
-  const [tickCount, setTickCount] = useState(0);
-
   const handleTick = useCallback(async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     try {
       const res = await fetch('https://app.tulkenz.net/api/simulator?action=tick', { method: 'POST' });
       const json = await res.json();
-      console.log('[RoomDashboard] Tick result:', json);
       setTickCount(json.tick || tickCount + 1);
       await queryClient.invalidateQueries({ queryKey: ['room-dashboard', roomCode] });
     } catch (err: any) {
-      console.error('[RoomDashboard] Tick error:', err);
       Alert.alert('Tick Error', err.message || 'Failed to connect to simulator');
     }
   }, [queryClient, roomCode, tickCount]);
 
-  // ── Trigger event ──
   const handleTriggerEvent = useCallback(async (eventName: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     try {
       await fetch(`https://app.tulkenz.net/api/simulator?action=trigger&event=${eventName}&room=${roomCode}`, { method: 'POST' });
-      // Run a few ticks to show the effect
       for (let i = 0; i < 3; i++) {
         await new Promise(r => setTimeout(r, 500));
         await fetch('https://app.tulkenz.net/api/simulator?action=tick', { method: 'POST' });
       }
       await queryClient.invalidateQueries({ queryKey: ['room-dashboard', roomCode] });
-    } catch (err) {
-      console.error('[RoomDashboard] Trigger error:', err);
-    }
+    } catch (err) { console.error('[RoomDashboard] Trigger error:', err); }
   }, [queryClient, roomCode]);
 
-  const andonColor = ANDON_COLORS[roomStatus?.andon_color || 'gray'] || '#6B7280';
-  const isLoading = equipLoading || sensorsLoading;
+  const bpm = roomStatus?.bags_per_minute || 0;
+  const target = roomStatus?.target_bags_per_minute || 1;
+  const bpmColor = bpm >= target * 0.9 ? HUD.green : bpm >= target * 0.7 ? HUD.amber : HUD.red;
+  const uptime = roomStatus?.uptime_percent || 0;
+  const uptimeColor = uptime >= 90 ? HUD.green : uptime >= 75 ? HUD.amber : HUD.red;
 
-  // ── Scale equipment positions to screen width ──
-  const maxX = Math.max(...equipment.map(e => e.position_x + e.position_width), 750);
-  const scaleX = (SCREEN_WIDTH - 32) / maxX;
-  const mapHeight = 140;
+  const criticalSensors = sensorReadings.filter(s => s.status === 'critical' && s.value != null);
+  const warningSensors = sensorReadings.filter(s => s.status === 'warning' && s.value != null);
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <View style={mainStyles.container}>
       <Stack.Screen options={{ headerShown: false }} />
 
-      {/* Header */}
-      <View style={[styles.header, { backgroundColor: colors.surface, borderBottomColor: andonColor }]}>
-        <Pressable style={styles.backBtn} onPress={() => router.back()}>
-          <ChevronLeft size={24} color={colors.text} />
+      {/* ── HUD Header ── */}
+      <View style={[mainStyles.header, { borderBottomColor: andonColor + '60', shadowColor: andonColor }]}>
+        {/* Grid overlay */}
+        <View style={mainStyles.headerGrid} pointerEvents="none">
+          {[0.2, 0.4, 0.6, 0.8].map(f => (
+            <View key={f} style={[mainStyles.headerGridLine, { left: `${f * 100}%` as any }]} />
+          ))}
+        </View>
+
+        <Pressable style={mainStyles.backBtn} onPress={() => router.back()}>
+          <ChevronLeft size={22} color={HUD.cyan} />
         </Pressable>
-        <View style={styles.headerCenter}>
-          <View style={styles.headerTitleRow}>
-            <View style={[styles.andonDot, { backgroundColor: andonColor }]} />
-            <Text style={[styles.headerTitle, { color: colors.text }]}>{roomName}</Text>
-            <View style={[styles.andonBadge, { backgroundColor: andonColor + '20', borderColor: andonColor }]}>
-              <Text style={[styles.andonBadgeText, { color: andonColor }]}>
-                {(roomStatus?.status || 'idle').toUpperCase()}
-              </Text>
-            </View>
-          </View>
-          <Text style={[styles.headerSub, { color: colors.textSecondary }]}>
-            {roomStatus?.current_run_number ? `Run: ${roomStatus.current_run_number}` : 'No active run'} • Updated {roomStatus?.updated_at ? new Date(roomStatus.updated_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' }) : '--'}
+
+        <View style={{ flex: 1 }}>
+          <Text style={mainStyles.roomCode}>{roomCode}</Text>
+          <Text style={[mainStyles.roomName, { color: andonColor }]}>{roomName}</Text>
+          <Text style={mainStyles.roomSub}>
+            {roomStatus?.updated_at
+              ? `SYS SYNC • ${new Date(roomStatus.updated_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' })}`
+              : 'AWAITING SIGNAL'}
           </Text>
         </View>
-        <Pressable style={[styles.tickBtn, { backgroundColor: '#8B5CF620' }]} onPress={handleTick}>
-          <Zap size={18} color="#8B5CF6" />
+
+        <View style={{ alignItems: 'flex-end', gap: 6 }}>
+          <View style={[mainStyles.statusPill, { backgroundColor: andonColor + '18', borderColor: andonColor + '50' }]}>
+            <PulsingDot color={andonColor} size={7} />
+            <Text style={[mainStyles.statusPillText, { color: andonColor }]}>
+              {(roomStatus?.status || 'IDLE').toUpperCase()}
+            </Text>
+          </View>
+          {criticalSensors.length > 0 && (
+            <View style={[mainStyles.alertPill, { backgroundColor: HUD.red + '18', borderColor: HUD.red + '50' }]}>
+              <AlertTriangle size={10} color={HUD.red} />
+              <Text style={[mainStyles.alertPillText, { color: HUD.red }]}>{criticalSensors.length} CRIT</Text>
+            </View>
+          )}
+        </View>
+
+        <Pressable style={mainStyles.tickBtn} onPress={handleTick}>
+          <Zap size={16} color={HUD.purple} />
         </Pressable>
       </View>
 
       <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
+        ref={scrollRef}
+        style={{ flex: 1, backgroundColor: HUD.bg }}
+        contentContainerStyle={{ padding: 16, paddingBottom: 80 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={andonColor} />}
       >
-        {/* Live Metrics Strip */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.metricsStrip}>
-          <View style={styles.metricsRow}>
-            <MetricCard
-              icon={<Package size={16} color="#8B5CF6" />}
-              label="Bags/Min"
-              value={roomStatus?.bags_per_minute?.toString() || '0'}
-              target={`/ ${roomStatus?.target_bags_per_minute || 0}`}
-              color={
-                (roomStatus?.bags_per_minute || 0) >= (roomStatus?.target_bags_per_minute || 0) * 0.9 ? '#10B981'
-                : (roomStatus?.bags_per_minute || 0) >= (roomStatus?.target_bags_per_minute || 0) * 0.7 ? '#F59E0B'
-                : '#EF4444'
-              }
-              colors={colors}
+
+        {/* ── Metrics Strip ── */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
+          <View style={{ flexDirection: 'row' }}>
+            <HexMetric
+              label="BAGS/MIN"
+              value={bpm.toString()}
+              unit={`/ ${target}`}
+              color={bpmColor}
+              icon={<Package size={14} color={bpmColor} />}
             />
-            <MetricCard
-              icon={<Activity size={16} color="#10B981" />}
-              label="Today"
+            <HexMetric
+              label="TODAY"
               value={(roomStatus?.bags_today || 0).toLocaleString()}
-              target="bags"
-              color="#10B981"
-              colors={colors}
+              unit="BAGS"
+              color={HUD.cyan}
+              icon={<BarChart2 size={14} color={HUD.cyan} />}
             />
-            <MetricCard
-              icon={<TrendingUp size={16} color="#3B82F6" />}
-              label="Uptime"
-              value={`${roomStatus?.uptime_percent || 0}%`}
-              target=""
-              color={(roomStatus?.uptime_percent || 0) >= 90 ? '#10B981' : (roomStatus?.uptime_percent || 0) >= 75 ? '#F59E0B' : '#EF4444'}
-              colors={colors}
+            <HexMetric
+              label="UPTIME"
+              value={`${uptime}%`}
+              unit="OEE"
+              color={uptimeColor}
+              icon={<TrendingUp size={14} color={uptimeColor} />}
             />
-            {/* Key sensor values */}
-            {sensorReadings.filter(s => ['temperature', 'pressure'].includes(s.sensor_type)).slice(0, 4).map(s => (
-              <MetricCard
+            {sensorReadings.filter(s => ['temperature', 'pressure'].includes(s.sensor_type) && s.value != null).slice(0, 4).map(s => (
+              <HexMetric
                 key={s.id}
-                icon={s.sensor_type === 'temperature' ? <Thermometer size={16} color={STATUS_COLORS[s.status]} /> : <Gauge size={16} color={STATUS_COLORS[s.status]} />}
-                label={s.sensor_name.length > 14 ? s.sensor_name.substring(0, 12) + '..' : s.sensor_name}
-                value={s.value !== null ? s.value.toString() : '--'}
-                target={s.unit}
-                color={STATUS_COLORS[s.status] || '#6B7280'}
-                colors={colors}
+                label={s.sensor_name.length > 10 ? s.sensor_name.substring(0, 9) + '…' : s.sensor_name}
+                value={s.value.toFixed(0)}
+                unit={s.unit || ''}
+                color={STATUS_COLOR[s.status] || HUD.textDim}
+                icon={s.sensor_type === 'temperature'
+                  ? <Thermometer size={14} color={STATUS_COLOR[s.status]} />
+                  : <Gauge size={14} color={STATUS_COLOR[s.status]} />}
               />
             ))}
           </View>
         </ScrollView>
 
-        {/* Side-View Equipment Map */}
-        <View style={[styles.mapContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <View style={styles.mapHeader}>
-            <Radio size={14} color={andonColor} />
-            <Text style={[styles.mapTitle, { color: colors.text }]}>Equipment Layout — Side View</Text>
-            <View style={[styles.liveDot, { backgroundColor: andonColor }]} />
-            <Text style={[styles.liveText, { color: andonColor }]}>LIVE</Text>
-          </View>
-
-          {/* Flow arrow */}
-          <View style={[styles.flowArrow, { borderBottomColor: colors.border }]}>
-            <Text style={[styles.flowText, { color: colors.textTertiary }]}>Product Flow →</Text>
-          </View>
-
-          {/* Equipment blocks */}
-          <View style={[styles.mapArea, { height: mapHeight }]}>
-            {/* Floor line */}
-            <View style={[styles.floorLine, { backgroundColor: colors.border, top: mapHeight - 10 }]} />
-
-            {equipment.map(eq => {
-              const status = equipmentStatus[eq.equipment_name] || 'idle';
-              const statusColor = STATUS_COLORS[status] || '#6B7280';
-              const baseColor = EQUIPMENT_COLORS[eq.equipment_type] || '#6B7280';
-              const isSelected = selectedEquipment === eq.equipment_name;
-              const sensors = sensorsByEquipment[eq.equipment_name] || [];
-
-              const scaledX = eq.position_x * scaleX;
-              const scaledW = Math.max(eq.position_width * scaleX, 40);
-              const scaledY = eq.position_y * (mapHeight / 100);
-              const scaledH = eq.position_height * (mapHeight / 100);
-
-              return (
-                <Pressable
-                  key={eq.id}
-                  style={[
-                    styles.equipBlock,
-                    {
-                      left: scaledX,
-                      top: scaledY,
-                      width: scaledW,
-                      height: scaledH,
-                      backgroundColor: status === 'idle' ? baseColor + '15' : statusColor + '20',
-                      borderColor: isSelected ? statusColor : (status === 'idle' ? baseColor + '40' : statusColor + '60'),
-                      borderWidth: isSelected ? 2 : 1,
-                    },
-                  ]}
-                  onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    setSelectedEquipment(isSelected ? null : eq.equipment_name);
-                  }}
-                >
-                  {/* Status indicator dot */}
-                  {status !== 'idle' && (
-                    <View style={[styles.equipStatusDot, { backgroundColor: statusColor }]} />
-                  )}
-
-                  {/* Equipment name */}
-                  <Text style={[styles.equipName, { color: status === 'idle' ? baseColor : statusColor }]} numberOfLines={2}>
-                    {eq.equipment_name.replace(' - ' + roomCode, '')}
-                  </Text>
-
-                  {/* Primary sensor value */}
-                  {sensors.length > 0 && sensors[0].value !== null && (
-                    <Text style={[styles.equipValue, { color: STATUS_COLORS[sensors[0].status] || '#6B7280' }]}>
-                      {Math.round(sensors[0].value)}{sensors[0].unit?.replace('°F', '°').replace('bags/min', '/m').replace('ft/min', 'ft').replace('mm/s', 'mm')}
-                    </Text>
-                  )}
-                </Pressable>
-              );
-            })}
-
-            {/* Connection lines between equipment */}
-            {equipment.length > 1 && equipment.slice(0, -1).map((eq, i) => {
-              const next = equipment[i + 1];
-              const x1 = (eq.position_x + eq.position_width) * scaleX;
-              const x2 = next.position_x * scaleX;
-              const y = mapHeight * 0.55;
-              const w = x2 - x1;
-              if (w < 2) return null;
-              return (
-                <View
-                  key={`conn-${i}`}
-                  style={{
-                    position: 'absolute',
-                    left: x1,
-                    top: y,
-                    width: w,
-                    height: 2,
-                    backgroundColor: andonColor + '40',
-                  }}
-                />
-              );
-            })}
-          </View>
-        </View>
-
-        {/* Selected Equipment Detail */}
-        {selectedEquipment && (
-          <View style={[styles.detailCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <View style={styles.detailHeader}>
-              <Text style={[styles.detailTitle, { color: colors.text }]}>{selectedEquipment}</Text>
-              <View style={[styles.statusBadge, { backgroundColor: STATUS_COLORS[equipmentStatus[selectedEquipment] || 'idle'] + '20' }]}>
-                <Text style={[styles.statusBadgeText, { color: STATUS_COLORS[equipmentStatus[selectedEquipment] || 'idle'] }]}>
-                  {(equipmentStatus[selectedEquipment] || 'idle').toUpperCase()}
-                </Text>
-              </View>
-            </View>
-
-            {(sensorsByEquipment[selectedEquipment] || []).map(sensor => (
-              <View key={sensor.id} style={[styles.sensorRow, { borderBottomColor: colors.border }]}>
-                <View style={styles.sensorInfo}>
-                  <View style={[styles.sensorDot, { backgroundColor: STATUS_COLORS[sensor.status] || '#6B7280' }]} />
-                  <Text style={[styles.sensorName, { color: colors.text }]}>{sensor.sensor_name}</Text>
-                </View>
-                <View style={styles.sensorValues}>
-                  <Text style={[styles.sensorValue, { color: STATUS_COLORS[sensor.status] || '#6B7280' }]}>
-                    {sensor.value !== null ? sensor.value.toFixed(1) : '--'}
-                  </Text>
-                  <Text style={[styles.sensorUnit, { color: colors.textSecondary }]}>{sensor.unit}</Text>
-                </View>
-                <View style={styles.sensorRange}>
-                  {/* Mini gauge bar */}
-                  <View style={[styles.gaugeTrack, { backgroundColor: colors.backgroundSecondary }]}>
-                    <View style={[
-                      styles.gaugeFill,
-                      {
-                        backgroundColor: STATUS_COLORS[sensor.status] || '#6B7280',
-                        width: sensor.value !== null && sensor.critical_high
-                          ? `${Math.min(100, Math.max(5, ((sensor.value - (sensor.critical_low || 0)) / ((sensor.critical_high || 100) - (sensor.critical_low || 0))) * 100))}%`
-                          : '50%',
-                      },
-                    ]} />
-                  </View>
-                  <Text style={[styles.sensorTarget, { color: colors.textTertiary }]}>
-                    Target: {sensor.target_value}{sensor.unit}
-                  </Text>
-                </View>
-              </View>
-            ))}
-
-            {(sensorsByEquipment[selectedEquipment] || []).length === 0 && (
-              <Text style={[styles.noSensors, { color: colors.textSecondary }]}>No sensors on this equipment</Text>
-            )}
+        {/* ── Alert Banner (critical only) ── */}
+        {criticalSensors.length > 0 && (
+          <View style={mainStyles.alertBanner}>
+            <AlertTriangle size={14} color={HUD.red} />
+            <Text style={mainStyles.alertBannerText}>
+              {criticalSensors.length} CRITICAL SENSOR{criticalSensors.length > 1 ? 'S' : ''}: {criticalSensors.map(s => s.sensor_name).join(' · ')}
+            </Text>
           </View>
         )}
 
-        {/* All Sensors Overview */}
-        <View style={[styles.sectionCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>Sensor Readings</Text>
-          {sensorReadings.filter(s => s.value !== null).map(sensor => {
-            const icon = sensor.status === 'critical' ? <XCircle size={14} color="#EF4444" />
-              : sensor.status === 'warning' ? <AlertTriangle size={14} color="#F59E0B" />
-              : <CheckCircle size={14} color="#10B981" />;
+        {/* ── Schematic ── */}
+        <EquipmentSchematic
+          equipment={equipment}
+          sensorsByEquipment={sensorsByEquipment}
+          equipmentStatus={equipmentStatus}
+          selectedEquipment={selectedEquipment}
+          onSelect={setSelectedEquipment}
+          andonColor={andonColor}
+        />
 
+        {/* ── Selected Equipment Panel ── */}
+        {selectedEquipment && (
+          <EquipmentDetailPanel
+            name={selectedEquipment}
+            status={equipmentStatus[selectedEquipment] || 'idle'}
+            sensors={sensorsByEquipment[selectedEquipment] || []}
+          />
+        )}
+
+        {/* ── All Sensors ── */}
+        <View style={mainStyles.sectionCard}>
+          <View style={mainStyles.sectionHeader}>
+            <Activity size={13} color={HUD.cyan} />
+            <Text style={mainStyles.sectionTitle}>SENSOR MATRIX</Text>
+            <Text style={mainStyles.sectionCount}>{sensorReadings.filter(s => s.value != null).length} ACTIVE</Text>
+          </View>
+
+          {sensorReadings.filter(s => s.value != null).map((sensor, i) => {
+            const sc = STATUS_COLOR[sensor.status] || HUD.textDim;
+            const isLast = i === sensorReadings.filter(s => s.value != null).length - 1;
             return (
-              <View key={sensor.id} style={[styles.sensorListRow, { borderBottomColor: colors.border }]}>
-                {icon}
-                <View style={styles.sensorListInfo}>
-                  <Text style={[styles.sensorListName, { color: colors.text }]}>{sensor.sensor_name}</Text>
-                  <Text style={[styles.sensorListEquip, { color: colors.textTertiary }]}>{sensor.equipment_name}</Text>
+              <View key={sensor.id} style={[mainStyles.sensorRow, !isLast && { borderBottomColor: HUD.border, borderBottomWidth: 1 }]}>
+                <View style={[mainStyles.sensorIndicator, { backgroundColor: sc, shadowColor: sc }]} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[mainStyles.sensorName, { color: HUD.text }]}>{sensor.sensor_name}</Text>
+                  <Text style={mainStyles.sensorEquip}>{sensor.equipment_name}</Text>
                 </View>
-                <Text style={[styles.sensorListValue, { color: STATUS_COLORS[sensor.status] || colors.text }]}>
-                  {sensor.value.toFixed(1)} {sensor.unit}
-                </Text>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={[mainStyles.sensorVal, { color: sc }]}>
+                    {sensor.value.toFixed(1)} <Text style={{ fontSize: 10, fontWeight: '400' }}>{sensor.unit}</Text>
+                  </Text>
+                  {sensor.status !== 'normal' && sensor.status !== 'idle' && (
+                    <View style={[mainStyles.statusMini, { backgroundColor: sc + '20', borderColor: sc + '50' }]}>
+                      <Text style={[mainStyles.statusMiniText, { color: sc }]}>{sensor.status.toUpperCase()}</Text>
+                    </View>
+                  )}
+                </View>
               </View>
             );
           })}
         </View>
 
-        {/* Downtime / Events */}
+        {/* ── Events ── */}
         {productionEvents.length > 0 && (
-          <View style={[styles.sectionCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>Recent Events</Text>
-            {productionEvents.slice(0, 10).map(evt => {
+          <View style={mainStyles.sectionCard}>
+            <View style={mainStyles.sectionHeader}>
+              <Radio size={13} color={HUD.amber} />
+              <Text style={[mainStyles.sectionTitle, { color: HUD.amber }]}>EVENT LOG</Text>
+              <Text style={[mainStyles.sectionCount, { color: HUD.amber + '80' }]}>{productionEvents.length} RECORDS</Text>
+            </View>
+            {productionEvents.slice(0, 8).map(evt => {
               const isScheduled = evt.category === 'scheduled';
-              const color = isScheduled ? '#3B82F6' : evt.event_type === 'equipment_fault' ? '#EF4444' : '#F59E0B';
+              const color = isScheduled ? HUD.cyan : evt.event_type === 'equipment_fault' ? HUD.red : HUD.amber;
               return (
-                <View key={evt.id} style={[styles.eventRow, { borderLeftColor: color }]}>
-                  <View style={[styles.eventDot, { backgroundColor: color }]} />
-                  <View style={styles.eventInfo}>
-                    <Text style={[styles.eventReason, { color: colors.text }]} numberOfLines={2}>
-                      {evt.reason || evt.event_type}
-                    </Text>
-                    <Text style={[styles.eventTime, { color: colors.textTertiary }]}>
+                <View key={evt.id} style={[mainStyles.eventRow, { borderLeftColor: color }]}>
+                  <View style={[mainStyles.eventDot, { backgroundColor: color, shadowColor: color }]} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[mainStyles.eventReason, { color: HUD.text }]} numberOfLines={2}>{evt.reason || evt.event_type}</Text>
+                    <Text style={mainStyles.eventTime}>
                       {new Date(evt.started_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
-                      {evt.equipment_name ? ` • ${evt.equipment_name}` : ''}
+                      {evt.equipment_name ? ` · ${evt.equipment_name}` : ''}
                     </Text>
                   </View>
-                  <View style={[styles.eventBadge, { backgroundColor: color + '15' }]}>
-                    <Text style={[styles.eventBadgeText, { color }]}>
+                  <View style={[mainStyles.eventBadge, { backgroundColor: color + '18', borderColor: color + '40' }]}>
+                    <Text style={[mainStyles.eventBadgeText, { color }]}>
                       {isScheduled ? 'SCHED' : evt.event_type === 'equipment_fault' ? 'FAULT' : 'WARN'}
                     </Text>
                   </View>
@@ -606,276 +832,134 @@ export default function RoomDashboard() {
           </View>
         )}
 
-        {/* Simulator Controls (demo only) */}
-        <View style={[styles.sectionCard, { backgroundColor: colors.surface, borderColor: '#8B5CF640' }]}>
-          <View style={styles.simHeader}>
-            <Zap size={16} color="#8B5CF6" />
-            <Text style={[styles.sectionTitle, { color: '#8B5CF6', marginBottom: 0 }]}>Simulator Controls</Text>
+        {/* ── Simulator ── */}
+        <View style={[mainStyles.sectionCard, { borderColor: HUD.purple + '40' }]}>
+          <View style={mainStyles.sectionHeader}>
+            <Zap size={13} color={HUD.purple} />
+            <Text style={[mainStyles.sectionTitle, { color: HUD.purple }]}>SIM CONTROLS</Text>
+            <Text style={[mainStyles.sectionCount, { color: HUD.purple + '80' }]}>DEMO MODE</Text>
           </View>
-          <Text style={[styles.simDesc, { color: colors.textSecondary }]}>
-            Trigger events to see how the system responds. Each event generates sensor data, updates equipment status, and may auto-create work orders.
-          </Text>
-          <View style={styles.simGrid}>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
             {[
-              { event: 'seal_temp_drift', label: 'Seal Temp Drift', color: '#F59E0B', rooms: ['PA1'] },
-              { event: 'air_pressure_drop', label: 'Air Pressure Drop', color: '#EF4444', rooms: ['PA1', 'PR1', 'PR2'] },
-              { event: 'auger_slowdown', label: 'Auger Slowdown', color: '#F59E0B', rooms: ['PA1', 'PR1', 'PR2'] },
-              { event: 'film_jam', label: 'Film Jam (Stops Line)', color: '#EF4444', rooms: ['PA1'] },
-              { event: 'vibration_spike', label: 'Vibration Spike', color: '#F59E0B', rooms: ['PR1', 'PR2'] },
-              { event: 'metal_detect_rejects', label: 'Metal Detector Rejects', color: '#EF4444', rooms: ['PR1', 'PR2'] },
-              { event: 'hopper_low', label: 'Hopper Low', color: '#F59E0B', rooms: ['PA1', 'PR1', 'PR2'] },
-              { event: 'scheduled_break', label: 'Scheduled Break', color: '#3B82F6', rooms: ['PA1', 'PR1', 'PR2'] },
+              { event: 'seal_temp_drift', label: 'SEAL TEMP DRIFT', color: HUD.amber, rooms: ['PA1'] },
+              { event: 'air_pressure_drop', label: 'AIR PRESSURE DROP', color: HUD.red, rooms: ['PA1', 'PR1', 'PR2'] },
+              { event: 'auger_slowdown', label: 'AUGER SLOWDOWN', color: HUD.amber, rooms: ['PA1', 'PR1', 'PR2'] },
+              { event: 'film_jam', label: 'FILM JAM', color: HUD.red, rooms: ['PA1'] },
+              { event: 'vibration_spike', label: 'VIBRATION SPIKE', color: HUD.amber, rooms: ['PR1', 'PR2'] },
+              { event: 'metal_detect_rejects', label: 'METAL REJECTS', color: HUD.red, rooms: ['PR1', 'PR2'] },
+              { event: 'hopper_low', label: 'HOPPER LOW', color: HUD.amber, rooms: ['PA1', 'PR1', 'PR2'] },
+              { event: 'scheduled_break', label: 'SCHED BREAK', color: HUD.cyan, rooms: ['PA1', 'PR1', 'PR2'] },
             ].filter(e => e.rooms.includes(roomCode)).map(evt => (
               <Pressable
                 key={evt.event}
-                style={({ pressed }) => [styles.simBtn, { borderColor: evt.color + '40', backgroundColor: pressed ? evt.color + '40' : evt.color + '10', opacity: pressed ? 0.7 : 1 }]}
+                style={({ pressed }) => [mainStyles.simBtn, {
+                  borderColor: evt.color + '50',
+                  backgroundColor: pressed ? evt.color + '30' : evt.color + '12',
+                }]}
                 onPress={() => handleTriggerEvent(evt.event)}
               >
-                <Text style={[styles.simBtnText, { color: evt.color }]}>{evt.label}</Text>
+                <Text style={[mainStyles.simBtnText, { color: evt.color }]}>{evt.label}</Text>
               </Pressable>
             ))}
           </View>
           <Pressable
-            style={({ pressed }) => [styles.tickBtnLarge, { backgroundColor: pressed ? '#8B5CF650' : '#8B5CF620', borderColor: '#8B5CF640', opacity: pressed ? 0.7 : 1 }]}
+            style={({ pressed }) => [mainStyles.tickBtnFull, {
+              backgroundColor: pressed ? HUD.purple + '40' : HUD.purple + '15',
+              borderColor: HUD.purple + '50',
+            }]}
             onPress={handleTick}
           >
-            <Zap size={18} color="#8B5CF6" />
-            <Text style={[styles.tickBtnText, { color: '#8B5CF6' }]}>Advance Tick{tickCount > 0 ? ` (${tickCount})` : ''}</Text>
+            <Zap size={16} color={HUD.purple} />
+            <Text style={[mainStyles.tickBtnText, { color: HUD.purple }]}>
+              ADVANCE TICK{tickCount > 0 ? ` · ${tickCount}` : ''}
+            </Text>
           </Pressable>
         </View>
 
-        <View style={{ height: 60 }} />
       </ScrollView>
     </View>
   );
 }
 
-// ══════════════════════════════════ METRIC CARD ══════════════════════════════════
-
-function MetricCard({ icon, label, value, target, color, colors }: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  target: string;
-  color: string;
-  colors: any;
-}) {
-  return (
-    <View style={[metricStyles.card, { backgroundColor: colors.surface, borderColor: color + '30' }]}>
-      {icon}
-      <Text style={[metricStyles.value, { color }]}>{value}</Text>
-      <Text style={[metricStyles.target, { color: colors.textTertiary }]}>{target}</Text>
-      <Text style={[metricStyles.label, { color: colors.textSecondary }]}>{label}</Text>
-    </View>
-  );
-}
-
-const metricStyles = StyleSheet.create({
-  card: {
-    width: 100,
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    borderRadius: 12,
-    borderWidth: 1,
-    alignItems: 'center' as const,
-    gap: 2,
-    marginRight: 8,
-  },
-  value: {
-    fontSize: 20,
-    fontWeight: '800' as const,
-  },
-  target: {
-    fontSize: 10,
-  },
-  label: {
-    fontSize: 10,
-    fontWeight: '600' as const,
-    textAlign: 'center' as const,
-  },
-});
-
 // ══════════════════════════════════ STYLES ══════════════════════════════════
 
-const styles = StyleSheet.create({
-  container: { flex: 1 },
+const mainStyles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: HUD.bg },
   header: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    paddingHorizontal: 12,
-    paddingTop: 54,
-    paddingBottom: 12,
-    borderBottomWidth: 3,
-    gap: 8,
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 12, paddingTop: 54, paddingBottom: 14,
+    borderBottomWidth: 2, gap: 10,
+    backgroundColor: HUD.bgCard,
+    shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.3, shadowRadius: 16, elevation: 8,
+    overflow: 'hidden',
   },
-  backBtn: { padding: 8 },
-  headerCenter: { flex: 1 },
-  headerTitleRow: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: 8,
+  headerGrid: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
+  headerGridLine: { position: 'absolute', top: 0, bottom: 0, width: 1, backgroundColor: HUD.grid },
+  backBtn: { padding: 8, backgroundColor: HUD.cyanDim, borderRadius: 10, borderWidth: 1, borderColor: HUD.cyanMid },
+  roomCode: { fontSize: 10, fontWeight: '800', color: HUD.textDim, letterSpacing: 3 },
+  roomName: { fontSize: 17, fontWeight: '900', letterSpacing: 1 },
+  roomSub: { fontSize: 9, color: HUD.textDim, letterSpacing: 1.5, marginTop: 2 },
+  statusPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 8, paddingVertical: 4,
+    borderRadius: 20, borderWidth: 1,
   },
-  andonDot: { width: 12, height: 12, borderRadius: 6 },
-  headerTitle: { fontSize: 20, fontWeight: '700' as const },
-  andonBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-    borderWidth: 1,
+  statusPillText: { fontSize: 9, fontWeight: '800', letterSpacing: 1.5 },
+  alertPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 7, paddingVertical: 3,
+    borderRadius: 20, borderWidth: 1,
   },
-  andonBadgeText: { fontSize: 10, fontWeight: '700' as const, letterSpacing: 0.5 },
-  headerSub: { fontSize: 11, marginTop: 2 },
+  alertPillText: { fontSize: 9, fontWeight: '800', letterSpacing: 1 },
   tickBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
+    width: 38, height: 38, borderRadius: 10,
+    backgroundColor: HUD.purpleDim, borderWidth: 1, borderColor: HUD.purple + '40',
+    alignItems: 'center', justifyContent: 'center',
   },
-  scroll: { flex: 1 },
-  scrollContent: { padding: 16 },
-  metricsStrip: { marginBottom: 16 },
-  metricsRow: { flexDirection: 'row' as const },
-  mapContainer: {
-    borderRadius: 16,
-    borderWidth: 1,
-    padding: 14,
-    marginBottom: 16,
-    overflow: 'hidden' as const,
+  alertBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: HUD.red + '15', borderWidth: 1, borderColor: HUD.red + '40',
+    borderRadius: 10, padding: 12, marginBottom: 14,
   },
-  mapHeader: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: 6,
-    marginBottom: 8,
-  },
-  mapTitle: { fontSize: 13, fontWeight: '600' as const, flex: 1 },
-  liveDot: { width: 8, height: 8, borderRadius: 4 },
-  liveText: { fontSize: 10, fontWeight: '700' as const, letterSpacing: 1 },
-  flowArrow: { borderBottomWidth: 1, paddingBottom: 4, marginBottom: 8 },
-  flowText: { fontSize: 9, letterSpacing: 2, textTransform: 'uppercase' as const },
-  mapArea: { position: 'relative' as const, width: '100%' as any },
-  floorLine: { position: 'absolute' as const, left: 0, right: 0, height: 2 },
-  equipBlock: {
-    position: 'absolute' as const,
-    borderRadius: 8,
-    padding: 4,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-  },
-  equipStatusDot: {
-    position: 'absolute' as const,
-    top: 3,
-    right: 3,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  equipName: { fontSize: 8, fontWeight: '600' as const, textAlign: 'center' as const },
-  equipValue: { fontSize: 10, fontWeight: '800' as const, marginTop: 1 },
-  detailCard: {
-    borderRadius: 14,
-    borderWidth: 1,
-    padding: 16,
-    marginBottom: 16,
-  },
-  detailHeader: {
-    flexDirection: 'row' as const,
-    justifyContent: 'space-between' as const,
-    alignItems: 'center' as const,
-    marginBottom: 14,
-  },
-  detailTitle: { fontSize: 16, fontWeight: '700' as const },
-  statusBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  statusBadgeText: { fontSize: 11, fontWeight: '700' as const },
-  sensorRow: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    gap: 10,
-  },
-  sensorInfo: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: 6,
-    flex: 1,
-  },
-  sensorDot: { width: 8, height: 8, borderRadius: 4 },
-  sensorName: { fontSize: 13, fontWeight: '500' as const },
-  sensorValues: { alignItems: 'flex-end' as const, minWidth: 60 },
-  sensorValue: { fontSize: 16, fontWeight: '700' as const },
-  sensorUnit: { fontSize: 10 },
-  sensorRange: { width: 80 },
-  gaugeTrack: { height: 6, borderRadius: 3, overflow: 'hidden' as const },
-  gaugeFill: { height: '100%' as any, borderRadius: 3 },
-  sensorTarget: { fontSize: 9, marginTop: 2 },
-  noSensors: { fontSize: 13, fontStyle: 'italic' as const, paddingVertical: 16, textAlign: 'center' as const },
+  alertBannerText: { fontSize: 11, fontWeight: '700', color: HUD.red, flex: 1, letterSpacing: 0.5 },
   sectionCard: {
-    borderRadius: 14,
-    borderWidth: 1,
-    padding: 16,
-    marginBottom: 16,
+    backgroundColor: HUD.bgCard, borderRadius: 14,
+    borderWidth: 1, borderColor: HUD.borderBright,
+    padding: 14, marginBottom: 16,
   },
-  sectionTitle: { fontSize: 15, fontWeight: '700' as const, marginBottom: 12 },
-  sensorListRow: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    gap: 10,
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 },
+  sectionTitle: { fontSize: 11, fontWeight: '800', color: HUD.cyan, letterSpacing: 2, flex: 1 },
+  sectionCount: { fontSize: 9, fontWeight: '700', color: HUD.textDim, letterSpacing: 1 },
+  sensorRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, gap: 10 },
+  sensorIndicator: {
+    width: 6, height: 32, borderRadius: 3,
+    shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.8, shadowRadius: 4, elevation: 3,
   },
-  sensorListInfo: { flex: 1 },
-  sensorListName: { fontSize: 13, fontWeight: '500' as const },
-  sensorListEquip: { fontSize: 10, marginTop: 1 },
-  sensorListValue: { fontSize: 14, fontWeight: '700' as const },
+  sensorName: { fontSize: 13, fontWeight: '600' },
+  sensorEquip: { fontSize: 10, color: HUD.textDim, marginTop: 1, letterSpacing: 0.3 },
+  sensorVal: { fontSize: 15, fontWeight: '800' },
+  statusMini: {
+    paddingHorizontal: 5, paddingVertical: 2, borderRadius: 4, borderWidth: 1, marginTop: 2,
+  },
+  statusMiniText: { fontSize: 8, fontWeight: '800', letterSpacing: 1 },
   eventRow: {
-    flexDirection: 'row' as const,
-    alignItems: 'flex-start' as const,
-    paddingVertical: 10,
-    paddingLeft: 10,
-    borderLeftWidth: 3,
-    gap: 10,
-    marginBottom: 6,
+    flexDirection: 'row', alignItems: 'flex-start',
+    paddingVertical: 10, paddingLeft: 12,
+    borderLeftWidth: 2, gap: 10, marginBottom: 4,
   },
-  eventDot: { width: 8, height: 8, borderRadius: 4, marginTop: 4 },
-  eventInfo: { flex: 1 },
-  eventReason: { fontSize: 13, fontWeight: '500' as const, lineHeight: 18 },
-  eventTime: { fontSize: 11, marginTop: 2 },
-  eventBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 5 },
-  eventBadgeText: { fontSize: 9, fontWeight: '700' as const },
-  simHeader: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: 8,
-    marginBottom: 8,
+  eventDot: {
+    width: 7, height: 7, borderRadius: 4, marginTop: 4,
+    shadowOffset: { width: 0, height: 0 }, shadowOpacity: 1, shadowRadius: 4, elevation: 3,
   },
-  simDesc: { fontSize: 12, lineHeight: 18, marginBottom: 12 },
-  simGrid: {
-    flexDirection: 'row' as const,
-    flexWrap: 'wrap' as const,
-    gap: 8,
-    marginBottom: 12,
+  eventReason: { fontSize: 12, fontWeight: '600', lineHeight: 17 },
+  eventTime: { fontSize: 10, color: HUD.textDim, marginTop: 2, letterSpacing: 0.5 },
+  eventBadge: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 5, borderWidth: 1 },
+  eventBadgeText: { fontSize: 8, fontWeight: '800', letterSpacing: 1 },
+  simBtn: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, borderWidth: 1 },
+  simBtnText: { fontSize: 10, fontWeight: '800', letterSpacing: 1 },
+  tickBtnFull: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 8, padding: 13, borderRadius: 10, borderWidth: 1,
   },
-  simBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  simBtnText: { fontSize: 12, fontWeight: '600' as const },
-  tickBtnLarge: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    gap: 8,
-    padding: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-  },
-  tickBtnText: { fontSize: 14, fontWeight: '600' as const },
+  tickBtnText: { fontSize: 13, fontWeight: '800', letterSpacing: 1.5 },
 });
