@@ -387,14 +387,14 @@ export default function FormPickerModal({
           {/* Skip option */}
           <View style={[styles.footer, { borderTopColor: colors.border }]}>
             <TouchableOpacity
-              style={[styles.skipBtn, { borderColor: colors.border }]}
-              onPress={onClose}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.skipBtnText, { color: colors.textSecondary }]}>
-                Complete without form
-              </Text>
-            </TouchableOpacity>
+  style={[styles.skipBtn, { borderColor: colors.border }]}
+  onPress={onMarkComplete ?? onClose}
+  activeOpacity={0.7}
+>
+  <Text style={[styles.skipBtnText, { color: colors.textSecondary }]}>
+    Complete without form
+  </Text>
+</TouchableOpacity>
           </View>
         </View>
       </View>
