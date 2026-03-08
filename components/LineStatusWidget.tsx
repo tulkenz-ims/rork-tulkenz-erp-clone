@@ -1,165 +1,107 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  Pressable,
-} from 'react-native';
-import {
-  Activity,
-  AlertTriangle,
-  ChevronRight,
-  TrendingUp,
-  Package,
-  Radio,
-  Timer,
-} from 'lucide-react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
+import { Activity, AlertTriangle, ChevronRight, Package, Radio, Timer, TrendingUp } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
-import { useTheme } from '@/contexts/ThemeContext';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import { supabase } from '@/lib/supabase';
 
-// ══════════════════════════════════ TYPES ══════════════════════════════════
+const HUD = {
+  bg:           '#020912',
+  bgCard:       '#050f1e',
+  bgCardAlt:    '#071525',
+  cyan:         '#00e5ff',
+  green:        '#00ff88',
+  amber:        '#ffb800',
+  red:          '#ff2d55',
+  purple:       '#7b61ff',
+  text:         '#e0f4ff',
+  textSec:      '#7aa8c8',
+  textDim:      '#3a6080',
+  border:       '#0d2840',
+  borderBright: '#1a4060',
+};
 
-interface RoomStatus {
-  room_code: string;
-  room_name: string;
-  status: string;
-  andon_color: string;
-  bags_today: number;
-  bags_per_minute: number;
-  target_bags_per_minute: number;
-  uptime_percent: number;
-  personnel_count: number;
-  current_run_number: string | null;
-  updated_at: string;
-}
-
-interface DowntimeEvent {
-  room_code: string;
-  started_at: string;
-  reason: string | null;
-}
-
-// ══════════════════════════════════ CONSTANTS ══════════════════════════════════
-
-const ANDON_COLORS: Record<string, string> = {
-  green: '#10B981',
-  yellow: '#F59E0B',
-  red: '#EF4444',
-  blue: '#3B82F6',
-  gray: '#6B7280',
+const ANDON: Record<string, string> = {
+  green: HUD.green,
+  yellow: HUD.amber,
+  red: HUD.red,
+  blue: HUD.cyan,
+  gray: HUD.textDim,
 };
 
 const STATUS_LABELS: Record<string, string> = {
-  running: 'RUNNING',
-  idle: 'IDLE',
-  cleaning: 'CLEANING',
-  loto: 'LOTO',
-  setup: 'SETUP',
-  down: 'DOWN',
+  running: 'RUNNING', idle: 'IDLE', cleaning: 'CLEANING',
+  loto: 'LOTO', setup: 'SETUP', down: 'DOWN',
 };
 
-// ══════════════════════════════════ DOWNTIME TIMER HOOK ══════════════════════════════════
+interface RoomStatus {
+  room_code: string; room_name: string; status: string; andon_color: string;
+  bags_today: number; bags_per_minute: number; target_bags_per_minute: number;
+  uptime_percent: number; personnel_count: number; current_run_number: string | null; updated_at: string;
+}
+interface DowntimeEvent { room_code: string; started_at: string; reason: string | null; }
 
 function useDowntimeTimers(events: DowntimeEvent[]) {
   const [now, setNow] = useState(() => Date.now());
-
   useEffect(() => {
     if (events.length === 0) return;
     const interval = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(interval);
   }, [events.length]);
-
-  // Returns a map of room_code → formatted elapsed string
   return useMemo(() => {
     const map: Record<string, string> = {};
     for (const ev of events) {
       const elapsed = Math.max(0, Math.floor((now - new Date(ev.started_at).getTime()) / 1000));
-      const h = Math.floor(elapsed / 3600);
-      const m = Math.floor((elapsed % 3600) / 60);
-      const s = elapsed % 60;
-      if (h > 0) {
-        map[ev.room_code] = `${h}h ${m}m ${s}s`;
-      } else if (m > 0) {
-        map[ev.room_code] = `${m}m ${s}s`;
-      } else {
-        map[ev.room_code] = `${s}s`;
-      }
+      const h = Math.floor(elapsed / 3600), m = Math.floor((elapsed % 3600) / 60), s = elapsed % 60;
+      map[ev.room_code] = h > 0 ? `${h}h ${m}m ${s}s` : m > 0 ? `${m}m ${s}s` : `${s}s`;
     }
     return map;
   }, [now, events]);
 }
 
-// ══════════════════════════════════ COMPONENT ══════════════════════════════════
+function PulsingDot({ color }: { color: string }) {
+  const anim = React.useRef(new Animated.Value(0.5)).current;
+  useEffect(() => {
+    Animated.loop(Animated.sequence([
+      Animated.timing(anim, { toValue: 1,   duration: 700, useNativeDriver: true }),
+      Animated.timing(anim, { toValue: 0.5, duration: 700, useNativeDriver: true }),
+    ])).start();
+  }, []);
+  return <Animated.View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: color, opacity: anim, shadowColor: color, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 1, shadowRadius: 4 }} />;
+}
 
 export default function LineStatusWidget() {
   const router = useRouter();
-  const { colors } = useTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
   const orgContext = useOrganization();
   const organizationId = orgContext?.organizationId || '';
 
-  // ── Fetch room statuses ──
   const { data: rooms = [] } = useQuery({
     queryKey: ['room_status', organizationId],
     queryFn: async () => {
       if (!organizationId) return [];
-      const { data, error } = await supabase
-        .from('room_status')
-        .select('*')
-        .eq('organization_id', organizationId)
-        .in('room_code', ['PR1', 'PR2', 'PA1'])
-        .order('room_code');
-      if (error) {
-        console.error('[LineStatusWidget] Error:', error);
-        return [];
-      }
+      const { data, error } = await supabase.from('room_status').select('*').eq('organization_id', organizationId).in('room_code', ['PR1', 'PR2', 'PA1']).order('room_code');
+      if (error) { console.error('[LineStatusWidget] Error:', error); return []; }
       return (data || []) as RoomStatus[];
     },
-    enabled: !!organizationId,
-    refetchInterval: 10000,
-    staleTime: 5000,
+    enabled: !!organizationId, refetchInterval: 10000, staleTime: 5000,
   });
 
-  // ── Fetch active downtime events ──
   const { data: downtimeEvents = [] } = useQuery({
     queryKey: ['production_events_active', organizationId],
     queryFn: async () => {
       if (!organizationId) return [];
-      const { data, error } = await supabase
-        .from('production_events')
-        .select('room_code, started_at, reason')
-        .eq('organization_id', organizationId)
-        .eq('event_type', 'line_stopped')
-        .is('ended_at', null)
-        .order('started_at', { ascending: false });
-      if (error) {
-        console.error('[LineStatusWidget] Downtime events error:', error);
-        return [];
-      }
-      // Keep only the most recent event per room
-      const seen = new Set<string>();
-      const deduped: DowntimeEvent[] = [];
-      for (const ev of (data || [])) {
-        if (!seen.has(ev.room_code)) {
-          seen.add(ev.room_code);
-          deduped.push(ev as DowntimeEvent);
-        }
-      }
+      const { data, error } = await supabase.from('production_events').select('room_code, started_at, reason').eq('organization_id', organizationId).eq('event_type', 'line_stopped').is('ended_at', null).order('started_at', { ascending: false });
+      if (error) { console.error('[LineStatusWidget] Downtime events error:', error); return []; }
+      const seen = new Set<string>(); const deduped: DowntimeEvent[] = [];
+      for (const ev of (data || [])) { if (!seen.has(ev.room_code)) { seen.add(ev.room_code); deduped.push(ev as DowntimeEvent); } }
       return deduped;
     },
-    enabled: !!organizationId,
-    refetchInterval: 15000,
-    staleTime: 5000,
+    enabled: !!organizationId, refetchInterval: 15000, staleTime: 5000,
   });
 
-  // ── Live ticking timers ──
   const downtimeTimers = useDowntimeTimers(downtimeEvents);
-
-  // ── Derived stats ──
   const anyIssue = rooms.some(r => r.andon_color === 'red' || r.andon_color === 'yellow');
   const runningCount = rooms.filter(r => r.status === 'running' && r.andon_color === 'green').length;
   const totalRooms = rooms.length;
@@ -169,171 +111,133 @@ export default function LineStatusWidget() {
     router.push(`/production/room-dashboard?room=${roomCode}`);
   };
 
-  // ── If no rooms configured yet, show placeholder ──
   if (rooms.length === 0) {
     return (
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <View style={styles.headerLeft}>
-            <Activity size={16} color={colors.warning || '#F59E0B'} />
+      <View>
+        <View style={S.headerRow}>
+          <View style={S.headerLeft}>
+            <Activity size={14} color={HUD.amber} />
             <View>
-              <Text style={styles.headerTitle}>Live Room Status</Text>
-              <Text style={styles.headerSub}>Real-time production monitoring</Text>
+              <Text style={S.headerTitle}>Live Room Status</Text>
+              <Text style={S.headerSub}>Real-time production monitoring</Text>
             </View>
           </View>
-          <View style={[styles.overallBadge, { backgroundColor: '#6B7280' }]}>
-            <View style={styles.pulseDot} />
-            <Text style={styles.overallBadgeText}>NO DATA</Text>
+          <View style={[S.badge, { backgroundColor: HUD.textDim + '30', borderColor: HUD.textDim + '50' }]}>
+            <PulsingDot color={HUD.textDim} />
+            <Text style={[S.badgeTxt, { color: HUD.textDim }]}>NO DATA</Text>
           </View>
         </View>
-        <View style={[styles.placeholderCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Radio size={24} color={colors.textTertiary} />
-          <Text style={[styles.placeholderText, { color: colors.textSecondary }]}>
-            Start the simulator to see live room data
-          </Text>
-          <Text style={[styles.placeholderSub, { color: colors.textTertiary }]}>
-            /api/simulator?action=start
-          </Text>
+        <View style={S.placeholder}>
+          <Radio size={22} color={HUD.textDim} />
+          <Text style={S.placeholderTxt}>Start the simulator to see live room data</Text>
+          <Text style={S.placeholderSub}>/api/simulator?action=start</Text>
         </View>
       </View>
     );
   }
 
+  const badgeColor = anyIssue ? HUD.red : runningCount > 0 ? HUD.green : HUD.textDim;
+  const badgeLabel = anyIssue ? 'ALERT' : runningCount > 0 ? `${runningCount}/${totalRooms} LIVE` : 'ALL IDLE';
+
   return (
-    <View style={styles.container}>
-      {/* ── Header ── */}
-      <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <Activity size={16} color={colors.warning || '#F59E0B'} />
+    <View>
+      <View style={S.headerRow}>
+        <View style={S.headerLeft}>
+          <Activity size={14} color={HUD.amber} />
           <View>
-            <Text style={styles.headerTitle}>Live Room Status</Text>
-            <Text style={styles.headerSub}>Real-time · Tap room for details</Text>
+            <Text style={S.headerTitle}>Live Room Status</Text>
+            <Text style={S.headerSub}>Real-time · Tap room for details</Text>
           </View>
         </View>
-        <View style={[
-          styles.overallBadge,
-          { backgroundColor: anyIssue ? '#EF4444' : runningCount > 0 ? '#10B981' : '#6B7280' }
-        ]}>
-          <View style={styles.pulseDot} />
-          <Text style={styles.overallBadgeText}>
-            {anyIssue ? 'ALERT' : runningCount > 0 ? `${runningCount}/${totalRooms} LIVE` : 'ALL IDLE'}
-          </Text>
+        <View style={[S.badge, { backgroundColor: badgeColor + '20', borderColor: badgeColor + '60' }]}>
+          <PulsingDot color={badgeColor} />
+          <Text style={[S.badgeTxt, { color: badgeColor }]}>{badgeLabel}</Text>
         </View>
       </View>
 
-      {/* ── Room Cards ── */}
-      <View style={styles.roomsRow}>
+      <View style={S.roomsRow}>
         {rooms.map(room => {
-          const andonColor = ANDON_COLORS[room.andon_color] || '#6B7280';
+          const col = ANDON[room.andon_color] || HUD.textDim;
           const isRunning = room.status === 'running';
           const isDown = room.status === 'down';
-          const bpmPercent = room.target_bags_per_minute > 0
-            ? (room.bags_per_minute / room.target_bags_per_minute) * 100
-            : 0;
-          const bpmColor = bpmPercent >= 90 ? '#10B981' : bpmPercent >= 70 ? '#F59E0B' : bpmPercent > 0 ? '#EF4444' : '#6B7280';
+          const bpmPct = room.target_bags_per_minute > 0 ? (room.bags_per_minute / room.target_bags_per_minute) * 100 : 0;
+          const bpmColor = bpmPct >= 90 ? HUD.green : bpmPct >= 70 ? HUD.amber : bpmPct > 0 ? HUD.red : HUD.textDim;
           const downtimeLabel = downtimeTimers[room.room_code];
 
           return (
-            <Pressable
+            <TouchableOpacity
               key={room.room_code}
-              style={({ pressed }) => [
-                styles.roomCard,
-                { borderColor: andonColor + '60' },
-                pressed && { opacity: 0.7, transform: [{ scale: 0.98 }] },
-              ]}
+              activeOpacity={0.8}
+              style={[S.roomCard, { borderColor: col + '50', shadowColor: col }]}
               onPress={() => handleRoomPress(room.room_code)}
             >
-              {/* Andon strip at top */}
-              <View style={[styles.andonStrip, { backgroundColor: andonColor }]} />
+              {/* Top color strip */}
+              <View style={[S.andonStrip, { backgroundColor: col }]} />
 
               {/* Status badge */}
-              <View style={styles.roomCardTop}>
-                <View style={[styles.andonDot, { backgroundColor: andonColor }]} />
-                <View style={[styles.statusLabel, { backgroundColor: andonColor + '20' }]}>
-                  <Text style={[styles.statusLabelText, { color: andonColor }]}>
-                    {STATUS_LABELS[room.status] || room.status.toUpperCase()}
-                  </Text>
+              <View style={S.roomCardTop}>
+                <PulsingDot color={col} />
+                <View style={[S.statusPill, { backgroundColor: col + '18', borderColor: col + '40' }]}>
+                  <Text style={[S.statusPillTxt, { color: col }]}>{STATUS_LABELS[room.status] || room.status.toUpperCase()}</Text>
                 </View>
               </View>
 
               {/* Main metric */}
               {isRunning && room.bags_per_minute > 0 ? (
-                <View style={styles.heroSection}>
-                  <Text style={[styles.heroValue, { color: bpmColor }]}>
-                    {Math.round(room.bags_per_minute)}
-                  </Text>
-                  <Text style={[styles.heroUnit, { color: colors.textTertiary }]}>
-                    /{room.target_bags_per_minute} bags/min
-                  </Text>
+                <View style={S.heroSection}>
+                  <Text style={[S.heroValue, { color: bpmColor }]}>{Math.round(room.bags_per_minute)}</Text>
+                  <Text style={S.heroUnit}>/{room.target_bags_per_minute} bags/min</Text>
                 </View>
               ) : (
-                <View style={styles.heroSection}>
-                  <Text style={[styles.heroValue, { color: andonColor }]}>
+                <View style={S.heroSection}>
+                  <Text style={[S.heroValue, { color: col }]}>
                     {room.status === 'idle' ? '—' : room.status === 'cleaning' ? '🧹' : room.status === 'loto' ? '🔒' : '⚙️'}
                   </Text>
-                  <Text style={[styles.heroUnit, { color: colors.textTertiary }]}>
-                    {STATUS_LABELS[room.status] || room.status}
-                  </Text>
+                  <Text style={S.heroUnit}>{STATUS_LABELS[room.status] || room.status}</Text>
                 </View>
               )}
 
-              {/* Room name */}
-              <Text style={[styles.roomName, { color: colors.text }]}>{room.room_name}</Text>
-              <Text style={[styles.roomCode, { color: colors.textTertiary }]}>{room.room_code}</Text>
+              <Text style={S.roomName}>{room.room_name}</Text>
+              <Text style={S.roomCode}>{room.room_code}</Text>
 
-              {/* Stats row */}
-              <View style={styles.statsRow}>
-                <View style={styles.statItem}>
-                  <Package size={10} color={colors.textTertiary} />
-                  <Text style={[styles.statValue, { color: colors.textSecondary }]}>
-                    {room.bags_today > 0 ? room.bags_today.toLocaleString() : '0'}
-                  </Text>
+              <View style={S.statsRow}>
+                <View style={S.statItem}>
+                  <Package size={9} color={HUD.textDim} />
+                  <Text style={S.statValue}>{room.bags_today > 0 ? room.bags_today.toLocaleString() : '0'}</Text>
                 </View>
-                <View style={styles.statItem}>
-                  <TrendingUp size={10} color={colors.textTertiary} />
-                  <Text style={[styles.statValue, { color: colors.textSecondary }]}>
-                    {room.uptime_percent || 0}%
-                  </Text>
+                <View style={S.statItem}>
+                  <TrendingUp size={9} color={HUD.textDim} />
+                  <Text style={S.statValue}>{room.uptime_percent || 0}%</Text>
                 </View>
               </View>
 
-              {/* BPM progress bar (running only) */}
               {isRunning && room.target_bags_per_minute > 0 && (
-                <View style={styles.bpmBar}>
-                  <View style={[styles.bpmTrack, { backgroundColor: colors.backgroundSecondary }]}>
-                    <View style={[
-                      styles.bpmFill,
-                      {
-                        width: `${Math.min(100, bpmPercent)}%`,
-                        backgroundColor: bpmColor,
-                      }
-                    ]} />
+                <View style={S.bpmBar}>
+                  <View style={S.bpmTrack}>
+                    <View style={[S.bpmFill, { width: `${Math.min(100, bpmPct)}%` as any, backgroundColor: bpmColor }]} />
                   </View>
                 </View>
               )}
 
-              {/* ── Downtime counter (DOWN rooms only) ── */}
               {isDown && downtimeLabel && (
-                <View style={styles.downtimeBadge}>
-                  <Timer size={10} color="#EF4444" />
-                  <Text style={styles.downtimeText}>Down {downtimeLabel}</Text>
+                <View style={S.downtimeBadge}>
+                  <Timer size={9} color={HUD.red} />
+                  <Text style={S.downtimeTxt}>Down {downtimeLabel}</Text>
                 </View>
               )}
 
-              {/* Tap indicator */}
-              <View style={styles.tapIndicator}>
-                <ChevronRight size={12} color={colors.textTertiary} />
+              <View style={S.tapIndicator}>
+                <ChevronRight size={11} color={HUD.textDim} />
               </View>
-            </Pressable>
+            </TouchableOpacity>
           );
         })}
       </View>
 
-      {/* ── Alert bar if any room has issues ── */}
       {rooms.some(r => r.andon_color === 'red') && (
-        <View style={styles.alertBar}>
-          <AlertTriangle size={12} color="#FCA5A5" />
-          <Text style={styles.alertText}>
+        <View style={S.alertBar}>
+          <AlertTriangle size={11} color={HUD.red} />
+          <Text style={S.alertTxt}>
             {rooms.filter(r => r.andon_color === 'red').map(r => r.room_code).join(', ')} — Equipment alert active
           </Text>
         </View>
@@ -342,198 +246,36 @@ export default function LineStatusWidget() {
   );
 }
 
-// ══════════════════════════════════ STYLES ══════════════════════════════════
-
-const createStyles = (colors: any) => StyleSheet.create({
-  container: {
-    marginTop: 12,
-    marginBottom: 16,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  headerTitle: {
-    fontSize: 15,
-    fontWeight: '700' as const,
-    color: colors.text,
-    letterSpacing: 0.3,
-  },
-  headerSub: {
-    fontSize: 10,
-    color: colors.textTertiary,
-    marginTop: 1,
-  },
-  overallBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 20,
-    gap: 6,
-  },
-  pulseDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#FFFFFF',
-  },
-  overallBadgeText: {
-    fontSize: 10,
-    fontWeight: '800' as const,
-    color: '#FFFFFF',
-    letterSpacing: 1,
-  },
-  roomsRow: {
-    flexDirection: 'row' as const,
-    gap: 10,
-  },
-  roomCard: {
-    flex: 1,
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    padding: 14,
-    paddingTop: 6,
-    borderWidth: 1,
-    overflow: 'hidden' as const,
-    position: 'relative' as const,
-  },
-  andonStrip: {
-    position: 'absolute' as const,
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 3,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-  },
-  roomCardTop: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: 6,
-    marginTop: 6,
-    marginBottom: 10,
-  },
-  andonDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  statusLabel: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  statusLabelText: {
-    fontSize: 9,
-    fontWeight: '800' as const,
-    letterSpacing: 0.8,
-  },
-  heroSection: {
-    marginBottom: 6,
-  },
-  heroValue: {
-    fontSize: 26,
-    fontWeight: '800' as const,
-  },
-  heroUnit: {
-    fontSize: 10,
-    marginTop: 1,
-  },
-  roomName: {
-    fontSize: 12,
-    fontWeight: '600' as const,
-    marginTop: 4,
-  },
-  roomCode: {
-    fontSize: 10,
-    marginTop: 1,
-  },
-  statsRow: {
-    flexDirection: 'row' as const,
-    gap: 12,
-    marginTop: 8,
-  },
-  statItem: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: 4,
-  },
-  statValue: {
-    fontSize: 10,
-    fontWeight: '600' as const,
-  },
-  bpmBar: {
-    marginTop: 8,
-  },
-  bpmTrack: {
-    height: 4,
-    borderRadius: 2,
-    overflow: 'hidden' as const,
-  },
-  bpmFill: {
-    height: '100%' as any,
-    borderRadius: 2,
-  },
-  downtimeBadge: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: 4,
-    marginTop: 8,
-    backgroundColor: '#EF444420',
-    borderRadius: 6,
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-    alignSelf: 'flex-start' as const,
-  },
-  downtimeText: {
-    fontSize: 10,
-    fontWeight: '700' as const,
-    color: '#EF4444',
-    letterSpacing: 0.3,
-  },
-  tapIndicator: {
-    position: 'absolute' as const,
-    bottom: 8,
-    right: 8,
-  },
-  alertBar: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    backgroundColor: '#EF444415',
-    borderRadius: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    marginTop: 10,
-    gap: 6,
-  },
-  alertText: {
-    fontSize: 11,
-    fontWeight: '600' as const,
-    color: '#FCA5A5',
-    flex: 1,
-  },
-  placeholderCard: {
-    borderRadius: 16,
-    borderWidth: 1,
-    padding: 30,
-    alignItems: 'center' as const,
-    gap: 8,
-  },
-  placeholderText: {
-    fontSize: 14,
-    fontWeight: '500' as const,
-    textAlign: 'center' as const,
-  },
-  placeholderSub: {
-    fontSize: 11,
-    textAlign: 'center' as const,
-  },
+const S = StyleSheet.create({
+  headerRow:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  headerLeft:   { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  headerTitle:  { fontSize: 13, fontWeight: '800', color: HUD.text, letterSpacing: 0.3 },
+  headerSub:    { fontSize: 9, color: HUD.textDim, marginTop: 1, fontWeight: '600' },
+  badge:        { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, borderWidth: 1, gap: 6 },
+  badgeTxt:     { fontSize: 9, fontWeight: '900', letterSpacing: 1 },
+  roomsRow:     { flexDirection: 'row', gap: 10 },
+  roomCard:     { flex: 1, backgroundColor: HUD.bgCardAlt, borderRadius: 14, padding: 12, paddingTop: 6, borderWidth: 1, overflow: 'hidden', position: 'relative', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.4, shadowRadius: 10, elevation: 4 },
+  andonStrip:   { position: 'absolute', top: 0, left: 0, right: 0, height: 3, borderTopLeftRadius: 14, borderTopRightRadius: 14 },
+  roomCardTop:  { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8, marginBottom: 10 },
+  statusPill:   { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5, borderWidth: 1 },
+  statusPillTxt:{ fontSize: 8, fontWeight: '900', letterSpacing: 0.8 },
+  heroSection:  { marginBottom: 4 },
+  heroValue:    { fontSize: 28, fontWeight: '900', letterSpacing: -1 },
+  heroUnit:     { fontSize: 9, color: HUD.textDim, marginTop: 1, fontWeight: '600' },
+  roomName:     { fontSize: 11, fontWeight: '700', color: HUD.text, marginTop: 4 },
+  roomCode:     { fontSize: 9, color: HUD.textDim, marginTop: 1, fontWeight: '600' },
+  statsRow:     { flexDirection: 'row', gap: 10, marginTop: 8 },
+  statItem:     { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  statValue:    { fontSize: 9, fontWeight: '700', color: HUD.textSec },
+  bpmBar:       { marginTop: 8 },
+  bpmTrack:     { height: 3, borderRadius: 2, overflow: 'hidden', backgroundColor: HUD.border },
+  bpmFill:      { height: '100%' as any, borderRadius: 2 },
+  downtimeBadge:{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 8, backgroundColor: HUD.red + '15', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 3, alignSelf: 'flex-start', borderWidth: 1, borderColor: HUD.red + '30' },
+  downtimeTxt:  { fontSize: 9, fontWeight: '800', color: HUD.red, letterSpacing: 0.3 },
+  tapIndicator: { position: 'absolute', bottom: 8, right: 8 },
+  alertBar:     { flexDirection: 'row', alignItems: 'center', backgroundColor: HUD.red + '12', borderRadius: 10, paddingVertical: 8, paddingHorizontal: 12, marginTop: 10, gap: 6, borderWidth: 1, borderColor: HUD.red + '30' },
+  alertTxt:     { fontSize: 11, fontWeight: '700', color: HUD.red, flex: 1 },
+  placeholder:  { borderRadius: 14, borderWidth: 1, borderColor: HUD.borderBright, borderStyle: 'dashed', padding: 28, alignItems: 'center', gap: 8, backgroundColor: HUD.bgCardAlt },
+  placeholderTxt:{ fontSize: 13, fontWeight: '600', color: HUD.textSec, textAlign: 'center' },
+  placeholderSub:{ fontSize: 10, color: HUD.textDim, textAlign: 'center', fontWeight: '600' },
 });
