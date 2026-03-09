@@ -31,7 +31,6 @@ interface AIActionParams {
 // ══════════════════════════════════════════════════════════════════
 
 function generatePostNumber(): string {
-  // Runs in the browser — new Date() is already local time, so post number date is correct
   const now = new Date();
   const yy = String(now.getFullYear()).slice(-2);
   const mm = String(now.getMonth() + 1).padStart(2, '0');
@@ -70,10 +69,8 @@ const ROOM_NAMES: Record<string, string> = {
   'SB1': 'Small Blend',
 };
 
-// Templates that dispatch to all 5 departments
 const ALL_DEPARTMENTS = ['1001', '1002', '1003', '1004', '1005'];
 
-// Map AI room codes → full location label matching the template dropdown values
 const ROOM_TO_LOCATION_LABEL: Record<string, string> = {
   'PR1': 'Production Room 1',
   'PR2': 'Production Room 2',
@@ -83,7 +80,6 @@ const ROOM_TO_LOCATION_LABEL: Record<string, string> = {
   'SB1': 'Small Blend',
 };
 
-// Map AI production line values → template dropdown values
 const LINE_TO_LABEL: Record<string, string> = {
   'Line 1': 'line_1',
   'Line 2': 'line_2',
@@ -91,7 +87,6 @@ const LINE_TO_LABEL: Record<string, string> = {
   'N/A':    'not_applicable',
 };
 
-// Reporting department per template category
 const TEMPLATE_REPORTING_DEPT: Record<string, { code: string; name: string }> = {
   broken_glove:           { code: '1004', name: 'Quality' },
   foreign_material:       { code: '1004', name: 'Quality' },
@@ -118,10 +113,6 @@ export function useAIActions() {
 
   // ─────────────────────────────────────────────
   // SHARED: Insert a Task Feed post + dept tasks
-  // Uses useCreateManualTaskFeedPost so all logic
-  // (photos, hold_status, notifications, task_verifications,
-  //  dept tasks, room_status) runs through the same code
-  // path as the manual Report Issue button.
   // ─────────────────────────────────────────────
 
   const insertTaskFeedPost = useCallback(async ({
@@ -182,7 +173,6 @@ export function useAIActions() {
   // ─────────────────────────────────────────────
 
   const createBrokenGlove = useCallback(async (params: AIActionParams): Promise<ActionResult> => {
-    // Map AI values → real template form_data field names/values
     const locationLabel = ROOM_TO_LOCATION_LABEL[params.location as string] || params.location as string;
     const gloveTypeLower = (params.glove_type as string || '').toLowerCase().replace('-', '_').replace(' ', '_');
     const fragmentFound = (params.missing_fragment_found as string || '').toLowerCase().startsWith('yes') ? 'yes' : 'no';
@@ -291,6 +281,8 @@ export function useAIActions() {
 
   // ─────────────────────────────────────────────
   // TEMPLATE: Equipment Breakdown
+  // FIX 1: createWorkOrder is called with _skipPost=true so it does NOT
+  //         create a second task feed post. Only one post is created here.
   // ─────────────────────────────────────────────
 
   const createEquipmentBreakdown = useCallback(async (params: AIActionParams): Promise<ActionResult> => {
@@ -313,17 +305,16 @@ export function useAIActions() {
       departments: ['1001', '1003'],
     });
 
-    // Optionally also create a work order
+    // FIX 1: pass _skipPost: true so createWorkOrder skips its own TF post insert
     if (result.success && params.create_work_order_requested) {
       await createWorkOrder({
         title: `Breakdown: ${params.equipment_name}`,
-        // Pass equipment name so pre-start validation is satisfied
         equipment_name: params.equipment_name,
-        // Pass location so the work order location field is pre-filled
         location: params.location,
         description: `${params.symptom}\nImmediate action: ${params.immediate_action_taken}\nTask Feed Post: ${result.data?.post_number}`,
         priority: params.production_impact === 'Line Down' ? 'critical' : 'high',
         type: 'reactive',
+        _skipPost: true,   // ← FIX 1: prevents second task feed post
       });
     }
 
@@ -449,12 +440,55 @@ export function useAIActions() {
 
   // ─────────────────────────────────────────────
   // QUERY TASK FEED
+  // FIX 4: PM queries (post_type = 'preventive' | 'pm') now hit
+  //         the work_orders table directly and return actual WO records
+  //         with numbers, titles, due dates, etc.
   // ─────────────────────────────────────────────
 
   const queryTaskFeed = useCallback(async (params: AIActionParams): Promise<ActionResult> => {
     if (!organizationId) return { success: false, message: 'No organization selected' };
 
     try {
+      const postType = (params.post_type as string || '').toLowerCase();
+      const isPMQuery = ['pm', 'preventive', 'pm_schedule', 'preventive_maintenance'].includes(postType);
+
+      // ── FIX 4: PM queries → work_orders table ──────────────────────
+      if (isPMQuery) {
+        let woQuery = supabase
+          .from('work_orders')
+          .select('id, work_order_number, title, status, priority, type, equipment, location, due_date, assigned_name, created_at')
+          .eq('organization_id', organizationId)
+          .eq('type', 'preventive')
+          .order('due_date', { ascending: true })
+          .limit(20);
+
+        if (params.status && params.status !== 'all') {
+          woQuery = woQuery.eq('status', params.status as string);
+        }
+
+        if (params.date_range === 'today') {
+          const today = new Date().toISOString().split('T')[0];
+          woQuery = woQuery.gte('due_date', today).lte('due_date', today);
+        } else if (params.date_range === 'this_week') {
+          const today = new Date().toISOString().split('T')[0];
+          const nextWeek = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+          woQuery = woQuery.gte('due_date', today).lte('due_date', nextWeek);
+        }
+
+        const { data: pms, error } = await woQuery;
+        if (error) throw error;
+
+        const count = pms?.length || 0;
+        const statusFilter = params.status && params.status !== 'all' ? ` (${params.status})` : '';
+
+        return {
+          success: true,
+          message: `Found ${count} preventive maintenance work order${count !== 1 ? 's' : ''}${statusFilter}.`,
+          data: { results: pms || [], total: count, resultType: 'work_orders' },
+        };
+      }
+
+      // ── Standard task feed query ────────────────────────────────────
       let query = supabase
         .from('task_feed_department_tasks')
         .select(`
@@ -474,8 +508,8 @@ export function useAIActions() {
         query = query.eq('status', params.status as string);
       }
 
-      if (params.post_type) {
-        query = query.ilike('module_reference_type', `%${params.post_type}%`);
+      if (postType && !isPMQuery) {
+        query = query.ilike('module_reference_type', `%${postType}%`);
       }
 
       if (params.date_range === 'today') {
@@ -487,7 +521,6 @@ export function useAIActions() {
       }
 
       const { data, error } = await query;
-
       if (error) throw error;
 
       const count = data?.length || 0;
@@ -497,8 +530,8 @@ export function useAIActions() {
 
       return {
         success: true,
-        message: `Found ${count} task(s) — ${deptName}, status: ${params.status || 'all'}.`,
-        data: { results: data || [], total: count },
+        message: `Found ${count} task${count !== 1 ? 's' : ''} — ${deptName}, status: ${params.status || 'all'}.`,
+        data: { results: data || [], total: count, resultType: 'tasks' },
       };
     } catch (err: any) {
       console.error('[AIActions] queryTaskFeed error:', err);
@@ -585,10 +618,9 @@ export function useAIActions() {
 
   // ─────────────────────────────────────────────
   // CREATE WORK ORDER
-  //
-  // equipment defaults to 'N/A' (never null) so the pre-start
-  // validation in WorkOrderDetail is always satisfied.
-  // location is passed through from the caller when available.
+  // FIX 1: Added _skipPost param — when true, skips creating the task
+  //         feed post so callers like createEquipmentBreakdown don't
+  //         end up with two TF posts for one event.
   // ─────────────────────────────────────────────
 
   const createWorkOrder = useCallback(async (params: AIActionParams): Promise<ActionResult> => {
@@ -599,12 +631,7 @@ export function useAIActions() {
       const prefix = woType === 'preventive' ? 'PM' : 'RE';
       const woNumber = generateWONumber(prefix);
 
-      // Resolve equipment: use provided name, or fall back to 'N/A'
-      // so the WorkOrderDetail pre-start validation is never blocked
-      // for issues where no specific equipment is involved.
       const equipmentValue = (params.equipment_name as string)?.trim() || 'N/A';
-
-      // Resolve location: use provided location label (room name or free text)
       const locationValue = (params.location as string)
         ? (ROOM_TO_LOCATION_LABEL[params.location as string] || (params.location as string))
         : null;
@@ -635,48 +662,52 @@ export function useAIActions() {
 
       if (woError) throw woError;
 
-      // Also post to Task Feed
-      const postNumber = generatePostNumber();
-      const { data: post, error: postError } = await supabase
-        .from('task_feed_posts')
-        .insert({
-          organization_id: organizationId,
-          post_number: postNumber,
-          template_name: `WO: ${params.title || 'Work Order'}`,
-          created_by_id: user?.id || null,
-          created_by_name: (user ? `${user.first_name} ${user.last_name}`.trim() : 'AI Assistant'),
-          location_name: locationValue || equipmentValue || null,
-          form_data: {
-            source: 'ai_assist',
-            template_key: 'work_order',
-            work_order_id: wo.id,
-            work_order_number: wo.work_order_number,
-          },
-          notes: `[AI] Work Order ${woNumber} — ${params.title || ''}\n${params.description || ''}`,
-          status: 'pending',
-          total_departments: 1,
-          completed_departments: 0,
-          completion_rate: 0,
-          is_production_hold: false,
-          reporting_department: '1001',
-          reporting_department_name: 'Maintenance',
-        })
-        .select('id')
-        .single();
+      // FIX 1: Only create the task feed post when _skipPost is NOT true.
+      // When createEquipmentBreakdown calls us after already creating a TF post,
+      // it sets _skipPost: true so we only insert the work order record.
+      if (!params._skipPost) {
+        const postNumber = generatePostNumber();
+        const { data: post, error: postError } = await supabase
+          .from('task_feed_posts')
+          .insert({
+            organization_id: organizationId,
+            post_number: postNumber,
+            template_name: `WO: ${params.title || 'Work Order'}`,
+            created_by_id: user?.id || null,
+            created_by_name: (user ? `${user.first_name} ${user.last_name}`.trim() : 'AI Assistant'),
+            location_name: locationValue || equipmentValue || null,
+            form_data: {
+              source: 'ai_assist',
+              template_key: 'work_order',
+              work_order_id: wo.id,
+              work_order_number: wo.work_order_number,
+            },
+            notes: `[AI] Work Order ${woNumber} — ${params.title || ''}\n${params.description || ''}`,
+            status: 'pending',
+            total_departments: 1,
+            completed_departments: 0,
+            completion_rate: 0,
+            is_production_hold: false,
+            reporting_department: '1001',
+            reporting_department_name: 'Maintenance',
+          })
+          .select('id')
+          .single();
 
-      if (!postError && post) {
-        await supabase.from('task_feed_department_tasks').insert({
-          organization_id: organizationId,
-          post_id: post.id,
-          post_number: postNumber,
-          department_code: '1001',
-          department_name: 'Maintenance',
-          status: 'pending',
-          module_reference_type: 'work_order',
-          module_reference_id: wo.id,
-          is_original: true,
-          priority: (params.priority as string) || 'medium',
-        });
+        if (!postError && post) {
+          await supabase.from('task_feed_department_tasks').insert({
+            organization_id: organizationId,
+            post_id: post.id,
+            post_number: postNumber,
+            department_code: '1001',
+            department_name: 'Maintenance',
+            status: 'pending',
+            module_reference_type: 'work_order',
+            module_reference_id: wo.id,
+            is_original: true,
+            priority: (params.priority as string) || 'medium',
+          });
+        }
       }
 
       queryClient.invalidateQueries({ queryKey: ['work_orders'] });
@@ -688,8 +719,8 @@ export function useAIActions() {
 
       return {
         success: true,
-        message: `Work Order ${woNumber} created. Equipment: ${equipmentValue}. Location: ${locationValue || 'not set'}. Posted to Task Feed as ${postNumber}.`,
-        data: { work_order_number: woNumber, work_order_id: wo.id, post_number: postNumber },
+        message: `Work Order ${woNumber} created. Equipment: ${equipmentValue}. Location: ${locationValue || 'not set'}.`,
+        data: { work_order_number: woNumber, work_order_id: wo.id, resultType: 'work_orders', results: [{ work_order_number: woNumber, title: params.title, status: 'open', priority: params.priority || 'medium', equipment: equipmentValue, location: locationValue }] },
       };
     } catch (err: any) {
       console.error('[AIActions] createWorkOrder error:', err);
@@ -718,15 +749,16 @@ export function useAIActions() {
       if (error) throw error;
 
       if (!parts || parts.length === 0) {
-        return { success: true, message: `No parts found matching "${rawQuery}".`, data: { results: [] } };
+        return { success: true, message: `No parts found matching "${rawQuery}".`, data: { results: [], total: 0, resultType: 'parts' } };
       }
 
       const results = parts.map(p => ({
+        id: p.id,
         name: p.name,
         material_number: p.material_number,
         sku: p.sku,
         in_stock: p.on_hand,
-        location: [p.location, p.aisle, p.rack, p.shelf, p.bin].filter(Boolean).join(' > ') || 'No location set',
+        location: [p.location, p.aisle, p.rack, p.shelf, p.bin].filter(Boolean).join(' › ') || 'No location set',
         unit_price: p.unit_price,
         min_level: p.min_level,
         low_stock: (p.on_hand || 0) <= (p.min_level || 0),
@@ -745,8 +777,8 @@ export function useAIActions() {
 
       return {
         success: true,
-        message: `Found ${results.length} result(s). Top: ${top.name} (${top.material_number || top.sku || 'N/A'}) — ${stockStatus}${lowWarn}. Vendor: ${top.vendor || 'N/A'}.`,
-        data: { results, total: results.length },
+        message: `Found ${results.length} result${results.length !== 1 ? 's' : ''} for "${rawQuery}". Top: ${top.name} — ${stockStatus}${lowWarn}.`,
+        data: { results, total: results.length, resultType: 'parts' },
       };
     } catch (err: any) {
       console.error('[AIActions] lookupPart error:', err);
@@ -773,14 +805,14 @@ export function useAIActions() {
       if (error) throw error;
 
       if (!equipment || equipment.length === 0) {
-        return { success: true, message: `No equipment found matching "${query}".`, data: { results: [] } };
+        return { success: true, message: `No equipment found matching "${query}".`, data: { results: [], resultType: 'equipment' } };
       }
 
       const top = equipment[0];
       return {
         success: true,
-        message: `Found: ${top.name} (${top.equipment_tag || 'N/A'}) — ${top.manufacturer || ''} ${top.model || ''} — Status: ${top.status || 'active'} — Location: ${top.location || 'N/A'}`,
-        data: { results: equipment, total: equipment.length },
+        message: `Found ${equipment.length} result${equipment.length !== 1 ? 's' : ''}. Top: ${top.name} (${top.equipment_tag || 'N/A'}) — ${top.manufacturer || ''} ${top.model || ''} — Status: ${top.status || 'active'} — Location: ${top.location || 'N/A'}`,
+        data: { results: equipment, total: equipment.length, resultType: 'equipment' },
       };
     } catch (err: any) {
       console.error('[AIActions] lookupEquipment error:', err);
@@ -940,6 +972,8 @@ export function useAIActions() {
 
   // ─────────────────────────────────────────────
   // NAVIGATE
+  // NOTE: The modal close happens in AIAssistButton BEFORE this runs.
+  //       This just handles the actual route push.
   // ─────────────────────────────────────────────
 
   const navigate = useCallback(async (params: AIActionParams): Promise<ActionResult> => {
@@ -947,25 +981,25 @@ export function useAIActions() {
     const recordId = params.record_id as string | undefined;
 
     const ROUTE_MAP: Record<string, string> = {
-      task_feed:         '/(tabs)/task-feed',
-      work_orders:       '/(tabs)/work-orders',
-      equipment:         '/(tabs)/equipment',
-      parts_inventory:   '/(tabs)/parts',
-      pm_schedule:       '/(tabs)/pm-schedule',
-      purchase_requests: '/(tabs)/purchase-requests',
-      sds_library:       '/(tabs)/sds',
-      audits:            '/(tabs)/audits',
-      emergency_protocol:'/(tabs)/emergency',
-      employee_directory:'/(tabs)/employees',
-      production_runs:   '/(tabs)/production',
-      room_status:       '/(tabs)/room-status',
-      dashboard:         '/(tabs)/dashboard',
-      reports:           '/(tabs)/reports',
-      settings:          '/(tabs)/settings',
-      sanitation:        '/(tabs)/sanitation',
-      quality:           '/(tabs)/quality',
-      safety:            '/(tabs)/safety',
-      compliance:        '/(tabs)/compliance',
+      task_feed:          '/(tabs)/task-feed',
+      work_orders:        '/(tabs)/work-orders',
+      equipment:          '/(tabs)/equipment',
+      parts_inventory:    '/(tabs)/parts',
+      pm_schedule:        '/(tabs)/pm-schedule',
+      purchase_requests:  '/(tabs)/purchase-requests',
+      sds_library:        '/(tabs)/sds',
+      audits:             '/(tabs)/audits',
+      emergency_protocol: '/(tabs)/emergency',
+      employee_directory: '/(tabs)/employees',
+      production_runs:    '/(tabs)/production',
+      room_status:        '/(tabs)/room-status',
+      dashboard:          '/(tabs)/dashboard',
+      reports:            '/(tabs)/reports',
+      settings:           '/(tabs)/settings',
+      sanitation:         '/(tabs)/sanitation',
+      quality:            '/(tabs)/quality',
+      safety:             '/(tabs)/safety',
+      compliance:         '/(tabs)/compliance',
     };
 
     const route = ROUTE_MAP[screen];
@@ -988,7 +1022,7 @@ export function useAIActions() {
   }, [router]);
 
   // ══════════════════════════════════════════════════════════════════
-  // MAIN EXECUTOR — routes tool_name to the right handler
+  // MAIN EXECUTOR
   // ══════════════════════════════════════════════════════════════════
 
   const executeAction = useCallback(async (toolName: string, params: AIActionParams): Promise<ActionResult> => {
@@ -996,101 +1030,77 @@ export function useAIActions() {
 
     switch (toolName) {
 
-      // ── Task Feed Templates ──
       case 'create_task_feed_post_broken_glove':
         return createBrokenGlove(params);
-
       case 'create_task_feed_post_foreign_material':
         return createForeignMaterial(params);
-
       case 'create_task_feed_post_chemical_spill':
         return createChemicalSpill(params);
-
       case 'create_task_feed_post_employee_injury':
         return createEmployeeInjury(params);
-
       case 'create_task_feed_post_equipment_breakdown':
         return createEquipmentBreakdown(params);
-
       case 'create_task_feed_post_metal_detector_reject':
         return createMetalDetectorReject(params);
-
       case 'create_task_feed_post_pest_sighting':
         return createPestSighting(params);
-
       case 'create_task_feed_post_temperature_deviation':
         return createTemperatureDeviation(params);
-
       case 'create_task_feed_post_customer_complaint':
         return createCustomerComplaint(params);
-
       case 'create_task_feed_post_generic':
-      // Legacy action name fallback
       case 'create_task_feed_post':
         return createGenericPost(params);
 
-      // ── Task Feed Query ──
       case 'query_task_feed':
         return queryTaskFeed(params);
 
-      // ── Pre-Op ──
       case 'start_pre_op':
         return startPreOp(params);
 
-      // ── Work Orders ──
       case 'create_work_order':
         return createWorkOrder(params);
 
-      // ── Parts & Equipment ──
       case 'lookup_part':
         return lookupPart(params);
-
       case 'lookup_equipment':
         return lookupEquipment(params);
-
       case 'diagnose_issue':
         return diagnoseIssue(params);
 
-      // ── Production ──
       case 'start_production_run':
         return startProductionRun(params);
-
       case 'end_production_run':
         return endProductionRun(params);
-
       case 'change_room_status':
         return changeRoomStatus(params);
 
-      // ── Navigation ──
       case 'navigate':
         return navigate(params);
 
-      // ── Utility ──
       case 'ask_clarification':
       case 'clarify':
         return { success: true, message: 'Waiting for clarification.' };
-
       case 'general_response':
       case 'info':
         return { success: true, message: 'Information provided.' };
 
-      // ── Legacy lookup_work_orders ──
       case 'lookup_work_orders': {
         const { data: workOrders, error } = await supabase
           .from('work_orders')
-          .select('id, work_order_number, title, status, priority, type, equipment, created_at')
+          .select('id, work_order_number, title, status, priority, type, equipment, location, due_date, assigned_name, created_at')
           .eq('organization_id', organizationId)
           .in('status', ['open', 'in_progress'])
           .order('created_at', { ascending: false })
           .limit(10);
 
         if (error || !workOrders?.length) {
-          return { success: true, message: 'No open work orders found.', data: { results: [] } };
+          return { success: true, message: 'No open work orders found.', data: { results: [], resultType: 'work_orders' } };
         }
         return {
           success: true,
-          message: `${workOrders.length} open work order(s). Most recent: ${workOrders[0].work_order_number} — ${workOrders[0].title} (${workOrders[0].priority}, ${workOrders[0].status}).`,
-          data: { results: workOrders },
+          message: `${workOrders.length} open work order${workOrders.length !== 1 ? 's' : ''}. Most recent: ${workOrders[0].work_order_number} — ${workOrders[0].title}.`,
+          data: { results: workOrders, resultType: 'work_orders' },
         };
       }
 
