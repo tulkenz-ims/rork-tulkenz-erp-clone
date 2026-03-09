@@ -1,19 +1,13 @@
 // api/ai-assist.js
 // Vercel Serverless Function — TulKenz OPS AI Assistant v3
 // Uses Claude TOOL USE (function calling) — reliable, schema-enforced actions
-// Supports multi-turn conversation history for follow-up questions
 
 const Anthropic = require('@anthropic-ai/sdk').default;
-
-// ══════════════════════════════════════════════════════════════════
-// SYSTEM PROMPT
-// ══════════════════════════════════════════════════════════════════
 
 const SYSTEM_PROMPT = `You are the TulKenz OPS AI Assistant for NextLN, a food manufacturing facility (Chike brand). You help operators, technicians, supervisors, and managers execute tasks through the TulKenz OPS platform using tools.
 
 ## HOW YOU WORK
-
-You have tools for every action in the app. When a user asks you to do something, pick the right tool and fill in ALL parameters from what they said. If a required field is missing, use ask_clarification — never guess on required fields. For optional fields the user didn't mention, use "N/A".
+You have tools for every action in the app. When a user asks you to do something, pick the right tool and fill in ALL parameters from what they said. If a required field is missing, use ask_clarification. For optional fields not mentioned, use "N/A".
 
 ## CRITICAL ROUTING RULES
 
@@ -24,55 +18,76 @@ USE TASK FEED TEMPLATES when someone says:
 
 USE create_work_order ONLY when someone says:
 - "Schedule maintenance on..." / "Create a work order for..." / "Need to repair..."
-- Planned repairs or follow-up work after an issue was already reported
 
 USE query_task_feed when someone says:
-- "Show me open PMs" / "What PMs are pending?" / "List preventive maintenance" → use status + post_type="preventive"
-- "What reactive tasks does quality have?" → use department_code + post_type="reactive"  
-- "Pull up open tasks for maintenance" → use department_code + status="pending"
-- Any "show me / pull up / what's / list" about work orders, PMs, tasks, or scheduled work
-- IMPORTANT: For any question about PMs or preventive maintenance, ALWAYS set post_type="preventive"
+- "Show me open PMs" / "What PMs are pending?" → set post_type="preventive"
+- "What reactive tasks does quality have?" → set department_code + post_type="reactive"
+- IMPORTANT: For any PM / preventive maintenance question, ALWAYS set post_type="preventive"
 
-USE navigate when someone says:
-- "Go to..." / "Open..." / "Show me the screen for..." / "Take me to..."
+USE query_records when someone says ANYTHING like:
+- "Show me...", "List...", "Find...", "Pull up...", "What are...", "Get me..." about any data
+- Browsing, searching, or filtering records in any module or submodule
+- Examples: "show me all parts for production", "list open purchase orders",
+  "find employees in maintenance", "show chemical inventory", "pull up LOTO procedures",
+  "list all vendors", "show SDS records for sanitizers", "what CAPAs are open",
+  "list downtime events this week", "show inspection records", "find open NCRs",
+  "list employees on attendance points", "show recycling records", "pull up safety observations",
+  "show me item records in inventory", "list all PM schedules", "show purchase requests"
+
+TABLE MAP — match user intent to exact table name:
+MAINTENANCE: work_orders, pm_schedules, pm_work_orders, equipment, equipment_sensors, equipment_downtime_log, downtime_events, loto_procedures, loto_events, maintenance_activity_log, maintenance_alerts, work_order_chemicals, maintenance_metrics, maintenance_budgets
+PARTS/INVENTORY: materials, part_requests, parts_issues, parts_returns, parts_costs, material_receipts, inventory_adjustments, inventory_history, inventory_audit_trail, inventory_reserves, inventory_labels, low_stock_alerts, count_sessions, hold_tags, reorder_points, replenishment_suggestions, global_materials, adjustment_reasons
+PROCUREMENT: purchase_orders, purchase_requests, purchase_requisitions, procurement_purchase_orders, blanket_purchase_orders, blanket_po_releases, po_approvals, po_revisions, po_templates, drop_ship_orders, service_purchase_orders, service_requests, approvals
+VENDORS: vendors, cmms_vendors, procurement_vendors, vendor_contracts, vendor_onboarding
+QUALITY: quality_inspections, inspection_records, inspection_templates, ncr_records, ncr_paper_forms, capa_records, deviation_records, customer_complaints, metal_detector_logs, ccp_monitoring_logs, temperature_logs, allergen_changeover_forms, pre_op_inspections, production_line_checks
+SAFETY: safety_observations, accident_investigations, first_aid_log, osha_300_log, osha_300a_summaries, osha_301_forms, workers_comp_claims, drug_alcohol_tests, ergonomic_assessments, repetitive_motion_assessments, noise_monitoring, air_quality_monitoring, heat_stress_monitoring, hazard_assessments, ppe_requirements, safety_permits, safety_suggestions, safety_committee_meetings, safety_recognitions, safety_program_documents, loto_procedures, loto_events, fire_drill_entries, evacuation_drill_entries, severe_weather_drill_entries, peer_safety_audits, return_to_work_forms, medical_restrictions, workstation_evaluations, job_specific_safety_training, psm_compliance_records, fire_suppression_impairments, respirator_fit_tests, break_violations
+SANITATION: room_hygiene_log, daily_room_hygiene_reports, chemical_inventory, haz_waste, sds_records, sds_index, sds_training_records
+PRODUCTION: production_runs, production_events, production_hold_log, room_status, room_equipment, sensor_readings, downtime_events
+COMPLIANCE/AUDITS: audit_sessions, capa_records, deviation_records, documents, document_versions, document_categories, document_acknowledgments, custom_form_templates, custom_form_submissions, form_signatures, inspection_templates, inspection_records
+EMPLOYEES/HR: employees, positions, departments, shifts, attendance_records, time_entries, time_punches, time_off_requests, overtime_requests, overtime_alerts, performance_reviews, employee_goals, feedback_360, succession_plans, talent_profiles, drug_alcohol_tests, job_requisitions, candidates, interviews, job_offers, position_assignments, position_history, medical_restrictions, return_to_work_forms, attendance_points_balance, attendance_points_history, break_violations, shift_swaps
+RECYCLING: recycling_cardboard, recycling_metal, recycling_paper, recycling_batteries, recycling_bulbs, recycling_toner, recycling_files
+PLANNER: planner_projects, planner_tasks, planner_task_comments, planner_task_time_entries, planner_task_templates
+COMMUNICATIONS: bulletin_posts, portal_announcements, notifications, scheduled_tasks, tasks
+FINANCIAL: department_budgets, maintenance_budgets, cost_reports, labor_costs, parts_costs, gl_accounts
+ASSETS: assets, warranty_records, warranty_claims, locations, facilities
+EMERGENCY: emergency_events, emergency_contacts, emergency_equipment, emergency_action_plan_entries, emergency_roll_calls
+
+FILTER GUIDANCE — common filter columns:
+- status: open, pending, closed, active, inactive, completed, in_progress
+- department / department_name / department_code
+- location / room / room_code
+- category / type / priority
+- Use filters object for exact matches
+
+USE navigate when someone says "go to", "open", "take me to" a screen.
 
 ## BEHAVIOR RULES
-
-1. ALWAYS use a tool to take action. Never just describe what you would do.
+1. ALWAYS use a tool. Never just describe what you would do.
 2. Be conversational — talk like a knowledgeable maintenance supervisor.
-3. Keep responses under 3 sentences unless the user asks for detail.
-4. When you need a signature (initials + PIN), use ask_clarification to request it.
-5. Check the user's role from context before navigating to restricted screens.
+3. Keep responses under 3 sentences unless detail is requested.
 
-## FACILITY REFERENCE
-
-Rooms: PR1 (Production Room 1), PR2 (Production Room 2), PA1 (Packet Area 1), PA2 (Packet Area 2), BB1 (Big Blend), SB1 (Small Blend)
+## FACILITY
+Rooms: PR1, PR2, PA1, PA2, BB1, SB1
 Departments: 1001=Maintenance, 1002=Sanitation, 1003=Production, 1004=Quality, 1005=Safety`;
-
-// ══════════════════════════════════════════════════════════════════
-// TOOL DEFINITIONS
-// ══════════════════════════════════════════════════════════════════
 
 const TOOLS = [
 
-  // ─────────────────────────────────────────────
-  // TASK FEED — Quality Templates
-  // ─────────────────────────────────────────────
+  // ── Task Feed Templates ──────────────────────
 
   {
     name: 'create_task_feed_post_broken_glove',
-    description: 'Report a broken glove incident. Use when someone found a torn, ripped, broken, or damaged glove. Dispatches to ALL 5 departments. Remind user a photo is required if they did not provide one.',
+    description: 'Report a broken glove incident.',
     input_schema: {
       type: 'object',
       properties: {
-        location: { type: 'string', description: 'Room or area where the glove was found (PR1, PR2, PA1, PA2, BB1, SB1, or description like Warehouse)' },
+        location: { type: 'string' },
         glove_type: { type: 'string', enum: ['Nitrile', 'Latex', 'Vinyl', 'Cut-Resistant', 'Other'] },
         missing_fragment_found: { type: 'string', enum: ['Yes - fragment recovered', 'No - fragment missing'] },
-        description: { type: 'string', description: 'How the glove broke, where it was found, contamination risk' },
+        description: { type: 'string' },
         production_line: { type: 'string', enum: ['Line 1', 'Line 2', 'Line 3', 'N/A'] },
-        immediate_action_taken: { type: 'string', description: 'What was done immediately — e.g. Stopped the line, Segregated product' },
-        production_stopped: { type: 'boolean', description: 'Whether production was stopped' },
-        additional_notes: { type: 'string', description: 'Any extra info. Use N/A if nothing to add.' },
+        immediate_action_taken: { type: 'string' },
+        production_stopped: { type: 'boolean' },
+        additional_notes: { type: 'string' },
       },
       required: ['location', 'glove_type', 'missing_fragment_found', 'description', 'production_line', 'immediate_action_taken', 'production_stopped'],
     },
@@ -80,18 +95,18 @@ const TOOLS = [
 
   {
     name: 'create_task_feed_post_foreign_material',
-    description: 'Report a foreign material finding. Use when someone found an object, debris, or contamination in product or on the line.',
+    description: 'Report a foreign material finding.',
     input_schema: {
       type: 'object',
       properties: {
-        location: { type: 'string', description: 'Where the foreign material was found' },
+        location: { type: 'string' },
         material_type: { type: 'string', enum: ['Metal', 'Plastic', 'Glass', 'Wood', 'Rubber', 'Bone', 'Insect', 'Other'] },
         found_in_product: { type: 'string', enum: ['Yes', 'No', 'Unknown'] },
-        description: { type: 'string', description: 'Description of the object and how it was found' },
+        description: { type: 'string' },
         production_line: { type: 'string', enum: ['Line 1', 'Line 2', 'Line 3', 'N/A'] },
-        product_quarantined: { type: 'boolean', description: 'Whether affected product was quarantined' },
-        immediate_action_taken: { type: 'string', description: 'What was done immediately' },
-        additional_notes: { type: 'string', description: 'Any extra info. Use N/A if nothing to add.' },
+        product_quarantined: { type: 'boolean' },
+        immediate_action_taken: { type: 'string' },
+        additional_notes: { type: 'string' },
       },
       required: ['location', 'material_type', 'found_in_product', 'description', 'production_line', 'product_quarantined', 'immediate_action_taken'],
     },
@@ -99,17 +114,17 @@ const TOOLS = [
 
   {
     name: 'create_task_feed_post_chemical_spill',
-    description: 'Report a chemical spill. Use when a cleaning chemical, lubricant, or other chemical has spilled.',
+    description: 'Report a chemical spill.',
     input_schema: {
       type: 'object',
       properties: {
-        location: { type: 'string', description: 'Where the spill occurred' },
-        chemical_name: { type: 'string', description: 'Name of the chemical spilled' },
-        quantity_spilled: { type: 'string', description: 'Approximate amount spilled (e.g. 1 gallon, small amount)' },
-        product_contact: { type: 'string', enum: ['Yes', 'No', 'Unknown'], description: 'Did the chemical contact any product?' },
-        immediate_action_taken: { type: 'string', description: 'Containment and cleanup actions taken' },
-        area_cleared: { type: 'boolean', description: 'Whether the area was cleared of personnel' },
-        additional_notes: { type: 'string', description: 'Any extra info. Use N/A if nothing to add.' },
+        location: { type: 'string' },
+        chemical_name: { type: 'string' },
+        quantity_spilled: { type: 'string' },
+        product_contact: { type: 'string', enum: ['Yes', 'No', 'Unknown'] },
+        immediate_action_taken: { type: 'string' },
+        area_cleared: { type: 'boolean' },
+        additional_notes: { type: 'string' },
       },
       required: ['location', 'chemical_name', 'quantity_spilled', 'product_contact', 'immediate_action_taken', 'area_cleared'],
     },
@@ -121,14 +136,14 @@ const TOOLS = [
     input_schema: {
       type: 'object',
       properties: {
-        location: { type: 'string', description: 'Where the injury occurred' },
+        location: { type: 'string' },
         injury_type: { type: 'string', enum: ['Cut', 'Burn', 'Strain/Sprain', 'Slip/Fall', 'Chemical Exposure', 'Near Miss', 'Other'] },
-        body_part: { type: 'string', description: 'Body part affected (e.g. right hand, lower back)' },
-        employee_name: { type: 'string', description: 'Name of injured employee (or Unknown)' },
-        description: { type: 'string', description: 'What happened' },
+        body_part: { type: 'string' },
+        employee_name: { type: 'string' },
+        description: { type: 'string' },
         medical_attention_required: { type: 'boolean' },
-        immediate_action_taken: { type: 'string', description: 'First aid or actions taken' },
-        additional_notes: { type: 'string', description: 'Any extra info. Use N/A if nothing to add.' },
+        immediate_action_taken: { type: 'string' },
+        additional_notes: { type: 'string' },
       },
       required: ['location', 'injury_type', 'body_part', 'employee_name', 'description', 'medical_attention_required', 'immediate_action_taken'],
     },
@@ -136,17 +151,17 @@ const TOOLS = [
 
   {
     name: 'create_task_feed_post_equipment_breakdown',
-    description: 'Report equipment that has broken down, stopped working, or is malfunctioning.',
+    description: 'Report equipment breakdown.',
     input_schema: {
       type: 'object',
       properties: {
-        location: { type: 'string', description: 'Room or area where equipment is located' },
-        equipment_name: { type: 'string', description: 'Name or tag of the equipment (e.g. Avatar A-1200, Conveyor PR1)' },
-        symptom: { type: 'string', description: 'What is happening — error codes, sounds, behavior' },
+        location: { type: 'string' },
+        equipment_name: { type: 'string' },
+        symptom: { type: 'string' },
         production_impact: { type: 'string', enum: ['Line Down', 'Reduced Speed', 'No Impact', 'Unknown'] },
-        immediate_action_taken: { type: 'string', description: 'What was done immediately' },
-        create_work_order_requested: { type: 'boolean', description: 'Whether the user also wants a work order created' },
-        additional_notes: { type: 'string', description: 'Any extra info. Use N/A if nothing to add.' },
+        immediate_action_taken: { type: 'string' },
+        create_work_order_requested: { type: 'boolean' },
+        additional_notes: { type: 'string' },
       },
       required: ['location', 'equipment_name', 'symptom', 'production_impact', 'immediate_action_taken', 'create_work_order_requested'],
     },
@@ -154,17 +169,17 @@ const TOOLS = [
 
   {
     name: 'create_task_feed_post_metal_detector_reject',
-    description: 'Report a metal detector reject event.',
+    description: 'Report a metal detector reject.',
     input_schema: {
       type: 'object',
       properties: {
-        location: { type: 'string', description: 'Which metal detector or room' },
-        product_affected: { type: 'string', description: 'Product name or lot number' },
-        quantity_rejected: { type: 'string', description: 'How many bags/units were rejected' },
+        location: { type: 'string' },
+        product_affected: { type: 'string' },
+        quantity_rejected: { type: 'string' },
         metal_found: { type: 'string', enum: ['Yes', 'No', 'Under Investigation'] },
         production_line: { type: 'string', enum: ['Line 1', 'Line 2', 'Line 3', 'N/A'] },
-        immediate_action_taken: { type: 'string', description: 'Product segregation, investigation steps' },
-        additional_notes: { type: 'string', description: 'Any extra info. Use N/A if nothing to add.' },
+        immediate_action_taken: { type: 'string' },
+        additional_notes: { type: 'string' },
       },
       required: ['location', 'product_affected', 'quantity_rejected', 'metal_found', 'production_line', 'immediate_action_taken'],
     },
@@ -172,17 +187,17 @@ const TOOLS = [
 
   {
     name: 'create_task_feed_post_pest_sighting',
-    description: 'Report a pest sighting (rodent, insect, bird, etc.).',
+    description: 'Report a pest sighting.',
     input_schema: {
       type: 'object',
       properties: {
-        location: { type: 'string', description: 'Exact location where pest was sighted' },
+        location: { type: 'string' },
         pest_type: { type: 'string', enum: ['Rodent', 'Cockroach', 'Fly', 'Ant', 'Bird', 'Other Insect', 'Other'] },
-        number_observed: { type: 'string', description: 'How many were seen (e.g. 1, 2-3, multiple)' },
+        number_observed: { type: 'string' },
         product_contact: { type: 'string', enum: ['Yes', 'No', 'Unknown'] },
         evidence_type: { type: 'string', enum: ['Live', 'Dead', 'Droppings', 'Damage', 'Tracks', 'Other'] },
-        immediate_action_taken: { type: 'string', description: 'What was done immediately' },
-        additional_notes: { type: 'string', description: 'Any extra info. Use N/A if nothing to add.' },
+        immediate_action_taken: { type: 'string' },
+        additional_notes: { type: 'string' },
       },
       required: ['location', 'pest_type', 'number_observed', 'product_contact', 'evidence_type', 'immediate_action_taken'],
     },
@@ -190,17 +205,17 @@ const TOOLS = [
 
   {
     name: 'create_task_feed_post_temperature_deviation',
-    description: 'Report a temperature deviation — cooler, freezer, room temp, or process temp out of spec.',
+    description: 'Report a temperature deviation.',
     input_schema: {
       type: 'object',
       properties: {
-        location: { type: 'string', description: 'Which room, cooler, or equipment' },
-        recorded_temp: { type: 'string', description: 'Temperature that was recorded (e.g. 45°F)' },
-        required_temp: { type: 'string', description: 'What the temperature should be (e.g. 38°F max)' },
-        duration: { type: 'string', description: 'How long out of spec (e.g. 2 hours, unknown)' },
-        product_affected: { type: 'string', description: 'Product that may be affected, or N/A' },
-        immediate_action_taken: { type: 'string', description: 'Corrective actions taken' },
-        additional_notes: { type: 'string', description: 'Any extra info. Use N/A if nothing to add.' },
+        location: { type: 'string' },
+        recorded_temp: { type: 'string' },
+        required_temp: { type: 'string' },
+        duration: { type: 'string' },
+        product_affected: { type: 'string' },
+        immediate_action_taken: { type: 'string' },
+        additional_notes: { type: 'string' },
       },
       required: ['location', 'recorded_temp', 'required_temp', 'duration', 'product_affected', 'immediate_action_taken'],
     },
@@ -208,121 +223,159 @@ const TOOLS = [
 
   {
     name: 'create_task_feed_post_customer_complaint',
-    description: 'Log a customer complaint received about a product.',
+    description: 'Log a customer complaint.',
     input_schema: {
       type: 'object',
       properties: {
         complaint_type: { type: 'string', enum: ['Foreign Material', 'Off Flavor/Odor', 'Underfill', 'Seal Failure', 'Label Issue', 'Allergen Concern', 'Other'] },
-        product_name: { type: 'string', description: 'Product name from the complaint' },
-        lot_number: { type: 'string', description: 'Lot number if provided by customer, or Unknown' },
-        description: { type: 'string', description: 'Details of the complaint' },
-        customer_name: { type: 'string', description: 'Customer or account name, or Unknown' },
-        immediate_action_taken: { type: 'string', description: 'Initial response or hold actions' },
-        additional_notes: { type: 'string', description: 'Any extra info. Use N/A if nothing to add.' },
+        product_name: { type: 'string' },
+        lot_number: { type: 'string' },
+        description: { type: 'string' },
+        customer_name: { type: 'string' },
+        immediate_action_taken: { type: 'string' },
+        additional_notes: { type: 'string' },
       },
       required: ['complaint_type', 'product_name', 'lot_number', 'description', 'customer_name', 'immediate_action_taken'],
     },
   },
 
-  // ─────────────────────────────────────────────
-  // TASK FEED — Generic + Query
-  // ─────────────────────────────────────────────
-
   {
     name: 'create_task_feed_post_generic',
-    description: 'Create a generic task feed post, purchase request, or create task when no specific template matches.',
+    description: 'Create a generic task feed post when no specific template matches.',
     input_schema: {
       type: 'object',
       properties: {
-        post_type: { type: 'string', enum: ['report_issue', 'create_task', 'purchase_request', 'pre_op', 'other'], description: 'Type of task feed post' },
-        template_name: { type: 'string', description: 'Name or title for the post' },
-        departments: { type: 'array', items: { type: 'string' }, description: 'Department codes to dispatch to (1001=Maintenance, 1002=Sanitation, 1003=Production, 1004=Quality, 1005=Safety)' },
-        location: { type: 'string', description: 'Room or area, or N/A' },
-        notes: { type: 'string', description: 'Full description of the task or issue' },
+        post_type: { type: 'string', enum: ['report_issue', 'create_task', 'purchase_request', 'pre_op', 'other'] },
+        template_name: { type: 'string' },
+        departments: { type: 'array', items: { type: 'string' } },
+        location: { type: 'string' },
+        notes: { type: 'string' },
         priority: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
       },
       required: ['post_type', 'template_name', 'departments', 'notes', 'priority'],
     },
   },
 
+  // ── Task Feed Query ──────────────────────────
+
   {
     name: 'query_task_feed',
-    // FIX 4: Updated description to clearly tell Claude how to query PMs
-    description: 'Search or filter task feed posts and work orders. Use when the user asks to see open tasks, PMs, reactive tasks, scheduled items, etc. IMPORTANT: For PM or preventive maintenance queries, ALWAYS set post_type="preventive" — this fetches directly from the work orders table and returns actual WO numbers, titles, equipment, and due dates.',
+    description: 'Search task feed posts and work orders. For PMs set post_type="preventive".',
     input_schema: {
       type: 'object',
       properties: {
-        department_code: { type: 'string', description: 'Filter by department code (1001-1005), or omit for all departments' },
-        status: { type: 'string', enum: ['pending', 'in_progress', 'completed', 'all'], description: 'Filter by status. Use "pending" for open/upcoming items.' },
-        // FIX 4: Added 'preventive' and 'reactive' explicitly to the description
-        post_type: { type: 'string', description: 'Filter by type. Use "preventive" for PMs / preventive maintenance work orders. Use "reactive" for reactive work orders. Use "pre_op" for pre-op tasks. Use "work_order" for all work orders. Omit for all types.' },
-        date_range: { type: 'string', enum: ['today', 'this_week', 'this_month', 'all'], description: 'Date range filter' },
+        department_code: { type: 'string' },
+        status: { type: 'string', enum: ['pending', 'in_progress', 'completed', 'all'] },
+        post_type: { type: 'string', description: '"preventive" for PMs, "reactive" for reactive WOs' },
+        date_range: { type: 'string', enum: ['today', 'this_week', 'this_month', 'all'] },
       },
       required: ['status'],
     },
   },
 
-  // ─────────────────────────────────────────────
-  // WORK ORDERS
-  // ─────────────────────────────────────────────
+  // ── Universal Record Query ───────────────────
 
   {
-    name: 'create_work_order',
-    description: 'Create a maintenance work order for scheduled or follow-up repairs. Do NOT use for reporting incidents — use task feed templates instead.',
+    name: 'query_records',
+    description: 'Search and list records from ANY module or table in the app. Use for any "show me", "list", "find", "pull up", "what are" request about data. Covers all 200+ tables including parts, work orders, equipment, employees, vendors, SDS, LOTO, CAPA, NCR, purchase orders, PM schedules, production runs, safety records, quality records, recycling, planner, attendance, and everything else.',
     input_schema: {
       type: 'object',
       properties: {
-        title: { type: 'string', description: 'Short title for the work order' },
-        equipment_name: { type: 'string', description: 'Name of equipment needing work' },
-        description: { type: 'string', description: 'Detailed description of work needed' },
+        table: {
+          type: 'string',
+          description: 'Exact Supabase table name. Examples: materials, work_orders, pm_schedules, employees, vendors, sds_records, loto_procedures, capa_records, ncr_records, purchase_orders, purchase_requests, production_runs, safety_observations, quality_inspections, chemical_inventory, downtime_events, parts_issues, inventory_adjustments, attendance_records, time_entries, planner_projects, recycling_cardboard, etc.',
+        },
+        filters: {
+          type: 'object',
+          description: 'Exact match filters as key:value pairs. Common: {"status":"open"}, {"department":"Maintenance"}, {"location":"PA1"}, {"category":"Electrical"}, {"priority":"high"}, {"type":"preventive"}',
+          additionalProperties: true,
+        },
+        search_column: {
+          type: 'string',
+          description: 'Column for text search (ilike). Use: "name" for parts/equipment/chemicals, "title" for work orders/tasks, "first_name" or "last_name" for employees, "chemical_name" for SDS, "procedure_number" for LOTO, "equipment_name" for PM schedules.',
+        },
+        search_term: {
+          type: 'string',
+          description: 'Text to search for in search_column.',
+        },
+        order_by: {
+          type: 'string',
+          description: 'Sort column. Default: created_at. Use due_date for WOs/PMs, name for parts/equipment lists, incident_date for safety/OSHA records.',
+        },
+        order_direction: {
+          type: 'string',
+          enum: ['asc', 'desc'],
+          description: 'asc or desc. Default desc for dates, asc for name lists.',
+        },
+        date_filter_column: {
+          type: 'string',
+          description: 'Column for date filtering: created_at, due_date, incident_date, started_at, scheduled_date, next_due_date.',
+        },
+        date_range: {
+          type: 'string',
+          enum: ['today', 'this_week', 'this_month', 'this_year', 'all'],
+          description: 'Time range filter. Only set if user specified.',
+        },
+        limit: {
+          type: 'number',
+          description: 'Max records. Default 25. Use 50 for "all" or "everything" requests.',
+        },
+      },
+      required: ['table'],
+    },
+  },
+
+  // ── Work Orders ──────────────────────────────
+
+  {
+    name: 'create_work_order',
+    description: 'Create a maintenance work order for repairs. Do NOT use for reporting incidents.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string' },
+        equipment_name: { type: 'string' },
+        description: { type: 'string' },
         priority: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
         type: { type: 'string', enum: ['reactive', 'preventive', 'predictive'] },
-        parts_needed: { type: 'array', items: { type: 'string' }, description: 'List of parts needed, if known' },
+        parts_needed: { type: 'array', items: { type: 'string' } },
       },
       required: ['title', 'equipment_name', 'description', 'priority', 'type'],
     },
   },
 
-  // ─────────────────────────────────────────────
-  // PRE-OP
-  // ─────────────────────────────────────────────
+  // ── Pre-Op ───────────────────────────────────
 
   {
     name: 'start_pre_op',
-    description: 'Start a Pre-Op inspection for a room. Dispatches checklist tasks to all 5 departments.',
+    description: 'Start a Pre-Op inspection for a room.',
     input_schema: {
       type: 'object',
-      properties: {
-        room: { type: 'string', enum: ['PA1', 'PA2', 'PR1', 'PR2', 'BB1', 'SB1'] },
-      },
+      properties: { room: { type: 'string', enum: ['PA1', 'PA2', 'PR1', 'PR2', 'BB1', 'SB1'] } },
       required: ['room'],
     },
   },
 
-  // ─────────────────────────────────────────────
-  // EQUIPMENT & PARTS
-  // ─────────────────────────────────────────────
+  // ── Parts & Equipment ────────────────────────
 
   {
     name: 'lookup_part',
-    description: 'Search parts inventory for a specific part by name, part number, or description. Returns a list of matching parts with stock levels, locations, and vendor info.',
+    description: 'Search parts inventory by name, number, or description.',
     input_schema: {
       type: 'object',
-      properties: {
-        query: { type: 'string', description: 'Part name, number, or description to search for' },
-      },
+      properties: { query: { type: 'string' } },
       required: ['query'],
     },
   },
 
   {
     name: 'lookup_equipment',
-    description: 'Get equipment details, specs, PM history, troubleshooting info, or manual content. Returns a list of matching equipment records.',
+    description: 'Get equipment details or troubleshooting info.',
     input_schema: {
       type: 'object',
       properties: {
-        query: { type: 'string', description: 'Equipment name or tag to look up' },
-        section: { type: 'string', enum: ['specs', 'manual', 'troubleshooting', 'pm_history', 'parts'], description: 'What info to retrieve' },
+        query: { type: 'string' },
+        section: { type: 'string', enum: ['specs', 'manual', 'troubleshooting', 'pm_history', 'parts'] },
       },
       required: ['query'],
     },
@@ -330,21 +383,19 @@ const TOOLS = [
 
   {
     name: 'diagnose_issue',
-    description: 'Analyze an equipment problem from a description or photo and suggest causes, fixes, and parts needed.',
+    description: 'Analyze equipment problem from description or photo.',
     input_schema: {
       type: 'object',
       properties: {
-        equipment: { type: 'string', description: 'Equipment name (e.g. Avatar A-1200)' },
-        symptom: { type: 'string', description: 'What the user describes — the problem' },
-        create_work_order: { type: 'boolean', description: 'Whether to also create a work order for this issue' },
+        equipment: { type: 'string' },
+        symptom: { type: 'string' },
+        create_work_order: { type: 'boolean' },
       },
       required: ['equipment', 'symptom', 'create_work_order'],
     },
   },
 
-  // ─────────────────────────────────────────────
-  // PRODUCTION
-  // ─────────────────────────────────────────────
+  // ── Production ───────────────────────────────
 
   {
     name: 'start_production_run',
@@ -353,8 +404,8 @@ const TOOLS = [
       type: 'object',
       properties: {
         room: { type: 'string', enum: ['PA1', 'PA2', 'PR1', 'PR2', 'BB1', 'SB1'] },
-        run_number: { type: 'string', description: 'Production run number from the schedule' },
-        product: { type: 'string', description: 'Product name or SKU being produced' },
+        run_number: { type: 'string' },
+        product: { type: 'string' },
       },
       required: ['room', 'run_number', 'product'],
     },
@@ -362,12 +413,12 @@ const TOOLS = [
 
   {
     name: 'end_production_run',
-    description: 'End the active production run for a room.',
+    description: 'End the active production run.',
     input_schema: {
       type: 'object',
       properties: {
         room: { type: 'string', enum: ['PA1', 'PA2', 'PR1', 'PR2', 'BB1', 'SB1'] },
-        run_number: { type: 'string', description: 'Run number to end, if known' },
+        run_number: { type: 'string' },
       },
       required: ['room'],
     },
@@ -386,46 +437,35 @@ const TOOLS = [
     },
   },
 
-  // ─────────────────────────────────────────────
-  // NAVIGATION
-  // ─────────────────────────────────────────────
+  // ── Navigation ───────────────────────────────
 
   {
     name: 'navigate',
-    description: 'Navigate to any screen in the app. Use for "go to", "open", "show me the screen for", "take me to". The modal will close automatically before navigating.',
+    description: 'Navigate to any screen. Modal closes before navigating.',
     input_schema: {
       type: 'object',
       properties: {
         screen: {
           type: 'string',
-          enum: [
-            'task_feed', 'work_orders', 'equipment', 'parts_inventory',
-            'pm_schedule', 'purchase_requests', 'sds_library',
-            'audits', 'emergency_protocol', 'employee_directory',
-            'production_runs', 'room_status', 'dashboard', 'reports',
-            'settings', 'sanitation', 'quality', 'safety', 'compliance',
-          ],
-          description: 'Screen to navigate to',
+          enum: ['task_feed', 'work_orders', 'equipment', 'parts_inventory', 'pm_schedule', 'purchase_requests', 'sds_library', 'audits', 'emergency_protocol', 'employee_directory', 'production_runs', 'room_status', 'dashboard', 'reports', 'settings', 'sanitation', 'quality', 'safety', 'compliance'],
         },
-        record_id: { type: 'string', description: 'Optional: specific record ID to open' },
+        record_id: { type: 'string' },
       },
       required: ['screen'],
     },
   },
 
-  // ─────────────────────────────────────────────
-  // UTILITY
-  // ─────────────────────────────────────────────
+  // ── Utility ──────────────────────────────────
 
   {
     name: 'ask_clarification',
-    description: 'Ask the user for more information when required fields are missing. Include what you already know so you do not ask again.',
+    description: 'Ask user for more info when required fields are missing.',
     input_schema: {
       type: 'object',
       properties: {
-        question: { type: 'string', description: 'The specific question to ask' },
-        partial_data: { type: 'object', description: 'Fields already collected from the user', additionalProperties: true },
-        awaiting_template: { type: 'string', description: 'The tool name you were about to call, so the app can resume after the answer' },
+        question: { type: 'string' },
+        partial_data: { type: 'object', additionalProperties: true },
+        awaiting_template: { type: 'string' },
       },
       required: ['question'],
     },
@@ -433,20 +473,14 @@ const TOOLS = [
 
   {
     name: 'general_response',
-    description: 'Respond to general questions, greetings, or informational requests that do not require an app action.',
+    description: 'Respond to general questions or greetings that need no app action.',
     input_schema: {
       type: 'object',
-      properties: {
-        message: { type: 'string', description: 'Your response to the user' },
-      },
+      properties: { message: { type: 'string' } },
       required: ['message'],
     },
   },
 ];
-
-// ══════════════════════════════════════════════════════════════════
-// HANDLER
-// ══════════════════════════════════════════════════════════════════
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -457,62 +491,33 @@ module.exports = async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    console.error('[ai-assist] ANTHROPIC_API_KEY not set');
-    return res.status(500).json({ error: 'AI service not configured' });
-  }
+  if (!apiKey) return res.status(500).json({ error: 'AI service not configured' });
 
   try {
     const { command, image, context, conversation } = req.body;
-
-    if (!command && !image) {
-      return res.status(400).json({ error: 'No command or image provided' });
-    }
+    if (!command && !image) return res.status(400).json({ error: 'No command or image provided' });
 
     const client = new Anthropic({ apiKey });
 
-    if (image) {
-      const sizeKB = Math.round((image.data || '').length * 0.75 / 1024);
-      console.log(`[ai-assist] Image received: ${sizeKB}KB, type: ${image.media_type}`);
-    }
-
-    // Build user message content
     const userContent = [];
 
     if (image) {
       let imageData = image.data || '';
-      if (imageData.includes(',')) {
-        imageData = imageData.split(',')[1];
-      }
-
-      if (!imageData || imageData.length < 100) {
-        console.error('[ai-assist] Image data missing or too small');
-        return res.status(400).json({ error: 'Invalid image data — please try again' });
-      }
-
-      userContent.push({
-        type: 'image',
-        source: { type: 'base64', media_type: image.media_type || 'image/jpeg', data: imageData },
-      });
+      if (imageData.includes(',')) imageData = imageData.split(',')[1];
+      if (!imageData || imageData.length < 100) return res.status(400).json({ error: 'Invalid image data' });
+      userContent.push({ type: 'image', source: { type: 'base64', media_type: image.media_type || 'image/jpeg', data: imageData } });
     }
 
     const contextStr = context
-      ? `\n\n[Context: Screen="${context.screen || 'unknown'}", User=${context.userName || 'unknown'} (${context.userRole || 'unknown'}), Department=${context.userDepartment || 'unknown'}, Room=${context.currentRoom || 'none'}, ActiveRecord=${context.activeRecordId || 'none'}]`
+      ? `\n\n[Context: Screen="${context.screen||'unknown'}", User=${context.userName||'unknown'} (${context.userRole||'unknown'}), Dept=${context.userDepartment||'unknown'}, Room=${context.currentRoom||'none'}]`
       : '';
 
-    userContent.push({
-      type: 'text',
-      text: (command || 'What do you see in this image?') + contextStr,
-    });
+    userContent.push({ type: 'text', text: (command || 'What do you see in this image?') + contextStr });
 
-    // Build full message history
     const messages = [];
-    if (conversation && Array.isArray(conversation) && conversation.length > 0) {
-      conversation.forEach((msg) => messages.push(msg));
-    }
+    if (conversation && Array.isArray(conversation)) conversation.forEach(m => messages.push(m));
     messages.push({ role: 'user', content: userContent });
 
-    // Call Claude with tools
     const response = await client.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1024,
@@ -521,19 +526,13 @@ module.exports = async (req, res) => {
       messages,
     });
 
-    console.log('[ai-assist] Stop reason:', response.stop_reason);
-
-    // Build result
     const result = {
-      success: true,
-      action: null,
-      tool_name: null,
-      params: null,
-      speech: null,
-      needs_photo: false,
-      conversation_continue: false,
+      success: true, action: null, tool_name: null, params: null,
+      speech: null, needs_photo: false, conversation_continue: false,
       assistant_message: { role: 'assistant', content: response.content },
     };
+
+    const photoTemplates = ['create_task_feed_post_broken_glove','create_task_feed_post_chemical_spill','create_task_feed_post_equipment_breakdown','create_task_feed_post_foreign_material','create_task_feed_post_metal_detector_reject','create_task_feed_post_pest_sighting','create_task_feed_post_temperature_deviation'];
 
     for (const block of response.content) {
       if (block.type === 'tool_use') {
@@ -541,57 +540,20 @@ module.exports = async (req, res) => {
         result.tool_name = block.name;
         result.params = block.input;
         result.tool_use_id = block.id;
-
-        const photoTemplates = [
-          'create_task_feed_post_broken_glove',
-          'create_task_feed_post_chemical_spill',
-          'create_task_feed_post_equipment_breakdown',
-          'create_task_feed_post_foreign_material',
-          'create_task_feed_post_metal_detector_reject',
-          'create_task_feed_post_pest_sighting',
-          'create_task_feed_post_temperature_deviation',
-        ];
-
-        if (photoTemplates.includes(block.name) && !image) {
-          result.needs_photo = true;
-        }
-
-        console.log('[ai-assist] Tool:', block.name, '| Params:', JSON.stringify(block.input).substring(0, 300));
+        if (photoTemplates.includes(block.name) && !image) result.needs_photo = true;
+        console.log('[ai-assist] Tool:', block.name, JSON.stringify(block.input).substring(0, 200));
       }
-
-      if (block.type === 'text') {
-        result.speech = block.text;
-      }
+      if (block.type === 'text') result.speech = block.text;
     }
 
-    // Special handling for utility tools
-    if (result.tool_name === 'ask_clarification') {
-      result.conversation_continue = true;
-      result.speech = result.params?.question || result.speech;
-      result.action = 'clarify';
-    }
-
-    if (result.tool_name === 'general_response') {
-      result.speech = result.params?.message || result.speech;
-      result.action = 'info';
-    }
-
-    if (result.tool_name === 'navigate') {
-      result.action = 'navigate';
-      result.speech = result.speech || `Opening ${result.params?.screen || 'screen'}.`;
-    }
+    if (result.tool_name === 'ask_clarification') { result.conversation_continue = true; result.speech = result.params?.question || result.speech; result.action = 'clarify'; }
+    if (result.tool_name === 'general_response') { result.speech = result.params?.message || result.speech; result.action = 'info'; }
+    if (result.tool_name === 'navigate') { result.action = 'navigate'; result.speech = result.speech || `Opening ${result.params?.screen}.`; }
 
     return res.status(200).json(result);
 
   } catch (err) {
-    console.error('[ai-assist] Error type:', err?.constructor?.name);
-    console.error('[ai-assist] Error message:', err?.message);
-    console.error('[ai-assist] Error status:', err?.status);
-    console.error('[ai-assist] Error body:', JSON.stringify(err?.error || err?.body || {}));
-    return res.status(500).json({
-      error: 'AI processing failed',
-      details: err.message,
-      type: err?.constructor?.name,
-    });
+    console.error('[ai-assist] Error:', err?.message);
+    return res.status(500).json({ error: 'AI processing failed', details: err.message });
   }
 };
