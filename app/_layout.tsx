@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Stack } from "expo-router";
+import { Stack, usePathname } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -14,32 +14,42 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { RealtimeProvider } from "@/contexts/RealtimeContext";
 import EmergencyAlertOverlay from "@/components/EmergencyAlertOverlay";
 import AIAssistButton from "@/components/AIAssistButton";
+
 SplashScreen.preventAutoHideAsync();
 const queryClient = new QueryClient();
+
 function RootLayoutNav() {
   return (
     <Stack screenOptions={{ headerBackTitle: "Back" }}>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      <Stack.Screen 
-        name="login" 
-        options={{ 
+      <Stack.Screen
+        name="login"
+        options={{
           headerShown: false,
           presentation: 'fullScreenModal',
-        }} 
+        }}
       />
-      <Stack.Screen 
-        name="sds" 
-        options={{ 
+      <Stack.Screen
+        name="sds"
+        options={{
           headerShown: false,
-        }} 
+        }}
       />
     </Stack>
   );
 }
+
+function ConditionalAIAssist() {
+  const pathname = usePathname();
+  if (pathname === '/login') return null;
+  return <AIAssistButton />;
+}
+
 export default function RootLayout() {
   useEffect(() => {
     SplashScreen.hideAsync();
   }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <GestureHandlerRootView style={{ flex: 1 }}>
@@ -52,19 +62,19 @@ export default function RootLayout() {
                     <NotificationsProvider>
                       <PushNotificationsProvider>
                         <RealtimeProvider>
-                         <RootLayoutNav />
-                         <EmergencyAlertOverlay />
-                         <AIAssistButton />
+                          <RootLayoutNav />
+                          <EmergencyAlertOverlay />
+                          <ConditionalAIAssist />
                         </RealtimeProvider>
                       </PushNotificationsProvider>
-                     </NotificationsProvider>
-                 </LicenseProvider>
-               </PermissionsProvider>
-             </AuthProvider>
-           </OrganizationProvider>
-         </UserProvider>
-       </ThemeProvider>
-     </GestureHandlerRootView>
-   </QueryClientProvider>
+                    </NotificationsProvider>
+                  </LicenseProvider>
+                </PermissionsProvider>
+              </AuthProvider>
+            </OrganizationProvider>
+          </UserProvider>
+        </ThemeProvider>
+      </GestureHandlerRootView>
+    </QueryClientProvider>
   );
 }
