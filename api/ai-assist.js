@@ -27,10 +27,11 @@ USE create_work_order ONLY when someone says:
 - Planned repairs or follow-up work after an issue was already reported
 
 USE query_task_feed when someone says:
-- "Show me open PMs for maintenance"
-- "What reactive tasks does quality have?"
-- "Pull up scheduled tasks for this week"
-- Any "show me / pull up / what's" about task feed items
+- "Show me open PMs" / "What PMs are pending?" / "List preventive maintenance" → use status + post_type="preventive"
+- "What reactive tasks does quality have?" → use department_code + post_type="reactive"  
+- "Pull up open tasks for maintenance" → use department_code + status="pending"
+- Any "show me / pull up / what's / list" about work orders, PMs, tasks, or scheduled work
+- IMPORTANT: For any question about PMs or preventive maintenance, ALWAYS set post_type="preventive"
 
 USE navigate when someone says:
 - "Go to..." / "Open..." / "Show me the screen for..." / "Take me to..."
@@ -246,13 +247,15 @@ const TOOLS = [
 
   {
     name: 'query_task_feed',
-    description: 'Search or filter task feed posts. Use when the user asks to see open tasks, PMs, reactive tasks, scheduled items, etc.',
+    // FIX 4: Updated description to clearly tell Claude how to query PMs
+    description: 'Search or filter task feed posts and work orders. Use when the user asks to see open tasks, PMs, reactive tasks, scheduled items, etc. IMPORTANT: For PM or preventive maintenance queries, ALWAYS set post_type="preventive" — this fetches directly from the work orders table and returns actual WO numbers, titles, equipment, and due dates.',
     input_schema: {
       type: 'object',
       properties: {
         department_code: { type: 'string', description: 'Filter by department code (1001-1005), or omit for all departments' },
-        status: { type: 'string', enum: ['pending', 'in_progress', 'completed', 'all'], description: 'Filter by status' },
-        post_type: { type: 'string', description: 'Filter by type: PM, reactive, pre_op, purchase_request, etc. Omit for all types.' },
+        status: { type: 'string', enum: ['pending', 'in_progress', 'completed', 'all'], description: 'Filter by status. Use "pending" for open/upcoming items.' },
+        // FIX 4: Added 'preventive' and 'reactive' explicitly to the description
+        post_type: { type: 'string', description: 'Filter by type. Use "preventive" for PMs / preventive maintenance work orders. Use "reactive" for reactive work orders. Use "pre_op" for pre-op tasks. Use "work_order" for all work orders. Omit for all types.' },
         date_range: { type: 'string', enum: ['today', 'this_week', 'this_month', 'all'], description: 'Date range filter' },
       },
       required: ['status'],
@@ -302,7 +305,7 @@ const TOOLS = [
 
   {
     name: 'lookup_part',
-    description: 'Search parts inventory for a specific part by name, part number, or description.',
+    description: 'Search parts inventory for a specific part by name, part number, or description. Returns a list of matching parts with stock levels, locations, and vendor info.',
     input_schema: {
       type: 'object',
       properties: {
@@ -314,7 +317,7 @@ const TOOLS = [
 
   {
     name: 'lookup_equipment',
-    description: 'Get equipment details, specs, PM history, troubleshooting info, or manual content.',
+    description: 'Get equipment details, specs, PM history, troubleshooting info, or manual content. Returns a list of matching equipment records.',
     input_schema: {
       type: 'object',
       properties: {
@@ -389,7 +392,7 @@ const TOOLS = [
 
   {
     name: 'navigate',
-    description: 'Navigate to any screen in the app. Use for "go to", "open", "show me the screen for", "take me to".',
+    description: 'Navigate to any screen in the app. Use for "go to", "open", "show me the screen for", "take me to". The modal will close automatically before navigating.',
     input_schema: {
       type: 'object',
       properties: {
@@ -404,7 +407,7 @@ const TOOLS = [
           ],
           description: 'Screen to navigate to',
         },
-        record_id: { type: 'string', description: 'Optional: specific record ID to open (e.g. equipment tag PA1-AVT-001)' },
+        record_id: { type: 'string', description: 'Optional: specific record ID to open' },
       },
       required: ['screen'],
     },
@@ -468,24 +471,20 @@ module.exports = async (req, res) => {
 
     const client = new Anthropic({ apiKey });
 
-    // Log image size for debugging
     if (image) {
       const sizeKB = Math.round((image.data || '').length * 0.75 / 1024);
       console.log(`[ai-assist] Image received: ${sizeKB}KB, type: ${image.media_type}`);
     }
 
-    // Build user message
+    // Build user message content
     const userContent = [];
 
     if (image) {
-      // Strip data URL prefix if present (e.g. "data:image/jpeg;base64,...")
-      // The Anthropic API requires raw base64 only — no prefix
       let imageData = image.data || '';
       if (imageData.includes(',')) {
         imageData = imageData.split(',')[1];
       }
 
-      // Validate we actually have data
       if (!imageData || imageData.length < 100) {
         console.error('[ai-assist] Image data missing or too small');
         return res.status(400).json({ error: 'Invalid image data — please try again' });
@@ -493,11 +492,7 @@ module.exports = async (req, res) => {
 
       userContent.push({
         type: 'image',
-        source: {
-          type: 'base64',
-          media_type: image.media_type || 'image/jpeg',
-          data: imageData,
-        },
+        source: { type: 'base64', media_type: image.media_type || 'image/jpeg', data: imageData },
       });
     }
 
@@ -511,15 +506,10 @@ module.exports = async (req, res) => {
     });
 
     // Build full message history
-    // conversation = prior turns only (current message NOT included)
-    // We append the current user message here
     const messages = [];
-
     if (conversation && Array.isArray(conversation) && conversation.length > 0) {
       conversation.forEach((msg) => messages.push(msg));
     }
-
-    // Always append current user message last
     messages.push({ role: 'user', content: userContent });
 
     // Call Claude with tools
