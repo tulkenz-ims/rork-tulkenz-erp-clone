@@ -3,6 +3,7 @@
 import { useCallback } from 'react';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
+import { ROUTE_BY_SCREEN } from '@/constants/routeManifest';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import { useUser } from '@/contexts/UserContext';
 import { useQueryClient } from '@tanstack/react-query';
@@ -763,8 +764,7 @@ export function useAIActions() {
   const navigate = useCallback(async (params: AIActionParams): Promise<ActionResult> => {
     const screen = params.screen as string;
     const recordId = params.record_id as string|undefined;
-    const ROUTE_MAP: Record<string,string> = { task_feed:'/(tabs)/task-feed', work_orders:'/(tabs)/work-orders', equipment:'/(tabs)/equipment', parts_inventory:'/(tabs)/inventory/materials', pm_schedule:'/(tabs)/pm-schedule', purchase_requests:'/(tabs)/purchase-requests', sds_library:'/(tabs)/sds', audits:'/(tabs)/audits', emergency_protocol:'/(tabs)/emergency', employee_directory:'/(tabs)/employees', production_runs:'/(tabs)/production', room_status:'/(tabs)/room-status', dashboard:'/(tabs)/dashboard', reports:'/(tabs)/reports', settings:'/(tabs)/settings', sanitation:'/(tabs)/sanitation', quality:'/(tabs)/quality', safety:'/(tabs)/safety', compliance:'/(tabs)/compliance' };
-    const route = ROUTE_MAP[screen];
+    const route = ROUTE_BY_SCREEN[screen]?.path;
     if (!route) return { success:false, message:`Unknown screen: ${screen}` };
     try {
       router.push((recordId?`${route}/${recordId}`:route) as any);
