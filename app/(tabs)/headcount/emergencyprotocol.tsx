@@ -48,6 +48,7 @@ import {
 } from '@/types/emergencyEvents';
 import { useEmergencyEvents } from '@/hooks/useEmergencyEvents';
 import { useOrganization } from '@/contexts/OrganizationContext';
+import { useEmergencyRollCall } from '@/contexts/EmergencyRollCallContext';
 import { supabase } from '@/lib/supabase';
 
 type EmployeeStatus = 'pending' | 'safe';
@@ -96,6 +97,7 @@ export default function EmergencyProtocolScreen() {
   const { createEvent, updateEvent, addTimelineEntry, isCreating } = useEmergencyEvents();
   const orgContext = useOrganization();
   const organizationId = orgContext?.organizationId || '';
+  const { registerRollCall, unregisterRollCall } = useEmergencyRollCall();
   const [eventId, setEventId] = useState<string | null>(null);
   const [isSavingDetails, setIsSavingDetails] = useState(false);
 
@@ -117,6 +119,28 @@ export default function EmergencyProtocolScreen() {
 
   const pendingEmployees = emergency.employees.filter(e => e.status === 'pending');
   const safeEmployees = emergency.employees.filter(e => e.status === 'safe');
+
+  // ── Register active roll call with AI assistant context ──
+  useEffect(() => {
+    if (emergency.isActive && emergency.employees.length > 0) {
+      registerRollCall(
+        emergency.employees.map(e => ({
+          id: e.employee.id,
+          firstName: e.employee.firstName,
+          lastName: e.employee.lastName,
+          department: e.employee.department,
+          position: e.employee.position,
+          status: e.status,
+        })),
+        markEmployeeSafe,
+        isDrill,
+        emergencyType,
+      );
+    }
+    return () => {
+      if (!emergency.isActive) unregisterRollCall();
+    };
+  }, [emergency.isActive, emergency.employees, markEmployeeSafe, isDrill, emergencyType, registerRollCall, unregisterRollCall]);
 
   useEffect(() => {
     if (emergency.isActive && !allSafe) {
@@ -349,6 +373,7 @@ export default function EmergencyProtocolScreen() {
     setDescription('');
     setSeverity('high');
     setEmergencyServicesCalled(false);
+    unregisterRollCall();
     console.log('[EmergencyProtocol] Emergency closed');
   }, [successAnim]);
 
