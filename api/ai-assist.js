@@ -926,7 +926,13 @@ module.exports = async (req, res) => {
     const orgId   = context?.organizationId || null;
     const userId  = context?.userId || null;
     const userName = context?.userName || 'Operator';
+    const userLanguage = context?.language || 'en';
     const sb = getSupabaseAdmin();
+
+    // Language instruction injected into system prompt
+    const languageBlock = userLanguage === 'es'
+      ? `LANGUAGE: The user has selected Spanish. You MUST respond entirely in Spanish for all speech/text responses. Tool calls and field names remain in English, but every word the user will hear or read must be in Spanish. Even short confirmations like "Done" should be "Listo" or "Hecho".`
+      : `LANGUAGE: Respond in English.`;
 
     // Load memory and live schema in parallel
     const [memoryResult, schemaBlock] = await Promise.all([
@@ -935,7 +941,7 @@ module.exports = async (req, res) => {
     ]);
     const memoryBlock = buildMemoryBlock(memoryResult.memories, memoryResult.summaries);
 
-    const extras = [memoryBlock, schemaBlock].filter(Boolean).join('\n\n');
+    const extras = [languageBlock, memoryBlock, schemaBlock].filter(Boolean).join('\n\n');
     const dynamicSystem = extras
       ? `${SYSTEM_PROMPT}\n\n${extras}`
       : SYSTEM_PROMPT;
@@ -950,7 +956,7 @@ module.exports = async (req, res) => {
     }
 
     const contextStr = context
-      ? `\n\n[Context: Screen="${context.screen||'unknown'}", User=${context.userName||'unknown'} (${context.userRole||'unknown'}), Dept=${context.userDepartment||'unknown'}, Room=${context.currentRoom||'none'}]`
+      ? `\n\n[Context: Screen="${context.screen||'unknown'}", User=${context.userName||'unknown'} (${context.userRole||'unknown'}), Dept=${context.userDepartment||'unknown'}, Room=${context.currentRoom||'none'}, Language=${userLanguage}]`
       : '';
 
     userContent.push({ type: 'text', text: (command || 'What do you see in this image?') + contextStr });
