@@ -61,6 +61,19 @@ FILTER GUIDANCE — common filter columns:
 - Use filters object for exact matches
 
 USE navigate when someone says "go to", "open", "take me to" a screen.
+NAVIGATE SCREEN NAMES:
+- "materials", "item records", "items", "parts", "inventory" → screen: "parts_inventory"
+- "task feed" → screen: "task_feed"
+- "work orders" → screen: "work_orders"
+- "equipment" → screen: "equipment"
+- "PM schedule", "preventive maintenance" → screen: "pm_schedule"
+- "purchase requests", "purchasing" → screen: "purchase_requests"
+- "SDS", "safety data sheets" → screen: "sds_library"
+- "audits" → screen: "audits"
+- "employees", "directory" → screen: "employee_directory"
+- "production", "production runs" → screen: "production_runs"
+- "room status", "rooms" → screen: "room_status"
+- "dashboard", "home" → screen: "dashboard"
 
 ## PARTS LOOKUP RULES
 When someone asks about a part or needs to find a part:
@@ -466,12 +479,13 @@ const TOOLS = [
 
   {
     name: 'navigate',
-    description: 'Navigate to any screen. Modal closes before navigating.',
+    description: 'Navigate to any screen in the app. Modal closes before navigating. SCREEN NAME GUIDE: "parts_inventory" = Item Records / Materials screen (/(tabs)/inventory/materials). Use "parts_inventory" when user says "materials", "item records", "parts", "inventory", or "items".',
     input_schema: {
       type: 'object',
       properties: {
         screen: {
           type: 'string',
+          description: 'Screen to navigate to. Use parts_inventory for materials/items/inventory/item records screen.',
           enum: ['task_feed', 'work_orders', 'equipment', 'parts_inventory', 'pm_schedule', 'purchase_requests', 'sds_library', 'audits', 'emergency_protocol', 'employee_directory', 'production_runs', 'room_status', 'dashboard', 'reports', 'settings', 'sanitation', 'quality', 'safety', 'compliance'],
         },
         record_id: { type: 'string' },
