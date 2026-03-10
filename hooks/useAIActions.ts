@@ -8,6 +8,7 @@ import { useOrganization } from '@/contexts/OrganizationContext';
 import { useUser } from '@/contexts/UserContext';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCreateManualTaskFeedPost } from '@/hooks/useTaskFeedTemplates';
+import { useEmergencyRollCall } from '@/contexts/EmergencyRollCallContext';
 
 export interface ActionResult {
   success: boolean;
@@ -408,6 +409,7 @@ export function useAIActions() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const createManualPost = useCreateManualTaskFeedPost();
+  const rollCall = useEmergencyRollCall();
 
   // ─────────────────────────────────────────────
   // insertTaskFeedPost — shared post creator
@@ -804,6 +806,50 @@ export function useAIActions() {
       case 'end_production_run':                          return endProductionRun(params);
       case 'change_room_status':                          return changeRoomStatus(params);
       case 'navigate':                                    return navigate(params);
+
+      case 'mark_employee_safe': {
+        const name = (params.employee_name as string) || '';
+        if (!name) return { success: false, message: 'No employee name provided.' };
+        return rollCall.markSafeByName(name);
+      }
+
+      case 'mark_multiple_employees_safe': {
+        const names = (params.employee_names as string[]) || [];
+        if (!names.length) return { success: false, message: 'No names provided.' };
+        const results: string[] = [];
+        let anyFailed = false;
+        for (const name of names) {
+          const r = rollCall.markSafeByName(name);
+          results.push(r.message);
+          if (!r.success) anyFailed = true;
+        }
+        // Return a consolidated summary instead of all individual messages
+        const status = rollCall.getRollCallStatus();
+        if (status && status.pending === 0) {
+          return { success: true, message: `✅ All ${names.join(', ')} marked safe. Everyone is accounted for!` };
+        }
+        const markedCount = names.length - (anyFailed ? 1 : 0);
+        const pendingList = status ? status.pendingNames.join(', ') : '';
+        return {
+          success: !anyFailed,
+          message: `✅ Marked safe: ${names.join(', ')}. ${status ? `${status.pending} still pending: ${pendingList}` : ''}`,
+        };
+      }
+
+      case 'get_roll_call_status': {
+        const status = rollCall.getRollCallStatus();
+        if (!status) return { success: false, message: 'No active roll call right now.' };
+        const typeLabel = status.emergencyType.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+        const mode = status.isDrill ? 'DRILL' : 'EMERGENCY';
+        if (status.pending === 0) {
+          return { success: true, message: `${typeLabel} ${mode}: All ${status.total} personnel accounted for! ✅` };
+        }
+        return {
+          success: true,
+          message: `${typeLabel} ${mode} — ${status.safe}/${status.total} accounted for. Still pending (${status.pending}): ${status.pendingNames.join(', ')}`,
+        };
+      }
+
       case 'start_emergency_protocol': {
         const type = (params.emergency_type as string) || 'fire';
         const drill = params.is_drill === true ? 'true' : 'false';
