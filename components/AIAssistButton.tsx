@@ -455,17 +455,39 @@ export default function AIAssistButton() {
 
   // ── Voice & language settings ──
   const VOICES = [
-    { id: 'samantha', label: 'Samantha', ios: 'com.apple.ttsbundle.Samantha-compact', android: 'en-US' },
-    { id: 'karen',    label: 'Karen',    ios: 'com.apple.ttsbundle.Karen-compact',    android: 'en-AU' },
-    { id: 'nicky',    label: 'Nicky',    ios: 'com.apple.voice.compact.en-US.Nicky',  android: 'en-US' },
+    { id: 'samantha', label: 'Samantha', match: ['samantha'] },
+    { id: 'karen',    label: 'Karen',    match: ['karen'] },
+    { id: 'nicky',    label: 'Nicky',    match: ['nicky'] },
   ] as const;
   type VoiceId = typeof VOICES[number]['id'];
   const [selectedVoice, setSelectedVoice] = useState<VoiceId>('samantha');
   const [language, setLanguage] = useState<'en' | 'es'>('en');
+  const [availableVoices, setAvailableVoices] = useState<Speech.Voice[]>([]);
 
-  const currentVoice = VOICES.find(v => v.id === selectedVoice) || VOICES[0];
+  // Load available voices on mount
+  useEffect(() => {
+    Speech.getAvailableVoicesAsync()
+      .then(voices => {
+        setAvailableVoices(voices);
+        console.log('[AIAssist] Available voices:', voices.map(v => `${v.name} (${v.identifier})`).join(', '));
+      })
+      .catch(err => console.warn('[AIAssist] Could not load voices:', err));
+  }, []);
+
+  // Resolve the real voice identifier at speak-time
+  const resolveVoiceId = useCallback((voiceId: VoiceId, lang: 'en' | 'es'): string | undefined => {
+    if (!availableVoices.length) return undefined;
+    const searchTerms = lang === 'es'
+      ? ['monica', 'paulina', 'diego', 'jorge']
+      : (VOICES.find(v => v.id === voiceId)?.match || ['samantha']);
+    const match = availableVoices.find(v =>
+      searchTerms.some(term => v.name.toLowerCase().includes(term) || v.identifier.toLowerCase().includes(term))
+    );
+    console.log('[AIAssist] Resolved voice:', match?.identifier || '(system default)');
+    return match?.identifier;
+  }, [availableVoices]);
+
   const speechLang = language === 'es' ? 'es-US' : 'en-US';
-  const iosVoice   = language === 'es' ? 'com.apple.ttsbundle.Monica-compact' : currentVoice.ios;
   const [pendingImage, setPendingImage] = useState<{
     uri: string; base64: string; mediaType: string;
   } | null>(null);
@@ -537,16 +559,17 @@ export default function AIAssistButton() {
     if (!isSpeechEnabled || !text) return;
     try {
       Speech.stop();
+      const voiceId = resolveVoiceId(selectedVoice, language);
       Speech.speak(text, {
         language: speechLang,
         pitch: 1.0,
         rate: 1.25,
-        voice: iosVoice,
+        ...(voiceId ? { voice: voiceId } : {}),
       });
     } catch (err) {
       console.error('[AIAssist] Speech error:', err);
     }
-  }, [isSpeechEnabled, speechLang, iosVoice]);
+  }, [isSpeechEnabled, speechLang, selectedVoice, language, resolveVoiceId]);
 
   // ── Send command ──
   const handleSend = useCallback(async (commandText?: string) => {
@@ -590,6 +613,7 @@ export default function AIAssistButton() {
           userDepartment: user?.department || 'unknown',
           currentRoom: null,
           activeRecordId: null,
+          language: language,
           localDate: (() => {
             const n = new Date();
             return String(n.getFullYear()).slice(-2) +
