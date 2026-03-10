@@ -67,19 +67,46 @@ FILTER GUIDANCE — common filter columns:
 - Use filters object for exact matches
 
 USE navigate when someone says "go to", "open", "take me to" a screen.
-NAVIGATE SCREEN NAMES:
-- "materials", "item records", "items", "parts", "inventory" → screen: "parts_inventory"
-- "task feed" → screen: "task_feed"
-- "work orders" → screen: "work_orders"
-- "equipment" → screen: "equipment"
-- "PM schedule", "preventive maintenance" → screen: "pm_schedule"
-- "purchase requests", "purchasing" → screen: "purchase_requests"
-- "SDS", "safety data sheets" → screen: "sds_library"
-- "audits" → screen: "audits"
-- "employees", "directory" → screen: "employee_directory"
-- "production", "production runs" → screen: "production_runs"
-- "room status", "rooms" → screen: "room_status"
-- "dashboard", "home" → screen: "dashboard"
+NAVIGATE SCREEN NAMES (say the exact screen name):
+- "dashboard", "home" → dashboard
+- "task feed", "tasks", "feed", "posts" → task_feed
+- "maintenance", "cmms" → cmms
+- "work orders", "WO", "repairs" → work_orders
+- "equipment", "machines", "assets" → equipment
+- "PM schedule", "preventive maintenance", "PMs" → pm_schedule
+- "item records", "materials", "parts", "inventory", "items", "stock" → parts_inventory
+- "inventory hub" → inventory
+- "purchase orders", "POs" → purchase_orders
+- "purchase requests", "requisitions", "PR" → purchase_requests
+- "vendors", "supplier list" → vendors
+- "procurement" → procurement
+- "production runs", "runs", "batches" → production_runs
+- "room status", "room dashboard", "rooms", "line status", "PR1","PR2","PA1","PA2","BB1","SB1" → room_status
+- "quality", "QA", "QC" → quality
+- "NCR", "non-conformance" → ncr
+- "CAPA", "corrective action" → capa
+- "safety", "EHS" → safety
+- "incidents", "incident report" → incident_report
+- "emergency", "emergency hub" → emergency
+- "LOTO", "lockout tagout" → loto
+- "sanitation", "cleaning", "hygiene" → sanitation
+- "chemicals", "chemical hub" → chemical_hub
+- "SDS", "safety data sheets" → sds_library
+- "documents", "document library" → documents
+- "compliance", "regulatory" → compliance
+- "audits", "audit sessions" → audits
+- "employees", "staff", "directory" → employee_directory
+- "time clock", "check in", "check out" → time_clock
+- "attendance" → attendance
+- "HR", "human resources" → hr
+- "finance", "accounting" → finance
+- "payroll" → payroll
+- "reports", "analytics" → reports
+- "planner", "projects" → planner
+- "recycling", "waste" → recycling
+- "portal", "announcements", "bulletin" → portal
+- "settings", "config", "admin" → settings
+- "approvals" → approvals
 
 ## PARTS LOOKUP RULES
 When someone asks about a part or needs to find a part:
@@ -485,14 +512,29 @@ const TOOLS = [
 
   {
     name: 'navigate',
-    description: 'Navigate to any screen in the app. Modal closes before navigating. SCREEN NAME GUIDE: "parts_inventory" = Item Records / Materials screen (/(tabs)/inventory/materials). Use "parts_inventory" when user says "materials", "item records", "parts", "inventory", or "items".',
+    description: 'Navigate to any screen in the app. Modal closes before navigating.',
     input_schema: {
       type: 'object',
       properties: {
         screen: {
           type: 'string',
-          description: 'Screen to navigate to. Use parts_inventory for materials/items/inventory/item records screen.',
-          enum: ['task_feed', 'work_orders', 'equipment', 'parts_inventory', 'pm_schedule', 'purchase_requests', 'sds_library', 'audits', 'emergency_protocol', 'employee_directory', 'production_runs', 'room_status', 'dashboard', 'reports', 'settings', 'sanitation', 'quality', 'safety', 'compliance'],
+          description: 'Screen name to navigate to.',
+          enum: [
+            'dashboard',
+            'task_feed',
+            'cmms', 'work_orders', 'new_work_order', 'equipment', 'pm_schedule', 'parts_list', 'downtime', 'loto', 'cmms_kpi', 'cmms_vendors',
+            'inventory', 'parts_inventory', 'on_hand', 'low_stock', 'cycle_count', 'lot_tracking', 'replenishment', 'transfers',
+            'procurement', 'purchase_orders', 'purchase_requests', 'vendors', 'receiving', 'po_approvals',
+            'production', 'production_runs', 'room_status', 'production_materials',
+            'quality', 'ncr', 'capa', 'deviations', 'complaints', 'metal_detector', 'pre_op', 'temp_log',
+            'safety', 'safety_observations', 'incident_report', 'first_aid', 'osha_300', 'emergency', 'loto_program', 'chemical_hub',
+            'sanitation', 'sanitation_chemicals', 'master_sanitation', 'daily_sanitation',
+            'compliance', 'audits', 'food_safety_plan', 'recall_plan', 'compliance_calendar',
+            'documents', 'sds_library',
+            'hr', 'employee_directory', 'attendance', 'time_clock', 'overtime', 'performance', 'onboarding',
+            'finance', 'budgets', 'payroll',
+            'planner', 'recycling', 'portal', 'reports', 'settings', 'users', 'departments', 'approvals',
+          ],
         },
         record_id: { type: 'string' },
       },
