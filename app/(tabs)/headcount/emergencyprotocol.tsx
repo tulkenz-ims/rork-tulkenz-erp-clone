@@ -83,9 +83,10 @@ const SEVERITY_OPTIONS: EmergencyEventSeverity[] = ['critical', 'high', 'medium'
 export default function EmergencyProtocolScreen() {
   const { colors } = useTheme();
   const router = useRouter();
-  const params = useLocalSearchParams<{ type?: string; drill?: string }>();
+  const params = useLocalSearchParams<{ type?: string; drill?: string; auto_start?: string }>();
   const emergencyType = (params.type || 'fire') as EmergencyEventType;
   const isDrill = params.drill === 'true';
+  const autoStart = params.auto_start === 'true';
   const typeConfig = EMERGENCY_EVENT_TYPE_CONFIG[emergencyType] || EMERGENCY_EVENT_TYPE_CONFIG.fire;
   const headerConfig = TYPE_HEADERS[emergencyType] || TYPE_HEADERS.fire;
   const TypeIcon = TYPE_ICONS[emergencyType] || Flame;
@@ -249,6 +250,15 @@ export default function EmergencyProtocolScreen() {
     }
   }, [successAnim, createEvent, emergencyType, isDrill, typeConfig.label]);
 
+  // ── Auto-start when triggered by AI assistant ──
+  const hasAutoStarted = useRef(false);
+  useEffect(() => {
+    if (autoStart && !hasAutoStarted.current && !emergency.isActive) {
+      hasAutoStarted.current = true;
+      initiateEmergency();
+    }
+  }, [autoStart, initiateEmergency, emergency.isActive]);
+
   const markEmployeeSafe = useCallback((employeeId: string) => {
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -282,12 +292,26 @@ export default function EmergencyProtocolScreen() {
         markEmployeeSafe,
         isDrill,
         emergencyType,
+        {
+          initiateEmergency,
+          handleEndProtocol,
+          handleCancelEvent,
+          handleSaveDetails,
+          handleViewLog,
+          handleClose,
+          setLocationDetails,
+          setDescription,
+          setSeverity,
+          setEmergencyServicesCalled,
+        },
       );
     }
     return () => {
       if (!emergency.isActive) unregisterRollCall();
     };
-  }, [emergency.isActive, emergency.employees, markEmployeeSafe, isDrill, emergencyType, registerRollCall, unregisterRollCall]);
+  }, [emergency.isActive, emergency.employees, markEmployeeSafe, isDrill, emergencyType,
+      initiateEmergency, handleEndProtocol, handleCancelEvent, handleSaveDetails,
+      handleViewLog, handleClose, registerRollCall, unregisterRollCall]);
 
   const handleSaveDetails = useCallback(async () => {
     if (!eventId) {
@@ -382,6 +406,46 @@ export default function EmergencyProtocolScreen() {
     handleClose();
     router.push('/safety/emergencyeventlog' as any);
   }, [handleClose, router]);
+
+  const handleEndProtocol = useCallback(async () => {
+    if (eventId) {
+      try {
+        await updateEvent({
+          id: eventId,
+          status: 'resolved',
+          resolved_at: new Date().toISOString(),
+        });
+        await addTimelineEntry({
+          eventId,
+          action: `Protocol ended early — ${safeEmployees.length}/${emergency.employees.length} accounted for`,
+        });
+      } catch (err) {
+        console.error('[EmergencyProtocol] Error resolving event:', err);
+      }
+    }
+    handleClose();
+    router.back();
+  }, [eventId, safeEmployees.length, emergency.employees.length, updateEvent, addTimelineEntry, handleClose, router]);
+
+  const handleCancelEvent = useCallback(async () => {
+    if (eventId) {
+      try {
+        await updateEvent({
+          id: eventId,
+          status: 'cancelled',
+          resolved_at: new Date().toISOString(),
+        });
+        await addTimelineEntry({
+          eventId,
+          action: 'Event cancelled — started by accident',
+        });
+      } catch (err) {
+        console.error('[EmergencyProtocol] Error cancelling:', err);
+      }
+    }
+    handleClose();
+    router.back();
+  }, [eventId, updateEvent, addTimelineEntry, handleClose, router]);
 
   const backgroundColor = allSafe
     ? successAnim.interpolate({
@@ -536,29 +600,7 @@ export default function EmergencyProtocolScreen() {
               'This will end the emergency protocol and mark the event as resolved. Not all personnel have been accounted for.',
               [
                 { text: 'Cancel', style: 'cancel' },
-                {
-                  text: 'End Protocol',
-                  style: 'destructive',
-                  onPress: async () => {
-                    if (eventId) {
-                      try {
-                        await updateEvent({
-                          id: eventId,
-                          status: 'resolved',
-                          resolved_at: new Date().toISOString(),
-                        });
-                        await addTimelineEntry({
-                          eventId,
-                          action: `Protocol ended early — ${safeEmployees.length}/${emergency.employees.length} accounted for`,
-                        });
-                      } catch (err) {
-                        console.error('[EmergencyProtocol] Error resolving event:', err);
-                      }
-                    }
-                    handleClose();
-                    router.back();
-                  },
-                },
+                { text: 'End Protocol', style: 'destructive', onPress: handleEndProtocol },
               ],
             );
           }}
@@ -574,29 +616,7 @@ export default function EmergencyProtocolScreen() {
               'This will cancel the event and clear all alerts. This action cannot be undone.',
               [
                 { text: 'No', style: 'cancel' },
-                {
-                  text: 'Yes, Cancel',
-                  style: 'destructive',
-                  onPress: async () => {
-                    if (eventId) {
-                      try {
-                        await updateEvent({
-                          id: eventId,
-                          status: 'cancelled',
-                          resolved_at: new Date().toISOString(),
-                        });
-                        await addTimelineEntry({
-                          eventId,
-                          action: 'Event cancelled — started by accident',
-                        });
-                      } catch (err) {
-                        console.error('[EmergencyProtocol] Error cancelling:', err);
-                      }
-                    }
-                    handleClose();
-                    router.back();
-                  },
-                },
+                { text: 'Yes, Cancel', style: 'destructive', onPress: handleCancelEvent },
               ],
             );
           }}
