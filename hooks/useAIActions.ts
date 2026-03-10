@@ -816,24 +816,7 @@ export function useAIActions() {
       case 'mark_multiple_employees_safe': {
         const names = (params.employee_names as string[]) || [];
         if (!names.length) return { success: false, message: 'No names provided.' };
-        const results: string[] = [];
-        let anyFailed = false;
-        for (const name of names) {
-          const r = rollCall.markSafeByName(name);
-          results.push(r.message);
-          if (!r.success) anyFailed = true;
-        }
-        // Return a consolidated summary instead of all individual messages
-        const status = rollCall.getRollCallStatus();
-        if (status && status.pending === 0) {
-          return { success: true, message: `✅ All ${names.join(', ')} marked safe. Everyone is accounted for!` };
-        }
-        const markedCount = names.length - (anyFailed ? 1 : 0);
-        const pendingList = status ? status.pendingNames.join(', ') : '';
-        return {
-          success: !anyFailed,
-          message: `✅ Marked safe: ${names.join(', ')}. ${status ? `${status.pending} still pending: ${pendingList}` : ''}`,
-        };
+        return rollCall.markMultipleSafeByName(names);
       }
 
       case 'get_roll_call_status': {
@@ -841,20 +824,28 @@ export function useAIActions() {
         if (!status) return { success: false, message: 'No active roll call right now.' };
         const typeLabel = status.emergencyType.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
         const mode = status.isDrill ? 'DRILL' : 'EMERGENCY';
-        if (status.pending === 0) {
-          return { success: true, message: `${typeLabel} ${mode}: All ${status.total} personnel accounted for! ✅` };
-        }
-        return {
-          success: true,
-          message: `${typeLabel} ${mode} — ${status.safe}/${status.total} accounted for. Still pending (${status.pending}): ${status.pendingNames.join(', ')}`,
-        };
+        if (!status.rollCallLive) return { success: true, message: `${typeLabel} ${mode} screen is open but roll call hasn't started yet.` };
+        if (status.pending === 0) return { success: true, message: `${typeLabel} ${mode}: All ${status.total} personnel accounted for! ✅` };
+        return { success: true, message: `${typeLabel} ${mode} — ${status.safe}/${status.total} accounted for. Still pending (${status.pending}): ${status.pendingNames.join(', ')}` };
       }
+
+      case 'initiate_roll_call':        return rollCall.initiateRollCall();
+      case 'end_emergency_protocol':    return rollCall.endProtocol();
+      case 'cancel_emergency_event':    return rollCall.cancelEvent();
+      case 'save_emergency_details':    return rollCall.saveDetails({
+        severity: params.severity as string | undefined,
+        location: params.location as string | undefined,
+        notes: params.notes as string | undefined,
+        emergencyServicesCalled: params.emergency_services_called as boolean | undefined,
+      });
+      case 'view_emergency_log':        return rollCall.viewEventLog();
+      case 'close_emergency_screen':    return rollCall.closeProtocol();
 
       case 'start_emergency_protocol': {
         const type = (params.emergency_type as string) || 'fire';
         const drill = params.is_drill === true ? 'true' : 'false';
         try {
-          router.push({ pathname: '/(tabs)/headcount/emergencyprotocol' as any, params: { type, drill } });
+          router.push({ pathname: '/(tabs)/headcount/emergencyprotocol' as any, params: { type, drill, auto_start: 'true' } });
           const label = type.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
           return { success: true, message: drill === 'true' ? `${label} drill started. Roll call is live.` : `⚠️ ${label} emergency protocol initiated. Roll call is live.` };
         } catch (err: any) {
