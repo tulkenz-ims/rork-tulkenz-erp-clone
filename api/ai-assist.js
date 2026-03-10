@@ -3,7 +3,13 @@
 // Uses Claude TOOL USE (function calling) — reliable, schema-enforced actions
 
 const Anthropic = require('@anthropic-ai/sdk').default;
-const { getSchema } = require('./schema');
+let getSchema;
+try {
+  getSchema = require('./schema').getSchema;
+} catch (e) {
+  console.warn('[ai-assist] schema.js not found — schema injection disabled:', e.message);
+  getSchema = async () => null;
+}
 
 const SYSTEM_PROMPT = `You are the TulKenz OPS AI Assistant for NextLN, a food manufacturing facility (Chike brand). You help operators, technicians, supervisors, and managers execute tasks through the TulKenz OPS platform using tools.
 
