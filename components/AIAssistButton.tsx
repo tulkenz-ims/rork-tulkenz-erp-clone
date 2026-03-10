@@ -454,36 +454,47 @@ export default function AIAssistButton() {
   const [isSpeechEnabled, setIsSpeechEnabled] = useState(true);
 
   // ── Voice & language settings ──
+  // Two identifier formats per voice — iOS changes them across versions
+  const VOICE_IDS: Record<string, string[]> = {
+    samantha: ['com.apple.voice.compact.en-US.Samantha', 'com.apple.ttsbundle.Samantha-compact'],
+    karen:    ['com.apple.voice.compact.en-AU.Karen',    'com.apple.ttsbundle.Karen-compact'],
+    nicky:    ['com.apple.voice.compact.en-US.Nicky',    'com.apple.ttsbundle.Nicky-compact'],
+    es:       ['com.apple.voice.compact.es-MX.Monica',   'com.apple.ttsbundle.Monica-compact', 'com.apple.voice.compact.es-ES.Monica'],
+  };
   const VOICES = [
-    { id: 'samantha', label: 'Samantha', match: 'samantha' },
-    { id: 'karen',    label: 'Karen',    match: 'karen'    },
-    { id: 'nicky',    label: 'Nicky',    match: 'nicky'    },
-  ] as const;
-  type VoiceId = typeof VOICES[number]['id'];
+    { id: 'samantha' as const, label: 'Samantha' },
+    { id: 'karen'    as const, label: 'Karen'    },
+    { id: 'nicky'    as const, label: 'Nicky'    },
+  ];
+  type VoiceId = 'samantha' | 'karen' | 'nicky';
   const [selectedVoice, setSelectedVoice] = useState<VoiceId>('samantha');
   const [language, setLanguage] = useState<'en' | 'es'>('en');
 
-  // Store resolved voice identifiers in a ref so they're always current at speak-time
+  // Resolved voice map — populated at mount from actual device voices when available
   const resolvedVoicesRef = useRef<Record<string, string>>({});
 
   useEffect(() => {
     Speech.getAvailableVoicesAsync()
       .then(voices => {
+        if (!voices || voices.length === 0) return;
         const map: Record<string, string> = {};
         for (const v of voices) {
-          const name = v.name.toLowerCase();
-          const id   = v.identifier.toLowerCase();
-          if (name.includes('samantha') || id.includes('samantha')) map['samantha'] = v.identifier;
-          if (name.includes('karen')    || id.includes('karen'))    map['karen']    = v.identifier;
-          if (name.includes('nicky')    || id.includes('nicky'))    map['nicky']    = v.identifier;
-          // Spanish — prefer Monica (MX), fall back to Paulina
-          if ((name.includes('monica')  || id.includes('monica'))  && !map['es']) map['es'] = v.identifier;
-          if ((name.includes('paulina') || id.includes('paulina')) && !map['es']) map['es'] = v.identifier;
+          const n = v.name.toLowerCase();
+          if (n.includes('samantha') && !map.samantha) map.samantha = v.identifier;
+          if (n.includes('karen')    && !map.karen)    map.karen    = v.identifier;
+          if (n.includes('nicky')    && !map.nicky)    map.nicky    = v.identifier;
+          if ((n.includes('monica') || n.includes('paulina')) && !map.es) map.es = v.identifier;
         }
         resolvedVoicesRef.current = map;
-        console.log('[AIAssist] Resolved voices:', map);
+        console.log('[AIAssist] Voices from device:', map);
       })
-      .catch(err => console.warn('[AIAssist] Could not load voices:', err));
+      .catch(() => {});
+  }, []);
+
+  // Pick the best available voice ID — prefer device-resolved, fall back to known hardcoded IDs
+  const getVoiceId = useCallback((voiceId: VoiceId, lang: 'en' | 'es'): string => {
+    const key = lang === 'es' ? 'es' : voiceId;
+    return resolvedVoicesRef.current[key] || VOICE_IDS[key]?.[0] || '';
   }, []);
 
   const speechLang = language === 'es' ? 'es-MX' : 'en-US';
@@ -558,14 +569,13 @@ export default function AIAssistButton() {
     if (!isSpeechEnabled || !text) { onDone?.(); return; }
     try {
       Speech.stop();
-      const voiceKey = language === 'es' ? 'es' : selectedVoice;
-      const voiceId  = resolvedVoicesRef.current[voiceKey];
-      console.log('[AIAssist] Speaking with voice key:', voiceKey, '→', voiceId || '(system default)');
+      const voiceId = getVoiceId(selectedVoice, language);
+      console.log('[AIAssist] Speaking lang:', speechLang, 'voice:', voiceId);
       Speech.speak(text, {
         language: speechLang,
         pitch: 1.0,
         rate: 1.25,
-        ...(voiceId ? { voice: voiceId } : {}),
+        voice: voiceId || undefined,
         onDone:  () => onDone?.(),
         onError: () => onDone?.(),
       });
@@ -573,7 +583,7 @@ export default function AIAssistButton() {
       console.error('[AIAssist] Speech error:', err);
       onDone?.();
     }
-  }, [isSpeechEnabled, speechLang, selectedVoice, language]);
+  }, [isSpeechEnabled, speechLang, selectedVoice, language, getVoiceId]);
 
   // ── Send command ──
   const handleSend = useCallback(async (commandText?: string) => {
@@ -770,7 +780,7 @@ export default function AIAssistButton() {
     } finally {
       setIsProcessing(false);
     }
-  }, [textInput, pendingImage, user, speakResponse, executeAIAction]);
+  }, [textInput, pendingImage, user, language, speakResponse, executeAIAction]);
 
   // ── Mic ──
   const handleMicPress = useCallback(() => {
