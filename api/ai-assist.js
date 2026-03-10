@@ -385,7 +385,7 @@ const RL = StyleSheet.create({
 // SPEECH RECOGNITION
 // ══════════════════════════════════════════════════════════════════
 
-function useSpeechRecognition() {
+function useSpeechRecognition(lang: string = 'en-US') {
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState('');
   const recognitionRef = useRef<any>(null);
@@ -402,7 +402,7 @@ function useSpeechRecognition() {
       const recognition = new SpeechRecognition();
       recognition.continuous = false;
       recognition.interimResults = true;
-      recognition.lang = 'en-US';
+      recognition.lang = lang;
 
       recognition.onresult = (event: any) => {
         let finalTranscript = '';
@@ -428,7 +428,7 @@ function useSpeechRecognition() {
       return true;
     }
     return false;
-  }, []);
+  }, [lang]);
 
   const stopListening = useCallback(() => {
     if (recognitionRef.current) recognitionRef.current.stop();
@@ -452,6 +452,20 @@ export default function AIAssistButton() {
   const [textInput, setTextInput] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSpeechEnabled, setIsSpeechEnabled] = useState(true);
+
+  // ── Voice & language settings ──
+  const VOICES = [
+    { id: 'samantha', label: 'Samantha', ios: 'com.apple.ttsbundle.Samantha-compact', android: 'en-US' },
+    { id: 'karen',    label: 'Karen',    ios: 'com.apple.ttsbundle.Karen-compact',    android: 'en-AU' },
+    { id: 'nicky',    label: 'Nicky',    ios: 'com.apple.voice.compact.en-US.Nicky',  android: 'en-US' },
+  ] as const;
+  type VoiceId = typeof VOICES[number]['id'];
+  const [selectedVoice, setSelectedVoice] = useState<VoiceId>('samantha');
+  const [language, setLanguage] = useState<'en' | 'es'>('en');
+
+  const currentVoice = VOICES.find(v => v.id === selectedVoice) || VOICES[0];
+  const speechLang = language === 'es' ? 'es-US' : 'en-US';
+  const iosVoice   = language === 'es' ? 'com.apple.ttsbundle.Monica-compact' : currentVoice.ios;
   const [pendingImage, setPendingImage] = useState<{
     uri: string; base64: string; mediaType: string;
   } | null>(null);
@@ -461,7 +475,7 @@ export default function AIAssistButton() {
   const scrollRef = useRef<ScrollView>(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const { isListening, transcript, startListening, stopListening, setTranscript } =
-    useSpeechRecognition();
+    useSpeechRecognition(speechLang);
 
   // ── Load saved chat ──
   useEffect(() => {
@@ -522,17 +536,17 @@ export default function AIAssistButton() {
   const speakResponse = useCallback((text: string) => {
     if (!isSpeechEnabled || !text) return;
     try {
-      Speech.stop(); // always kill any in-progress speech first
+      Speech.stop();
       Speech.speak(text, {
-        language: 'en-US',
+        language: speechLang,
         pitch: 1.0,
         rate: 1.25,
-        voice: 'com.apple.ttsbundle.Samantha-compact',
+        voice: iosVoice,
       });
     } catch (err) {
       console.error('[AIAssist] Speech error:', err);
     }
-  }, [isSpeechEnabled]);
+  }, [isSpeechEnabled, speechLang, iosVoice]);
 
   // ── Send command ──
   const handleSend = useCallback(async (commandText?: string) => {
@@ -925,6 +939,45 @@ export default function AIAssistButton() {
             </View>
           </View>
 
+          {/* Voice & Language selector */}
+          <View style={[styles.voiceBar, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
+            <View style={styles.voiceBarGroup}>
+              {VOICES.map(v => (
+                <Pressable
+                  key={v.id}
+                  style={[
+                    styles.voiceChip,
+                    selectedVoice === v.id && { backgroundColor: '#8B5CF6', borderColor: '#8B5CF6' },
+                    selectedVoice !== v.id && { backgroundColor: 'transparent', borderColor: colors.border },
+                  ]}
+                  onPress={() => { setSelectedVoice(v.id); Speech.stop(); }}
+                >
+                  <Text style={[styles.voiceChipText, { color: selectedVoice === v.id ? '#fff' : colors.textSecondary }]}>
+                    {v.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+            <View style={styles.voiceBarDivider} />
+            <View style={styles.voiceBarGroup}>
+              {(['en', 'es'] as const).map(lang => (
+                <Pressable
+                  key={lang}
+                  style={[
+                    styles.voiceChip,
+                    language === lang && { backgroundColor: '#0EA5E9', borderColor: '#0EA5E9' },
+                    language !== lang && { backgroundColor: 'transparent', borderColor: colors.border },
+                  ]}
+                  onPress={() => { setLanguage(lang); Speech.stop(); }}
+                >
+                  <Text style={[styles.voiceChipText, { color: language === lang ? '#fff' : colors.textSecondary }]}>
+                    {lang === 'en' ? '🇺🇸 EN' : '🇲🇽 ES'}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+
           {/* Messages */}
           <ScrollView
             ref={scrollRef}
@@ -1162,6 +1215,16 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between' as const,
     paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, paddingTop: 50,
   },
+  voiceBar: {
+    flexDirection: 'row' as const, alignItems: 'center' as const,
+    paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: 1, gap: 8,
+  },
+  voiceBarGroup: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 6 },
+  voiceBarDivider: { width: 1, height: 20, backgroundColor: 'rgba(128,128,128,0.3)', marginHorizontal: 4 },
+  voiceChip: {
+    paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1,
+  },
+  voiceChipText: { fontSize: 11, fontWeight: '600' as const },
   headerLeft: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 10 },
   headerIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center' as const, justifyContent: 'center' as const },
   headerTitle: { fontSize: 17, fontWeight: '700' as const },
