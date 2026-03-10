@@ -302,7 +302,7 @@ function ResultsList({ results, resultType, tableConfig, colors }: {
   const statusCol    = tableConfig?.statusCol    || null;
   const label        = tableConfig?.label        || 'Records';
 
-  const STATUS_COLORS: Record<string, string> = {
+  const GENERIC_STATUS_COLORS: Record<string, string> = {
     open: '#3B82F6', in_progress: '#F59E0B', completed: '#10B981',
     pending: '#8B5CF6', closed: '#6B7280', active: '#10B981',
     inactive: '#6B7280', approved: '#10B981', rejected: '#EF4444',
@@ -330,7 +330,7 @@ function ResultsList({ results, resultType, tableConfig, colors }: {
       </View>
       {results.map((row, i) => {
         const statusVal = statusCol ? row[statusCol] : null;
-        const statusColor = STATUS_COLORS[statusVal] || colors.textSecondary;
+        const statusColor = GENERIC_STATUS_COLORS[statusVal] || colors.textSecondary;
         return (
           <View
             key={row.id || i}
