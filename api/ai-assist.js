@@ -1,1200 +1,854 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  Pressable,
-  Modal,
-  ScrollView,
-  TextInput,
-  ActivityIndicator,
-  Animated,
-  Platform,
-  KeyboardAvoidingView,
-  Image,
-} from 'react-native';
-import {
-  Mic, MicOff, X, Send, Camera, Volume2, VolumeX,
-  Wrench, Package, Zap, AlertTriangle, CheckCircle,
-  Search, MessageCircle, Bot, User, Navigation,
-  ClipboardList, Thermometer, Bug, Shield,
-  ChevronRight,
-} from 'lucide-react-native';
-import { useTheme } from '@/contexts/ThemeContext';
-import { useUser } from '@/contexts/UserContext';
-import { useAIActions } from '@/hooks/useAIActions';
-import * as Haptics from 'expo-haptics';
-import * as ImagePicker from 'expo-image-picker';
-import * as Speech from 'expo-speech';
-import * as FileSystem from 'expo-file-system';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+// api/ai-assist.js
+// Vercel Serverless Function — TulKenz OPS AI Assistant v3
+// Uses Claude TOOL USE (function calling) — reliable, schema-enforced actions
 
-// ══════════════════════════════════════════════════════════════════
-// TYPES
-// ══════════════════════════════════════════════════════════════════
+const Anthropic = require('@anthropic-ai/sdk').default;
+const { getSchema } = require('./schema');
 
-interface ChatMessage {
-  id: string;
-  role: 'user' | 'assistant';
-  text: string;
-  toolName?: string;
-  params?: Record<string, unknown>;
-  image?: string;
-  timestamp: Date;
-  isResult?: boolean;
-  // FIX 3: actual result rows to display as a list
-  results?: any[];
-  resultType?: 'parts' | 'work_orders' | 'tasks' | 'equipment' | 'generic';
-  tableConfig?: any;
-}
+const SYSTEM_PROMPT = `You are the TulKenz OPS AI Assistant for NextLN, a food manufacturing facility (Chike brand). You help operators, technicians, supervisors, and managers execute tasks through the TulKenz OPS platform using tools.
 
-interface ConversationTurn {
-  role: 'user' | 'assistant';
-  content: any;
-}
+## HOW YOU WORK
+You have tools for every action in the app. When a user asks you to do something, pick the right tool and fill in ALL parameters from what they said. If a required field is missing, use ask_clarification. For optional fields not mentioned, use "N/A".
 
-interface AIResponse {
-  success: boolean;
-  action: string;
-  tool_name: string | null;
-  speech: string | null;
-  params: Record<string, unknown>;
-  needs_photo?: boolean;
-  conversation_continue?: boolean;
-  assistant_message?: ConversationTurn;
-}
+## CRITICAL ROUTING RULES
 
-// ══════════════════════════════════════════════════════════════════
-// CONFIG
-// ══════════════════════════════════════════════════════════════════
+USE TASK FEED TEMPLATES when someone says:
+- "Report..." / "Log..." / "Found a..." / "There's a..." / "We have a..."
+- Any incident, finding, issue, complaint, or observation
+- Broken glove, foreign material, chemical spill, pest, injury, equipment problem, temp issue, metal detector hit, customer complaint
 
-const AI_ASSIST_URL = '/api/ai-assist';
+USE create_work_order ONLY when someone says:
+- "Schedule maintenance on..." / "Create a work order for..." / "Need to repair..."
 
-const TOOL_ICONS: Record<string, { icon: any; color: string; label: string }> = {
-  create_task_feed_post_broken_glove:         { icon: AlertTriangle, color: '#F97316', label: 'Broken Glove' },
-  create_task_feed_post_foreign_material:     { icon: AlertTriangle, color: '#EF4444', label: 'Foreign Material' },
-  create_task_feed_post_chemical_spill:       { icon: AlertTriangle, color: '#F59E0B', label: 'Chemical Spill' },
-  create_task_feed_post_employee_injury:      { icon: Shield,        color: '#EF4444', label: 'Employee Injury' },
-  create_task_feed_post_equipment_breakdown:  { icon: Wrench,        color: '#3B82F6', label: 'Equipment Breakdown' },
-  create_task_feed_post_metal_detector_reject:{ icon: AlertTriangle, color: '#8B5CF6', label: 'Metal Detector Reject' },
-  create_task_feed_post_pest_sighting:        { icon: Bug,           color: '#84CC16', label: 'Pest Sighting' },
-  create_task_feed_post_temperature_deviation:{ icon: Thermometer,   color: '#06B6D4', label: 'Temp Deviation' },
-  create_task_feed_post_customer_complaint:   { icon: MessageCircle, color: '#EC4899', label: 'Customer Complaint' },
-  create_task_feed_post_generic:              { icon: Zap,           color: '#F97316', label: 'Task Feed Post' },
-  create_task_feed_post:                      { icon: Zap,           color: '#F97316', label: 'Task Feed Post' },
-  query_task_feed:                            { icon: ClipboardList, color: '#6366F1', label: 'Task Feed Query' },
-  create_work_order:                          { icon: Wrench,        color: '#3B82F6', label: 'Work Order' },
-  start_pre_op:                               { icon: CheckCircle,   color: '#10B981', label: 'Pre-Op' },
-  lookup_part:                                { icon: Package,       color: '#F59E0B', label: 'Parts Lookup' },
-  lookup_equipment:                           { icon: Wrench,        color: '#3B82F6', label: 'Equipment Lookup' },
-  lookup_work_orders:                         { icon: ClipboardList, color: '#3B82F6', label: 'Work Orders' },
-  diagnose_issue:                             { icon: AlertTriangle, color: '#EF4444', label: 'Diagnosis' },
-  start_production_run:                       { icon: Zap,           color: '#8B5CF6', label: 'Production Run' },
-  end_production_run:                         { icon: Zap,           color: '#6366F1', label: 'End Run' },
-  change_room_status:                         { icon: Zap,           color: '#06B6D4', label: 'Room Status' },
-  navigate:                                   { icon: Navigation,    color: '#10B981', label: 'Navigate' },
-  ask_clarification:                          { icon: MessageCircle, color: '#F59E0B', label: 'Clarifying' },
-  general_response:                           { icon: MessageCircle, color: '#6366F1', label: 'Info' },
-  info:                                       { icon: MessageCircle, color: '#6366F1', label: 'Info' },
-  clarify:                                    { icon: MessageCircle, color: '#F59E0B', label: 'Clarifying' },
-  search:                                     { icon: Search,        color: '#8B5CF6', label: 'Search' },
-};
+USE query_task_feed when someone says:
+- "Show me open PMs" / "What PMs are pending?" → set post_type="preventive"
+- "What reactive tasks does quality have?" → set department_code + post_type="reactive"
+- IMPORTANT: For any PM / preventive maintenance question, ALWAYS set post_type="preventive"
 
-// ══════════════════════════════════════════════════════════════════
-// FIX 3: RESULTS LIST RENDERER
-// Renders actual records from lookup/query results inline in the chat
-// ══════════════════════════════════════════════════════════════════
+USE query_records when someone says ANYTHING like:
+- "Show me...", "List...", "Find...", "Pull up...", "What are...", "Get me..." about any data
+- Browsing, searching, or filtering records in any module or submodule
+- Examples: "show me all parts for production", "list open purchase orders",
+  "find employees in maintenance", "show chemical inventory", "pull up LOTO procedures",
+  "list all vendors", "show SDS records for sanitizers", "what CAPAs are open",
+  "list downtime events this week", "show inspection records", "find open NCRs",
+  "list employees on attendance points", "show recycling records", "pull up safety observations",
+  "show me item records in inventory", "list all PM schedules", "show purchase requests"
 
-function ResultsList({ results, resultType, tableConfig, colors }: {
-  results: any[];
-  resultType: string;
-  tableConfig?: any;
-  colors: any;
-}) {
-  if (!results || results.length === 0) return null;
+TABLE MAP — match user intent to exact table name:
+MAINTENANCE: work_orders, pm_schedules, pm_work_orders, equipment, equipment_sensors, equipment_downtime_log, downtime_events, loto_procedures, loto_events, maintenance_activity_log, maintenance_alerts, work_order_chemicals, maintenance_metrics, maintenance_budgets
+PARTS/INVENTORY: materials, part_requests, parts_issues, parts_returns, parts_costs, material_receipts, inventory_adjustments, inventory_history, inventory_audit_trail, inventory_reserves, inventory_labels, low_stock_alerts, count_sessions, hold_tags, reorder_points, replenishment_suggestions, global_materials, adjustment_reasons
+PROCUREMENT: purchase_orders, purchase_requests, purchase_requisitions, procurement_purchase_orders, blanket_purchase_orders, blanket_po_releases, po_approvals, po_revisions, po_templates, drop_ship_orders, service_purchase_orders, service_requests, approvals
+VENDORS: vendors, cmms_vendors, procurement_vendors, vendor_contracts, vendor_onboarding
+QUALITY: quality_inspections, inspection_records, inspection_templates, ncr_records, ncr_paper_forms, capa_records, deviation_records, customer_complaints, metal_detector_logs, ccp_monitoring_logs, temperature_logs, allergen_changeover_forms, pre_op_inspections, production_line_checks
+SAFETY: safety_observations, accident_investigations, first_aid_log, osha_300_log, osha_300a_summaries, osha_301_forms, workers_comp_claims, drug_alcohol_tests, ergonomic_assessments, repetitive_motion_assessments, noise_monitoring, air_quality_monitoring, heat_stress_monitoring, hazard_assessments, ppe_requirements, safety_permits, safety_suggestions, safety_committee_meetings, safety_recognitions, safety_program_documents, loto_procedures, loto_events, fire_drill_entries, evacuation_drill_entries, severe_weather_drill_entries, peer_safety_audits, return_to_work_forms, medical_restrictions, workstation_evaluations, job_specific_safety_training, psm_compliance_records, fire_suppression_impairments, respirator_fit_tests, break_violations
+SANITATION: room_hygiene_log, daily_room_hygiene_reports, chemical_inventory, haz_waste, sds_records, sds_index, sds_training_records
+PRODUCTION: production_runs, production_events, production_hold_log, room_status, room_equipment, sensor_readings, downtime_events
+COMPLIANCE/AUDITS: audit_sessions, capa_records, deviation_records, documents, document_versions, document_categories, document_acknowledgments, custom_form_templates, custom_form_submissions, form_signatures, inspection_templates, inspection_records
+EMPLOYEES/HR: employees, positions, departments, shifts, attendance_records, time_entries, time_punches, time_off_requests, overtime_requests, overtime_alerts, performance_reviews, employee_goals, feedback_360, succession_plans, talent_profiles, drug_alcohol_tests, job_requisitions, candidates, interviews, job_offers, position_assignments, position_history, medical_restrictions, return_to_work_forms, attendance_points_balance, attendance_points_history, break_violations, shift_swaps
+RECYCLING: recycling_cardboard, recycling_metal, recycling_paper, recycling_batteries, recycling_bulbs, recycling_toner, recycling_files
+PLANNER: planner_projects, planner_tasks, planner_task_comments, planner_task_time_entries, planner_task_templates
+COMMUNICATIONS: bulletin_posts, portal_announcements, notifications, scheduled_tasks, tasks
+FINANCIAL: department_budgets, maintenance_budgets, cost_reports, labor_costs, parts_costs, gl_accounts
+ASSETS: assets, warranty_records, warranty_claims, locations, facilities
+EMERGENCY: emergency_events, emergency_contacts, emergency_equipment, emergency_action_plan_entries, emergency_roll_calls
 
-  const PRIORITY_COLORS: Record<string, string> = {
-    critical: '#EF4444', high: '#F97316', medium: '#F59E0B', low: '#10B981',
-  };
-  const STATUS_COLORS: Record<string, string> = {
-    open: '#3B82F6', in_progress: '#F59E0B', completed: '#10B981',
-    pending: '#8B5CF6', closed: '#6B7280',
-  };
+FILTER GUIDANCE — common filter columns:
+- status: open, pending, closed, active, inactive, completed, in_progress
+- department / department_name / department_code
+- location / room / room_code
+- category / type / priority
+- Use filters object for exact matches
 
-  if (resultType === 'parts') {
-    return (
-      <View style={RL.container}>
-        {/* Column headers */}
-        <View style={[RL.headerRow, { borderBottomColor: colors.border }]}>
-          <Text style={[RL.headerCell, { color: colors.textTertiary, flex: 3 }]}>PART</Text>
-          <Text style={[RL.headerCell, { color: colors.textTertiary, flex: 1, textAlign: 'center' }]}>QTY</Text>
-          <Text style={[RL.headerCell, { color: colors.textTertiary, flex: 2 }]}>LOCATION</Text>
-        </View>
-        {results.map((p, i) => (
-          <View
-            key={p.id || i}
-            style={[RL.row, { borderBottomColor: colors.border }, i === results.length - 1 && { borderBottomWidth: 0 }]}
-          >
-            <View style={{ flex: 3 }}>
-              <Text style={[RL.primaryText, { color: colors.text }]} numberOfLines={1}>{p.name}</Text>
-              <Text style={[RL.secondaryText, { color: colors.textSecondary }]}>
-                {p.material_number || p.sku || '—'}
-              </Text>
-            </View>
-            <View style={{ flex: 1, alignItems: 'center' }}>
-              <Text style={[RL.primaryText, { color: p.low_stock ? '#EF4444' : '#10B981' }]}>
-                {p.in_stock ?? '—'}
-              </Text>
-              {p.low_stock && (
-                <Text style={{ fontSize: 8, color: '#EF4444', fontWeight: '700' }}>LOW</Text>
-              )}
-            </View>
-            <View style={{ flex: 2 }}>
-              <Text style={[RL.secondaryText, { color: colors.textSecondary }]} numberOfLines={2}>
-                {p.location || '—'}
-              </Text>
-            </View>
-          </View>
-        ))}
-      </View>
-    );
-  }
+USE navigate when someone says "go to", "open", "take me to" a screen.
+NAVIGATE SCREEN NAMES:
+- "materials", "item records", "items", "parts", "inventory" → screen: "parts_inventory"
+- "task feed" → screen: "task_feed"
+- "work orders" → screen: "work_orders"
+- "equipment" → screen: "equipment"
+- "PM schedule", "preventive maintenance" → screen: "pm_schedule"
+- "purchase requests", "purchasing" → screen: "purchase_requests"
+- "SDS", "safety data sheets" → screen: "sds_library"
+- "audits" → screen: "audits"
+- "employees", "directory" → screen: "employee_directory"
+- "production", "production runs" → screen: "production_runs"
+- "room status", "rooms" → screen: "room_status"
+- "dashboard", "home" → screen: "dashboard"
 
-  if (resultType === 'work_orders') {
-    return (
-      <View style={RL.container}>
-        <View style={[RL.headerRow, { borderBottomColor: colors.border }]}>
-          <Text style={[RL.headerCell, { color: colors.textTertiary, flex: 2 }]}>WO #</Text>
-          <Text style={[RL.headerCell, { color: colors.textTertiary, flex: 3 }]}>TITLE</Text>
-          <Text style={[RL.headerCell, { color: colors.textTertiary, flex: 1.5, textAlign: 'right' }]}>DUE / STATUS</Text>
-        </View>
-        {results.map((wo, i) => (
-          <View
-            key={wo.id || i}
-            style={[RL.row, { borderBottomColor: colors.border }, i === results.length - 1 && { borderBottomWidth: 0 }]}
-          >
-            <View style={{ flex: 2 }}>
-              <Text style={[RL.monoText, { color: colors.text }]} numberOfLines={1}>
-                {wo.work_order_number || '—'}
-              </Text>
-              <Text style={[RL.secondaryText, { color: PRIORITY_COLORS[wo.priority] || colors.textSecondary }]}>
-                {wo.priority || '—'}
-              </Text>
-            </View>
-            <View style={{ flex: 3 }}>
-              <Text style={[RL.primaryText, { color: colors.text }]} numberOfLines={2}>
-                {wo.title || '—'}
-              </Text>
-              {wo.equipment && wo.equipment !== 'N/A' && (
-                <Text style={[RL.secondaryText, { color: colors.textSecondary }]} numberOfLines={1}>
-                  {wo.equipment}
-                </Text>
-              )}
-            </View>
-            <View style={{ flex: 1.5, alignItems: 'flex-end' }}>
-              {wo.due_date && (
-                <Text style={[RL.secondaryText, { color: colors.textSecondary }]}>
-                  {new Date(wo.due_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                </Text>
-              )}
-              <View style={[RL.statusPill, { backgroundColor: (STATUS_COLORS[wo.status] || '#6B7280') + '25' }]}>
-                <Text style={[RL.statusText, { color: STATUS_COLORS[wo.status] || colors.textSecondary }]}>
-                  {(wo.status || 'open').replace('_', ' ')}
-                </Text>
-              </View>
-            </View>
-          </View>
-        ))}
-      </View>
-    );
-  }
+## PARTS LOOKUP RULES
+When someone asks about a part or needs to find a part:
+1. ALWAYS call lookup_part first — this searches the Item Records (master materials/parts inventory).
+2. If lookup_part returns results → show them (in stock location, quantity, price, vendor part #).
+3. If lookup_part returns zero results → immediately use web_search to find:
+   - Manufacturer specs and part numbers
+   - Where to buy / typical vendors
+   - Pricing estimates
+   - Compatible alternatives
+   Tell the user the part wasn't found in Item Records, then give them what you found online.
 
-  if (resultType === 'tasks') {
-    return (
-      <View style={RL.container}>
-        <View style={[RL.headerRow, { borderBottomColor: colors.border }]}>
-          <Text style={[RL.headerCell, { color: colors.textTertiary, flex: 2 }]}>POST #</Text>
-          <Text style={[RL.headerCell, { color: colors.textTertiary, flex: 3 }]}>TYPE / DEPT</Text>
-          <Text style={[RL.headerCell, { color: colors.textTertiary, flex: 1.5, textAlign: 'right' }]}>STATUS</Text>
-        </View>
-        {results.map((t, i) => {
-          const post = (t as any).task_feed_posts;
-          return (
-            <View
-              key={t.id || i}
-              style={[RL.row, { borderBottomColor: colors.border }, i === results.length - 1 && { borderBottomWidth: 0 }]}
-            >
-              <View style={{ flex: 2 }}>
-                <Text style={[RL.monoText, { color: colors.text }]} numberOfLines={1}>
-                  {t.post_number || '—'}
-                </Text>
-                <Text style={[RL.secondaryText, { color: PRIORITY_COLORS[t.priority] || colors.textSecondary }]}>
-                  {t.priority || '—'}
-                </Text>
-              </View>
-              <View style={{ flex: 3 }}>
-                <Text style={[RL.primaryText, { color: colors.text }]} numberOfLines={1}>
-                  {post?.template_name || t.module_reference_type || '—'}
-                </Text>
-                <Text style={[RL.secondaryText, { color: colors.textSecondary }]} numberOfLines={1}>
-                  {t.department_name || '—'}
-                  {post?.location_name ? ` · ${post.location_name}` : ''}
-                </Text>
-              </View>
-              <View style={{ flex: 1.5, alignItems: 'flex-end' }}>
-                <View style={[RL.statusPill, { backgroundColor: (STATUS_COLORS[t.status] || '#6B7280') + '25' }]}>
-                  <Text style={[RL.statusText, { color: STATUS_COLORS[t.status] || colors.textSecondary }]}>
-                    {(t.status || '—').replace('_', ' ')}
-                  </Text>
-                </View>
-              </View>
-            </View>
-          );
-        })}
-      </View>
-    );
-  }
+## WEB SEARCH RULES
+Use web_search when:
+- lookup_part returned no results ("not in our inventory")
+- User explicitly asks to search online for a part, spec sheet, or manual
+- User asks about industry standards, equipment specs, or regulatory requirements
+Keep web search results concise — summarize key specs and sourcing info in 2-3 sentences.
 
-  if (resultType === 'equipment') {
-    return (
-      <View style={RL.container}>
-        <View style={[RL.headerRow, { borderBottomColor: colors.border }]}>
-          <Text style={[RL.headerCell, { color: colors.textTertiary, flex: 2 }]}>TAG</Text>
-          <Text style={[RL.headerCell, { color: colors.textTertiary, flex: 3 }]}>NAME / MODEL</Text>
-          <Text style={[RL.headerCell, { color: colors.textTertiary, flex: 1.5, textAlign: 'right' }]}>STATUS</Text>
-        </View>
-        {results.map((eq, i) => (
-          <View
-            key={eq.id || i}
-            style={[RL.row, { borderBottomColor: colors.border }, i === results.length - 1 && { borderBottomWidth: 0 }]}
-          >
-            <View style={{ flex: 2 }}>
-              <Text style={[RL.monoText, { color: colors.text }]} numberOfLines={1}>
-                {eq.equipment_tag || '—'}
-              </Text>
-              <Text style={[RL.secondaryText, { color: colors.textSecondary }]} numberOfLines={1}>
-                {eq.location || '—'}
-              </Text>
-            </View>
-            <View style={{ flex: 3 }}>
-              <Text style={[RL.primaryText, { color: colors.text }]} numberOfLines={1}>{eq.name}</Text>
-              <Text style={[RL.secondaryText, { color: colors.textSecondary }]} numberOfLines={1}>
-                {[eq.manufacturer, eq.model].filter(Boolean).join(' ') || '—'}
-              </Text>
-            </View>
-            <View style={{ flex: 1.5, alignItems: 'flex-end' }}>
-              <View style={[RL.statusPill, { backgroundColor: (STATUS_COLORS[eq.status] || '#6B7280') + '25' }]}>
-                <Text style={[RL.statusText, { color: STATUS_COLORS[eq.status] || colors.textSecondary }]}>
-                  {eq.status || 'active'}
-                </Text>
-              </View>
-            </View>
-          </View>
-        ))}
-      </View>
-    );
-  }
+## BEHAVIOR RULES
+1. ALWAYS use a tool. Never just describe what you would do.
+2. Be conversational — talk like a knowledgeable maintenance supervisor.
+3. Keep responses under 3 sentences unless detail is requested.
 
-  // ── Generic renderer — works for any table using tableConfig column hints ──
-  const primaryCol   = tableConfig?.primaryCol   || 'name';
-  const secondaryCol = tableConfig?.secondaryCol || 'id';
-  const tertiaryCol  = tableConfig?.tertiaryCol  || null;
-  const statusCol    = tableConfig?.statusCol    || null;
-  const label        = tableConfig?.label        || 'Records';
+## FACILITY
+Rooms: PR1, PR2, PA1, PA2, BB1, SB1
+Departments: 1001=Maintenance, 1002=Sanitation, 1003=Production, 1004=Quality, 1005=Safety`;
 
-  const STATUS_COLORS: Record<string, string> = {
-    open: '#3B82F6', in_progress: '#F59E0B', completed: '#10B981',
-    pending: '#8B5CF6', closed: '#6B7280', active: '#10B981',
-    inactive: '#6B7280', approved: '#10B981', rejected: '#EF4444',
-  };
+const TOOLS = [
 
-  // Build header columns dynamically
-  const headerCols = [primaryCol, secondaryCol, tertiaryCol, statusCol].filter(Boolean) as string[];
+  // ── Web Search (parts fallback + general) ───
+  {
+    type: 'web_search_20250305',
+    name: 'web_search',
+  },
 
-  return (
-    <View style={RL.container}>
-      <View style={[RL.headerRow, { borderBottomColor: colors.border }]}>
-        <Text style={[RL.headerCell, { color: colors.textTertiary, flex: 3 }]}>
-          {primaryCol.replace(/_/g, ' ').toUpperCase()}
-        </Text>
-        {secondaryCol && (
-          <Text style={[RL.headerCell, { color: colors.textTertiary, flex: 2 }]}>
-            {secondaryCol.replace(/_/g, ' ').toUpperCase()}
-          </Text>
-        )}
-        {statusCol && (
-          <Text style={[RL.headerCell, { color: colors.textTertiary, flex: 1.5, textAlign: 'right' }]}>
-            {statusCol.replace(/_/g, ' ').toUpperCase()}
-          </Text>
-        )}
-      </View>
-      {results.map((row, i) => {
-        const statusVal = statusCol ? row[statusCol] : null;
-        const statusColor = STATUS_COLORS[statusVal] || colors.textSecondary;
-        return (
-          <View
-            key={row.id || i}
-            style={[RL.row, { borderBottomColor: colors.border }, i === results.length - 1 && { borderBottomWidth: 0 }]}
-          >
-            <View style={{ flex: 3 }}>
-              <Text style={[RL.primaryText, { color: colors.text }]} numberOfLines={1}>
-                {row[primaryCol] != null ? String(row[primaryCol]) : '—'}
-              </Text>
-              {tertiaryCol && row[tertiaryCol] != null && (
-                <Text style={[RL.secondaryText, { color: colors.textSecondary }]} numberOfLines={1}>
-                  {String(row[tertiaryCol])}
-                </Text>
-              )}
-            </View>
-            {secondaryCol && (
-              <View style={{ flex: 2 }}>
-                <Text style={[RL.secondaryText, { color: colors.textSecondary }]} numberOfLines={2}>
-                  {row[secondaryCol] != null ? String(row[secondaryCol]) : '—'}
-                </Text>
-              </View>
-            )}
-            {statusCol && (
-              <View style={{ flex: 1.5, alignItems: 'flex-end' }}>
-                <View style={[RL.statusPill, { backgroundColor: statusColor + '25' }]}>
-                  <Text style={[RL.statusText, { color: statusColor }]}>
-                    {statusVal ? String(statusVal).replace(/_/g, ' ') : '—'}
-                  </Text>
-                </View>
-              </View>
-            )}
-          </View>
-        );
-      })}
-    </View>
-  );
-}
+  // ── Task Feed Templates ──────────────────────
 
-const RL = StyleSheet.create({
-  container:    { marginTop: 10, borderRadius: 8, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
-  headerRow:    { flexDirection: 'row', paddingHorizontal: 8, paddingVertical: 5, borderBottomWidth: 1, backgroundColor: 'rgba(0,0,0,0.2)' },
-  headerCell:   { fontSize: 8, fontWeight: '800', letterSpacing: 0.8, textTransform: 'uppercase' },
-  row:          { flexDirection: 'row', paddingHorizontal: 8, paddingVertical: 8, borderBottomWidth: 1 },
-  primaryText:  { fontSize: 12, fontWeight: '600', lineHeight: 16 },
-  secondaryText:{ fontSize: 10, lineHeight: 14, marginTop: 1 },
-  monoText:     { fontSize: 11, fontWeight: '700', fontVariant: ['tabular-nums'] },
-  statusPill:   { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5, marginTop: 2 },
-  statusText:   { fontSize: 9, fontWeight: '700', textTransform: 'uppercase' },
-});
+  {
+    name: 'create_task_feed_post_broken_glove',
+    description: 'Report a broken glove incident.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        location: { type: 'string' },
+        glove_type: { type: 'string', enum: ['Nitrile', 'Latex', 'Vinyl', 'Cut-Resistant', 'Other'] },
+        missing_fragment_found: { type: 'string', enum: ['Yes - fragment recovered', 'No - fragment missing'] },
+        description: { type: 'string' },
+        production_line: { type: 'string', enum: ['Line 1', 'Line 2', 'Line 3', 'N/A'] },
+        immediate_action_taken: { type: 'string' },
+        production_stopped: { type: 'boolean' },
+        additional_notes: { type: 'string' },
+      },
+      required: ['location', 'glove_type', 'missing_fragment_found', 'description', 'production_line', 'immediate_action_taken', 'production_stopped'],
+    },
+  },
 
-// ══════════════════════════════════════════════════════════════════
-// SPEECH RECOGNITION
-// ══════════════════════════════════════════════════════════════════
+  {
+    name: 'create_task_feed_post_foreign_material',
+    description: 'Report a foreign material finding.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        location: { type: 'string' },
+        material_type: { type: 'string', enum: ['Metal', 'Plastic', 'Glass', 'Wood', 'Rubber', 'Bone', 'Insect', 'Other'] },
+        found_in_product: { type: 'string', enum: ['Yes', 'No', 'Unknown'] },
+        description: { type: 'string' },
+        production_line: { type: 'string', enum: ['Line 1', 'Line 2', 'Line 3', 'N/A'] },
+        product_quarantined: { type: 'boolean' },
+        immediate_action_taken: { type: 'string' },
+        additional_notes: { type: 'string' },
+      },
+      required: ['location', 'material_type', 'found_in_product', 'description', 'production_line', 'product_quarantined', 'immediate_action_taken'],
+    },
+  },
 
-function useSpeechRecognition() {
-  const [isListening, setIsListening] = useState(false);
-  const [transcript, setTranscript] = useState('');
-  const recognitionRef = useRef<any>(null);
+  {
+    name: 'create_task_feed_post_chemical_spill',
+    description: 'Report a chemical spill.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        location: { type: 'string' },
+        chemical_name: { type: 'string' },
+        quantity_spilled: { type: 'string' },
+        product_contact: { type: 'string', enum: ['Yes', 'No', 'Unknown'] },
+        immediate_action_taken: { type: 'string' },
+        area_cleared: { type: 'boolean' },
+        additional_notes: { type: 'string' },
+      },
+      required: ['location', 'chemical_name', 'quantity_spilled', 'product_contact', 'immediate_action_taken', 'area_cleared'],
+    },
+  },
 
-  const startListening = useCallback(() => {
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      const SpeechRecognition =
-        (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      if (!SpeechRecognition) {
-        console.warn('[AIAssist] Speech recognition not supported');
-        return false;
-      }
+  {
+    name: 'create_task_feed_post_employee_injury',
+    description: 'Report an employee injury or near miss.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        location: { type: 'string' },
+        injury_type: { type: 'string', enum: ['Cut', 'Burn', 'Strain/Sprain', 'Slip/Fall', 'Chemical Exposure', 'Near Miss', 'Other'] },
+        body_part: { type: 'string' },
+        employee_name: { type: 'string' },
+        description: { type: 'string' },
+        medical_attention_required: { type: 'boolean' },
+        immediate_action_taken: { type: 'string' },
+        additional_notes: { type: 'string' },
+      },
+      required: ['location', 'injury_type', 'body_part', 'employee_name', 'description', 'medical_attention_required', 'immediate_action_taken'],
+    },
+  },
 
-      const recognition = new SpeechRecognition();
-      recognition.continuous = false;
-      recognition.interimResults = true;
-      recognition.lang = 'en-US';
+  {
+    name: 'create_task_feed_post_equipment_breakdown',
+    description: 'Report equipment breakdown.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        location: { type: 'string' },
+        equipment_name: { type: 'string' },
+        symptom: { type: 'string' },
+        production_impact: { type: 'string', enum: ['Line Down', 'Reduced Speed', 'No Impact', 'Unknown'] },
+        immediate_action_taken: { type: 'string' },
+        create_work_order_requested: { type: 'boolean' },
+        additional_notes: { type: 'string' },
+      },
+      required: ['location', 'equipment_name', 'symptom', 'production_impact', 'immediate_action_taken', 'create_work_order_requested'],
+    },
+  },
 
-      recognition.onresult = (event: any) => {
-        let finalTranscript = '';
-        let interimTranscript = '';
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const result = event.results[i];
-          if (result.isFinal) finalTranscript += result[0].transcript;
-          else interimTranscript += result[0].transcript;
-        }
-        setTranscript(finalTranscript || interimTranscript);
-      };
+  {
+    name: 'create_task_feed_post_metal_detector_reject',
+    description: 'Report a metal detector reject.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        location: { type: 'string' },
+        product_affected: { type: 'string' },
+        quantity_rejected: { type: 'string' },
+        metal_found: { type: 'string', enum: ['Yes', 'No', 'Under Investigation'] },
+        production_line: { type: 'string', enum: ['Line 1', 'Line 2', 'Line 3', 'N/A'] },
+        immediate_action_taken: { type: 'string' },
+        additional_notes: { type: 'string' },
+      },
+      required: ['location', 'product_affected', 'quantity_rejected', 'metal_found', 'production_line', 'immediate_action_taken'],
+    },
+  },
 
-      recognition.onend = () => setIsListening(false);
-      recognition.onerror = (event: any) => {
-        console.error('[AIAssist] Speech error:', event.error);
-        setIsListening(false);
-      };
+  {
+    name: 'create_task_feed_post_pest_sighting',
+    description: 'Report a pest sighting.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        location: { type: 'string' },
+        pest_type: { type: 'string', enum: ['Rodent', 'Cockroach', 'Fly', 'Ant', 'Bird', 'Other Insect', 'Other'] },
+        number_observed: { type: 'string' },
+        product_contact: { type: 'string', enum: ['Yes', 'No', 'Unknown'] },
+        evidence_type: { type: 'string', enum: ['Live', 'Dead', 'Droppings', 'Damage', 'Tracks', 'Other'] },
+        immediate_action_taken: { type: 'string' },
+        additional_notes: { type: 'string' },
+      },
+      required: ['location', 'pest_type', 'number_observed', 'product_contact', 'evidence_type', 'immediate_action_taken'],
+    },
+  },
 
-      recognitionRef.current = recognition;
-      recognition.start();
-      setIsListening(true);
-      setTranscript('');
-      return true;
-    }
-    return false;
-  }, []);
+  {
+    name: 'create_task_feed_post_temperature_deviation',
+    description: 'Report a temperature deviation.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        location: { type: 'string' },
+        recorded_temp: { type: 'string' },
+        required_temp: { type: 'string' },
+        duration: { type: 'string' },
+        product_affected: { type: 'string' },
+        immediate_action_taken: { type: 'string' },
+        additional_notes: { type: 'string' },
+      },
+      required: ['location', 'recorded_temp', 'required_temp', 'duration', 'product_affected', 'immediate_action_taken'],
+    },
+  },
 
-  const stopListening = useCallback(() => {
-    if (recognitionRef.current) recognitionRef.current.stop();
-    setIsListening(false);
-  }, []);
+  {
+    name: 'create_task_feed_post_customer_complaint',
+    description: 'Log a customer complaint.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        complaint_type: { type: 'string', enum: ['Foreign Material', 'Off Flavor/Odor', 'Underfill', 'Seal Failure', 'Label Issue', 'Allergen Concern', 'Other'] },
+        product_name: { type: 'string' },
+        lot_number: { type: 'string' },
+        description: { type: 'string' },
+        customer_name: { type: 'string' },
+        immediate_action_taken: { type: 'string' },
+        additional_notes: { type: 'string' },
+      },
+      required: ['complaint_type', 'product_name', 'lot_number', 'description', 'customer_name', 'immediate_action_taken'],
+    },
+  },
 
-  return { isListening, transcript, startListening, stopListening, setTranscript };
-}
+  {
+    name: 'create_task_feed_post_generic',
+    description: 'Create a generic task feed post when no specific template matches.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        post_type: { type: 'string', enum: ['report_issue', 'create_task', 'purchase_request', 'pre_op', 'other'] },
+        template_name: { type: 'string' },
+        departments: { type: 'array', items: { type: 'string' } },
+        location: { type: 'string' },
+        notes: { type: 'string' },
+        priority: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
+      },
+      required: ['post_type', 'template_name', 'departments', 'notes', 'priority'],
+    },
+  },
 
-// ══════════════════════════════════════════════════════════════════
-// COMPONENT
-// ══════════════════════════════════════════════════════════════════
+  // ── Task Feed Query ──────────────────────────
 
-export default function AIAssistButton() {
-  const { colors } = useTheme();
-  const { user } = useUser();
-  const { executeAction: executeAIAction } = useAIActions();
+  {
+    name: 'query_task_feed',
+    description: 'Search task feed posts and work orders. For PMs set post_type="preventive".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        department_code: { type: 'string' },
+        status: { type: 'string', enum: ['pending', 'in_progress', 'completed', 'all'] },
+        post_type: { type: 'string', description: '"preventive" for PMs, "reactive" for reactive WOs' },
+        date_range: { type: 'string', enum: ['today', 'this_week', 'this_month', 'all'] },
+      },
+      required: ['status'],
+    },
+  },
 
-  const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [textInput, setTextInput] = useState('');
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [isSpeechEnabled, setIsSpeechEnabled] = useState(true);
-  const [pendingImage, setPendingImage] = useState<{
-    uri: string; base64: string; mediaType: string;
-  } | null>(null);
-  const [showImageChoice, setShowImageChoice] = useState(false);
+  // ── Universal Record Query ───────────────────
 
-  const conversationHistoryRef = useRef<ConversationTurn[]>([]);
-  const scrollRef = useRef<ScrollView>(null);
-  const pulseAnim = useRef(new Animated.Value(1)).current;
-  const { isListening, transcript, startListening, stopListening, setTranscript } =
-    useSpeechRecognition();
-
-  // ── Load saved chat ──
-  useEffect(() => {
-    const chatKey = `ai_chat_${user?.id || 'default'}`;
-    AsyncStorage.getItem(chatKey).then(stored => {
-      if (stored) {
-        try {
-          const parsed = JSON.parse(stored);
-          setMessages(parsed.map((m: any) => ({ ...m, timestamp: new Date(m.timestamp) })));
-        } catch (e) { console.warn('[AIAssist] Failed to parse saved chat'); }
-      }
-    });
-  }, [user?.id]);
-
-  // ── Save chat ──
-  useEffect(() => {
-    if (messages.length > 0) {
-      const chatKey = `ai_chat_${user?.id || 'default'}`;
-      // Strip results arrays before saving to keep storage lean
-      const toSave = messages.slice(-50).map(m => ({ ...m, results: undefined }));
-      AsyncStorage.setItem(chatKey, JSON.stringify(toSave)).catch(() => {});
-    }
-  }, [messages, user?.id]);
-
-  // ── Pulse animation ──
-  useEffect(() => {
-    const pulse = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, { toValue: 1.08, duration: 1200, useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 1, duration: 1200, useNativeDriver: true }),
-      ])
-    );
-    pulse.start();
-    return () => pulse.stop();
-  }, [pulseAnim]);
-
-  // ── Auto-scroll ──
-  useEffect(() => {
-    if (scrollRef.current && messages.length > 0) {
-      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
-    }
-  }, [messages]);
-
-  // ── Transcript → text input ──
-  useEffect(() => {
-    if (transcript) setTextInput(transcript);
-  }, [transcript]);
-
-  // ── Auto-send when speech recognition stops ──
-  useEffect(() => {
-    if (!isListening && transcript && transcript.trim().length > 0) {
-      handleSend(transcript.trim());
-      setTranscript('');
-    }
-  }, [isListening]);
-
-  // ── Speak response ──
-  const speakResponse = useCallback((text: string) => {
-    if (!isSpeechEnabled || !text) return;
-    try {
-      Speech.speak(text, { language: 'en-US', pitch: 1.0, rate: 0.95 });
-    } catch (err) {
-      console.error('[AIAssist] Speech error:', err);
-    }
-  }, [isSpeechEnabled]);
-
-  // ── Send command ──
-  const handleSend = useCallback(async (commandText?: string) => {
-    const text = commandText || textInput.trim();
-    if (!text && !pendingImage) return;
-
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-
-    const userMsg: ChatMessage = {
-      id: `user-${Date.now()}`,
-      role: 'user',
-      text: text || '(Photo sent)',
-      image: pendingImage?.uri,
-      timestamp: new Date(),
-    };
-    setMessages(prev => [...prev, userMsg]);
-    setTextInput('');
-    setIsProcessing(true);
-
-    const userContent: any[] = [];
-    if (pendingImage) {
-      userContent.push({
-        type: 'image',
-        source: { type: 'base64', media_type: pendingImage.mediaType, data: pendingImage.base64 },
-      });
-    }
-    if (text) {
-      userContent.push({ type: 'text', text });
-    }
-
-    try {
-      const body: Record<string, unknown> = {
-        command: text,
-        context: {
-          screen: 'unknown',
-          organizationId: user?.organization_id || null,
-          userId: user?.id || null,
-          userName: user?.name || `${user?.first_name || ''} ${user?.last_name || ''}`.trim() || 'Operator',
-          userRole: user?.role || 'operator',
-          userDepartment: user?.department || 'unknown',
-          currentRoom: null,
-          activeRecordId: null,
-          localDate: (() => {
-            const n = new Date();
-            return String(n.getFullYear()).slice(-2) +
-              String(n.getMonth() + 1).padStart(2, '0') +
-              String(n.getDate()).padStart(2, '0');
-          })(),
+  {
+    name: 'query_records',
+    description: 'Search and list records from ANY module or table in the app. Use for any "show me", "list", "find", "pull up", "what are" request about data. Covers all 200+ tables including parts, work orders, equipment, employees, vendors, SDS, LOTO, CAPA, NCR, purchase orders, PM schedules, production runs, safety records, quality records, recycling, planner, attendance, and everything else.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        table: {
+          type: 'string',
+          description: 'Exact Supabase table name. Examples: materials, work_orders, pm_schedules, employees, vendors, sds_records, loto_procedures, capa_records, ncr_records, purchase_orders, purchase_requests, production_runs, safety_observations, quality_inspections, chemical_inventory, downtime_events, parts_issues, inventory_adjustments, attendance_records, time_entries, planner_projects, recycling_cardboard, etc.',
         },
-        conversation: conversationHistoryRef.current.slice(-10),
-      };
+        filters: {
+          type: 'object',
+          description: 'Exact match filters as key:value pairs. Common: {"status":"open"}, {"department":"Maintenance"}, {"location":"PA1"}, {"category":"Electrical"}, {"priority":"high"}, {"type":"preventive"}',
+          additionalProperties: true,
+        },
+        search_column: {
+          type: 'string',
+          description: 'Column for text search (ilike). Use: "name" for parts/equipment/chemicals, "title" for work orders/tasks, "first_name" or "last_name" for employees, "chemical_name" for SDS, "procedure_number" for LOTO, "equipment_name" for PM schedules.',
+        },
+        search_term: {
+          type: 'string',
+          description: 'Text to search for in search_column.',
+        },
+        order_by: {
+          type: 'string',
+          description: 'Sort column. Default: created_at. Use due_date for WOs/PMs, name for parts/equipment lists, incident_date for safety/OSHA records.',
+        },
+        order_direction: {
+          type: 'string',
+          enum: ['asc', 'desc'],
+          description: 'asc or desc. Default desc for dates, asc for name lists.',
+        },
+        date_filter_column: {
+          type: 'string',
+          description: 'Column for date filtering: created_at, due_date, incident_date, started_at, scheduled_date, next_due_date.',
+        },
+        date_range: {
+          type: 'string',
+          enum: ['today', 'this_week', 'this_month', 'this_year', 'all'],
+          description: 'Time range filter. Only set if user specified.',
+        },
+        limit: {
+          type: 'number',
+          description: 'Max records. Default 25. Use 50 for "all" or "everything" requests.',
+        },
+      },
+      required: ['table'],
+    },
+  },
 
-      if (pendingImage) {
-        body.image = { data: pendingImage.base64, media_type: pendingImage.mediaType };
-        setPendingImage(null);
-      }
+  // ── Work Orders ──────────────────────────────
 
-      const response = await fetch(AI_ASSIST_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
+  {
+    name: 'create_work_order',
+    description: 'Create a maintenance work order for repairs. Do NOT use for reporting incidents.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string' },
+        equipment_name: { type: 'string' },
+        description: { type: 'string' },
+        priority: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
+        type: { type: 'string', enum: ['reactive', 'preventive', 'predictive'] },
+        parts_needed: { type: 'array', items: { type: 'string' } },
+      },
+      required: ['title', 'equipment_name', 'description', 'priority', 'type'],
+    },
+  },
 
-      const data: AIResponse = await response.json();
-      if (!response.ok) throw new Error((data as any).error || 'AI request failed');
+  // ── Pre-Op ───────────────────────────────────
 
-      const toolName = data.tool_name || data.action;
-      const speechText = data.speech || 'Done.';
+  {
+    name: 'start_pre_op',
+    description: 'Start a Pre-Op inspection for a room.',
+    input_schema: {
+      type: 'object',
+      properties: { room: { type: 'string', enum: ['PA1', 'PA2', 'PR1', 'PR2', 'BB1', 'SB1'] } },
+      required: ['room'],
+    },
+  },
 
-      // Update conversation history
-      const userContentForHistory = userContent.map((block: any) =>
-        block.type === 'image'
-          ? { type: 'text', text: '[Photo attached by user]' }
-          : block
-      );
-      const userTurn: ConversationTurn = {
-        role: 'user',
-        content: userContentForHistory.length === 1 && userContentForHistory[0].type === 'text'
-          ? userContentForHistory[0].text
-          : userContentForHistory,
-      };
+  // ── Parts & Equipment ────────────────────────
 
-      if (data.assistant_message) {
-        const hasToolUse = Array.isArray(data.assistant_message.content) &&
-          data.assistant_message.content.some((b: any) => b.type === 'tool_use');
-        const assistantTurnToStore: ConversationTurn = hasToolUse
-          ? { role: 'assistant', content: speechText }
-          : data.assistant_message;
+  {
+    name: 'lookup_part',
+    description: 'Search Item Records (the master parts/materials inventory) by name, part number, SKU, vendor part number, or manufacturer part number. This is the primary parts database — always try this first before web search. If results come back empty, use the built-in web_search tool to find the part specs, pricing, and vendor sources online.',
+    input_schema: {
+      type: 'object',
+      properties: { query: { type: 'string' } },
+      required: ['query'],
+    },
+  },
 
-        conversationHistoryRef.current = [
-          ...conversationHistoryRef.current,
-          userTurn,
-          assistantTurnToStore,
-        ];
-        if (conversationHistoryRef.current.length > 20) {
-          conversationHistoryRef.current = conversationHistoryRef.current.slice(-20);
-        }
-      }
+  {
+    name: 'lookup_equipment',
+    description: 'Get equipment details or troubleshooting info.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string' },
+        section: { type: 'string', enum: ['specs', 'manual', 'troubleshooting', 'pm_history', 'parts'] },
+      },
+      required: ['query'],
+    },
+  },
 
-      // Add Claude's text response bubble
-      const assistantMsg: ChatMessage = {
-        id: `assistant-${Date.now()}`,
-        role: 'assistant',
-        text: speechText,
-        toolName,
-        params: data.params,
-        timestamp: new Date(),
-      };
-      setMessages(prev => [...prev, assistantMsg]);
-      speakResponse(speechText);
+  {
+    name: 'diagnose_issue',
+    description: 'Analyze equipment problem from description or photo.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        equipment: { type: 'string' },
+        symptom: { type: 'string' },
+        create_work_order: { type: 'boolean' },
+      },
+      required: ['equipment', 'symptom', 'create_work_order'],
+    },
+  },
 
-      if (data.conversation_continue || toolName === 'ask_clarification' || toolName === 'clarify') {
-        setIsProcessing(false);
-        return;
-      }
+  // ── Production ───────────────────────────────
 
-      if (data.needs_photo) {
-        const photoPromptMsg: ChatMessage = {
-          id: `photo-prompt-${Date.now()}`,
-          role: 'assistant',
-          text: '📷 A photo is required for this report. Tap the camera icon and attach one, then I\'ll submit the report.',
-          timestamp: new Date(),
-        };
-        setMessages(prev => [...prev, photoPromptMsg]);
-        speakResponse('A photo is required. Tap the camera icon to attach one.');
-        setIsProcessing(false);
-        return;
-      }
+  {
+    name: 'start_production_run',
+    description: 'Start a production run for a room.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        room: { type: 'string', enum: ['PA1', 'PA2', 'PR1', 'PR2', 'BB1', 'SB1'] },
+        run_number: { type: 'string' },
+        product: { type: 'string' },
+      },
+      required: ['room', 'run_number', 'product'],
+    },
+  },
 
-      // ── Execute the tool action ──
-      if (toolName && !['info', 'general_response'].includes(toolName)) {
+  {
+    name: 'end_production_run',
+    description: 'End the active production run.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        room: { type: 'string', enum: ['PA1', 'PA2', 'PR1', 'PR2', 'BB1', 'SB1'] },
+        run_number: { type: 'string' },
+      },
+      required: ['room'],
+    },
+  },
 
-        // FIX 2: Close modal BEFORE navigating so the destination screen is visible.
-        // We do this synchronously before awaiting the action, so the modal
-        // animates away and the route push happens on the visible screen.
-        if (toolName === 'navigate') {
-          setIsOpen(false);
-        }
+  {
+    name: 'change_room_status',
+    description: 'Change a room andon light status.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        room: { type: 'string', enum: ['PR1', 'PR2', 'PA1', 'PA2', 'BB1', 'SB1'] },
+        status: { type: 'string', enum: ['running', 'loto', 'cleaning', 'setup', 'idle', 'down'] },
+      },
+      required: ['room', 'status'],
+    },
+  },
 
-        const actionResult = await executeAIAction(toolName, data.params || {});
+  // ── Navigation ───────────────────────────────
 
-        if (actionResult && actionResult.success && actionResult.message &&
-            actionResult.message !== 'Information provided.' &&
-            actionResult.message !== 'Waiting for clarification.') {
+  {
+    name: 'navigate',
+    description: 'Navigate to any screen in the app. Modal closes before navigating. SCREEN NAME GUIDE: "parts_inventory" = Item Records / Materials screen (/(tabs)/inventory/materials). Use "parts_inventory" when user says "materials", "item records", "parts", "inventory", or "items".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        screen: {
+          type: 'string',
+          description: 'Screen to navigate to. Use parts_inventory for materials/items/inventory/item records screen.',
+          enum: ['task_feed', 'work_orders', 'equipment', 'parts_inventory', 'pm_schedule', 'purchase_requests', 'sds_library', 'audits', 'emergency_protocol', 'employee_directory', 'production_runs', 'room_status', 'dashboard', 'reports', 'settings', 'sanitation', 'quality', 'safety', 'compliance'],
+        },
+        record_id: { type: 'string' },
+      },
+      required: ['screen'],
+    },
+  },
 
-          // FIX 3: Extract results array + resultType from action data
-          const resultRows = (actionResult.data?.results as any[]) || [];
-          const resultType = (actionResult.data?.resultType as any) || undefined;
-          const tableConfig = (actionResult.data?.tableConfig as any) || undefined;
+  // ── Utility ──────────────────────────────────
 
-          const resultMsg: ChatMessage = {
-            id: `result-${Date.now()}`,
-            role: 'assistant',
-            text: actionResult.message,
-            toolName,
-            params: actionResult.data as Record<string, unknown>,
-            timestamp: new Date(),
-            isResult: true,
-            // FIX 3: Store results for list rendering
-            results: resultRows.length > 0 ? resultRows : undefined,
-            resultType: resultRows.length > 0 ? resultType : undefined,
-            tableConfig: resultRows.length > 0 ? tableConfig : undefined,
-          };
-          setMessages(prev => [...prev, resultMsg]);
+  {
+    name: 'ask_clarification',
+    description: 'Ask user for more info when required fields are missing.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        question: { type: 'string' },
+        partial_data: { type: 'object', additionalProperties: true },
+        awaiting_template: { type: 'string' },
+      },
+      required: ['question'],
+    },
+  },
 
-          if (actionResult.message !== speechText) {
-            speakResponse(actionResult.message);
-          }
-        } else if (actionResult && !actionResult.success) {
-          const errorMsg: ChatMessage = {
-            id: `error-${Date.now()}`,
-            role: 'assistant',
-            text: `⚠️ ${actionResult.message || 'Action failed. Please try again.'}`,
-            timestamp: new Date(),
-          };
-          setMessages(prev => [...prev, errorMsg]);
-        }
-      }
+  {
+    name: 'general_response',
+    description: 'Respond to general questions or greetings that need no app action.',
+    input_schema: {
+      type: 'object',
+      properties: { message: { type: 'string' } },
+      required: ['message'],
+    },
+  },
+];
 
-    } catch (err: any) {
-      console.error('[AIAssist] Error:', err);
-      setMessages(prev => [...prev, {
-        id: `error-${Date.now()}`,
-        role: 'assistant',
-        text: `Sorry, I had trouble with that. ${err.message || 'Please try again.'}`,
-        timestamp: new Date(),
-      }]);
-    } finally {
-      setIsProcessing(false);
-    }
-  }, [textInput, pendingImage, user, speakResponse, executeAIAction]);
+const { createClient } = require('@supabase/supabase-js');
 
-  // ── Mic ──
-  const handleMicPress = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    if (isListening) stopListening();
-    else {
-      const started = startListening();
-      if (!started) console.log('[AIAssist] Speech unavailable — use text input');
-    }
-  }, [isListening, startListening, stopListening]);
+// ── Schema injection ─────────────────────────────────────────────────────────
 
-  // ── Camera / Image Picker ──
-  const fileInputRef = useRef<any>(null);
-
-  const handleWebCamera = useCallback(async () => {
-    setShowImageChoice(false);
-    try {
-      const stream = await (navigator as any).mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-      const video = document.createElement('video');
-      video.srcObject = stream;
-      video.setAttribute('playsinline', 'true');
-      await video.play();
-      await new Promise(r => setTimeout(r, 800));
-      const canvas = document.createElement('canvas');
-      canvas.width = video.videoWidth || 1280;
-      canvas.height = video.videoHeight || 720;
-      const ctx = canvas.getContext('2d');
-      ctx!.drawImage(video, 0, 0);
-      stream.getTracks().forEach((t: any) => t.stop());
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-      const base64Data = dataUrl.split(',')[1];
-      setPendingImage({ uri: dataUrl, base64: base64Data, mediaType: 'image/jpeg' });
-    } catch (err) {
-      console.error('[AIAssist] Web camera error:', err);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-        fileInputRef.current.click();
-      }
-    }
-  }, []);
-
-  const handleWebFilePicked = useCallback((e: any) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const dataUrl = reader.result as string;
-      const base64Data = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
-      const mediaType = file.type || 'image/jpeg';
-      const objectUrl = URL.createObjectURL(file);
-      setPendingImage({ uri: objectUrl, base64: base64Data, mediaType });
-    };
-    reader.readAsDataURL(file);
-  }, []);
-
-  const handleCamera = useCallback(async () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    if (Platform.OS === 'web') {
-      setShowImageChoice(true);
-      return;
-    }
-    try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'] as any,
-        quality: 0.7,
-        base64: true,
-      });
-      if (!result.canceled && result.assets[0]) {
-        const asset = result.assets[0];
-        let base64Data = asset.base64 || '';
-        if (!base64Data && asset.uri) {
-          try {
-            base64Data = await FileSystem.readAsStringAsync(asset.uri, {
-              encoding: FileSystem.EncodingType.Base64,
-            });
-          } catch (fsErr) {
-            console.error('[AIAssist] FileSystem read failed:', fsErr);
-          }
-        }
-        if (base64Data.includes(',')) base64Data = base64Data.split(',')[1];
-        if (!base64Data || base64Data.length < 100) {
-          console.error('[AIAssist] Could not read image data');
-          return;
-        }
-        setPendingImage({ uri: asset.uri, base64: base64Data, mediaType: 'image/jpeg' });
-      }
-    } catch (err) {
-      console.error('[AIAssist] Image picker error:', err);
-    }
-  }, []);
-
-  // ── Open / Close ──
-  const handleOpen = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setIsOpen(true);
-    if (messages.length === 0) {
-      setMessages([{
-        id: 'welcome',
-        role: 'assistant',
-        text: `Hey${user?.name ? ` ${user.name.split(' ')[0]}` : ''}, I'm your AI assistant. I can start a Pre-Op, report an issue, look up a part, check PMs, diagnose equipment from a photo, or navigate anywhere in the app. What do you need?`,
-        timestamp: new Date(),
-      }]);
-    }
-  }, [messages.length, user?.name]);
-
-  const handleClose = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    Speech.stop();
-    if (isListening) stopListening();
-    setIsOpen(false);
-  }, [isListening, stopListening]);
-
-  const handleClearChat = useCallback(() => {
-    Speech.stop();
-    setMessages([]);
-    setPendingImage(null);
-    setTextInput('');
-    conversationHistoryRef.current = [];
-    AsyncStorage.removeItem(`ai_chat_${user?.id || 'default'}`).catch(() => {});
-  }, [user?.id]);
-
-  // ── Action badge ──
-  const renderActionBadge = (toolName?: string) => {
-    if (!toolName || ['info', 'general_response'].includes(toolName)) return null;
-    const config = TOOL_ICONS[toolName] || { icon: MessageCircle, color: '#6366F1', label: toolName.replace(/_/g, ' ') };
-    const IconComp = config.icon;
-    return (
-      <View style={[styles.actionBadge, { backgroundColor: config.color + '20', borderColor: config.color + '40' }]}>
-        <IconComp size={12} color={config.color} />
-        <Text style={[styles.actionBadgeText, { color: config.color }]}>
-          {config.label}
-        </Text>
-      </View>
-    );
-  };
-
-  // ══════════════════════════════════════════════════════════════════
-  // RENDER
-  // ══════════════════════════════════════════════════════════════════
-
-  return (
-    <>
-      {/* Floating Button */}
-      {!isOpen && (
-        <Animated.View style={[styles.floatingButton, { transform: [{ scale: pulseAnim }] }]}>
-          <Pressable
-            style={[styles.floatingButtonInner, { backgroundColor: '#8B5CF6' }]}
-            onPress={handleOpen}
-          >
-            <Bot size={26} color="#FFFFFF" />
-          </Pressable>
-        </Animated.View>
-      )}
-
-      {/* Chat Modal */}
-      <Modal
-        visible={isOpen}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={handleClose}
-      >
-        <KeyboardAvoidingView
-          style={[styles.modalContainer, { backgroundColor: colors.background }]}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        >
-          {/* Header */}
-          <View style={[styles.header, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
-            <View style={styles.headerLeft}>
-              <View style={[styles.headerIcon, { backgroundColor: '#8B5CF620' }]}>
-                <Bot size={22} color="#8B5CF6" />
-              </View>
-              <View>
-                <Text style={[styles.headerTitle, { color: colors.text }]}>AI Assistant</Text>
-                <Text style={[styles.headerSub, { color: colors.textSecondary }]}>
-                  {isListening ? 'Listening...' : isProcessing ? 'Thinking...' : 'Voice or text'}
-                </Text>
-              </View>
-            </View>
-            <View style={styles.headerRight}>
-              <Pressable
-                style={[styles.headerBtn, { backgroundColor: isSpeechEnabled ? '#8B5CF620' : colors.backgroundSecondary }]}
-                onPress={() => { setIsSpeechEnabled(!isSpeechEnabled); if (isSpeechEnabled) Speech.stop(); }}
-              >
-                {isSpeechEnabled
-                  ? <Volume2 size={18} color="#8B5CF6" />
-                  : <VolumeX size={18} color={colors.textSecondary} />}
-              </Pressable>
-              <Pressable
-                style={[styles.headerBtn, { backgroundColor: colors.backgroundSecondary }]}
-                onPress={handleClearChat}
-              >
-                <Text style={{ fontSize: 11, fontWeight: '600', color: colors.textSecondary }}>Clear</Text>
-              </Pressable>
-              <Pressable style={styles.closeBtn} onPress={handleClose}>
-                <X size={22} color={colors.text} />
-              </Pressable>
-            </View>
-          </View>
-
-          {/* Messages */}
-          <ScrollView
-            ref={scrollRef}
-            style={styles.messageList}
-            contentContainerStyle={styles.messageContent}
-            keyboardShouldPersistTaps="handled"
-          >
-            {messages.map(msg => (
-              <View
-                key={msg.id}
-                style={[
-                  styles.messageBubble,
-                  msg.role === 'user' ? styles.userBubble : styles.assistantBubble,
-                  msg.isResult && styles.resultBubble,
-                  {
-                    backgroundColor: msg.role === 'user'
-                      ? '#8B5CF6'
-                      : msg.isResult
-                        ? colors.backgroundSecondary
-                        : colors.surface,
-                    borderColor: msg.role === 'user'
-                      ? '#8B5CF6'
-                      : msg.isResult
-                        ? '#10B98140'
-                        : colors.border,
-                  },
-                ]}
-              >
-                <View style={styles.messageHeader}>
-                  <View style={[
-                    styles.messageAvatar,
-                    { backgroundColor: msg.role === 'user' ? 'rgba(255,255,255,0.2)' : '#8B5CF620' },
-                  ]}>
-                    {msg.role === 'user'
-                      ? <User size={14} color="#FFFFFF" />
-                      : <Bot size={14} color="#8B5CF6" />}
-                  </View>
-                  <Text style={[
-                    styles.messageRole,
-                    { color: msg.role === 'user' ? 'rgba(255,255,255,0.7)' : colors.textSecondary },
-                  ]}>
-                    {msg.role === 'user' ? (user?.name || 'You') : 'Claude'}
-                  </Text>
-                  <Text style={[
-                    styles.messageTime,
-                    { color: msg.role === 'user' ? 'rgba(255,255,255,0.5)' : colors.textTertiary },
-                  ]}>
-                    {msg.timestamp.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
-                  </Text>
-                </View>
-
-                {msg.image && (
-                  <Image source={{ uri: msg.image }} style={styles.messageImage} />
-                )}
-
-                <Text style={[
-                  styles.messageText,
-                  { color: msg.role === 'user' ? '#FFFFFF' : colors.text },
-                ]}>
-                  {msg.text}
-                </Text>
-
-                {/* FIX 3: Render the actual results list below the summary text */}
-                {msg.results && msg.results.length > 0 && msg.resultType && (
-                  <ResultsList
-                    results={msg.results}
-                    resultType={msg.resultType}
-                    tableConfig={msg.tableConfig}
-                    colors={colors}
-                  />
-                )}
-
-                {msg.role === 'assistant' && renderActionBadge(msg.toolName)}
-              </View>
-            ))}
-
-            {isProcessing && (
-              <View style={[
-                styles.messageBubble,
-                styles.assistantBubble,
-                { backgroundColor: colors.surface, borderColor: colors.border },
-              ]}>
-                <View style={styles.typingRow}>
-                  <ActivityIndicator size="small" color="#8B5CF6" />
-                  <Text style={[styles.typingText, { color: colors.textSecondary }]}>Thinking...</Text>
-                </View>
-              </View>
-            )}
-
-            {isListening && (
-              <View style={[
-                styles.listeningBanner,
-                { backgroundColor: '#8B5CF615', borderColor: '#8B5CF640' },
-              ]}>
-                <Mic size={16} color="#8B5CF6" />
-                <Text style={[styles.listeningText, { color: '#8B5CF6' }]}>
-                  {transcript || 'Listening...'}
-                </Text>
-              </View>
-            )}
-          </ScrollView>
-
-          {/* Pending Image Preview */}
-          {pendingImage && (
-            <View style={[
-              styles.imagePreview,
-              { backgroundColor: colors.surface, borderColor: colors.border },
-            ]}>
-              <Image source={{ uri: pendingImage.uri }} style={styles.imagePreviewThumb} />
-              <Text style={[styles.imagePreviewText, { color: colors.text }]}>
-                Photo attached — type or speak your question
-              </Text>
-              <Pressable onPress={() => setPendingImage(null)}>
-                <X size={18} color={colors.textSecondary} />
-              </Pressable>
-            </View>
-          )}
-
-          {/* Input Area */}
-          <View style={[
-            styles.inputArea,
-            { backgroundColor: colors.surface, borderTopColor: colors.border },
-          ]}>
-            <Pressable
-              style={[styles.inputBtn, { backgroundColor: '#06B6D420' }]}
-              onPress={handleCamera}
-            >
-              <Camera size={20} color="#06B6D4" />
-            </Pressable>
-
-            <Pressable
-              style={[styles.micButton, { backgroundColor: isListening ? '#EF4444' : '#8B5CF6' }]}
-              onPress={handleMicPress}
-            >
-              {isListening
-                ? <MicOff size={22} color="#FFFFFF" />
-                : <Mic size={22} color="#FFFFFF" />}
-            </Pressable>
-
-            <TextInput
-              style={[
-                styles.textInput,
-                { backgroundColor: colors.backgroundSecondary, color: colors.text, borderColor: colors.border },
-              ]}
-              placeholder="Type or tap mic to speak..."
-              placeholderTextColor={colors.textSecondary}
-              value={textInput}
-              onChangeText={setTextInput}
-              onSubmitEditing={() => handleSend()}
-              returnKeyType="send"
-              multiline={false}
-            />
-
-            <Pressable
-              style={[
-                styles.sendBtn,
-                { backgroundColor: (textInput.trim() || pendingImage) ? '#8B5CF6' : colors.border },
-              ]}
-              onPress={() => handleSend()}
-              disabled={(!textInput.trim() && !pendingImage) || isProcessing}
-            >
-              <Send
-                size={18}
-                color={(textInput.trim() || pendingImage) ? '#FFFFFF' : colors.textTertiary}
-              />
-            </Pressable>
-          </View>
-        </KeyboardAvoidingView>
-
-        {/* Hidden file input for web */}
-        {Platform.OS === 'web' && (
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            style={{ display: 'none' }}
-            onChange={handleWebFilePicked}
-          />
-        )}
-
-        {/* Image source choice sheet (web only) */}
-        {showImageChoice && (
-          <Pressable
-            style={styles.choiceOverlay}
-            onPress={() => setShowImageChoice(false)}
-          >
-            <View style={[styles.choiceSheet, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <Text style={[styles.choiceTitle, { color: colors.text }]}>Attach Photo</Text>
-              <Pressable
-                style={[styles.choiceBtn, { borderColor: colors.border }]}
-                onPress={handleWebCamera}
-              >
-                <Camera size={20} color="#8B5CF6" />
-                <Text style={[styles.choiceBtnText, { color: colors.text }]}>Take Photo</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.choiceBtn, { borderColor: colors.border }]}
-                onPress={() => {
-                  setShowImageChoice(false);
-                  if (fileInputRef.current) {
-                    fileInputRef.current.value = '';
-                    fileInputRef.current.click();
-                  }
-                }}
-              >
-                <Package size={20} color="#06B6D4" />
-                <Text style={[styles.choiceBtnText, { color: colors.text }]}>Choose from Files</Text>
-              </Pressable>
-              <Pressable onPress={() => setShowImageChoice(false)}>
-                <Text style={[styles.choiceCancel, { color: colors.textSecondary }]}>Cancel</Text>
-              </Pressable>
-            </View>
-          </Pressable>
-        )}
-      </Modal>
-    </>
-  );
+// Extract table names mentioned in a command string
+function extractTableNames(command, tableMap) {
+  if (!command) return [];
+  const lower = command.toLowerCase();
+  return Object.keys(tableMap).filter(t => lower.includes(t.replace(/_/g,' ')) || lower.includes(t));
 }
 
-// ══════════════════════════════════════════════════════════════════
-// STYLES
-// ══════════════════════════════════════════════════════════════════
+// Build a compact schema block for the tables most relevant to this request
+async function buildSchemaBlock(command) {
+  try {
+    const schema = await getSchema();
+    if (!schema) return '';
 
-const styles = StyleSheet.create({
-  floatingButton: { position: 'absolute', bottom: 90, right: 16, zIndex: 9999, elevation: 10 },
-  floatingButtonInner: {
-    width: 56, height: 56, borderRadius: 28,
-    alignItems: 'center' as const, justifyContent: 'center' as const,
-    shadowColor: '#8B5CF6', shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4, shadowRadius: 12, elevation: 10,
-  },
-  modalContainer: { flex: 1 },
-  header: {
-    flexDirection: 'row' as const, alignItems: 'center' as const,
-    justifyContent: 'space-between' as const,
-    paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, paddingTop: 50,
-  },
-  headerLeft: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 10 },
-  headerIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center' as const, justifyContent: 'center' as const },
-  headerTitle: { fontSize: 17, fontWeight: '700' as const },
-  headerSub: { fontSize: 12 },
-  headerRight: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 8 },
-  headerBtn: { width: 36, height: 36, borderRadius: 10, alignItems: 'center' as const, justifyContent: 'center' as const },
-  closeBtn: { padding: 8 },
-  messageList: { flex: 1 },
-  messageContent: { padding: 16, gap: 10 },
-  messageBubble: { borderRadius: 14, padding: 14, borderWidth: 1, maxWidth: '92%' as any },
-  userBubble: { alignSelf: 'flex-end' as const, borderBottomRightRadius: 4 },
-  assistantBubble: { alignSelf: 'flex-start' as const, borderBottomLeftRadius: 4 },
-  resultBubble: { borderLeftWidth: 3 },
-  messageHeader: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 6, marginBottom: 6 },
-  messageAvatar: { width: 22, height: 22, borderRadius: 6, alignItems: 'center' as const, justifyContent: 'center' as const },
-  messageRole: { fontSize: 11, fontWeight: '600' as const, flex: 1 },
-  messageTime: { fontSize: 10 },
-  messageText: { fontSize: 14, lineHeight: 21 },
-  messageImage: { width: 180, height: 180, borderRadius: 10, marginBottom: 8 },
-  actionBadge: {
-    flexDirection: 'row' as const, alignItems: 'center' as const, gap: 5,
-    alignSelf: 'flex-start' as const, paddingHorizontal: 8, paddingVertical: 4,
-    borderRadius: 6, borderWidth: 1, marginTop: 8,
-  },
-  actionBadgeText: { fontSize: 10, fontWeight: '600' as const, textTransform: 'uppercase' as const, letterSpacing: 0.3 },
-  typingRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 8 },
-  typingText: { fontSize: 13, fontStyle: 'italic' as const },
-  listeningBanner: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 8, padding: 12, borderRadius: 10, borderWidth: 1, alignSelf: 'stretch' as any },
-  listeningText: { fontSize: 14, fontWeight: '500' as const, flex: 1 },
-  imagePreview: { flexDirection: 'row' as const, alignItems: 'center' as const, padding: 10, gap: 10, borderTopWidth: 1 },
-  imagePreviewThumb: { width: 44, height: 44, borderRadius: 8 },
-  imagePreviewText: { fontSize: 13, flex: 1 },
-  inputArea: { flexDirection: 'row' as const, alignItems: 'center' as const, padding: 12, gap: 8, borderTopWidth: 1, paddingBottom: 30 },
-  inputBtn: { width: 42, height: 42, borderRadius: 12, alignItems: 'center' as const, justifyContent: 'center' as const },
-  micButton: { width: 48, height: 48, borderRadius: 24, alignItems: 'center' as const, justifyContent: 'center' as const },
-  textInput: { flex: 1, height: 42, borderRadius: 12, borderWidth: 1, paddingHorizontal: 14, fontSize: 15 },
-  sendBtn: { width: 42, height: 42, borderRadius: 12, alignItems: 'center' as const, justifyContent: 'center' as const },
-  choiceOverlay: { position: 'absolute' as const, top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' as const, zIndex: 99999 },
-  choiceSheet: { borderTopLeftRadius: 20, borderTopRightRadius: 20, borderTopWidth: 1, padding: 20, paddingBottom: 40, gap: 10 },
-  choiceTitle: { fontSize: 16, fontWeight: '700' as const, textAlign: 'center' as const, marginBottom: 8 },
-  choiceBtn: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 12, padding: 16, borderRadius: 12, borderWidth: 1 },
-  choiceBtnText: { fontSize: 15, fontWeight: '500' as const },
-  choiceCancel: { textAlign: 'center' as const, fontSize: 14, marginTop: 8, padding: 8 },
-});
+    // Always include high-traffic tables + any mentioned in the command
+    const alwaysInclude = ['materials','work_orders','employees','equipment','pm_schedules','task_feed_posts','purchase_orders','vendors'];
+    const mentioned = extractTableNames(command || '', schema);
+    const tables = [...new Set([...alwaysInclude, ...mentioned])].filter(t => schema[t]);
+
+    if (tables.length === 0) return '';
+
+    const lines = ['## EXACT SUPABASE COLUMN NAMES (use ONLY these — no guessing)'];
+    for (const t of tables) {
+      const cols = schema[t].map(c => `${c.name}(${c.type.replace('timestamp with time zone','ts').replace('character varying','text').replace('integer','int')})`).join(', ');
+      lines.push(`${t}: ${cols}`);
+    }
+    lines.push('CRITICAL: Never use a column name not listed above. For filters, use exact column names and correct value types.');
+    return lines.join('\n');
+  } catch (e) {
+    console.warn('[ai-assist] buildSchemaBlock failed:', e.message);
+    return '';
+  }
+}
+
+// ── Memory helpers ──────────────────────────────────────────────────────────
+
+function getSupabaseAdmin() {
+  const url  = process.env.EXPO_PUBLIC_SUPABASE_URL  || process.env.SUPABASE_URL;
+  const key  = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !key) return null;
+  return createClient(url, key);
+}
+
+async function loadMemory(orgId, userId) {
+  try {
+    const sb = getSupabaseAdmin();
+    if (!sb) return { memories: [], summaries: [] };
+
+    // Fetch top memories (high confidence first, most recently seen)
+    const { data: memories } = await sb
+      .from('ai_assistant_memory')
+      .select('category,key,value,context,times_confirmed')
+      .eq('organization_id', orgId)
+      .or(`user_id.eq.${userId},user_id.is.null`)
+      .order('times_confirmed', { ascending: false })
+      .order('last_seen_at', { ascending: false })
+      .limit(40);
+
+    // Fetch last 5 conversation summaries for this user
+    const { data: summaries } = await sb
+      .from('ai_conversation_summaries')
+      .select('summary,topics,actions_taken,unresolved,created_at')
+      .eq('organization_id', orgId)
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(5);
+
+    return { memories: memories || [], summaries: summaries || [] };
+  } catch (e) {
+    console.warn('[ai-assist] loadMemory failed:', e.message);
+    return { memories: [], summaries: [] };
+  }
+}
+
+function buildMemoryBlock(memories, summaries) {
+  const lines = [];
+
+  if (summaries.length > 0) {
+    lines.push('## RECENT CONVERSATION HISTORY');
+    summaries.forEach((s, i) => {
+      const date = new Date(s.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      lines.push(`[${date}] ${s.summary}`);
+      if (s.unresolved) lines.push(`  ↳ Unresolved: ${s.unresolved}`);
+    });
+    lines.push('');
+  }
+
+  if (memories.length > 0) {
+    lines.push('## WHAT I KNOW ABOUT THIS USER');
+    const byCategory = {};
+    memories.forEach(m => {
+      if (!byCategory[m.category]) byCategory[m.category] = [];
+      byCategory[m.category].push(`${m.key}: ${m.value}${m.context ? ` (${m.context})` : ''}`);
+    });
+    Object.entries(byCategory).forEach(([cat, facts]) => {
+      lines.push(`${cat.toUpperCase()}: ${facts.join(' | ')}`);
+    });
+    lines.push('');
+  }
+
+  return lines.length > 0 ? lines.join('\n') : '';
+}
+
+async function extractAndSaveMemory(orgId, userId, userName, conversation, sb) {
+  if (!sb || !conversation || conversation.length < 2) return;
+  try {
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) return;
+    const client = new Anthropic({ apiKey });
+
+    const convoText = conversation.map(m =>
+      `${m.role.toUpperCase()}: ${typeof m.content === 'string' ? m.content : JSON.stringify(m.content)}`
+    ).join('\n');
+
+    const extractResp = await client.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 600,
+      messages: [{
+        role: 'user',
+        content: `You are a memory extractor for an AI assistant used in a food manufacturing facility.
+
+From this conversation, extract:
+1. A 2-3 sentence SUMMARY of what happened
+2. Any FACTS to remember about this user (preferences, shortcuts they use, equipment nicknames, frequent tasks, their role patterns)
+
+Conversation:
+${convoText}
+
+Respond ONLY with valid JSON in this exact shape:
+{
+  "summary": "...",
+  "topics": ["topic1","topic2"],
+  "actions_taken": ["action1"],
+  "unresolved": "anything left open or null",
+  "memories": [
+    { "category": "preference|part|equipment|shorthand|workflow|person", "key": "short_key", "value": "value", "context": "optional detail or null" }
+  ]
+}`
+      }],
+    });
+
+    const raw = extractResp.content[0]?.text || '';
+    const clean = raw.replace(/```json|```/g, '').trim();
+    const parsed = JSON.parse(clean);
+
+    // Save summary
+    if (parsed.summary) {
+      await sb.from('ai_conversation_summaries').insert({
+        organization_id: orgId,
+        user_id: userId,
+        user_name: userName,
+        summary: parsed.summary,
+        topics: parsed.topics || [],
+        actions_taken: parsed.actions_taken || [],
+        unresolved: parsed.unresolved || null,
+        message_count: conversation.length,
+      });
+    }
+
+    // Upsert memories
+    if (parsed.memories?.length > 0) {
+      for (const mem of parsed.memories) {
+        if (!mem.key || !mem.value) continue;
+        const { data: existing } = await sb
+          .from('ai_assistant_memory')
+          .select('id,times_confirmed')
+          .eq('organization_id', orgId)
+          .eq('user_id', userId)
+          .eq('category', mem.category)
+          .eq('key', mem.key)
+          .maybeSingle();
+
+        if (existing) {
+          await sb.from('ai_assistant_memory').update({
+            value: mem.value,
+            context: mem.context,
+            times_confirmed: (existing.times_confirmed || 1) + 1,
+            last_seen_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }).eq('id', existing.id);
+        } else {
+          await sb.from('ai_assistant_memory').insert({
+            organization_id: orgId,
+            user_id: userId,
+            category: mem.category,
+            key: mem.key,
+            value: mem.value,
+            context: mem.context || null,
+          });
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('[ai-assist] extractAndSaveMemory failed:', e.message);
+  }
+}
+
+module.exports = async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return res.status(500).json({ error: 'AI service not configured' });
+
+  try {
+    const { command, image, context, conversation } = req.body;
+    if (!command && !image) return res.status(400).json({ error: 'No command or image provided' });
+
+    const client = new Anthropic({ apiKey });
+
+    // ── Load memory for this user ──
+    const orgId   = context?.organizationId || null;
+    const userId  = context?.userId || null;
+    const userName = context?.userName || 'Operator';
+    const sb = getSupabaseAdmin();
+
+    // Load memory and live schema in parallel
+    const [memoryResult, schemaBlock] = await Promise.all([
+      (orgId && userId) ? loadMemory(orgId, userId) : Promise.resolve({ memories: [], summaries: [] }),
+      buildSchemaBlock(command),
+    ]);
+    const memoryBlock = buildMemoryBlock(memoryResult.memories, memoryResult.summaries);
+
+    const extras = [memoryBlock, schemaBlock].filter(Boolean).join('\n\n');
+    const dynamicSystem = extras
+      ? `${SYSTEM_PROMPT}\n\n${extras}`
+      : SYSTEM_PROMPT;
+
+    const userContent = [];
+
+    if (image) {
+      let imageData = image.data || '';
+      if (imageData.includes(',')) imageData = imageData.split(',')[1];
+      if (!imageData || imageData.length < 100) return res.status(400).json({ error: 'Invalid image data' });
+      userContent.push({ type: 'image', source: { type: 'base64', media_type: image.media_type || 'image/jpeg', data: imageData } });
+    }
+
+    const contextStr = context
+      ? `\n\n[Context: Screen="${context.screen||'unknown'}", User=${context.userName||'unknown'} (${context.userRole||'unknown'}), Dept=${context.userDepartment||'unknown'}, Room=${context.currentRoom||'none'}]`
+      : '';
+
+    userContent.push({ type: 'text', text: (command || 'What do you see in this image?') + contextStr });
+
+    const messages = [];
+    if (conversation && Array.isArray(conversation)) conversation.forEach(m => messages.push(m));
+    messages.push({ role: 'user', content: userContent });
+
+    const photoTemplates = ['create_task_feed_post_broken_glove','create_task_feed_post_chemical_spill','create_task_feed_post_equipment_breakdown','create_task_feed_post_foreign_material','create_task_feed_post_metal_detector_reject','create_task_feed_post_pest_sighting','create_task_feed_post_temperature_deviation'];
+
+    // ── Agentic loop — handles web_search multi-turn automatically ──
+    let response;
+    let loopCount = 0;
+    const MAX_LOOPS = 5;
+
+    while (loopCount < MAX_LOOPS) {
+      loopCount++;
+      response = await client.messages.create({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1024,
+        system: dynamicSystem,
+        tools: TOOLS,
+        messages,
+      });
+
+      // If Claude is done (end_turn or called a non-web-search tool) → break
+      const hasWebSearch = response.content.some(b => b.type === 'server_tool_use');
+      if (!hasWebSearch || response.stop_reason === 'end_turn') break;
+
+      // Otherwise: append assistant turn + web search results, loop again
+      messages.push({ role: 'assistant', content: response.content });
+
+      // Build tool_result blocks for every server_tool_use block
+      const toolResults = response.content
+        .filter(b => b.type === 'server_tool_use')
+        .map(b => ({
+          type: 'tool_result',
+          tool_use_id: b.id,
+          content: b.output || '',
+        }));
+
+      if (toolResults.length === 0) break; // safety
+      messages.push({ role: 'user', content: toolResults });
+    }
+
+    const result = {
+      success: true, action: null, tool_name: null, params: null,
+      speech: null, needs_photo: false, conversation_continue: false,
+      assistant_message: { role: 'assistant', content: response.content },
+    };
+
+    for (const block of response.content) {
+      if (block.type === 'tool_use') {
+        result.action = 'tool_call';
+        result.tool_name = block.name;
+        result.params = block.input;
+        result.tool_use_id = block.id;
+        if (photoTemplates.includes(block.name) && !image) result.needs_photo = true;
+        console.log('[ai-assist] Tool:', block.name, JSON.stringify(block.input).substring(0, 200));
+      }
+      if (block.type === 'text') result.speech = block.text;
+      // server_tool_use / web_search_result blocks handled in loop above
+    }
+
+    if (result.tool_name === 'ask_clarification') { result.conversation_continue = true; result.speech = result.params?.question || result.speech; result.action = 'clarify'; }
+    if (result.tool_name === 'general_response') { result.speech = result.params?.message || result.speech; result.action = 'info'; }
+    if (result.tool_name === 'navigate') { result.action = 'navigate'; result.speech = result.speech || `Opening ${result.params?.screen}.`; }
+
+    // ── Fire-and-forget memory extraction ──
+    // Runs after response is sent — doesn't block the user
+    if (orgId && userId && sb && conversation && conversation.length >= 4) {
+      const fullConvo = [...(conversation || []),
+        { role: 'user', content: command || '' },
+        { role: 'assistant', content: result.speech || '' },
+      ];
+      setImmediate(() => extractAndSaveMemory(orgId, userId, userName, fullConvo, sb));
+    }
+
+    return res.status(200).json(result);
+
+  } catch (err) {
+    console.error('[ai-assist] Error:', err?.message);
+    return res.status(500).json({ error: 'AI processing failed', details: err.message });
+  }
+};
