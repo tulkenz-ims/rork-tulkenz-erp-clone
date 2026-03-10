@@ -120,28 +120,6 @@ export default function EmergencyProtocolScreen() {
   const pendingEmployees = emergency.employees.filter(e => e.status === 'pending');
   const safeEmployees = emergency.employees.filter(e => e.status === 'safe');
 
-  // ── Register active roll call with AI assistant context ──
-  useEffect(() => {
-    if (emergency.isActive && emergency.employees.length > 0) {
-      registerRollCall(
-        emergency.employees.map(e => ({
-          id: e.employee.id,
-          firstName: e.employee.firstName,
-          lastName: e.employee.lastName,
-          department: e.employee.department,
-          position: e.employee.position,
-          status: e.status,
-        })),
-        markEmployeeSafe,
-        isDrill,
-        emergencyType,
-      );
-    }
-    return () => {
-      if (!emergency.isActive) unregisterRollCall();
-    };
-  }, [emergency.isActive, emergency.employees, markEmployeeSafe, isDrill, emergencyType, registerRollCall, unregisterRollCall]);
-
   useEffect(() => {
     if (emergency.isActive && !allSafe) {
       const pulse = Animated.loop(
@@ -287,6 +265,29 @@ export default function EmergencyProtocolScreen() {
 
     console.log('[EmergencyProtocol] Employee marked safe:', employeeId);
   }, []);
+
+  // ── Register active roll call with AI assistant context ──
+  // Must be AFTER markEmployeeSafe is defined (avoids TDZ error)
+  useEffect(() => {
+    if (emergency.isActive && emergency.employees.length > 0) {
+      registerRollCall(
+        emergency.employees.map(e => ({
+          id: e.employee.id,
+          firstName: e.employee.firstName,
+          lastName: e.employee.lastName,
+          department: e.employee.department,
+          position: e.employee.position,
+          status: e.status,
+        })),
+        markEmployeeSafe,
+        isDrill,
+        emergencyType,
+      );
+    }
+    return () => {
+      if (!emergency.isActive) unregisterRollCall();
+    };
+  }, [emergency.isActive, emergency.employees, markEmployeeSafe, isDrill, emergencyType, registerRollCall, unregisterRollCall]);
 
   const handleSaveDetails = useCallback(async () => {
     if (!eventId) {
