@@ -455,39 +455,38 @@ export default function AIAssistButton() {
 
   // ── Voice & language settings ──
   const VOICES = [
-    { id: 'samantha', label: 'Samantha', match: ['samantha'] },
-    { id: 'karen',    label: 'Karen',    match: ['karen'] },
-    { id: 'nicky',    label: 'Nicky',    match: ['nicky'] },
+    { id: 'samantha', label: 'Samantha', match: 'samantha' },
+    { id: 'karen',    label: 'Karen',    match: 'karen'    },
+    { id: 'nicky',    label: 'Nicky',    match: 'nicky'    },
   ] as const;
   type VoiceId = typeof VOICES[number]['id'];
   const [selectedVoice, setSelectedVoice] = useState<VoiceId>('samantha');
   const [language, setLanguage] = useState<'en' | 'es'>('en');
-  const [availableVoices, setAvailableVoices] = useState<Speech.Voice[]>([]);
 
-  // Load available voices on mount
+  // Store resolved voice identifiers in a ref so they're always current at speak-time
+  const resolvedVoicesRef = useRef<Record<string, string>>({});
+
   useEffect(() => {
     Speech.getAvailableVoicesAsync()
       .then(voices => {
-        setAvailableVoices(voices);
-        console.log('[AIAssist] Available voices:', voices.map(v => `${v.name} (${v.identifier})`).join(', '));
+        const map: Record<string, string> = {};
+        for (const v of voices) {
+          const name = v.name.toLowerCase();
+          const id   = v.identifier.toLowerCase();
+          if (name.includes('samantha') || id.includes('samantha')) map['samantha'] = v.identifier;
+          if (name.includes('karen')    || id.includes('karen'))    map['karen']    = v.identifier;
+          if (name.includes('nicky')    || id.includes('nicky'))    map['nicky']    = v.identifier;
+          // Spanish — prefer Monica (MX), fall back to Paulina
+          if ((name.includes('monica')  || id.includes('monica'))  && !map['es']) map['es'] = v.identifier;
+          if ((name.includes('paulina') || id.includes('paulina')) && !map['es']) map['es'] = v.identifier;
+        }
+        resolvedVoicesRef.current = map;
+        console.log('[AIAssist] Resolved voices:', map);
       })
       .catch(err => console.warn('[AIAssist] Could not load voices:', err));
   }, []);
 
-  // Resolve the real voice identifier at speak-time
-  const resolveVoiceId = useCallback((voiceId: VoiceId, lang: 'en' | 'es'): string | undefined => {
-    if (!availableVoices.length) return undefined;
-    const searchTerms = lang === 'es'
-      ? ['monica', 'paulina', 'diego', 'jorge']
-      : (VOICES.find(v => v.id === voiceId)?.match || ['samantha']);
-    const match = availableVoices.find(v =>
-      searchTerms.some(term => v.name.toLowerCase().includes(term) || v.identifier.toLowerCase().includes(term))
-    );
-    console.log('[AIAssist] Resolved voice:', match?.identifier || '(system default)');
-    return match?.identifier;
-  }, [availableVoices]);
-
-  const speechLang = language === 'es' ? 'es-US' : 'en-US';
+  const speechLang = language === 'es' ? 'es-MX' : 'en-US';
   const [pendingImage, setPendingImage] = useState<{
     uri: string; base64: string; mediaType: string;
   } | null>(null);
@@ -555,21 +554,26 @@ export default function AIAssistButton() {
   }, [isListening]);
 
   // ── Speak response ──
-  const speakResponse = useCallback((text: string) => {
-    if (!isSpeechEnabled || !text) return;
+  const speakResponse = useCallback((text: string, onDone?: () => void) => {
+    if (!isSpeechEnabled || !text) { onDone?.(); return; }
     try {
       Speech.stop();
-      const voiceId = resolveVoiceId(selectedVoice, language);
+      const voiceKey = language === 'es' ? 'es' : selectedVoice;
+      const voiceId  = resolvedVoicesRef.current[voiceKey];
+      console.log('[AIAssist] Speaking with voice key:', voiceKey, '→', voiceId || '(system default)');
       Speech.speak(text, {
         language: speechLang,
         pitch: 1.0,
         rate: 1.25,
         ...(voiceId ? { voice: voiceId } : {}),
+        onDone:  () => onDone?.(),
+        onError: () => onDone?.(),
       });
     } catch (err) {
       console.error('[AIAssist] Speech error:', err);
+      onDone?.();
     }
-  }, [isSpeechEnabled, speechLang, selectedVoice, language, resolveVoiceId]);
+  }, [isSpeechEnabled, speechLang, selectedVoice, language]);
 
   // ── Send command ──
   const handleSend = useCallback(async (commandText?: string) => {
@@ -681,9 +685,9 @@ export default function AIAssistButton() {
         timestamp: new Date(),
       };
       setMessages(prev => [...prev, assistantMsg]);
-      speakResponse(speechText);
 
       if (data.conversation_continue || toolName === 'ask_clarification' || toolName === 'clarify') {
+        speakResponse(speechText);
         setIsProcessing(false);
         return;
       }
@@ -704,20 +708,23 @@ export default function AIAssistButton() {
       // ── Execute the tool action ──
       if (toolName && !['info', 'general_response'].includes(toolName)) {
 
-        // FIX 2: Close modal BEFORE navigating so the destination screen is visible.
-        // We do this synchronously before awaiting the action, so the modal
-        // animates away and the route push happens on the visible screen.
         if (toolName === 'navigate') {
-          setIsOpen(false);
+          // Speak first — navigate only after speech finishes
+          speakResponse(speechText, () => {
+            setIsOpen(false);
+            executeAIAction(toolName, data.params || {});
+          });
+          setIsProcessing(false);
+          return;
         }
 
+        speakResponse(speechText);
         const actionResult = await executeAIAction(toolName, data.params || {});
 
         if (actionResult && actionResult.success && actionResult.message &&
             actionResult.message !== 'Information provided.' &&
             actionResult.message !== 'Waiting for clarification.') {
 
-          // FIX 3: Extract results array + resultType from action data
           const resultRows = (actionResult.data?.results as any[]) || [];
           const resultType = (actionResult.data?.resultType as any) || undefined;
           const tableConfig = (actionResult.data?.tableConfig as any) || undefined;
@@ -730,7 +737,6 @@ export default function AIAssistButton() {
             params: actionResult.data as Record<string, unknown>,
             timestamp: new Date(),
             isResult: true,
-            // FIX 3: Store results for list rendering
             results: resultRows.length > 0 ? resultRows : undefined,
             resultType: resultRows.length > 0 ? resultType : undefined,
             tableConfig: resultRows.length > 0 ? tableConfig : undefined,
@@ -749,6 +755,8 @@ export default function AIAssistButton() {
           };
           setMessages(prev => [...prev, errorMsg]);
         }
+      } else {
+        speakResponse(speechText);
       }
 
     } catch (err: any) {
