@@ -454,13 +454,6 @@ export default function AIAssistButton() {
   const [isSpeechEnabled, setIsSpeechEnabled] = useState(true);
 
   // ── Voice & language settings ──
-  // Two identifier formats per voice — iOS changes them across versions
-  const VOICE_IDS: Record<string, string[]> = {
-    samantha: ['com.apple.voice.compact.en-US.Samantha', 'com.apple.ttsbundle.Samantha-compact'],
-    karen:    ['com.apple.voice.compact.en-AU.Karen',    'com.apple.ttsbundle.Karen-compact'],
-    nicky:    ['com.apple.voice.compact.en-US.Nicky',    'com.apple.ttsbundle.Nicky-compact'],
-    es:       ['com.apple.voice.compact.es-MX.Monica',   'com.apple.ttsbundle.Monica-compact', 'com.apple.voice.compact.es-ES.Monica'],
-  };
   const VOICES = [
     { id: 'samantha' as const, label: 'Samantha' },
     { id: 'karen'    as const, label: 'Karen'    },
@@ -470,31 +463,44 @@ export default function AIAssistButton() {
   const [selectedVoice, setSelectedVoice] = useState<VoiceId>('samantha');
   const [language, setLanguage] = useState<'en' | 'es'>('en');
 
-  // Resolved voice map — populated at mount from actual device voices when available
-  const resolvedVoicesRef = useRef<Record<string, string>>({});
+  // Web browser voices — loaded once, voices list may populate async
+  const webVoicesRef = useRef<any[]>([]);
+  const isWeb = Platform.OS === 'web' && typeof window !== 'undefined' && 'speechSynthesis' in window;
 
   useEffect(() => {
-    Speech.getAvailableVoicesAsync()
-      .then(voices => {
-        if (!voices || voices.length === 0) return;
-        const map: Record<string, string> = {};
-        for (const v of voices) {
-          const n = v.name.toLowerCase();
-          if (n.includes('samantha') && !map.samantha) map.samantha = v.identifier;
-          if (n.includes('karen')    && !map.karen)    map.karen    = v.identifier;
-          if (n.includes('nicky')    && !map.nicky)    map.nicky    = v.identifier;
-          if ((n.includes('monica') || n.includes('paulina')) && !map.es) map.es = v.identifier;
-        }
-        resolvedVoicesRef.current = map;
-        console.log('[AIAssist] Voices from device:', map);
-      })
-      .catch(() => {});
-  }, []);
+    if (!isWeb) return;
+    const loadVoices = () => {
+      const voices = window.speechSynthesis.getVoices();
+      if (voices.length > 0) {
+        webVoicesRef.current = voices;
+        console.log('[AIAssist] Web voices:', voices.map(v => v.name).join(', '));
+      }
+    };
+    loadVoices();
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+    return () => { window.speechSynthesis.onvoiceschanged = null; };
+  }, [isWeb]);
 
-  // Pick the best available voice ID — prefer device-resolved, fall back to known hardcoded IDs
-  const getVoiceId = useCallback((voiceId: VoiceId, lang: 'en' | 'es'): string => {
-    const key = lang === 'es' ? 'es' : voiceId;
-    return resolvedVoicesRef.current[key] || VOICE_IDS[key]?.[0] || '';
+  // Find the best matching web voice
+  const getWebVoice = useCallback((voiceId: VoiceId, lang: 'en' | 'es'): any | null => {
+    const voices = webVoicesRef.current;
+    if (!voices.length) return null;
+    if (lang === 'es') {
+      // Prefer es-MX, then es-US, then any Spanish
+      return voices.find(v => v.lang === 'es-MX') ||
+             voices.find(v => v.lang === 'es-US') ||
+             voices.find(v => v.lang.startsWith('es')) || null;
+    }
+    // English — match by name first, then fall back to en-US female
+    const nameMap: Record<VoiceId, string[]> = {
+      samantha: ['samantha'],
+      karen:    ['karen'],
+      nicky:    ['nicky'],
+    };
+    const terms = nameMap[voiceId];
+    return voices.find(v => terms.some(t => v.name.toLowerCase().includes(t))) ||
+           voices.find(v => v.lang === 'en-US' && !v.name.toLowerCase().includes('male')) ||
+           voices.find(v => v.lang === 'en-US') || null;
   }, []);
 
   const speechLang = language === 'es' ? 'es-MX' : 'en-US';
@@ -564,33 +570,54 @@ export default function AIAssistButton() {
     }
   }, [isListening]);
 
+  // ── Stop all speech (web + native) ──
+  const stopSpeech = useCallback(() => {
+    if (isWeb) window.speechSynthesis.cancel();
+    else stopSpeech();
+  }, [isWeb]);
+
   // ── Speak response ──
   const speakResponse = useCallback((text: string, onDone?: () => void) => {
     if (!isSpeechEnabled || !text) { onDone?.(); return; }
     try {
-      Speech.stop();
-      const voiceId = getVoiceId(selectedVoice, language);
-      console.log('[AIAssist] Speaking lang:', speechLang, 'voice:', voiceId);
-      Speech.speak(text, {
-        language: speechLang,
-        pitch: 1.0,
-        rate: 1.25,
-        voice: voiceId || undefined,
-        onDone:  () => onDone?.(),
-        onError: () => onDone?.(),
-      });
+      if (isWeb) {
+        // ── Web / Desktop: use browser speechSynthesis directly ──
+        window.speechSynthesis.cancel();
+        const utter = new SpeechSynthesisUtterance(text);
+        utter.lang  = speechLang;
+        utter.pitch = 1.0;
+        utter.rate  = 1.25;
+        const voice = getWebVoice(selectedVoice, language);
+        if (voice) {
+          utter.voice = voice;
+          console.log('[AIAssist] Web voice:', voice.name, voice.lang);
+        }
+        utter.onend   = () => onDone?.();
+        utter.onerror = () => onDone?.();
+        window.speechSynthesis.speak(utter);
+      } else {
+        // ── iOS / Native: use expo-speech ──
+        stopSpeech();
+        Speech.speak(text, {
+          language: speechLang,
+          pitch: 1.0,
+          rate: 1.25,
+          onDone:  () => onDone?.(),
+          onError: () => onDone?.(),
+        });
+      }
     } catch (err) {
       console.error('[AIAssist] Speech error:', err);
       onDone?.();
     }
-  }, [isSpeechEnabled, speechLang, selectedVoice, language, getVoiceId]);
+  }, [isSpeechEnabled, isWeb, speechLang, selectedVoice, language, getWebVoice, stopSpeech]);
 
   // ── Send command ──
   const handleSend = useCallback(async (commandText?: string) => {
     const text = commandText || textInput.trim();
     if (!text && !pendingImage) return;
 
-    Speech.stop(); // cut off any current speech immediately
+    stopSpeech(); // cut off any current speech immediately
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     const userMsg: ChatMessage = {
@@ -787,7 +814,7 @@ export default function AIAssistButton() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     if (isListening) stopListening();
     else {
-      Speech.stop(); // cut off speech so user can speak their next command
+      stopSpeech(); // cut off speech so user can speak their next command
       const started = startListening();
       if (!started) console.log('[AIAssist] Speech unavailable — use text input');
     }
@@ -889,13 +916,13 @@ export default function AIAssistButton() {
 
   const handleClose = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    Speech.stop();
+    stopSpeech();
     if (isListening) stopListening();
     setIsOpen(false);
   }, [isListening, stopListening]);
 
   const handleClearChat = useCallback(() => {
-    Speech.stop();
+    stopSpeech();
     setMessages([]);
     setPendingImage(null);
     setTextInput('');
@@ -963,7 +990,7 @@ export default function AIAssistButton() {
             <View style={styles.headerRight}>
               <Pressable
                 style={[styles.headerBtn, { backgroundColor: isSpeechEnabled ? '#8B5CF620' : colors.backgroundSecondary }]}
-                onPress={() => { setIsSpeechEnabled(!isSpeechEnabled); if (isSpeechEnabled) Speech.stop(); }}
+                onPress={() => { setIsSpeechEnabled(!isSpeechEnabled); if (isSpeechEnabled) stopSpeech(); }}
               >
                 {isSpeechEnabled
                   ? <Volume2 size={18} color="#8B5CF6" />
@@ -992,7 +1019,7 @@ export default function AIAssistButton() {
                     selectedVoice === v.id && { backgroundColor: '#8B5CF6', borderColor: '#8B5CF6' },
                     selectedVoice !== v.id && { backgroundColor: 'transparent', borderColor: colors.border },
                   ]}
-                  onPress={() => { setSelectedVoice(v.id); Speech.stop(); }}
+                  onPress={() => { setSelectedVoice(v.id); stopSpeech(); }}
                 >
                   <Text style={[styles.voiceChipText, { color: selectedVoice === v.id ? '#fff' : colors.textSecondary }]}>
                     {v.label}
@@ -1010,7 +1037,7 @@ export default function AIAssistButton() {
                     language === lang && { backgroundColor: '#0EA5E9', borderColor: '#0EA5E9' },
                     language !== lang && { backgroundColor: 'transparent', borderColor: colors.border },
                   ]}
-                  onPress={() => { setLanguage(lang); Speech.stop(); }}
+                  onPress={() => { setLanguage(lang); stopSpeech(); }}
                 >
                   <Text style={[styles.voiceChipText, { color: language === lang ? '#fff' : colors.textSecondary }]}>
                     {lang === 'en' ? '🇺🇸 EN' : '🇲🇽 ES'}
