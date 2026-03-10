@@ -454,54 +454,52 @@ export default function AIAssistButton() {
   const [isSpeechEnabled, setIsSpeechEnabled] = useState(true);
 
   // ── Voice & language settings ──
-  const VOICES = [
-    { id: 'samantha' as const, label: 'Samantha' },
-    { id: 'karen'    as const, label: 'Karen'    },
-    { id: 'nicky'    as const, label: 'Nicky'    },
-  ];
-  type VoiceId = 'samantha' | 'karen' | 'nicky';
-  const [selectedVoice, setSelectedVoice] = useState<VoiceId>('samantha');
+  const isWeb = Platform.OS === 'web' && typeof window !== 'undefined' && 'speechSynthesis' in window;
   const [language, setLanguage] = useState<'en' | 'es'>('en');
 
-  // Web browser voices — loaded once, voices list may populate async
-  const webVoicesRef = useRef<any[]>([]);
-  const isWeb = Platform.OS === 'web' && typeof window !== 'undefined' && 'speechSynthesis' in window;
+  // Dynamically built from whatever voices the browser/device actually has
+  const [availableVoices, setAvailableVoices] = useState<{ label: string; voice: any }[]>([]);
+  const [selectedVoiceIndex, setSelectedVoiceIndex] = useState(0);
 
   useEffect(() => {
     if (!isWeb) return;
-    const loadVoices = () => {
-      const voices = window.speechSynthesis.getVoices();
-      if (voices.length > 0) {
-        webVoicesRef.current = voices;
-        console.log('[AIAssist] Web voices:', voices.map(v => v.name).join(', '));
-      }
+    const buildVoiceList = () => {
+      const all = window.speechSynthesis.getVoices();
+      if (!all.length) return;
+      // Pick up to 3 English voices (prefer female first) for the EN selector
+      const enVoices = all.filter((v: any) => v.lang.startsWith('en'));
+      // Sort: female-sounding names first (heuristic)
+      const femaleTerms = ['zira', 'samantha', 'karen', 'victoria', 'susan', 'hazel', 'fiona', 'moira', 'tessa', 'aria', 'jenny', 'sonia', 'libby', 'mia', 'natasha'];
+      enVoices.sort((a: any, b: any) => {
+        const aF = femaleTerms.some(t => a.name.toLowerCase().includes(t)) ? 0 : 1;
+        const bF = femaleTerms.some(t => b.name.toLowerCase().includes(t)) ? 0 : 1;
+        return aF - bF;
+      });
+      // Take up to 3 unique en-US voices, fall back to any en voice
+      const enUS = enVoices.filter((v: any) => v.lang === 'en-US').slice(0, 3);
+      const picks = enUS.length >= 2 ? enUS : enVoices.slice(0, 3);
+      const list = picks.map((v: any) => ({
+        // Shorten "Microsoft Zira - English (United States)" → "Zira"
+        label: v.name.replace(/Microsoft\s+/i, '').replace(/\s*(Online \(Natural\))?.*/i, '').trim(),
+        voice: v,
+      }));
+      setAvailableVoices(list);
+      setSelectedVoiceIndex(0);
+      console.log('[AIAssist] Available voices:', list.map((v: any) => v.label).join(', '));
     };
-    loadVoices();
-    window.speechSynthesis.onvoiceschanged = loadVoices;
+    buildVoiceList();
+    window.speechSynthesis.onvoiceschanged = buildVoiceList;
     return () => { window.speechSynthesis.onvoiceschanged = null; };
   }, [isWeb]);
 
-  // Find the best matching web voice
-  const getWebVoice = useCallback((voiceId: VoiceId, lang: 'en' | 'es'): any | null => {
-    const voices = webVoicesRef.current;
-    if (!voices.length) return null;
-    if (lang === 'es') {
-      // Prefer es-MX, then es-US, then any Spanish
-      return voices.find(v => v.lang === 'es-MX') ||
-             voices.find(v => v.lang === 'es-US') ||
-             voices.find(v => v.lang.startsWith('es')) || null;
-    }
-    // English — match by name first, then fall back to en-US female
-    const nameMap: Record<VoiceId, string[]> = {
-      samantha: ['samantha'],
-      karen:    ['karen'],
-      nicky:    ['nicky'],
-    };
-    const terms = nameMap[voiceId];
-    return voices.find(v => terms.some(t => v.name.toLowerCase().includes(t))) ||
-           voices.find(v => v.lang === 'en-US' && !v.name.toLowerCase().includes('male')) ||
-           voices.find(v => v.lang === 'en-US') || null;
-  }, []);
+  // Get Spanish voice
+  const getSpanishVoice = useCallback((): any | null => {
+    if (!isWeb) return null;
+    const all = window.speechSynthesis.getVoices();
+    return all.find((v: any) => v.lang === 'es-MX') ||
+           all.find((v: any) => v.lang === 'es-US') ||
+           all.find((v: any) => v.lang.startsWith('es')) || null;
+  }, [isWeb]);
 
   const speechLang = language === 'es' ? 'es-MX' : 'en-US';
   const [pendingImage, setPendingImage] = useState<{
@@ -573,7 +571,7 @@ export default function AIAssistButton() {
   // ── Stop all speech (web + native) ──
   const stopSpeech = useCallback(() => {
     if (isWeb) window.speechSynthesis.cancel();
-    else stopSpeech();
+    else Speech.stop();
   }, [isWeb]);
 
   // ── Speak response ──
@@ -581,23 +579,23 @@ export default function AIAssistButton() {
     if (!isSpeechEnabled || !text) { onDone?.(); return; }
     try {
       if (isWeb) {
-        // ── Web / Desktop: use browser speechSynthesis directly ──
         window.speechSynthesis.cancel();
-        const utter = new SpeechSynthesisUtterance(text);
+        const utter = new (window as any).SpeechSynthesisUtterance(text);
         utter.lang  = speechLang;
         utter.pitch = 1.0;
         utter.rate  = 1.25;
-        const voice = getWebVoice(selectedVoice, language);
-        if (voice) {
-          utter.voice = voice;
-          console.log('[AIAssist] Web voice:', voice.name, voice.lang);
+        if (language === 'es') {
+          const esVoice = getSpanishVoice();
+          if (esVoice) { utter.voice = esVoice; console.log('[AIAssist] ES voice:', esVoice.name); }
+        } else if (availableVoices[selectedVoiceIndex]) {
+          utter.voice = availableVoices[selectedVoiceIndex].voice;
+          console.log('[AIAssist] EN voice:', availableVoices[selectedVoiceIndex].label);
         }
         utter.onend   = () => onDone?.();
         utter.onerror = () => onDone?.();
         window.speechSynthesis.speak(utter);
       } else {
-        // ── iOS / Native: use expo-speech ──
-        stopSpeech();
+        Speech.stop();
         Speech.speak(text, {
           language: speechLang,
           pitch: 1.0,
@@ -610,7 +608,7 @@ export default function AIAssistButton() {
       console.error('[AIAssist] Speech error:', err);
       onDone?.();
     }
-  }, [isSpeechEnabled, isWeb, speechLang, selectedVoice, language, getWebVoice, stopSpeech]);
+  }, [isSpeechEnabled, isWeb, speechLang, language, availableVoices, selectedVoiceIndex, getSpanishVoice]);
 
   // ── Send command ──
   const handleSend = useCallback(async (commandText?: string) => {
@@ -1011,21 +1009,24 @@ export default function AIAssistButton() {
           {/* Voice & Language selector */}
           <View style={[styles.voiceBar, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
             <View style={styles.voiceBarGroup}>
-              {VOICES.map(v => (
-                <Pressable
-                  key={v.id}
-                  style={[
-                    styles.voiceChip,
-                    selectedVoice === v.id && { backgroundColor: '#8B5CF6', borderColor: '#8B5CF6' },
-                    selectedVoice !== v.id && { backgroundColor: 'transparent', borderColor: colors.border },
-                  ]}
-                  onPress={() => { setSelectedVoice(v.id); stopSpeech(); }}
-                >
-                  <Text style={[styles.voiceChipText, { color: selectedVoice === v.id ? '#fff' : colors.textSecondary }]}>
-                    {v.label}
-                  </Text>
-                </Pressable>
-              ))}
+              {availableVoices.length > 0
+                ? availableVoices.map((v, i) => (
+                    <Pressable
+                      key={i}
+                      style={[
+                        styles.voiceChip,
+                        selectedVoiceIndex === i && language === 'en' && { backgroundColor: '#8B5CF6', borderColor: '#8B5CF6' },
+                        !(selectedVoiceIndex === i && language === 'en') && { backgroundColor: 'transparent', borderColor: colors.border },
+                      ]}
+                      onPress={() => { setSelectedVoiceIndex(i); setLanguage('en'); stopSpeech(); }}
+                    >
+                      <Text style={[styles.voiceChipText, { color: selectedVoiceIndex === i && language === 'en' ? '#fff' : colors.textSecondary }]}>
+                        {v.label}
+                      </Text>
+                    </Pressable>
+                  ))
+                : <Text style={[styles.voiceChipText, { color: colors.textSecondary }]}>Loading voices...</Text>
+              }
             </View>
             <View style={styles.voiceBarDivider} />
             <View style={styles.voiceBarGroup}>
