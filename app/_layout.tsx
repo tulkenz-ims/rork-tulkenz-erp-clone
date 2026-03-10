@@ -14,6 +14,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { RealtimeProvider } from "@/contexts/RealtimeContext";
 import EmergencyAlertOverlay from "@/components/EmergencyAlertOverlay";
 import AIAssistButton from "@/components/AIAssistButton";
+import { EmergencyRollCallProvider } from '@/contexts/EmergencyRollCallContext';
 
 SplashScreen.preventAutoHideAsync();
 const queryClient = new QueryClient();
@@ -49,7 +50,6 @@ export default function RootLayout() {
   useEffect(() => {
     SplashScreen.hideAsync();
   }, []);
-
   return (
     <QueryClientProvider client={queryClient}>
       <GestureHandlerRootView style={{ flex: 1 }}>
@@ -62,9 +62,11 @@ export default function RootLayout() {
                     <NotificationsProvider>
                       <PushNotificationsProvider>
                         <RealtimeProvider>
-                          <RootLayoutNav />
-                          <EmergencyAlertOverlay />
-                          <ConditionalAIAssist />
+                          <EmergencyRollCallProvider>
+                            <RootLayoutNav />
+                            <EmergencyAlertOverlay />
+                            <ConditionalAIAssist />
+                          </EmergencyRollCallProvider>
                         </RealtimeProvider>
                       </PushNotificationsProvider>
                     </NotificationsProvider>
