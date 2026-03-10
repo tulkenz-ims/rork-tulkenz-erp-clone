@@ -462,43 +462,82 @@ export default function AIAssistButton() {
   const [selectedVoiceIndex, setSelectedVoiceIndex] = useState(0);
 
   useEffect(() => {
-    if (!isWeb) return;
-    const buildVoiceList = () => {
-      const all = window.speechSynthesis.getVoices();
-      if (!all.length) return;
-      // Pick up to 3 English voices (prefer female first) for the EN selector
-      const enVoices = all.filter((v: any) => v.lang.startsWith('en'));
-      // Sort: female-sounding names first (heuristic)
-      const femaleTerms = ['zira', 'samantha', 'karen', 'victoria', 'susan', 'hazel', 'fiona', 'moira', 'tessa', 'aria', 'jenny', 'sonia', 'libby', 'mia', 'natasha'];
-      enVoices.sort((a: any, b: any) => {
-        const aF = femaleTerms.some(t => a.name.toLowerCase().includes(t)) ? 0 : 1;
-        const bF = femaleTerms.some(t => b.name.toLowerCase().includes(t)) ? 0 : 1;
-        return aF - bF;
-      });
-      // Take up to 3 unique en-US voices, fall back to any en voice
-      const enUS = enVoices.filter((v: any) => v.lang === 'en-US').slice(0, 3);
-      const picks = enUS.length >= 2 ? enUS : enVoices.slice(0, 3);
-      const list = picks.map((v: any) => ({
-        // Shorten "Microsoft Zira - English (United States)" → "Zira"
-        label: v.name.replace(/Microsoft\s+/i, '').replace(/\s*(Online \(Natural\))?.*/i, '').trim(),
-        voice: v,
-      }));
-      setAvailableVoices(list);
-      setSelectedVoiceIndex(0);
-      console.log('[AIAssist] Available voices:', list.map((v: any) => v.label).join(', '));
-    };
-    buildVoiceList();
-    window.speechSynthesis.onvoiceschanged = buildVoiceList;
-    return () => { window.speechSynthesis.onvoiceschanged = null; };
+    if (isWeb) {
+      // ── Web: load from window.speechSynthesis ──
+      const buildVoiceList = () => {
+        const all = window.speechSynthesis.getVoices();
+        if (!all.length) return;
+        const enVoices = all.filter((v: any) => v.lang.startsWith('en'));
+        const femaleTerms = ['zira', 'samantha', 'karen', 'victoria', 'susan', 'hazel', 'fiona', 'moira', 'tessa', 'aria', 'jenny', 'sonia', 'libby', 'mia', 'natasha'];
+        enVoices.sort((a: any, b: any) => {
+          const aF = femaleTerms.some(t => a.name.toLowerCase().includes(t)) ? 0 : 1;
+          const bF = femaleTerms.some(t => b.name.toLowerCase().includes(t)) ? 0 : 1;
+          return aF - bF;
+        });
+        const enUS = enVoices.filter((v: any) => v.lang === 'en-US').slice(0, 3);
+        const picks = enUS.length >= 2 ? enUS : enVoices.slice(0, 3);
+        const list = picks.map((v: any) => ({
+          label: v.name.replace(/Microsoft\s+/i, '').replace(/\s*(Online \(Natural\))?.*/i, '').trim(),
+          voice: v,
+        }));
+        setAvailableVoices(list);
+        setSelectedVoiceIndex(0);
+        console.log('[AIAssist] Web voices:', list.map((v: any) => v.label).join(', '));
+      };
+      buildVoiceList();
+      window.speechSynthesis.onvoiceschanged = buildVoiceList;
+      return () => { window.speechSynthesis.onvoiceschanged = null; };
+    } else {
+      // ── Native iOS/Android: load from expo-speech ──
+      const NATIVE_EN = [
+        { match: 'samantha', label: 'Samantha' },
+        { match: 'karen',    label: 'Karen'    },
+        { match: 'nicky',    label: 'Nicky'    },
+        { match: 'siri',     label: 'Siri'     },
+      ];
+      Speech.getAvailableVoicesAsync()
+        .then(voices => {
+          if (!voices || voices.length === 0) {
+            // Fallback: hardcoded options, expo-speech will use system default
+            setAvailableVoices([
+              { label: 'Samantha', voice: 'com.apple.voice.compact.en-US.Samantha' },
+              { label: 'Karen',    voice: 'com.apple.voice.compact.en-AU.Karen'    },
+              { label: 'Nicky',    voice: 'com.apple.voice.compact.en-US.Nicky'   },
+            ]);
+            return;
+          }
+          const enVoices = voices.filter(v => v.language?.startsWith('en'));
+          const list: { label: string; voice: any }[] = [];
+          for (const entry of NATIVE_EN) {
+            const match = enVoices.find(v =>
+              v.name?.toLowerCase().includes(entry.match) ||
+              v.identifier?.toLowerCase().includes(entry.match)
+            );
+            if (match) list.push({ label: entry.label, voice: match.identifier });
+          }
+          if (list.length === 0) {
+            // Device has no matching named voices — show first 3 en voices
+            enVoices.slice(0, 3).forEach(v => list.push({ label: v.name || 'Voice', voice: v.identifier }));
+          }
+          setAvailableVoices(list);
+          setSelectedVoiceIndex(0);
+          console.log('[AIAssist] Native voices:', list.map(v => v.label).join(', '));
+        })
+        .catch(() => {
+          setAvailableVoices([{ label: 'Default', voice: null }]);
+        });
+    }
   }, [isWeb]);
 
   // Get Spanish voice
   const getSpanishVoice = useCallback((): any | null => {
-    if (!isWeb) return null;
-    const all = window.speechSynthesis.getVoices();
-    return all.find((v: any) => v.lang === 'es-MX') ||
-           all.find((v: any) => v.lang === 'es-US') ||
-           all.find((v: any) => v.lang.startsWith('es')) || null;
+    if (isWeb) {
+      const all = window.speechSynthesis.getVoices();
+      return all.find((v: any) => v.lang === 'es-MX') ||
+             all.find((v: any) => v.lang === 'es-US') ||
+             all.find((v: any) => v.lang.startsWith('es')) || null;
+    }
+    return null; // native handles Spanish via speechLang directly
   }, [isWeb]);
 
   const speechLang = language === 'es' ? 'es-MX' : 'en-US';
@@ -596,10 +635,12 @@ export default function AIAssistButton() {
         window.speechSynthesis.speak(utter);
       } else {
         Speech.stop();
+        const nativeVoiceId = availableVoices[selectedVoiceIndex]?.voice || undefined;
         Speech.speak(text, {
           language: speechLang,
           pitch: 1.0,
           rate: 1.25,
+          ...(nativeVoiceId ? { voice: nativeVoiceId } : {}),
           onDone:  () => onDone?.(),
           onError: () => onDone?.(),
         });
