@@ -44,7 +44,8 @@ interface ChatMessage {
   isResult?: boolean;
   // FIX 3: actual result rows to display as a list
   results?: any[];
-  resultType?: 'parts' | 'work_orders' | 'tasks' | 'equipment';
+  resultType?: 'parts' | 'work_orders' | 'tasks' | 'equipment' | 'generic';
+  tableConfig?: any;
 }
 
 interface ConversationTurn {
@@ -104,9 +105,10 @@ const TOOL_ICONS: Record<string, { icon: any; color: string; label: string }> = 
 // Renders actual records from lookup/query results inline in the chat
 // ══════════════════════════════════════════════════════════════════
 
-function ResultsList({ results, resultType, colors }: {
+function ResultsList({ results, resultType, tableConfig, colors }: {
   results: any[];
   resultType: string;
+  tableConfig?: any;
   colors: any;
 }) {
   if (!results || results.length === 0) return null;
@@ -293,7 +295,78 @@ function ResultsList({ results, resultType, colors }: {
     );
   }
 
-  return null;
+  // ── Generic renderer — works for any table using tableConfig column hints ──
+  const primaryCol   = tableConfig?.primaryCol   || 'name';
+  const secondaryCol = tableConfig?.secondaryCol || 'id';
+  const tertiaryCol  = tableConfig?.tertiaryCol  || null;
+  const statusCol    = tableConfig?.statusCol    || null;
+  const label        = tableConfig?.label        || 'Records';
+
+  const STATUS_COLORS: Record<string, string> = {
+    open: '#3B82F6', in_progress: '#F59E0B', completed: '#10B981',
+    pending: '#8B5CF6', closed: '#6B7280', active: '#10B981',
+    inactive: '#6B7280', approved: '#10B981', rejected: '#EF4444',
+  };
+
+  // Build header columns dynamically
+  const headerCols = [primaryCol, secondaryCol, tertiaryCol, statusCol].filter(Boolean) as string[];
+
+  return (
+    <View style={RL.container}>
+      <View style={[RL.headerRow, { borderBottomColor: colors.border }]}>
+        <Text style={[RL.headerCell, { color: colors.textTertiary, flex: 3 }]}>
+          {primaryCol.replace(/_/g, ' ').toUpperCase()}
+        </Text>
+        {secondaryCol && (
+          <Text style={[RL.headerCell, { color: colors.textTertiary, flex: 2 }]}>
+            {secondaryCol.replace(/_/g, ' ').toUpperCase()}
+          </Text>
+        )}
+        {statusCol && (
+          <Text style={[RL.headerCell, { color: colors.textTertiary, flex: 1.5, textAlign: 'right' }]}>
+            {statusCol.replace(/_/g, ' ').toUpperCase()}
+          </Text>
+        )}
+      </View>
+      {results.map((row, i) => {
+        const statusVal = statusCol ? row[statusCol] : null;
+        const statusColor = STATUS_COLORS[statusVal] || colors.textSecondary;
+        return (
+          <View
+            key={row.id || i}
+            style={[RL.row, { borderBottomColor: colors.border }, i === results.length - 1 && { borderBottomWidth: 0 }]}
+          >
+            <View style={{ flex: 3 }}>
+              <Text style={[RL.primaryText, { color: colors.text }]} numberOfLines={1}>
+                {row[primaryCol] != null ? String(row[primaryCol]) : '—'}
+              </Text>
+              {tertiaryCol && row[tertiaryCol] != null && (
+                <Text style={[RL.secondaryText, { color: colors.textSecondary }]} numberOfLines={1}>
+                  {String(row[tertiaryCol])}
+                </Text>
+              )}
+            </View>
+            {secondaryCol && (
+              <View style={{ flex: 2 }}>
+                <Text style={[RL.secondaryText, { color: colors.textSecondary }]} numberOfLines={2}>
+                  {row[secondaryCol] != null ? String(row[secondaryCol]) : '—'}
+                </Text>
+              </View>
+            )}
+            {statusCol && (
+              <View style={{ flex: 1.5, alignItems: 'flex-end' }}>
+                <View style={[RL.statusPill, { backgroundColor: statusColor + '25' }]}>
+                  <Text style={[RL.statusText, { color: statusColor }]}>
+                    {statusVal ? String(statusVal).replace(/_/g, ' ') : '—'}
+                  </Text>
+                </View>
+              </View>
+            )}
+          </View>
+        );
+      })}
+    </View>
+  );
 }
 
 const RL = StyleSheet.create({
@@ -312,7 +385,7 @@ const RL = StyleSheet.create({
 // SPEECH RECOGNITION
 // ══════════════════════════════════════════════════════════════════
 
-function useSpeechRecognition() {
+function useSpeechRecognition(lang: string = 'en-US') {
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState('');
   const recognitionRef = useRef<any>(null);
@@ -329,7 +402,7 @@ function useSpeechRecognition() {
       const recognition = new SpeechRecognition();
       recognition.continuous = false;
       recognition.interimResults = true;
-      recognition.lang = 'en-US';
+      recognition.lang = lang;
 
       recognition.onresult = (event: any) => {
         let finalTranscript = '';
@@ -355,7 +428,7 @@ function useSpeechRecognition() {
       return true;
     }
     return false;
-  }, []);
+  }, [lang]);
 
   const stopListening = useCallback(() => {
     if (recognitionRef.current) recognitionRef.current.stop();
@@ -379,6 +452,20 @@ export default function AIAssistButton() {
   const [textInput, setTextInput] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSpeechEnabled, setIsSpeechEnabled] = useState(true);
+
+  // ── Voice & language settings ──
+  const VOICES = [
+    { id: 'samantha', label: 'Samantha', ios: 'com.apple.ttsbundle.Samantha-compact', android: 'en-US' },
+    { id: 'karen',    label: 'Karen',    ios: 'com.apple.ttsbundle.Karen-compact',    android: 'en-AU' },
+    { id: 'nicky',    label: 'Nicky',    ios: 'com.apple.voice.compact.en-US.Nicky',  android: 'en-US' },
+  ] as const;
+  type VoiceId = typeof VOICES[number]['id'];
+  const [selectedVoice, setSelectedVoice] = useState<VoiceId>('samantha');
+  const [language, setLanguage] = useState<'en' | 'es'>('en');
+
+  const currentVoice = VOICES.find(v => v.id === selectedVoice) || VOICES[0];
+  const speechLang = language === 'es' ? 'es-US' : 'en-US';
+  const iosVoice   = language === 'es' ? 'com.apple.ttsbundle.Monica-compact' : currentVoice.ios;
   const [pendingImage, setPendingImage] = useState<{
     uri: string; base64: string; mediaType: string;
   } | null>(null);
@@ -388,7 +475,7 @@ export default function AIAssistButton() {
   const scrollRef = useRef<ScrollView>(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const { isListening, transcript, startListening, stopListening, setTranscript } =
-    useSpeechRecognition();
+    useSpeechRecognition(speechLang);
 
   // ── Load saved chat ──
   useEffect(() => {
@@ -449,17 +536,24 @@ export default function AIAssistButton() {
   const speakResponse = useCallback((text: string) => {
     if (!isSpeechEnabled || !text) return;
     try {
-      Speech.speak(text, { language: 'en-US', pitch: 1.0, rate: 0.95 });
+      Speech.stop();
+      Speech.speak(text, {
+        language: speechLang,
+        pitch: 1.0,
+        rate: 1.25,
+        voice: iosVoice,
+      });
     } catch (err) {
       console.error('[AIAssist] Speech error:', err);
     }
-  }, [isSpeechEnabled]);
+  }, [isSpeechEnabled, speechLang, iosVoice]);
 
   // ── Send command ──
   const handleSend = useCallback(async (commandText?: string) => {
     const text = commandText || textInput.trim();
     if (!text && !pendingImage) return;
 
+    Speech.stop(); // cut off any current speech immediately
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     const userMsg: ChatMessage = {
@@ -602,6 +696,7 @@ export default function AIAssistButton() {
           // FIX 3: Extract results array + resultType from action data
           const resultRows = (actionResult.data?.results as any[]) || [];
           const resultType = (actionResult.data?.resultType as any) || undefined;
+          const tableConfig = (actionResult.data?.tableConfig as any) || undefined;
 
           const resultMsg: ChatMessage = {
             id: `result-${Date.now()}`,
@@ -614,6 +709,7 @@ export default function AIAssistButton() {
             // FIX 3: Store results for list rendering
             results: resultRows.length > 0 ? resultRows : undefined,
             resultType: resultRows.length > 0 ? resultType : undefined,
+            tableConfig: resultRows.length > 0 ? tableConfig : undefined,
           };
           setMessages(prev => [...prev, resultMsg]);
 
@@ -649,6 +745,7 @@ export default function AIAssistButton() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     if (isListening) stopListening();
     else {
+      Speech.stop(); // cut off speech so user can speak their next command
       const started = startListening();
       if (!started) console.log('[AIAssist] Speech unavailable — use text input');
     }
@@ -842,6 +939,45 @@ export default function AIAssistButton() {
             </View>
           </View>
 
+          {/* Voice & Language selector */}
+          <View style={[styles.voiceBar, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
+            <View style={styles.voiceBarGroup}>
+              {VOICES.map(v => (
+                <Pressable
+                  key={v.id}
+                  style={[
+                    styles.voiceChip,
+                    selectedVoice === v.id && { backgroundColor: '#8B5CF6', borderColor: '#8B5CF6' },
+                    selectedVoice !== v.id && { backgroundColor: 'transparent', borderColor: colors.border },
+                  ]}
+                  onPress={() => { setSelectedVoice(v.id); Speech.stop(); }}
+                >
+                  <Text style={[styles.voiceChipText, { color: selectedVoice === v.id ? '#fff' : colors.textSecondary }]}>
+                    {v.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+            <View style={styles.voiceBarDivider} />
+            <View style={styles.voiceBarGroup}>
+              {(['en', 'es'] as const).map(lang => (
+                <Pressable
+                  key={lang}
+                  style={[
+                    styles.voiceChip,
+                    language === lang && { backgroundColor: '#0EA5E9', borderColor: '#0EA5E9' },
+                    language !== lang && { backgroundColor: 'transparent', borderColor: colors.border },
+                  ]}
+                  onPress={() => { setLanguage(lang); Speech.stop(); }}
+                >
+                  <Text style={[styles.voiceChipText, { color: language === lang ? '#fff' : colors.textSecondary }]}>
+                    {lang === 'en' ? '🇺🇸 EN' : '🇲🇽 ES'}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+
           {/* Messages */}
           <ScrollView
             ref={scrollRef}
@@ -909,6 +1045,7 @@ export default function AIAssistButton() {
                   <ResultsList
                     results={msg.results}
                     resultType={msg.resultType}
+                    tableConfig={msg.tableConfig}
                     colors={colors}
                   />
                 )}
@@ -1078,6 +1215,16 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between' as const,
     paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, paddingTop: 50,
   },
+  voiceBar: {
+    flexDirection: 'row' as const, alignItems: 'center' as const,
+    paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: 1, gap: 8,
+  },
+  voiceBarGroup: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 6 },
+  voiceBarDivider: { width: 1, height: 20, backgroundColor: 'rgba(128,128,128,0.3)', marginHorizontal: 4 },
+  voiceChip: {
+    paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1,
+  },
+  voiceChipText: { fontSize: 11, fontWeight: '600' as const },
   headerLeft: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 10 },
   headerIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center' as const, justifyContent: 'center' as const },
   headerTitle: { fontSize: 17, fontWeight: '700' as const },
