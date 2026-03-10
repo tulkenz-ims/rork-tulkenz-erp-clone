@@ -489,7 +489,9 @@ export default function AIAssistButton() {
         command: text,
         context: {
           screen: 'unknown',
-          userName: user?.name || 'Operator',
+          organizationId: user?.organization_id || organizationId || null,
+          userId: user?.id || null,
+          userName: user?.name || `${user?.first_name || ''} ${user?.last_name || ''}`.trim() || 'Operator',
           userRole: user?.role || 'operator',
           userDepartment: user?.department || 'unknown',
           currentRoom: null,
