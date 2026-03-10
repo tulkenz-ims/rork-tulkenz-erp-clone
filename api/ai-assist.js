@@ -66,7 +66,33 @@ FILTER GUIDANCE — common filter columns:
 - category / type / priority
 - Use filters object for exact matches
 
-USE navigate when someone says "go to", "open", "take me to" a screen.
+USE mark_employee_safe for a single name: "[name] checked in", "[name] is safe", "[name] is here", "mark [name]", "[name] for the drill", "[name] accounted for".
+  - Extract ONLY the name. "John Smith checked in for the drill" → employee_name: "John Smith"
+  - Works by name, first name only, last name only, or partial match.
+
+USE mark_multiple_employees_safe when several names come at once:
+  - "John, Maria, and Carlos are all here" → employee_names: ["John", "Maria", "Carlos"]
+  - "East side is clear — Smith, Garcia, Thompson" → employee_names: ["Smith", "Garcia", "Thompson"]
+  - "Employees 2, 9, and 6 checked in" → treat as names if you know them, or pass as-is
+
+USE get_roll_call_status when asked: "who's missing", "how many left", "roll call status", "who hasn't checked in", "who do we still need".
+
+USE start_emergency_protocol when someone says:
+- "fire", "there's a fire", "fire emergency" → emergency_type: "fire"
+- "tornado", "tornado warning", "take cover" → emergency_type: "tornado"
+- "active shooter", "shooter" → emergency_type: "active_shooter"
+- "chemical spill", "chemical leak" → emergency_type: "chemical_spill"
+- "gas leak", "smell gas" → emergency_type: "gas_leak"
+- "bomb threat", "bomb" → emergency_type: "bomb_threat"
+- "medical emergency", "someone is hurt", "person down", "heart attack" → emergency_type: "medical_emergency"
+- "power outage", "power is out", "lights out" → emergency_type: "power_outage"
+- "flood", "flooding" → emergency_type: "flood"
+- "earthquake" → emergency_type: "earthquake"
+- "structural collapse", "building collapse" → emergency_type: "structural_collapse"
+- Add is_drill: true if they say "drill", "practice", "test" — otherwise default false
+- CRITICAL: For any real emergency, set is_drill: false. This goes directly to roll call.
+
+
 NAVIGATE SCREEN NAMES (say the exact screen name):
 - "dashboard", "home" → dashboard
 - "task feed", "tasks", "feed", "posts" → task_feed
@@ -508,6 +534,65 @@ const TOOLS = [
     },
   },
 
+  // ── Emergency Protocol ───────────────────────
+
+  {
+    name: 'mark_employee_safe',
+    description: 'Mark an employee as safe/accounted for during an active emergency roll call or drill. Use when someone says "[name] is safe", "[name] checked in", "[name] is here", "[name] is accounted for", "mark [name] safe", "[name] for the drill", "[name] on the east side", etc. Works for real emergencies and drills.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        employee_name: {
+          type: 'string',
+          description: 'Full or partial name of the employee. E.g. "John Smith", "John S.", "Maria". Extract just the name, not phrases like "checked in" or "is safe".',
+        },
+      },
+      required: ['employee_name'],
+    },
+  },
+
+  {
+    name: 'mark_multiple_employees_safe',
+    description: 'Mark multiple employees safe at once. Use when someone reports several names together: "John Smith, Maria Garcia, and Carlos checked in", "employees 2, 9, and 6 are here", "east side is all clear — John, Maria, Carlos".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        employee_names: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Array of employee names to mark safe.',
+        },
+      },
+      required: ['employee_names'],
+    },
+  },
+
+  {
+    name: 'get_roll_call_status',
+    description: 'Get the current roll call status — who is safe, who is still pending, total count. Use when someone asks "who is still missing", "how many checked in", "roll call status", "who do we still need", "who hasn\'t checked in".',
+    input_schema: { type: 'object', properties: {}, required: [] },
+  },
+
+  {
+    name: 'start_emergency_protocol',
+    description: 'Initiate an emergency protocol or drill. Navigates directly to the roll call screen with the correct emergency type. Use when someone says "start emergency", "fire emergency", "initiate tornado drill", "we have a gas leak", "medical emergency", "active shooter", "bomb threat", "chemical spill", etc.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        emergency_type: {
+          type: 'string',
+          description: 'Type of emergency.',
+          enum: ['fire','tornado','active_shooter','chemical_spill','gas_leak','bomb_threat','medical_emergency','earthquake','flood','power_outage','structural_collapse','other'],
+        },
+        is_drill: {
+          type: 'boolean',
+          description: 'True if this is a drill, false if this is a real emergency. Default false.',
+        },
+      },
+      required: ['emergency_type'],
+    },
+  },
+
   // ── Navigation ───────────────────────────────
 
   {
@@ -882,6 +967,28 @@ module.exports = async (req, res) => {
     if (result.tool_name === 'ask_clarification') { result.conversation_continue = true; result.speech = result.params?.question || result.speech; result.action = 'clarify'; }
     if (result.tool_name === 'general_response') { result.speech = result.params?.message || result.speech; result.action = 'info'; }
     if (result.tool_name === 'navigate') { result.action = 'navigate'; result.speech = result.speech || `Opening ${result.params?.screen}.`; }
+    if (result.tool_name === 'mark_employee_safe') {
+      result.action = 'mark_employee_safe';
+      result.speech = result.speech || `Marking ${result.params?.employee_name} safe.`;
+    }
+    if (result.tool_name === 'mark_multiple_employees_safe') {
+      result.action = 'mark_multiple_employees_safe';
+      const names = (result.params?.employee_names || []).join(', ');
+      result.speech = result.speech || `Marking ${names} safe.`;
+    }
+    if (result.tool_name === 'get_roll_call_status') {
+      result.action = 'get_roll_call_status';
+      result.speech = result.speech || 'Checking roll call status.';
+    }
+    if (result.tool_name === 'start_emergency_protocol') {
+      result.action = 'emergency_protocol';
+      const isDrill = result.params?.is_drill === true;
+      const type = result.params?.emergency_type || 'fire';
+      const label = type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+      result.speech = result.speech || (isDrill
+        ? `Starting ${label} drill. Navigating to roll call now.`
+        : `⚠️ Initiating ${label} emergency protocol. Roll call starting immediately.`);
+    }
 
     // ── Fire-and-forget memory extraction ──
     // Runs after response is sent — doesn't block the user
