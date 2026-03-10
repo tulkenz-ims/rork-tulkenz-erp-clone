@@ -76,6 +76,12 @@ USE mark_multiple_employees_safe when several names come at once:
   - "Employees 2, 9, and 6 checked in" → treat as names if you know them, or pass as-is
 
 USE get_roll_call_status when asked: "who's missing", "how many left", "roll call status", "who hasn't checked in", "who do we still need".
+USE initiate_roll_call when already on the screen: "start it", "begin", "initiate", "go", "hit start", "start the drill".
+USE end_emergency_protocol: "end protocol", "end the emergency", "wrap it up", "end drill", "close it out".
+USE cancel_emergency_event: "cancel", "false alarm", "started by accident", "cancel the drill", "cancel the event".
+USE save_emergency_details: "save details", "save and close", "close the event", or when they provide severity/location/notes.
+USE view_emergency_log: "view the log", "show event log", "see history".
+USE close_emergency_screen: "close", "go back", "dismiss", "skip details".
 
 USE start_emergency_protocol when someone says:
 - "fire", "there's a fire", "fire emergency" → emergency_type: "fire"
@@ -574,6 +580,51 @@ const TOOLS = [
   },
 
   {
+    name: 'initiate_roll_call',
+    description: 'Press the INITIATE button on the emergency protocol screen to start the roll call. Use when the user is already on the screen and says "start it", "begin", "initiate", "start the drill", "go", "hit start".',
+    input_schema: { type: 'object', properties: {}, required: [] },
+  },
+
+  {
+    name: 'end_emergency_protocol',
+    description: 'End the emergency protocol early and mark the event as resolved, even if not everyone is accounted for. Use when someone says "end protocol", "end the emergency", "close it out", "wrap it up", "end drill".',
+    input_schema: { type: 'object', properties: {}, required: [] },
+  },
+
+  {
+    name: 'cancel_emergency_event',
+    description: 'Cancel the emergency event entirely — use when it was started by accident or is a false alarm. Use when someone says "cancel", "false alarm", "cancel the drill", "cancel the event", "started by accident".',
+    input_schema: { type: 'object', properties: {}, required: [] },
+  },
+
+  {
+    name: 'save_emergency_details',
+    description: 'Save post-event details after everyone is accounted for. Can set severity, location, notes, and whether 911 was called. Use when someone says "save details", "close the event", "save and close", or provides details like "severity was high, location was Building A, 911 was called".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        severity: { type: 'string', enum: ['critical','high','medium','low'], description: 'Severity level of the event.' },
+        location: { type: 'string', description: 'Location description, e.g. "Building A, 2nd Floor".' },
+        notes: { type: 'string', description: 'Additional notes about the event.' },
+        emergency_services_called: { type: 'boolean', description: 'Whether 911 / emergency services were called.' },
+      },
+      required: [],
+    },
+  },
+
+  {
+    name: 'view_emergency_log',
+    description: 'Navigate to the emergency event log. Use when someone says "view the log", "show event log", "see history", "open the log".',
+    input_schema: { type: 'object', properties: {}, required: [] },
+  },
+
+  {
+    name: 'close_emergency_screen',
+    description: 'Close the emergency protocol screen without saving details. Use when someone says "close", "go back", "dismiss", "skip details".',
+    input_schema: { type: 'object', properties: {}, required: [] },
+  },
+
+  {
     name: 'start_emergency_protocol',
     description: 'Initiate an emergency protocol or drill. Navigates directly to the roll call screen with the correct emergency type. Use when someone says "start emergency", "fire emergency", "initiate tornado drill", "we have a gas leak", "medical emergency", "active shooter", "bomb threat", "chemical spill", etc.',
     input_schema: {
@@ -980,6 +1031,12 @@ module.exports = async (req, res) => {
       result.action = 'get_roll_call_status';
       result.speech = result.speech || 'Checking roll call status.';
     }
+    if (result.tool_name === 'initiate_roll_call') { result.action = 'initiate_roll_call'; result.speech = result.speech || 'Initiating roll call now.'; }
+    if (result.tool_name === 'end_emergency_protocol') { result.action = 'end_emergency_protocol'; result.speech = result.speech || 'Ending protocol and resolving event.'; }
+    if (result.tool_name === 'cancel_emergency_event') { result.action = 'cancel_emergency_event'; result.speech = result.speech || 'Cancelling event.'; }
+    if (result.tool_name === 'save_emergency_details') { result.action = 'save_emergency_details'; result.speech = result.speech || 'Saving event details.'; }
+    if (result.tool_name === 'view_emergency_log') { result.action = 'view_emergency_log'; result.speech = result.speech || 'Opening event log.'; }
+    if (result.tool_name === 'close_emergency_screen') { result.action = 'close_emergency_screen'; result.speech = result.speech || 'Closing protocol screen.'; }
     if (result.tool_name === 'start_emergency_protocol') {
       result.action = 'emergency_protocol';
       const isDrill = result.params?.is_drill === true;
