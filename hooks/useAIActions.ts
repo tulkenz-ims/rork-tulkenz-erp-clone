@@ -804,6 +804,17 @@ export function useAIActions() {
       case 'end_production_run':                          return endProductionRun(params);
       case 'change_room_status':                          return changeRoomStatus(params);
       case 'navigate':                                    return navigate(params);
+      case 'start_emergency_protocol': {
+        const type = (params.emergency_type as string) || 'fire';
+        const drill = params.is_drill === true ? 'true' : 'false';
+        try {
+          router.push({ pathname: '/(tabs)/headcount/emergencyprotocol' as any, params: { type, drill } });
+          const label = type.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+          return { success: true, message: drill === 'true' ? `${label} drill started. Roll call is live.` : `⚠️ ${label} emergency protocol initiated. Roll call is live.` };
+        } catch (err: any) {
+          return { success: false, message: `Failed to start emergency protocol: ${err.message}` };
+        }
+      }
       case 'ask_clarification':
       case 'clarify':                                     return { success:true, message:'Waiting for clarification.' };
       case 'general_response':
