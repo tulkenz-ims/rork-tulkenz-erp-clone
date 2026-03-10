@@ -3,6 +3,7 @@
 // Uses Claude TOOL USE (function calling) — reliable, schema-enforced actions
 
 const Anthropic = require('@anthropic-ai/sdk').default;
+const { getSchema } = require('./schema');
 
 const SYSTEM_PROMPT = `You are the TulKenz OPS AI Assistant for NextLN, a food manufacturing facility (Chike brand). You help operators, technicians, supervisors, and managers execute tasks through the TulKenz OPS platform using tools.
 
@@ -508,6 +509,41 @@ const TOOLS = [
 
 const { createClient } = require('@supabase/supabase-js');
 
+// ── Schema injection ─────────────────────────────────────────────────────────
+
+// Extract table names mentioned in a command string
+function extractTableNames(command, tableMap) {
+  if (!command) return [];
+  const lower = command.toLowerCase();
+  return Object.keys(tableMap).filter(t => lower.includes(t.replace(/_/g,' ')) || lower.includes(t));
+}
+
+// Build a compact schema block for the tables most relevant to this request
+async function buildSchemaBlock(command) {
+  try {
+    const schema = await getSchema();
+    if (!schema) return '';
+
+    // Always include high-traffic tables + any mentioned in the command
+    const alwaysInclude = ['materials','work_orders','employees','equipment','pm_schedules','task_feed_posts','purchase_orders','vendors'];
+    const mentioned = extractTableNames(command || '', schema);
+    const tables = [...new Set([...alwaysInclude, ...mentioned])].filter(t => schema[t]);
+
+    if (tables.length === 0) return '';
+
+    const lines = ['## EXACT SUPABASE COLUMN NAMES (use ONLY these — no guessing)'];
+    for (const t of tables) {
+      const cols = schema[t].map(c => `${c.name}(${c.type.replace('timestamp with time zone','ts').replace('character varying','text').replace('integer','int')})`).join(', ');
+      lines.push(`${t}: ${cols}`);
+    }
+    lines.push('CRITICAL: Never use a column name not listed above. For filters, use exact column names and correct value types.');
+    return lines.join('\n');
+  } catch (e) {
+    console.warn('[ai-assist] buildSchemaBlock failed:', e.message);
+    return '';
+  }
+}
+
 // ── Memory helpers ──────────────────────────────────────────────────────────
 
 function getSupabaseAdmin() {
@@ -694,14 +730,16 @@ module.exports = async (req, res) => {
     const userName = context?.userName || 'Operator';
     const sb = getSupabaseAdmin();
 
-    let memoryBlock = '';
-    if (orgId && userId) {
-      const { memories, summaries } = await loadMemory(orgId, userId);
-      memoryBlock = buildMemoryBlock(memories, summaries);
-    }
+    // Load memory and live schema in parallel
+    const [memoryResult, schemaBlock] = await Promise.all([
+      (orgId && userId) ? loadMemory(orgId, userId) : Promise.resolve({ memories: [], summaries: [] }),
+      buildSchemaBlock(command),
+    ]);
+    const memoryBlock = buildMemoryBlock(memoryResult.memories, memoryResult.summaries);
 
-    const dynamicSystem = memoryBlock
-      ? `${SYSTEM_PROMPT}\n\n${memoryBlock}`
+    const extras = [memoryBlock, schemaBlock].filter(Boolean).join('\n\n');
+    const dynamicSystem = extras
+      ? `${SYSTEM_PROMPT}\n\n${extras}`
       : SYSTEM_PROMPT;
 
     const userContent = [];
