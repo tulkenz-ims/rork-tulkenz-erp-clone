@@ -14,6 +14,7 @@ import {
   ClipboardList,
   ChevronRight,
   Clock,
+  Calendar,
   TrendingUp,
   Boxes,
   CheckCircle,
@@ -60,6 +61,14 @@ export default function ProductionScreen() {
   ];
 
   const modules = [
+    {
+      id: 'scheduler',
+      title: 'Department Scheduler',
+      description: 'Production-first scheduling board. Fit PMs, training, and checks around the run.',
+      icon: Calendar,
+      color: '#00e5ff',
+      route: 'scheduler',
+    },
     {
       id: 'productionruns',
       title: 'Production Runs',
