@@ -35,6 +35,7 @@ import {
   Briefcase,
   ClipboardList,
   Calculator,
+  Rocket,
 } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useUser } from '@/contexts/UserContext';
@@ -338,6 +339,13 @@ export default function SettingsScreen() {
               label="System Overview"
               value="Architecture, security, modules"
               onPress={() => router.push('/settings/system-overview')}
+              colors={colors}
+            />
+            <SettingItem
+              icon={Rocket}
+              label="Feature Roadmap"
+              value="What's being built next"
+              onPress={() => router.push('/settings/roadmap')}
               colors={colors}
             />
           </View>
