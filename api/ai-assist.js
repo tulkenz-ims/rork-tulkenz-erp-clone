@@ -1028,8 +1028,9 @@ module.exports = async (req, res) => {
     if (result.tool_name === 'general_response') { result.speech = result.params?.message || result.speech; result.action = 'info'; }
     if (result.tool_name === 'navigate') {
       result.action = 'navigate';
-      const screen = result.params?.screen || '';
-      result.speech = result.speech || (es ? `Abriendo ${screen}.` : `Opening ${screen}.`);
+      const rawScreen = result.params?.screen || '';
+      const humanScreen = rawScreen.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+      result.speech = result.speech || (es ? `Abriendo ${humanScreen}.` : `Opening ${humanScreen}.`);
     }
     if (result.tool_name === 'mark_employee_safe') {
       result.action = 'mark_employee_safe';
