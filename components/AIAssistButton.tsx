@@ -529,15 +529,19 @@ export default function AIAssistButton() {
     }
   }, [isWeb]);
 
-  // Get Spanish voice
+  // Get Spanish voice — prefer Online Natural voices, they sound human
   const getSpanishVoice = useCallback((): any | null => {
-    if (isWeb) {
-      const all = window.speechSynthesis.getVoices();
-      return all.find((v: any) => v.lang === 'es-MX') ||
-             all.find((v: any) => v.lang === 'es-US') ||
-             all.find((v: any) => v.lang.startsWith('es')) || null;
-    }
-    return null; // native handles Spanish via speechLang directly
+    if (!isWeb) return null;
+    const all = window.speechSynthesis.getVoices();
+    const esVoices = all.filter((v: any) => v.lang.startsWith('es'));
+    // Prefer Online (Natural) voices — they're the neural ones
+    const natural = esVoices.filter((v: any) => v.name.includes('Online'));
+    const pick = (list: any[]) =>
+      list.find((v: any) => v.lang === 'es-MX') ||
+      list.find((v: any) => v.lang === 'es-US') ||
+      list.find((v: any) => v.lang === 'es-ES') ||
+      list[0] || null;
+    return pick(natural) || pick(esVoices);
   }, [isWeb]);
 
   const speechLang = language === 'es' ? 'es-MX' : 'en-US';
@@ -622,7 +626,7 @@ export default function AIAssistButton() {
         const utter = new (window as any).SpeechSynthesisUtterance(text);
         utter.lang  = speechLang;
         utter.pitch = 1.0;
-        utter.rate  = 1.25;
+        utter.rate  = 1.0;
         if (language === 'es') {
           const esVoice = getSpanishVoice();
           if (esVoice) { utter.voice = esVoice; console.log('[AIAssist] ES voice:', esVoice.name); }
@@ -785,10 +789,13 @@ export default function AIAssistButton() {
       if (toolName && !['info', 'general_response'].includes(toolName)) {
 
         if (toolName === 'navigate') {
-          // Speak first — navigate only after speech finishes
+          // Speak fully first — delay modal close until speech is done
+          // Closing the modal while speaking cancels the utterance on web
           speakResponse(speechText, () => {
-            setIsOpen(false);
-            executeAIAction(toolName, data.params || {});
+            setTimeout(() => {
+              setIsOpen(false);
+              executeAIAction(toolName, data.params || {});
+            }, 100);
           });
           setIsProcessing(false);
           return;
