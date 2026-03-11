@@ -476,8 +476,9 @@ export default function SchedulerScreen() {
     const [blockType, setBlockType] = useState<BlockType>('production');
     const [title, setTitle] = useState('');
     const [room, setRoom] = useState('');
-    const [employeeName, setEmployeeName] = useState('');
-    const [employeeId, setEmployeeId] = useState('');
+    const [attendees, setAttendees] = useState<RequiredEmployee[]>([]);
+    const [employeeSearch, setEmployeeSearch] = useState('');
+    const [showEmployeePicker, setShowEmployeePicker] = useState(false);
     const [date, setDate] = useState(toDateStr(selectedDay));
     const [startTime, setStartTime] = useState('06:00');
     const [endTime, setEndTime] = useState('14:45');
@@ -488,6 +489,33 @@ export default function SchedulerScreen() {
     const [pmDuration, setPMDuration] = useState('');
     const [showSuggestions, setShowSuggestions] = useState(false);
 
+    const filteredEmployees = useMemo(() => {
+      const q = employeeSearch.toLowerCase();
+      return (allEmployees || [])
+        .filter(e => e.status === 'active')
+        .filter(e =>
+          !q ||
+          `${e.first_name} ${e.last_name}`.toLowerCase().includes(q) ||
+          e.position?.toLowerCase().includes(q)
+        )
+        .slice(0, 20);
+    }, [allEmployees, employeeSearch]);
+
+    const toggleAttendee = (emp: any) => {
+      const fullName = `${emp.first_name} ${emp.last_name}`.trim();
+      const already = attendees.find(a => a.id === emp.id);
+      if (already) {
+        setAttendees(prev => prev.filter(a => a.id !== emp.id));
+      } else {
+        setAttendees(prev => [...prev, { id: emp.id, name: fullName, role: emp.position || emp.role || '' }]);
+      }
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    };
+
+    const removeAttendee = (id: string) => {
+      setAttendees(prev => prev.filter(a => a.id !== id));
+    };
+
     const pmSuggestParams = useMemo(() => {
       if (blockType !== 'pm' || !room || !date || !pmDuration) return null;
       return {
@@ -495,9 +523,9 @@ export default function SchedulerScreen() {
         targetDate: date,
         durationMinutes: parseInt(pmDuration) || 30,
         clearanceType: pmClearance,
-        employeeId: employeeId || undefined,
+        employeeId: attendees[0]?.id || undefined,
       };
-    }, [blockType, room, date, pmDuration, pmClearance, employeeId]);
+    }, [blockType, room, date, pmDuration, pmClearance, attendees]);
 
     const { data: pmSuggestions = [], isLoading: loadingSuggestions } =
       usePMSuggestions(showSuggestions ? pmSuggestParams : null);
@@ -526,11 +554,12 @@ export default function SchedulerScreen() {
         notes:      notes.trim() || undefined,
         room_id:    room || undefined,
         room_name:  room || undefined,
-        employee_id:   employeeId || undefined,
-        employee_name: employeeName || undefined,
+        employee_id:        attendees[0]?.id || undefined,
+        employee_name:      attendees[0]?.name || undefined,
+        required_employees: attendees.length > 0 ? attendees : undefined,
         product_name:  productName || undefined,
         crew_size:     crewSize ? parseInt(crewSize) : undefined,
-        pm_clearance_type:  blockType === 'pm' ? pmClearance : undefined,
+        pm_clearance_type:   blockType === 'pm' ? pmClearance : undefined,
         pm_duration_minutes: blockType === 'pm' && pmDuration ? parseInt(pmDuration) : undefined,
       };
 
@@ -816,17 +845,90 @@ export default function SchedulerScreen() {
               </>
             )}
 
-            {/* Assigned person (all types except production which uses crew) */}
+            {/* Attendees — multi-select for all non-production blocks */}
             {blockType !== 'production' && (
               <>
-                <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Assigned To</Text>
-                <TextInput
-                  style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
-                  value={employeeName}
-                  onChangeText={setEmployeeName}
-                  placeholder="Employee name"
-                  placeholderTextColor={colors.textTertiary}
-                />
+                <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>
+                  {blockType === 'training' ? 'Attendees' : 'Assigned To'}
+                </Text>
+
+                {/* Selected attendees chips */}
+                {attendees.length > 0 && (
+                  <View style={styles.attendeeChips}>
+                    {attendees.map(a => (
+                      <View key={a.id} style={[styles.attendeeChip, { backgroundColor: '#7b61ff22', borderColor: '#7b61ff55' }]}>
+                        <Text style={[styles.attendeeChipText, { color: '#7b61ff' }]}>{a.name}</Text>
+                        <Pressable onPress={() => removeAttendee(a.id)} hitSlop={8}>
+                          <X size={12} color="#7b61ff" />
+                        </Pressable>
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {/* Search + add */}
+                <Pressable
+                  onPress={() => setShowEmployeePicker(!showEmployeePicker)}
+                  style={[styles.addAttendeeBtn, { borderColor: colors.border, backgroundColor: colors.surface }]}
+                >
+                  <Plus size={14} color={colors.textSecondary} />
+                  <Text style={[styles.addAttendeeBtnText, { color: colors.textSecondary }]}>
+                    {attendees.length === 0 ? 'Add employee' : 'Add another'}
+                  </Text>
+                </Pressable>
+
+                {showEmployeePicker && (
+                  <View style={[styles.employeePicker, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                    <TextInput
+                      style={[styles.employeeSearch, { color: colors.text, borderColor: colors.border, backgroundColor: colors.backgroundSecondary }]}
+                      value={employeeSearch}
+                      onChangeText={setEmployeeSearch}
+                      placeholder="Search by name or position..."
+                      placeholderTextColor={colors.textTertiary}
+                      autoFocus
+                    />
+                    <ScrollView style={styles.employeeList} nestedScrollEnabled>
+                      {filteredEmployees.map(emp => {
+                        const selected = !!attendees.find(a => a.id === emp.id);
+                        const fullName = `${emp.first_name} ${emp.last_name}`.trim();
+                        return (
+                          <Pressable
+                            key={emp.id}
+                            onPress={() => toggleAttendee(emp)}
+                            style={[
+                              styles.employeeRow,
+                              { borderBottomColor: colors.border },
+                              selected && { backgroundColor: '#7b61ff11' },
+                            ]}
+                          >
+                            <View style={styles.employeeRowInfo}>
+                              <Text style={[styles.employeeRowName, { color: colors.text }]}>{fullName}</Text>
+                              <Text style={[styles.employeeRowPos, { color: colors.textSecondary }]}>
+                                {emp.position || emp.role}
+                                {emp.department_code ? ` · Dept ${emp.department_code}` : ''}
+                              </Text>
+                            </View>
+                            {selected && <Check size={16} color="#7b61ff" />}
+                          </Pressable>
+                        );
+                      })}
+                      {filteredEmployees.length === 0 && (
+                        <Text style={[styles.noEmpText, { color: colors.textTertiary }]}>
+                          No active employees found
+                        </Text>
+                      )}
+                    </ScrollView>
+                  </View>
+                )}
+
+                {blockType === 'training' && attendees.length > 1 && (
+                  <View style={[styles.infoBox, { backgroundColor: '#7b61ff11', borderColor: '#7b61ff33', marginTop: 8 }]}>
+                    <Users size={12} color="#7b61ff" />
+                    <Text style={[styles.infoBoxText, { color: '#7b61ff' }]}>
+                      {attendees.length} employees scheduled. Each will be checked for conflicts against their existing production assignments.
+                    </Text>
+                  </View>
+                )}
               </>
             )}
 
@@ -924,6 +1026,10 @@ export default function SchedulerScreen() {
               { label: 'Time', value: `${formatTime(selectedBlock.start_time)} – ${formatTime(selectedBlock.end_time)} (${durationLabel})` },
               selectedBlock.room_id ? { label: 'Room', value: selectedBlock.room_id } : null,
               selectedBlock.employee_name ? { label: 'Assigned To', value: selectedBlock.employee_name } : null,
+              selectedBlock.required_employees?.length > 1 ? {
+                label: 'All Attendees',
+                value: selectedBlock.required_employees.map((e: RequiredEmployee) => e.name).join(', ')
+              } : null,
               selectedBlock.department_name ? { label: 'Department', value: selectedBlock.department_name } : null,
               selectedBlock.product_name ? { label: 'Product', value: selectedBlock.product_name } : null,
               selectedBlock.crew_size ? { label: 'Crew Size', value: String(selectedBlock.crew_size) } : null,
@@ -1213,4 +1319,19 @@ const styles = StyleSheet.create({
 
   // FAB
   fab:                  { position: 'absolute', bottom: 90, right: 20, width: 52, height: 52, borderRadius: 26, backgroundColor: '#00e5ff', alignItems: 'center', justifyContent: 'center', shadowColor: '#00e5ff', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 8, elevation: 8 },
+
+  // Multi-employee picker
+  attendeeChips:        { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 },
+  attendeeChip:         { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20, borderWidth: 1 },
+  attendeeChipText:     { fontSize: 12, fontWeight: '600' },
+  addAttendeeBtn:       { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 10, borderRadius: 10, borderWidth: 1, borderStyle: 'dashed' },
+  addAttendeeBtnText:   { fontSize: 13 },
+  employeePicker:       { borderRadius: 12, borderWidth: 1, marginTop: 8, overflow: 'hidden' },
+  employeeSearch:       { padding: 10, borderBottomWidth: 1, fontSize: 13 },
+  employeeList:         { maxHeight: 200 },
+  employeeRow:          { flexDirection: 'row', alignItems: 'center', padding: 12, borderBottomWidth: 1 },
+  employeeRowInfo:      { flex: 1 },
+  employeeRowName:      { fontSize: 13, fontWeight: '600' },
+  employeeRowPos:       { fontSize: 11, marginTop: 1 },
+  noEmpText:            { fontSize: 12, textAlign: 'center', padding: 16 },
 });
