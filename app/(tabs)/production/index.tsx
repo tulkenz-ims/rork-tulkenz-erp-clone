@@ -14,7 +14,6 @@ import {
   ClipboardList,
   ChevronRight,
   Clock,
-  Calendar,
   TrendingUp,
   Boxes,
   CheckCircle,
