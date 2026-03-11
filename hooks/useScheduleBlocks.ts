@@ -208,12 +208,16 @@ export function useScheduleBlocks(weekStart?: Date) {
     room_id?: string | null;
     employee_id?: string | null;
     equipment_id?: string | null;
+    required_employees?: RequiredEmployee[];
     exclude_id?: string;
   }): Promise<ConflictResult[]> => {
     if (!organizationId) return [];
 
     console.log('[useScheduleBlocks] Checking conflicts for:', params.block_type);
 
+    const allConflicts: ConflictResult[] = [];
+
+    // Check primary employee + room + equipment
     const { data, error } = await supabase.rpc('check_schedule_conflicts', {
       p_org_id:       organizationId,
       p_block_type:   params.block_type,
@@ -227,11 +231,42 @@ export function useScheduleBlocks(weekStart?: Date) {
 
     if (error) {
       console.error('[useScheduleBlocks] Conflict check error:', error.message);
-      return [];
+    } else {
+      allConflicts.push(...((data || []) as ConflictResult[]));
     }
 
-    console.log('[useScheduleBlocks] Conflicts found:', data?.length || 0);
-    return (data || []) as ConflictResult[];
+    // Check each additional attendee individually
+    if (params.required_employees && params.required_employees.length > 0) {
+      for (const emp of params.required_employees) {
+        // Skip if already checked as primary employee
+        if (emp.id === params.employee_id) continue;
+
+        const { data: empData, error: empError } = await supabase.rpc('check_schedule_conflicts', {
+          p_org_id:       organizationId,
+          p_block_type:   params.block_type,
+          p_start_time:   params.start_time,
+          p_end_time:     params.end_time,
+          p_room_id:      null,         // room already checked above
+          p_employee_id:  emp.id,
+          p_equipment_id: null,
+          p_exclude_id:   params.exclude_id || null,
+        });
+
+        if (empError) {
+          console.error('[useScheduleBlocks] Employee conflict check error:', empError.message);
+        } else if (empData && empData.length > 0) {
+          // Tag each conflict with the employee name so the message is clear
+          const tagged = (empData as ConflictResult[]).map(c => ({
+            ...c,
+            message: `${emp.name}: ${c.message}`,
+          }));
+          allConflicts.push(...tagged);
+        }
+      }
+    }
+
+    console.log('[useScheduleBlocks] Total conflicts found:', allConflicts.length);
+    return allConflicts;
   };
 
   // ── Create block (runs conflict check first — blocks on conflict) ─────────
@@ -241,12 +276,13 @@ export function useScheduleBlocks(weekStart?: Date) {
 
       // ── Conflict check — block if any conflicts found ──
       const conflicts = await checkConflicts({
-        block_type:   input.block_type,
-        start_time:   input.start_time,
-        end_time:     input.end_time,
-        room_id:      input.room_id,
-        employee_id:  input.employee_id,
-        equipment_id: input.equipment_id,
+        block_type:         input.block_type,
+        start_time:         input.start_time,
+        end_time:           input.end_time,
+        room_id:            input.room_id,
+        employee_id:        input.employee_id,
+        equipment_id:       input.equipment_id,
+        required_employees: input.required_employees,
       });
 
       if (conflicts.length > 0) {
