@@ -639,7 +639,7 @@ export default function AIAssistButton() {
         Speech.speak(text, {
           language: speechLang,
           pitch: 1.0,
-          rate: 1.25,
+          rate: 1.0,
           ...(nativeVoiceId ? { voice: nativeVoiceId } : {}),
           onDone:  () => onDone?.(),
           onError: () => onDone?.(),
