@@ -1021,36 +1021,45 @@ module.exports = async (req, res) => {
       // server_tool_use / web_search_result blocks handled in loop above
     }
 
+    // ── Bilingual speech fallbacks ──
+    const es = userLanguage === 'es';
+
     if (result.tool_name === 'ask_clarification') { result.conversation_continue = true; result.speech = result.params?.question || result.speech; result.action = 'clarify'; }
     if (result.tool_name === 'general_response') { result.speech = result.params?.message || result.speech; result.action = 'info'; }
-    if (result.tool_name === 'navigate') { result.action = 'navigate'; result.speech = result.speech || `Opening ${result.params?.screen}.`; }
+    if (result.tool_name === 'navigate') {
+      result.action = 'navigate';
+      const screen = result.params?.screen || '';
+      result.speech = result.speech || (es ? `Abriendo ${screen}.` : `Opening ${screen}.`);
+    }
     if (result.tool_name === 'mark_employee_safe') {
       result.action = 'mark_employee_safe';
-      result.speech = result.speech || `Marking ${result.params?.employee_name} safe.`;
+      const name = result.params?.employee_name || '';
+      result.speech = result.speech || (es ? `Marcando a ${name} como seguro.` : `Marking ${name} safe.`);
     }
     if (result.tool_name === 'mark_multiple_employees_safe') {
       result.action = 'mark_multiple_employees_safe';
       const names = (result.params?.employee_names || []).join(', ');
-      result.speech = result.speech || `Marking ${names} safe.`;
+      result.speech = result.speech || (es ? `Marcando como seguros: ${names}.` : `Marking ${names} safe.`);
     }
     if (result.tool_name === 'get_roll_call_status') {
       result.action = 'get_roll_call_status';
-      result.speech = result.speech || 'Checking roll call status.';
+      result.speech = result.speech || (es ? 'Verificando el estado del pase de lista.' : 'Checking roll call status.');
     }
-    if (result.tool_name === 'initiate_roll_call') { result.action = 'initiate_roll_call'; result.speech = result.speech || 'Initiating roll call now.'; }
-    if (result.tool_name === 'end_emergency_protocol') { result.action = 'end_emergency_protocol'; result.speech = result.speech || 'Ending protocol and resolving event.'; }
-    if (result.tool_name === 'cancel_emergency_event') { result.action = 'cancel_emergency_event'; result.speech = result.speech || 'Cancelling event.'; }
-    if (result.tool_name === 'save_emergency_details') { result.action = 'save_emergency_details'; result.speech = result.speech || 'Saving event details.'; }
-    if (result.tool_name === 'view_emergency_log') { result.action = 'view_emergency_log'; result.speech = result.speech || 'Opening event log.'; }
-    if (result.tool_name === 'close_emergency_screen') { result.action = 'close_emergency_screen'; result.speech = result.speech || 'Closing protocol screen.'; }
+    if (result.tool_name === 'initiate_roll_call') { result.action = 'initiate_roll_call'; result.speech = result.speech || (es ? 'Iniciando el pase de lista ahora.' : 'Initiating roll call now.'); }
+    if (result.tool_name === 'end_emergency_protocol') { result.action = 'end_emergency_protocol'; result.speech = result.speech || (es ? 'Protocolo finalizado. Evento marcado como resuelto.' : 'Ending protocol and resolving event.'); }
+    if (result.tool_name === 'cancel_emergency_event') { result.action = 'cancel_emergency_event'; result.speech = result.speech || (es ? 'Evento cancelado.' : 'Cancelling event.'); }
+    if (result.tool_name === 'save_emergency_details') { result.action = 'save_emergency_details'; result.speech = result.speech || (es ? 'Detalles del evento guardados.' : 'Saving event details.'); }
+    if (result.tool_name === 'view_emergency_log') { result.action = 'view_emergency_log'; result.speech = result.speech || (es ? 'Abriendo el registro de eventos.' : 'Opening event log.'); }
+    if (result.tool_name === 'close_emergency_screen') { result.action = 'close_emergency_screen'; result.speech = result.speech || (es ? 'Cerrando la pantalla de protocolo.' : 'Closing protocol screen.'); }
     if (result.tool_name === 'start_emergency_protocol') {
       result.action = 'emergency_protocol';
       const isDrill = result.params?.is_drill === true;
       const type = result.params?.emergency_type || 'fire';
-      const label = type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-      result.speech = result.speech || (isDrill
-        ? `Starting ${label} drill. Navigating to roll call now.`
-        : `⚠️ Initiating ${label} emergency protocol. Roll call starting immediately.`);
+      const labelEN = type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+      const labelES = type.replace(/_/g, ' ');
+      result.speech = result.speech || (es
+        ? (isDrill ? `Iniciando simulacro de ${labelES}. Dirigiéndose al pase de lista.` : `⚠️ Iniciando protocolo de emergencia: ${labelES}. Comenzando pase de lista.`)
+        : (isDrill ? `Starting ${labelEN} drill. Navigating to roll call now.` : `⚠️ Initiating ${labelEN} emergency protocol. Roll call starting immediately.`));
     }
 
     // ── Fire-and-forget memory extraction ──
