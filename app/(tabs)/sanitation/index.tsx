@@ -30,6 +30,7 @@ import {
   FileWarning,
   AlertTriangle,
   Inbox,
+  Zap,
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useSupabaseSanitation } from '@/hooks/useSupabaseSanitation';
@@ -248,6 +249,19 @@ const SANITATION_CATEGORIES: FormCategory[] = [
   },
 ];
 
+// ─────────────────────────────────────────────
+// EMP / Food Safety Operations Module links
+// ─────────────────────────────────────────────
+const EMP_MODULE_LINKS = [
+  { id: 'dashboard',          label: 'Command Dashboard',     sub: 'KPIs, heatmap, alerts',          color: '#00e5ff', route: 'dashboard' },
+  { id: 'mss',                label: 'Live Sanitation Schedule', sub: 'Due tasks, completions, SSOPs', color: '#00ff88', route: 'mss' },
+  { id: 'atp-log',            label: 'ATP Swab Log',           sub: 'RLU entry, pass/warn/fail',       color: '#00ff88', route: 'atp-log' },
+  { id: 'emp-map',            label: 'EMP Zone Map',           sub: 'Zone heatmap, swab schedule',    color: '#ffb800', route: 'emp-map' },
+  { id: 'microbial-log',      label: 'Microbial Test Log',     sub: 'Lab results, chain of custody',  color: '#7b61ff', route: 'microbial-log' },
+  { id: 'corrective-actions', label: 'Corrective Actions',     sub: 'CAPA, Zone 1 vector swabs',      color: '#ff2d55', route: 'corrective-actions' },
+  { id: 'ssop-library',       label: 'SSOP Library',           sub: 'Procedures, steps, versions',    color: '#00e5ff', route: 'ssop-library' },
+] as const;
+
 export default function SanitationScreen() {
   const { colors } = useTheme();
   const router = useRouter();
@@ -430,7 +444,7 @@ export default function SanitationScreen() {
         </View>
       </View>
 
-        <View style={styles.statsGrid}>
+      <View style={styles.statsGrid}>
         {stats.map((stat, index) => {
           const IconComponent = stat.icon;
           return (
@@ -446,6 +460,45 @@ export default function SanitationScreen() {
             </View>
           );
         })}
+      </View>
+
+      {/* ── EMP & FOOD SAFETY OPERATIONS MODULE ── */}
+      <View style={styles.empModuleSection}>
+        <View style={styles.empModuleHeader}>
+          <View style={styles.empModuleHeaderLeft}>
+            <Zap size={16} color="#00e5ff" />
+            <Text style={styles.empModuleTitle}>EMP & Food Safety Operations</Text>
+          </View>
+          <Pressable
+            style={({ pressed }) => [styles.empDashboardBtn, { opacity: pressed ? 0.75 : 1 }]}
+            onPress={() => handleFormPress('dashboard')}
+          >
+            <Text style={styles.empDashboardBtnTxt}>DASHBOARD</Text>
+            <ChevronRight size={12} color="#020912" />
+          </Pressable>
+        </View>
+
+        <View style={styles.empModuleGrid}>
+          {EMP_MODULE_LINKS.filter(l => l.id !== 'dashboard').map(link => (
+            <Pressable
+              key={link.id}
+              style={({ pressed }) => [
+                styles.empModuleCard,
+                { borderLeftColor: link.color, opacity: pressed ? 0.75 : 1 },
+              ]}
+              onPress={() => handleFormPress(link.route)}
+            >
+              <View style={[styles.empModuleCardDot, { backgroundColor: link.color + '22', borderColor: link.color + '55' }]}>
+                <View style={[styles.empModuleCardDotInner, { backgroundColor: link.color }]} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.empModuleCardLabel}>{link.label}</Text>
+                <Text style={styles.empModuleCardSub}>{link.sub}</Text>
+              </View>
+              <ChevronRight size={14} color="#3a6080" />
+            </Pressable>
+          ))}
+        </View>
       </View>
 
       <Text style={[styles.sectionTitle, { color: colors.text }]}>Form Categories</Text>
@@ -551,7 +604,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row' as const,
     flexWrap: 'wrap' as const,
     gap: 10,
-    marginBottom: 24,
+    marginBottom: 20,
   },
   statCard: {
     width: '48%',
@@ -582,6 +635,92 @@ const styles = StyleSheet.create({
     fontWeight: '600' as const,
     marginBottom: 12,
   },
+
+  // ── EMP MODULE ──
+  empModuleSection: {
+    marginBottom: 24,
+    backgroundColor: '#020912',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#0d2840',
+    overflow: 'hidden' as const,
+  },
+  empModuleHeader: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#0d2840',
+    backgroundColor: '#050f1e',
+  },
+  empModuleHeaderLeft: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 8,
+  },
+  empModuleTitle: {
+    fontSize: 13,
+    fontWeight: '700' as const,
+    color: '#e0f4ff',
+    letterSpacing: 0.3,
+  },
+  empDashboardBtn: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 4,
+    backgroundColor: '#00e5ff',
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  empDashboardBtnTxt: {
+    fontSize: 10,
+    fontWeight: '800' as const,
+    color: '#020912',
+    letterSpacing: 1,
+  },
+  empModuleGrid: {
+    padding: 10,
+    gap: 6,
+  },
+  empModuleCard: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 10,
+    backgroundColor: '#050f1e',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#0d2840',
+    borderLeftWidth: 3,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  empModuleCardDot: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  empModuleCardDotInner: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  empModuleCardLabel: {
+    fontSize: 13,
+    fontWeight: '600' as const,
+    color: '#e0f4ff',
+    marginBottom: 1,
+  },
+  empModuleCardSub: {
+    fontSize: 11,
+    color: '#7aa8c8',
+  },
+
   categoryContainer: {
     marginBottom: 12,
   },
