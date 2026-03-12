@@ -33,7 +33,7 @@ import {
   Zap,
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
-import { useSupabaseSanitation } from '@/hooks/useSupabaseSanitation';
+import { useSanitationWorkOrders } from '@/hooks/useSupabaseSanitationWorkOrders';
 import * as Haptics from 'expo-haptics';
 import TaskFeedInbox from '@/components/TaskFeedInbox';
 import { supabase } from '@/lib/supabase';
