@@ -95,6 +95,14 @@ export default function SanitationLayout() {
       <Stack.Screen name="sanitationcapa" options={{ title: 'Sanitation Corrective Action' }} />
       <Stack.Screen name="repeatdeficiency" options={{ title: 'Repeat Deficiency Tracking' }} />
       <Stack.Screen name="sanitationdeviation" options={{ title: 'Sanitation Deviation Report' }} />
+
+      {/* ── EMP & Food Safety Operations Module ── */}
+      <Stack.Screen name="dashboard" options={{ title: 'Sanitation Dashboard', headerShown: false }} />
+      <Stack.Screen name="atp-log" options={{ title: 'ATP Swab Log', headerShown: false }} />
+      <Stack.Screen name="emp-map" options={{ title: 'EMP Zone Map', headerShown: false }} />
+      <Stack.Screen name="microbial-log" options={{ title: 'Microbial Test Log', headerShown: false }} />
+      <Stack.Screen name="corrective-actions" options={{ title: 'Corrective Actions', headerShown: false }} />
+      <Stack.Screen name="ssop-library" options={{ title: 'SSOP Library', headerShown: false }} />
     </Stack>
   );
 }
