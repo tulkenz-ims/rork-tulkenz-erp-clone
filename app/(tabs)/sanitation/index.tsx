@@ -71,13 +71,13 @@ const SANITATION_CATEGORIES: FormCategory[] = [
     icon: Calendar,
     color: '#8B5CF6',
     forms: [
-      { id: 'mss', title: 'Master Sanitation Schedule (MSS)', route: 'mss' },
-      { id: 'dailytasks', title: 'Daily Sanitation Task List', route: 'dailytasks' },
-      { id: 'weeklytasks', title: 'Weekly Sanitation Task List', route: 'weeklytasks' },
-      { id: 'monthlytasks', title: 'Monthly Sanitation Task List', route: 'monthlytasks' },
-      { id: 'deepclean', title: 'Quarterly/Annual Deep Clean Schedule', route: 'deepclean' },
-      { id: 'zonemap', title: 'Sanitation Zone Map', route: 'zonemap' },
-      { id: 'crewassignment', title: 'Sanitation Crew Assignment Log', route: 'crewassignment' },
+      { id: 'mss',          title: 'Master Sanitation Schedule (MSS)',         route: 'mss' },
+      { id: 'dailytasks',   title: 'Daily Sanitation Task List',               route: 'dailytasks' },
+      { id: 'weeklytasks',  title: 'Weekly Sanitation Task List',              route: 'weeklytasks' },
+      { id: 'monthlytasks', title: 'Monthly Sanitation Task List',             route: 'monthlytasks' },
+      { id: 'deepclean',    title: 'Quarterly/Annual Deep Clean Schedule',     route: 'deepclean' },
+      { id: 'zonemap',      title: 'Sanitation Zone Map',                      route: 'zonemap' },
+      { id: 'crewassignment', title: 'Sanitation Crew Assignment Log',         route: 'crewassignment' },
     ],
   },
   {
@@ -86,10 +86,10 @@ const SANITATION_CATEGORIES: FormCategory[] = [
     icon: Bath,
     color: '#3B82F6',
     forms: [
-      { id: 'restroomcleaning', title: 'Restroom Cleaning Checklist', route: 'restroomcleaning' },
-      { id: 'restroominspection', title: 'Restroom Inspection Log', route: 'restroominspection' },
-      { id: 'restroomdeepclean', title: 'Restroom Deep Clean Record', route: 'restroomdeepclean' },
-      { id: 'restroomsupply', title: 'Restroom Supply Check Log', route: 'restroomsupply' },
+      { id: 'restroomcleaning',    title: 'Restroom Cleaning Checklist',   route: 'restroomcleaning' },
+      { id: 'restroominspection',  title: 'Restroom Inspection Log',       route: 'restroominspection' },
+      { id: 'restroomdeepclean',   title: 'Restroom Deep Clean Record',    route: 'restroomdeepclean' },
+      { id: 'restroomsupply',      title: 'Restroom Supply Check Log',     route: 'restroomsupply' },
     ],
   },
   {
@@ -98,12 +98,12 @@ const SANITATION_CATEGORIES: FormCategory[] = [
     icon: Coffee,
     color: '#F59E0B',
     forms: [
-      { id: 'breakroomcleaning', title: 'Break Room Cleaning Checklist', route: 'breakroomcleaning' },
-      { id: 'breakroomfridge', title: 'Break Room Refrigerator Cleaning', route: 'breakroomfridge' },
-      { id: 'microwavecleaning', title: 'Microwave/Appliance Cleaning', route: 'microwavecleaning' },
-      { id: 'lockerroomcleaning', title: 'Locker Room Cleaning Checklist', route: 'lockerroomcleaning' },
-      { id: 'lockerroominspection', title: 'Locker Room Inspection Log', route: 'lockerroominspection' },
-      { id: 'vendingarea', title: 'Vending Area Cleaning Log', route: 'vendingarea' },
+      { id: 'breakroomcleaning',    title: 'Break Room Cleaning Checklist',         route: 'breakroomcleaning' },
+      { id: 'breakroomfridge',      title: 'Break Room Refrigerator Cleaning',      route: 'breakroomfridge' },
+      { id: 'microwavecleaning',    title: 'Microwave/Appliance Cleaning',          route: 'microwavecleaning' },
+      { id: 'lockerroomcleaning',   title: 'Locker Room Cleaning Checklist',        route: 'lockerroomcleaning' },
+      { id: 'lockerroominspection', title: 'Locker Room Inspection Log',            route: 'lockerroominspection' },
+      { id: 'vendingarea',          title: 'Vending Area Cleaning Log',             route: 'vendingarea' },
     ],
   },
   {
@@ -112,12 +112,12 @@ const SANITATION_CATEGORIES: FormCategory[] = [
     icon: Building2,
     color: '#10B981',
     forms: [
-      { id: 'officecleaning', title: 'Office Cleaning Checklist', route: 'officecleaning' },
-      { id: 'conferenceroom', title: 'Conference Room Cleaning', route: 'conferenceroom' },
-      { id: 'lobbycleaning', title: 'Reception/Lobby Cleaning', route: 'lobbycleaning' },
-      { id: 'hallwaycleaning', title: 'Hallway/Corridor Cleaning', route: 'hallwaycleaning' },
-      { id: 'stairwellcleaning', title: 'Stairwell Cleaning', route: 'stairwellcleaning' },
-      { id: 'entrancecleaning', title: 'Entrance/Exit Area Cleaning', route: 'entrancecleaning' },
+      { id: 'officecleaning',    title: 'Office Cleaning Checklist',      route: 'officecleaning' },
+      { id: 'conferenceroom',    title: 'Conference Room Cleaning',        route: 'conferenceroom' },
+      { id: 'lobbycleaning',     title: 'Reception/Lobby Cleaning',        route: 'lobbycleaning' },
+      { id: 'hallwaycleaning',   title: 'Hallway/Corridor Cleaning',       route: 'hallwaycleaning' },
+      { id: 'stairwellcleaning', title: 'Stairwell Cleaning',              route: 'stairwellcleaning' },
+      { id: 'entrancecleaning',  title: 'Entrance/Exit Area Cleaning',     route: 'entrancecleaning' },
     ],
   },
   {
@@ -126,11 +126,11 @@ const SANITATION_CATEGORIES: FormCategory[] = [
     icon: Footprints,
     color: '#EC4899',
     forms: [
-      { id: 'floormopping', title: 'Floor Mopping Log', route: 'floormopping' },
-      { id: 'floorscrubbing', title: 'Floor Scrubbing/Buffing Schedule', route: 'floorscrubbing' },
-      { id: 'floorwaxing', title: 'Floor Waxing/Stripping Record', route: 'floorwaxing' },
-      { id: 'carpetcleaning', title: 'Carpet Cleaning/Shampooing', route: 'carpetcleaning' },
-      { id: 'floormatcleaning', title: 'Floor Mat Cleaning/Replacement', route: 'floormatcleaning' },
+      { id: 'floormopping',     title: 'Floor Mopping Log',                route: 'floormopping' },
+      { id: 'floorscrubbing',   title: 'Floor Scrubbing/Buffing Schedule', route: 'floorscrubbing' },
+      { id: 'floorwaxing',      title: 'Floor Waxing/Stripping Record',    route: 'floorwaxing' },
+      { id: 'carpetcleaning',   title: 'Carpet Cleaning/Shampooing',       route: 'carpetcleaning' },
+      { id: 'floormatcleaning', title: 'Floor Mat Cleaning/Replacement',   route: 'floormatcleaning' },
     ],
   },
   {
@@ -139,11 +139,11 @@ const SANITATION_CATEGORIES: FormCategory[] = [
     icon: Trash2,
     color: '#6366F1',
     forms: [
-      { id: 'trashremoval', title: 'Trash Removal Schedule/Log', route: 'trashremoval' },
-      { id: 'wastecontainer', title: 'Waste Container Cleaning', route: 'wastecontainer' },
-      { id: 'dumpsterarea', title: 'Dumpster Area Sanitation', route: 'dumpsterarea' },
-      { id: 'recyclingarea', title: 'Recycling Area Cleaning', route: 'recyclingarea' },
-      { id: 'trashliner', title: 'Trash Can Liner Replacement', route: 'trashliner' },
+      { id: 'trashremoval',    title: 'Trash Removal Schedule/Log', route: 'trashremoval' },
+      { id: 'wastecontainer',  title: 'Waste Container Cleaning',   route: 'wastecontainer' },
+      { id: 'dumpsterarea',    title: 'Dumpster Area Sanitation',   route: 'dumpsterarea' },
+      { id: 'recyclingarea',   title: 'Recycling Area Cleaning',    route: 'recyclingarea' },
+      { id: 'trashliner',      title: 'Trash Can Liner Replacement', route: 'trashliner' },
     ],
   },
   {
@@ -152,9 +152,9 @@ const SANITATION_CATEGORIES: FormCategory[] = [
     icon: Wind,
     color: '#0EA5E9',
     forms: [
-      { id: 'windowcleaning', title: 'Window Cleaning Schedule', route: 'windowcleaning' },
-      { id: 'glasscleaning', title: 'Interior Glass/Mirror Cleaning', route: 'glasscleaning' },
-      { id: 'doorglasscleaning', title: 'Door Glass Cleaning', route: 'doorglasscleaning' },
+      { id: 'windowcleaning',     title: 'Window Cleaning Schedule',        route: 'windowcleaning' },
+      { id: 'glasscleaning',      title: 'Interior Glass/Mirror Cleaning',  route: 'glasscleaning' },
+      { id: 'doorglasscleaning',  title: 'Door Glass Cleaning',             route: 'doorglasscleaning' },
     ],
   },
   {
@@ -163,12 +163,12 @@ const SANITATION_CATEGORIES: FormCategory[] = [
     icon: Package,
     color: '#14B8A6',
     forms: [
-      { id: 'toiletpaperinventory', title: 'Toilet Paper Inventory', route: 'toiletpaperinventory' },
-      { id: 'papertowerinventory', title: 'Paper Towel Inventory', route: 'papertowerinventory' },
-      { id: 'handsoapinventory', title: 'Hand Soap Inventory', route: 'handsoapinventory' },
-      { id: 'sanitizerinventory', title: 'Hand Sanitizer Inventory', route: 'sanitizerinventory' },
-      { id: 'trashlinerinventory', title: 'Trash Liner Inventory', route: 'trashlinerinventory' },
-      { id: 'airfreshenerinventory', title: 'Air Freshener Inventory', route: 'airfreshenerinventory' },
+      { id: 'toiletpaperinventory', title: 'Toilet Paper Inventory',     route: 'toiletpaperinventory' },
+      { id: 'papertowerinventory',  title: 'Paper Towel Inventory',      route: 'papertowerinventory' },
+      { id: 'handsoapinventory',    title: 'Hand Soap Inventory',        route: 'handsoapinventory' },
+      { id: 'sanitizerinventory',   title: 'Hand Sanitizer Inventory',   route: 'sanitizerinventory' },
+      { id: 'trashlinerinventory',  title: 'Trash Liner Inventory',      route: 'trashlinerinventory' },
+      { id: 'airfreshenerinventory', title: 'Air Freshener Inventory',   route: 'airfreshenerinventory' },
     ],
   },
   {
@@ -177,24 +177,24 @@ const SANITATION_CATEGORIES: FormCategory[] = [
     icon: ShoppingBag,
     color: '#F97316',
     forms: [
-      { id: 'gloveinventory', title: 'Glove Inventory Log', route: 'gloveinventory' },
-      { id: 'gloveissuance', title: 'Glove Issuance Log', route: 'gloveissuance' },
-      { id: 'hairnetinventory', title: 'Hairnet Inventory Log', route: 'hairnetinventory' },
-      { id: 'hairnetissuance', title: 'Hairnet Issuance Log', route: 'hairnetissuance' },
-      { id: 'beardnetinventory', title: 'Beard Net Inventory', route: 'beardnetinventory' },
-      { id: 'beardnetissuance', title: 'Beard Net Issuance', route: 'beardnetissuance' },
-      { id: 'shoecoverinventory', title: 'Shoe/Boot Cover Inventory', route: 'shoecoverinventory' },
-      { id: 'shoecoverissuance', title: 'Shoe/Boot Cover Issuance', route: 'shoecoverissuance' },
-      { id: 'towelinventory', title: 'Towel Inventory Log', route: 'towelinventory' },
-      { id: 'towelissuance', title: 'Towel Issuance Log', route: 'towelissuance' },
-      { id: 'raginventory', title: 'Rag Inventory Log', route: 'raginventory' },
-      { id: 'ragissuance', title: 'Rag Issuance Log', route: 'ragissuance' },
-      { id: 'aproninventory', title: 'Apron/Smock Inventory', route: 'aproninventory' },
-      { id: 'apronissuance', title: 'Apron/Smock Issuance', route: 'apronissuance' },
-      { id: 'sleevecoverinventory', title: 'Sleeve Cover Inventory', route: 'sleevecoverinventory' },
-      { id: 'facemaskinventory', title: 'Face Mask Inventory', route: 'facemaskinventory' },
-      { id: 'consumablesreorder', title: 'Consumables Reorder List', route: 'consumablesreorder' },
-      { id: 'supplyroomstock', title: 'Supply Room Stock Check', route: 'supplyroomstock' },
+      { id: 'gloveinventory',        title: 'Glove Inventory Log',           route: 'gloveinventory' },
+      { id: 'gloveissuance',         title: 'Glove Issuance Log',            route: 'gloveissuance' },
+      { id: 'hairnetinventory',      title: 'Hairnet Inventory Log',         route: 'hairnetinventory' },
+      { id: 'hairnetissuance',       title: 'Hairnet Issuance Log',          route: 'hairnetissuance' },
+      { id: 'beardnetinventory',     title: 'Beard Net Inventory',           route: 'beardnetinventory' },
+      { id: 'beardnetissuance',      title: 'Beard Net Issuance',            route: 'beardnetissuance' },
+      { id: 'shoecoverinventory',    title: 'Shoe/Boot Cover Inventory',     route: 'shoecoverinventory' },
+      { id: 'shoecoverissuance',     title: 'Shoe/Boot Cover Issuance',      route: 'shoecoverissuance' },
+      { id: 'towelinventory',        title: 'Towel Inventory Log',           route: 'towelinventory' },
+      { id: 'towelissuance',         title: 'Towel Issuance Log',            route: 'towelissuance' },
+      { id: 'raginventory',          title: 'Rag Inventory Log',             route: 'raginventory' },
+      { id: 'ragissuance',           title: 'Rag Issuance Log',              route: 'ragissuance' },
+      { id: 'aproninventory',        title: 'Apron/Smock Inventory',         route: 'aproninventory' },
+      { id: 'apronissuance',         title: 'Apron/Smock Issuance',          route: 'apronissuance' },
+      { id: 'sleevecoverinventory',  title: 'Sleeve Cover Inventory',        route: 'sleevecoverinventory' },
+      { id: 'facemaskinventory',     title: 'Face Mask Inventory',           route: 'facemaskinventory' },
+      { id: 'consumablesreorder',    title: 'Consumables Reorder List',      route: 'consumablesreorder' },
+      { id: 'supplyroomstock',       title: 'Supply Room Stock Check',       route: 'supplyroomstock' },
     ],
   },
   {
@@ -203,12 +203,12 @@ const SANITATION_CATEGORIES: FormCategory[] = [
     icon: Wrench,
     color: '#EF4444',
     forms: [
-      { id: 'cleaningtoolinventory', title: 'Cleaning Tool Inventory', route: 'cleaningtoolinventory' },
-      { id: 'cleaningtoolinspection', title: 'Cleaning Tool Inspection', route: 'cleaningtoolinspection' },
-      { id: 'mopbucketreplacement', title: 'Mop/Bucket Replacement', route: 'mopbucketreplacement' },
-      { id: 'vacuummaintenance', title: 'Vacuum Maintenance', route: 'vacuummaintenance' },
-      { id: 'floorscrubberpm', title: 'Floor Scrubber Maintenance', route: 'floorscrubberpm' },
-      { id: 'cleaningcartinspection', title: 'Cleaning Cart Inspection', route: 'cleaningcartinspection' },
+      { id: 'cleaningtoolinventory',   title: 'Cleaning Tool Inventory',     route: 'cleaningtoolinventory' },
+      { id: 'cleaningtoolinspection',  title: 'Cleaning Tool Inspection',    route: 'cleaningtoolinspection' },
+      { id: 'mopbucketreplacement',    title: 'Mop/Bucket Replacement',      route: 'mopbucketreplacement' },
+      { id: 'vacuummaintenance',       title: 'Vacuum Maintenance',          route: 'vacuummaintenance' },
+      { id: 'floorscrubberpm',         title: 'Floor Scrubber Maintenance',  route: 'floorscrubberpm' },
+      { id: 'cleaningcartinspection',  title: 'Cleaning Cart Inspection',    route: 'cleaningcartinspection' },
     ],
   },
   {
@@ -217,10 +217,10 @@ const SANITATION_CATEGORIES: FormCategory[] = [
     icon: TreePine,
     color: '#22C55E',
     forms: [
-      { id: 'parkingsweeping', title: 'Parking Lot Sweeping', route: 'parkingsweeping' },
-      { id: 'sidewalkcleaning', title: 'Sidewalk Cleaning', route: 'sidewalkcleaning' },
-      { id: 'smokingareacleaning', title: 'Smoking Area Cleaning', route: 'smokingareacleaning' },
-      { id: 'exteriortrashcan', title: 'Exterior Trash Can Cleaning', route: 'exteriortrashcan' },
+      { id: 'parkingsweeping',     title: 'Parking Lot Sweeping',       route: 'parkingsweeping' },
+      { id: 'sidewalkcleaning',    title: 'Sidewalk Cleaning',          route: 'sidewalkcleaning' },
+      { id: 'smokingareacleaning', title: 'Smoking Area Cleaning',      route: 'smokingareacleaning' },
+      { id: 'exteriortrashcan',    title: 'Exterior Trash Can Cleaning', route: 'exteriortrashcan' },
     ],
   },
   {
@@ -229,10 +229,10 @@ const SANITATION_CATEGORIES: FormCategory[] = [
     icon: GraduationCap,
     color: '#A855F7',
     forms: [
-      { id: 'sanitationtraining', title: 'Sanitation Training Sign-In', route: 'sanitationtraining' },
-      { id: 'chemicalsafetytraining', title: 'Cleaning Chemical Safety Training', route: 'chemicalsafetytraining' },
-      { id: 'sanitationsop', title: 'Sanitation SOP Acknowledgment', route: 'sanitationsop' },
-      { id: 'newhireorientation', title: 'New Hire Sanitation Orientation', route: 'newhireorientation' },
+      { id: 'sanitationtraining',      title: 'Sanitation Training Sign-In',          route: 'sanitationtraining' },
+      { id: 'chemicalsafetytraining',  title: 'Cleaning Chemical Safety Training',    route: 'chemicalsafetytraining' },
+      { id: 'sanitationsop',           title: 'Sanitation SOP Acknowledgment',        route: 'sanitationsop' },
+      { id: 'newhireorientation',      title: 'New Hire Sanitation Orientation',      route: 'newhireorientation' },
     ],
   },
   {
@@ -241,25 +241,22 @@ const SANITATION_CATEGORIES: FormCategory[] = [
     icon: FileWarning,
     color: '#DC2626',
     forms: [
-      { id: 'sanitationncr', title: 'Sanitation Non-Conformance Report', route: 'sanitationncr' },
-      { id: 'sanitationcapa', title: 'Sanitation Corrective Action', route: 'sanitationcapa' },
-      { id: 'repeatdeficiency', title: 'Repeat Deficiency Tracking', route: 'repeatdeficiency' },
-      { id: 'sanitationdeviation', title: 'Sanitation Deviation Report', route: 'sanitationdeviation' },
+      { id: 'sanitationncr',       title: 'Sanitation Non-Conformance Report', route: 'sanitationncr' },
+      { id: 'sanitationcapa',      title: 'Sanitation Corrective Action',      route: 'sanitationcapa' },
+      { id: 'repeatdeficiency',    title: 'Repeat Deficiency Tracking',        route: 'repeatdeficiency' },
+      { id: 'sanitationdeviation', title: 'Sanitation Deviation Report',       route: 'sanitationdeviation' },
     ],
   },
 ];
 
-// ─────────────────────────────────────────────
-// EMP / Food Safety Operations Module links
-// ─────────────────────────────────────────────
 const EMP_MODULE_LINKS = [
-  { id: 'dashboard',          label: 'Command Dashboard',     sub: 'KPIs, heatmap, alerts',          color: '#00e5ff', route: 'dashboard' },
-  { id: 'mss',                label: 'Live Sanitation Schedule', sub: 'Due tasks, completions, SSOPs', color: '#00ff88', route: 'mss' },
-  { id: 'atp-log',            label: 'ATP Swab Log',           sub: 'RLU entry, pass/warn/fail',       color: '#00ff88', route: 'atp-log' },
-  { id: 'emp-map',            label: 'EMP Zone Map',           sub: 'Zone heatmap, swab schedule',    color: '#ffb800', route: 'emp-map' },
-  { id: 'microbial-log',      label: 'Microbial Test Log',     sub: 'Lab results, chain of custody',  color: '#7b61ff', route: 'microbial-log' },
-  { id: 'corrective-actions', label: 'Corrective Actions',     sub: 'CAPA, Zone 1 vector swabs',      color: '#ff2d55', route: 'corrective-actions' },
-  { id: 'ssop-library',       label: 'SSOP Library',           sub: 'Procedures, steps, versions',    color: '#00e5ff', route: 'ssop-library' },
+  { id: 'dashboard',          label: 'Command Dashboard',        sub: 'KPIs, heatmap, alerts',          color: '#00e5ff', route: 'dashboard' },
+  { id: 'mss',                label: 'Live Sanitation Schedule', sub: 'Due tasks, completions, SSOPs',  color: '#00ff88', route: 'mss' },
+  { id: 'atp-log',            label: 'ATP Swab Log',             sub: 'RLU entry, pass/warn/fail',       color: '#00ff88', route: 'atp-log' },
+  { id: 'emp-map',            label: 'EMP Zone Map',             sub: 'Zone heatmap, swab schedule',    color: '#ffb800', route: 'emp-map' },
+  { id: 'microbial-log',      label: 'Microbial Test Log',       sub: 'Lab results, chain of custody',  color: '#7b61ff', route: 'microbial-log' },
+  { id: 'corrective-actions', label: 'Corrective Actions',       sub: 'CAPA, Zone 1 vector swabs',      color: '#ff2d55', route: 'corrective-actions' },
+  { id: 'ssop-library',       label: 'SSOP Library',             sub: 'Procedures, steps, versions',    color: '#00e5ff', route: 'ssop-library' },
 ] as const;
 
 export default function SanitationScreen() {
@@ -267,41 +264,30 @@ export default function SanitationScreen() {
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
-  
-  const { 
-    tasks, 
-    inspections, 
-    getComplianceRate, 
-    isLoading,
-    refetch 
-  } = useSupabaseSanitation();
+
+  const { workOrders, isLoading, refetch } = useSanitationWorkOrders();
 
   const dashboardStats = useMemo(() => {
     const today = new Date().toISOString().split('T')[0];
-    
-    const openTasks = tasks.filter(
-      t => t.status === 'pending' || t.status === 'in_progress' || t.status === 'overdue'
+    const openTasks = workOrders.filter(
+      wo => wo.status === 'pending' || wo.status === 'in_progress' || wo.status === 'overdue'
     ).length;
-    
-    const completedToday = tasks.filter(
-      t => t.status === 'completed' && t.completed_at?.split('T')[0] === today
+    const completedToday = workOrders.filter(
+      wo => wo.status === 'completed' && wo.completed_at?.split('T')[0] === today
     ).length;
-    
-    const pendingReview = tasks.filter(
-      t => t.status === 'completed' && !t.verified_at
-    ).length + inspections.filter(
-      t => t.status === 'scheduled' || t.status === 'in_progress'
+    const pendingReview = workOrders.filter(
+      wo => wo.status === 'awaiting_qa'
     ).length;
-    
-    const compliance = getComplianceRate();
-    
+    const total = workOrders.length;
+    const completed = workOrders.filter(wo => wo.status === 'completed').length;
+    const compliance = total > 0 ? Math.round((completed / total) * 100) : 100;
     return { openTasks, completedToday, pendingReview, compliance };
-  }, [tasks, inspections, getComplianceRate]);
+  }, [workOrders]);
 
-  const onRefresh = useCallback(() => {
+  const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    refetch();
-    setTimeout(() => setRefreshing(false), 1000);
+    await refetch();
+    setRefreshing(false);
   }, [refetch]);
 
   const orgContext = useOrganization();
@@ -314,15 +300,8 @@ export default function SanitationScreen() {
     notes: string
   ): Promise<string | null> => {
     try {
-      if (!organizationId) {
-        console.warn('[Sanitation] No organization ID available, skipping history record creation');
-        return null;
-      }
-      
-      console.log('[Sanitation] Creating sanitation history record for task:', task.postNumber);
-      
+      if (!organizationId) return null;
       const employeeName = user ? `${user.first_name || ''} ${user.last_name || ''}`.trim() : 'System';
-      
       const { data, error } = await supabase
         .from('task_verifications')
         .insert({
@@ -342,24 +321,15 @@ export default function SanitationScreen() {
         })
         .select('id')
         .single();
-
-      if (error) {
-        console.error('[Sanitation] Error creating history record:', error.message || error.code || 'Unknown error');
-        console.error('[Sanitation] Error details:', error.details || 'No details');
-        console.error('[Sanitation] Error hint:', error.hint || 'No hint');
-        return null;
-      }
-
-      console.log('[Sanitation] Sanitation history record created:', data.id);
+      if (error) { console.error('[Sanitation] Error creating history record:', error); return null; }
       return data.id;
     } catch (err: any) {
-      console.error('[Sanitation] Exception creating history record:', err?.message || 'Unknown exception');
+      console.error('[Sanitation] Exception creating history record:', err?.message);
       return null;
     }
   }, [organizationId, facilityId, user]);
 
   const handleTaskCompleted = useCallback((task: TaskFeedDepartmentTask, moduleHistoryId?: string) => {
-    console.log('[Sanitation] Task completed:', task.postNumber, 'History ID:', moduleHistoryId);
     refetch();
   }, [refetch]);
 
@@ -374,22 +344,20 @@ export default function SanitationScreen() {
   }, [router]);
 
   const stats = [
-    { label: 'Open Tasks', value: dashboardStats.openTasks.toString(), icon: ClipboardList, color: '#F59E0B' },
-    { label: 'Completed Today', value: dashboardStats.completedToday.toString(), icon: CheckCircle, color: '#10B981' },
-    { label: 'Pending Review', value: dashboardStats.pendingReview.toString(), icon: Clock, color: '#3B82F6' },
-    { label: 'Compliance', value: `${dashboardStats.compliance}%`, icon: TrendingUp, color: '#8B5CF6' },
+    { label: 'Open Tasks',      value: dashboardStats.openTasks.toString(),      icon: ClipboardList, color: '#F59E0B' },
+    { label: 'Completed Today', value: dashboardStats.completedToday.toString(), icon: CheckCircle,   color: '#10B981' },
+    { label: 'Awaiting QA',     value: dashboardStats.pendingReview.toString(),  icon: Clock,         color: '#3B82F6' },
+    { label: 'Compliance',      value: `${dashboardStats.compliance}%`,          icon: TrendingUp,    color: '#8B5CF6' },
   ];
 
   return (
     <ScrollView
       style={[styles.container, { backgroundColor: colors.background }]}
       contentContainerStyle={styles.content}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
-      }
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
     >
       <View style={[styles.headerCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        <View style={[styles.iconContainer, { backgroundColor: '#8B5CF6' + '20' }]}>
+        <View style={[styles.iconContainer, { backgroundColor: '#8B5CF620' }]}>
           <Sparkles size={32} color="#8B5CF6" />
         </View>
         <Text style={[styles.title, { color: colors.text }]}>Sanitation Management</Text>
@@ -398,13 +366,11 @@ export default function SanitationScreen() {
         </Text>
       </View>
 
-      {/* TWO-PANE INBOX: Reactive | Scheduled Tasks */}
       <View style={styles.inboxSection}>
         <View style={styles.inboxHeaderRow}>
           <Inbox size={18} color="#8B5CF6" />
           <Text style={[styles.inboxTitle, { color: colors.text }]}>Sanitation Inbox</Text>
         </View>
-
         <View style={styles.twoPaneContainer}>
           <View style={[styles.inboxPane, { borderColor: colors.border }]}>
             <View style={[styles.paneHeader, { backgroundColor: '#EF444410' }]}>
@@ -423,7 +389,6 @@ export default function SanitationScreen() {
               />
             </ScrollView>
           </View>
-
           <View style={[styles.inboxPane, { borderColor: colors.border }]}>
             <View style={[styles.paneHeader, { backgroundColor: '#8B5CF610' }]}>
               <Calendar size={16} color="#8B5CF6" />
@@ -448,10 +413,7 @@ export default function SanitationScreen() {
         {stats.map((stat, index) => {
           const IconComponent = stat.icon;
           return (
-            <View 
-              key={index} 
-              style={[styles.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
-            >
+            <View key={index} style={[styles.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <View style={[styles.statIcon, { backgroundColor: stat.color + '15' }]}>
                 <IconComponent size={18} color={stat.color} />
               </View>
@@ -462,7 +424,6 @@ export default function SanitationScreen() {
         })}
       </View>
 
-      {/* ── EMP & FOOD SAFETY OPERATIONS MODULE ── */}
       <View style={styles.empModuleSection}>
         <View style={styles.empModuleHeader}>
           <View style={styles.empModuleHeaderLeft}>
@@ -477,15 +438,11 @@ export default function SanitationScreen() {
             <ChevronRight size={12} color="#020912" />
           </Pressable>
         </View>
-
         <View style={styles.empModuleGrid}>
           {EMP_MODULE_LINKS.filter(l => l.id !== 'dashboard').map(link => (
             <Pressable
               key={link.id}
-              style={({ pressed }) => [
-                styles.empModuleCard,
-                { borderLeftColor: link.color, opacity: pressed ? 0.75 : 1 },
-              ]}
+              style={({ pressed }) => [styles.empModuleCard, { borderLeftColor: link.color, opacity: pressed ? 0.75 : 1 }]}
               onPress={() => handleFormPress(link.route)}
             >
               <View style={[styles.empModuleCardDot, { backgroundColor: link.color + '22', borderColor: link.color + '55' }]}>
@@ -506,18 +463,14 @@ export default function SanitationScreen() {
       {SANITATION_CATEGORIES.map((category) => {
         const IconComponent = category.icon;
         const isExpanded = expandedCategory === category.id;
-        
         return (
           <View key={category.id} style={styles.categoryContainer}>
             <Pressable
-              style={({ pressed }) => [
-                styles.categoryCard,
-                { 
-                  backgroundColor: colors.surface, 
-                  borderColor: isExpanded ? category.color : colors.border,
-                  opacity: pressed ? 0.8 : 1,
-                },
-              ]}
+              style={({ pressed }) => [styles.categoryCard, {
+                backgroundColor: colors.surface,
+                borderColor: isExpanded ? category.color : colors.border,
+                opacity: pressed ? 0.8 : 1,
+              }]}
               onPress={() => handleCategoryPress(category.id)}
             >
               <View style={styles.categoryHeader}>
@@ -526,30 +479,20 @@ export default function SanitationScreen() {
                 </View>
                 <View style={styles.categoryInfo}>
                   <Text style={[styles.categoryTitle, { color: colors.text }]}>{category.title}</Text>
-                  <Text style={[styles.categoryCount, { color: colors.textSecondary }]}>
-                    {category.forms.length} forms
-                  </Text>
+                  <Text style={[styles.categoryCount, { color: colors.textSecondary }]}>{category.forms.length} forms</Text>
                 </View>
-                <ChevronRight 
-                  size={20} 
-                  color={colors.textSecondary} 
-                  style={{ transform: [{ rotate: isExpanded ? '90deg' : '0deg' }] }}
-                />
+                <ChevronRight size={20} color={colors.textSecondary} style={{ transform: [{ rotate: isExpanded ? '90deg' : '0deg' }] }} />
               </View>
             </Pressable>
-
             {isExpanded && (
               <View style={[styles.formsContainer, { borderColor: colors.border }]}>
                 {category.forms.map((form, index) => (
                   <Pressable
                     key={form.id}
-                    style={({ pressed }) => [
-                      styles.formItem,
-                      { 
-                        backgroundColor: pressed ? colors.backgroundSecondary : 'transparent',
-                        borderBottomColor: index < category.forms.length - 1 ? colors.border : 'transparent',
-                      },
-                    ]}
+                    style={({ pressed }) => [styles.formItem, {
+                      backgroundColor: pressed ? colors.backgroundSecondary : 'transparent',
+                      borderBottomColor: index < category.forms.length - 1 ? colors.border : 'transparent',
+                    }]}
                     onPress={() => handleFormPress(form.route)}
                   >
                     <View style={[styles.formDot, { backgroundColor: category.color }]} />
@@ -569,252 +512,48 @@ export default function SanitationScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  content: {
-    padding: 16,
-  },
-  headerCard: {
-    borderRadius: 16,
-    padding: 24,
-    alignItems: 'center' as const,
-    borderWidth: 1,
-    marginBottom: 16,
-  },
-  iconContainer: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    marginBottom: 16,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: '700' as const,
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 14,
-    textAlign: 'center' as const,
-    lineHeight: 20,
-  },
-  statsGrid: {
-    flexDirection: 'row' as const,
-    flexWrap: 'wrap' as const,
-    gap: 10,
-    marginBottom: 20,
-  },
-  statCard: {
-    width: '48%',
-    flexGrow: 1,
-    borderRadius: 12,
-    padding: 14,
-    borderWidth: 1,
-  },
-  statIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    marginBottom: 8,
-  },
-  statValue: {
-    fontSize: 22,
-    fontWeight: '700' as const,
-    marginBottom: 2,
-  },
-  statLabel: {
-    fontSize: 11,
-    fontWeight: '500' as const,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600' as const,
-    marginBottom: 12,
-  },
-
-  // ── EMP MODULE ──
-  empModuleSection: {
-    marginBottom: 24,
-    backgroundColor: '#020912',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#0d2840',
-    overflow: 'hidden' as const,
-  },
-  empModuleHeader: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'space-between' as const,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#0d2840',
-    backgroundColor: '#050f1e',
-  },
-  empModuleHeaderLeft: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: 8,
-  },
-  empModuleTitle: {
-    fontSize: 13,
-    fontWeight: '700' as const,
-    color: '#e0f4ff',
-    letterSpacing: 0.3,
-  },
-  empDashboardBtn: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: 4,
-    backgroundColor: '#00e5ff',
-    borderRadius: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-  },
-  empDashboardBtnTxt: {
-    fontSize: 10,
-    fontWeight: '800' as const,
-    color: '#020912',
-    letterSpacing: 1,
-  },
-  empModuleGrid: {
-    padding: 10,
-    gap: 6,
-  },
-  empModuleCard: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: 10,
-    backgroundColor: '#050f1e',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#0d2840',
-    borderLeftWidth: 3,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  empModuleCardDot: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    borderWidth: 1,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-  },
-  empModuleCardDotInner: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  empModuleCardLabel: {
-    fontSize: 13,
-    fontWeight: '600' as const,
-    color: '#e0f4ff',
-    marginBottom: 1,
-  },
-  empModuleCardSub: {
-    fontSize: 11,
-    color: '#7aa8c8',
-  },
-
-  categoryContainer: {
-    marginBottom: 12,
-  },
-  categoryCard: {
-    borderRadius: 14,
-    padding: 16,
-    borderWidth: 1,
-  },
-  categoryHeader: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-  },
-  categoryIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    marginRight: 12,
-  },
-  categoryInfo: {
-    flex: 1,
-  },
-  categoryTitle: {
-    fontSize: 15,
-    fontWeight: '600' as const,
-    marginBottom: 2,
-  },
-  categoryCount: {
-    fontSize: 12,
-  },
-  formsContainer: {
-    marginTop: 8,
-    marginLeft: 16,
-    borderLeftWidth: 2,
-    paddingLeft: 12,
-  },
-  formItem: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    borderBottomWidth: 1,
-    borderRadius: 6,
-  },
-  formDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    marginRight: 12,
-  },
-  formTitle: {
-    flex: 1,
-    fontSize: 14,
-  },
-  // Two-Pane Inbox
-  inboxSection: {
-    marginBottom: 16,
-  },
-  inboxHeaderRow: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: 8,
-    marginBottom: 12,
-  },
-  inboxTitle: {
-    fontSize: 16,
-    fontWeight: '600' as const,
-  },
-  twoPaneContainer: {
-    flexDirection: 'row' as const,
-    gap: 10,
-  },
-  inboxPane: {
-    flex: 1,
-    borderRadius: 12,
-    borderWidth: 1,
-    overflow: 'hidden' as const,
-  },
-  paneHeader: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    paddingVertical: 10,
-    gap: 6,
-  },
-  paneHeaderTitle: {
-    fontSize: 14,
-    fontWeight: '700' as const,
-  },
-  paneScrollView: {
-    maxHeight: 400,
-  },
-  bottomPadding: {
-    height: 40,
-  },
+  container: { flex: 1 },
+  content: { padding: 16 },
+  headerCard: { borderRadius: 16, padding: 24, alignItems: 'center', borderWidth: 1, marginBottom: 16 },
+  iconContainer: { width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
+  title: { fontSize: 24, fontWeight: '700', marginBottom: 8 },
+  subtitle: { fontSize: 14, textAlign: 'center', lineHeight: 20 },
+  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 20 },
+  statCard: { width: '48%', flexGrow: 1, borderRadius: 12, padding: 14, borderWidth: 1 },
+  statIcon: { width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
+  statValue: { fontSize: 22, fontWeight: '700', marginBottom: 2 },
+  statLabel: { fontSize: 11, fontWeight: '500' },
+  sectionTitle: { fontSize: 18, fontWeight: '600', marginBottom: 12 },
+  empModuleSection: { marginBottom: 24, backgroundColor: '#020912', borderRadius: 16, borderWidth: 1, borderColor: '#0d2840', overflow: 'hidden' },
+  empModuleHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#0d2840', backgroundColor: '#050f1e' },
+  empModuleHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  empModuleTitle: { fontSize: 13, fontWeight: '700', color: '#e0f4ff', letterSpacing: 0.3 },
+  empDashboardBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#00e5ff', borderRadius: 6, paddingHorizontal: 10, paddingVertical: 5 },
+  empDashboardBtnTxt: { fontSize: 10, fontWeight: '800', color: '#020912', letterSpacing: 1 },
+  empModuleGrid: { padding: 10, gap: 6 },
+  empModuleCard: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#050f1e', borderRadius: 8, borderWidth: 1, borderColor: '#0d2840', borderLeftWidth: 3, paddingHorizontal: 12, paddingVertical: 10 },
+  empModuleCardDot: { width: 28, height: 28, borderRadius: 14, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  empModuleCardDotInner: { width: 8, height: 8, borderRadius: 4 },
+  empModuleCardLabel: { fontSize: 13, fontWeight: '600', color: '#e0f4ff', marginBottom: 1 },
+  empModuleCardSub: { fontSize: 11, color: '#7aa8c8' },
+  categoryContainer: { marginBottom: 12 },
+  categoryCard: { borderRadius: 14, padding: 16, borderWidth: 1 },
+  categoryHeader: { flexDirection: 'row', alignItems: 'center' },
+  categoryIcon: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  categoryInfo: { flex: 1 },
+  categoryTitle: { fontSize: 15, fontWeight: '600', marginBottom: 2 },
+  categoryCount: { fontSize: 12 },
+  formsContainer: { marginTop: 8, marginLeft: 16, borderLeftWidth: 2, paddingLeft: 12 },
+  formItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 8, borderBottomWidth: 1, borderRadius: 6 },
+  formDot: { width: 6, height: 6, borderRadius: 3, marginRight: 12 },
+  formTitle: { flex: 1, fontSize: 14 },
+  inboxSection: { marginBottom: 16 },
+  inboxHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
+  inboxTitle: { fontSize: 16, fontWeight: '600' },
+  twoPaneContainer: { flexDirection: 'row', gap: 10 },
+  inboxPane: { flex: 1, borderRadius: 12, borderWidth: 1, overflow: 'hidden' },
+  paneHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 10, gap: 6 },
+  paneHeaderTitle: { fontSize: 14, fontWeight: '700' },
+  paneScrollView: { maxHeight: 400 },
+  bottomPadding: { height: 40 },
 });
