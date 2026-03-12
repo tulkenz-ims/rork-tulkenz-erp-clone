@@ -26,6 +26,7 @@ const DEPARTMENT_NAMES = {
 const FREQUENCY_HOURS = {
   hourly:     1,
   per_shift:  8,    // 3 shifts = every 8 hours
+  pre_op:     8,
   daily:      24,
   weekly:     168,
   monthly:    720,
