@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/pm-due",
       "schedule": "0 12 * * *"
+    },
+    {
+      "path": "/api/cron/sanitation-due",
+      "schedule": "0 * * * *"
     }
   ],
   "rewrites": [
