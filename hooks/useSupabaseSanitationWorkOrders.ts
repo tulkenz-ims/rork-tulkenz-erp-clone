@@ -22,12 +22,6 @@ export type SanWOFrequency =
   | 'as_needed'
   | 'pre_op';
 
-export interface ChecklistItem {
-  id: string;
-  label: string;
-  required: boolean;
-}
-
 export interface ChecklistCompletion {
   [itemId: string]: boolean;
 }
@@ -38,36 +32,37 @@ export interface SanPhoto {
   storagePath?: string;
 }
 
+// Matches actual DB columns exactly
 export interface SanitationWorkOrder {
   id: string;
-  sanitation_wo_number: string;
+  org_id: string;
+  wo_number: string;
   template_id: string | null;
   template_code: string | null;
   task_name: string;
-  task_code: string | null;
-  organization_id: string;
-  facility_id: string | null;
-  area: string | null;
-  room_code: string | null;
-  scheduled_date: string;
-  frequency: SanWOFrequency;
-  is_preop: boolean;
-  requires_atp_test: boolean;
-  requires_qa_signoff: boolean;
-  atp_pass_threshold: number;
-  checklist_items: ChecklistItem[];
+  room: string | null;
+  area_description: string | null;
+  equipment: string | null;
+  ssop_id: string | null;
+  department_id: number | null;
   departments_notified: number[];
+  frequency: SanWOFrequency;
+  scheduled_date: string;
+  due_date: string | null;
+  is_preop: boolean;
+  requires_qa_signoff: boolean;
+  requires_atp_test: boolean;
+  atp_pass_threshold: number;
   status: SanWOStatus;
   assigned_to: string | null;
-  assigned_to_name: string | null;
-  started_at: string | null;
-  completed_at: string | null;
-  timer_started_at: string | null;
-  total_elapsed_sec: number;
+  assigned_user_id: string | null;
   chemical_used: string | null;
   actual_concentration: string | null;
+  contact_time_min: number | null;
   application_method: string | null;
   checklist_completion: ChecklistCompletion;
+  atp_reading: number | null;
+  atp_result: 'pass' | 'fail' | null;
   photos: SanPhoto[];
   tech_initial: string | null;
   tech_ppn: string | null;
@@ -75,12 +70,13 @@ export interface SanitationWorkOrder {
   qa_initial: string | null;
   qa_ppn: string | null;
   qa_signed_at: string | null;
-  qa_signed_by: string | null;
-  qa_signed_by_name: string | null;
-  atp_reading_rlu: number | null;
-  atp_result: 'pass' | 'fail' | null;
-  task_feed_post_id: string | null;
+  qa_user_id: string | null;
+  completed_at: string | null;
   notes: string | null;
+  task_feed_post_id: string | null;
+  post_status: string | null;
+  timer_started_at: string | null;
+  total_elapsed_sec: number;
   created_at: string;
   updated_at: string;
 }
@@ -88,8 +84,8 @@ export interface SanitationWorkOrder {
 // ─── Query Keys ───────────────────────────────────────────────────────────────
 
 const KEYS = {
-  all: (orgId: string) => ['san_work_orders', orgId] as const,
-  single: (orgId: string, id: string) => ['san_work_orders', orgId, id] as const,
+  all:     (orgId: string) => ['san_work_orders', orgId] as const,
+  single:  (orgId: string, id: string) => ['san_work_orders', orgId, id] as const,
   pending: (orgId: string) => ['san_work_orders', orgId, 'pending'] as const,
 };
 
@@ -107,7 +103,7 @@ export function useSupabaseSanitationWorkOrders() {
       const { data, error } = await supabase
         .from('sanitation_work_orders')
         .select('*')
-        .eq('organization_id', organizationId)
+        .eq('org_id', organizationId)
         .order('scheduled_date', { ascending: false });
       if (error) throw error;
       return (data || []) as SanitationWorkOrder[];
@@ -115,7 +111,7 @@ export function useSupabaseSanitationWorkOrders() {
     enabled: !!organizationId,
   });
 
-  // ── Pending / In-Progress WOs (for inbox) ────────────────────────────────────
+  // ── Pending / In-Progress WOs ────────────────────────────────────────────────
   const pendingQuery = useQuery({
     queryKey: KEYS.pending(organizationId || ''),
     queryFn: async () => {
@@ -123,7 +119,7 @@ export function useSupabaseSanitationWorkOrders() {
       const { data, error } = await supabase
         .from('sanitation_work_orders')
         .select('*')
-        .eq('organization_id', organizationId)
+        .eq('org_id', organizationId)
         .in('status', ['pending', 'in_progress', 'awaiting_qa'])
         .order('scheduled_date', { ascending: true });
       if (error) throw error;
@@ -142,7 +138,7 @@ export function useSupabaseSanitationWorkOrders() {
           .from('sanitation_work_orders')
           .select('*')
           .eq('id', id)
-          .eq('organization_id', organizationId)
+          .eq('org_id', organizationId)
           .single();
         if (error) throw error;
         return data as SanitationWorkOrder;
@@ -154,28 +150,14 @@ export function useSupabaseSanitationWorkOrders() {
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['san_work_orders', organizationId || ''] });
   };
-  const invalidateSingle = (id: string) => {
-    queryClient.invalidateQueries({
-      queryKey: KEYS.single(organizationId || '', id),
-    });
-  };
 
   // ── Start Timer ──────────────────────────────────────────────────────────────
-  // Sets timer_started_at = now, status → in_progress, records started_at if first start
   const startTimerMutation = useMutation({
-    mutationFn: async ({ id, isFirstStart }: { id: string; isFirstStart: boolean }) => {
+    mutationFn: async ({ id }: { id: string; isFirstStart?: boolean }) => {
       const now = new Date().toISOString();
-      const updates: Partial<SanitationWorkOrder> = {
-        timer_started_at: now,
-        status: 'in_progress',
-      };
-      if (isFirstStart) {
-        updates.started_at = now;
-        updates.assigned_to_name = updates.assigned_to_name; // preserved from existing
-      }
       const { data, error } = await supabase
         .from('sanitation_work_orders')
-        .update(updates)
+        .update({ timer_started_at: now, status: 'in_progress' })
         .eq('id', id)
         .select()
         .single();
@@ -183,25 +165,14 @@ export function useSupabaseSanitationWorkOrders() {
       return data as SanitationWorkOrder;
     },
     onSuccess: (data) => {
-      queryClient.setQueryData(
-        KEYS.single(organizationId || '', data.id),
-        data
-      );
+      queryClient.setQueryData(KEYS.single(organizationId || '', data.id), data);
       invalidate();
     },
   });
 
   // ── Pause Timer ──────────────────────────────────────────────────────────────
-  // Accumulates elapsed seconds into total_elapsed_sec, clears timer_started_at
   const pauseTimerMutation = useMutation({
-    mutationFn: async ({
-      id,
-      additionalSec,
-    }: {
-      id: string;
-      additionalSec: number;
-    }) => {
-      // First fetch current total to avoid race condition
+    mutationFn: async ({ id, additionalSec }: { id: string; additionalSec: number }) => {
       const { data: current } = await supabase
         .from('sanitation_work_orders')
         .select('total_elapsed_sec')
@@ -223,23 +194,14 @@ export function useSupabaseSanitationWorkOrders() {
       return data as SanitationWorkOrder;
     },
     onSuccess: (data) => {
-      queryClient.setQueryData(
-        KEYS.single(organizationId || '', data.id),
-        data
-      );
+      queryClient.setQueryData(KEYS.single(organizationId || '', data.id), data);
       invalidate();
     },
   });
 
-  // ── Update Work Order (generic field save) ───────────────────────────────────
+  // ── Update Work Order (generic) ───────────────────────────────────────────────
   const updateWorkOrderMutation = useMutation({
-    mutationFn: async ({
-      id,
-      updates,
-    }: {
-      id: string;
-      updates: Partial<SanitationWorkOrder>;
-    }) => {
+    mutationFn: async ({ id, updates }: { id: string; updates: Partial<SanitationWorkOrder> }) => {
       const { data, error } = await supabase
         .from('sanitation_work_orders')
         .update(updates)
@@ -250,16 +212,12 @@ export function useSupabaseSanitationWorkOrders() {
       return data as SanitationWorkOrder;
     },
     onSuccess: (data) => {
-      queryClient.setQueryData(
-        KEYS.single(organizationId || '', data.id),
-        data
-      );
+      queryClient.setQueryData(KEYS.single(organizationId || '', data.id), data);
       invalidate();
     },
   });
 
   // ── Submit Tech Signature ─────────────────────────────────────────────────────
-  // Marks tech complete. If no QA required → status = completed. If QA → awaiting_qa.
   const submitTechSignatureMutation = useMutation({
     mutationFn: async ({
       id,
@@ -292,28 +250,22 @@ export function useSupabaseSanitationWorkOrders() {
       return data as SanitationWorkOrder;
     },
     onSuccess: (data) => {
-      queryClient.setQueryData(
-        KEYS.single(organizationId || '', data.id),
-        data
-      );
+      queryClient.setQueryData(KEYS.single(organizationId || '', data.id), data);
       invalidate();
     },
   });
 
   // ── Submit QA Signature ──────────────────────────────────────────────────────
-  // Only callable after tech_signed_at is set. Marks completed.
   const submitQASignatureMutation = useMutation({
     mutationFn: async ({
       id,
       initial,
       ppn,
-      signedByName,
       signedById,
     }: {
       id: string;
       initial: string;
       ppn: string;
-      signedByName: string;
       signedById: string;
     }) => {
       const now = new Date().toISOString();
@@ -323,8 +275,7 @@ export function useSupabaseSanitationWorkOrders() {
           qa_initial: initial.toUpperCase().trim(),
           qa_ppn: ppn.toUpperCase().trim(),
           qa_signed_at: now,
-          qa_signed_by: signedById,
-          qa_signed_by_name: signedByName,
+          qa_user_id: signedById,
           status: 'completed',
           completed_at: now,
         })
@@ -335,19 +286,14 @@ export function useSupabaseSanitationWorkOrders() {
       return data as SanitationWorkOrder;
     },
     onSuccess: (data) => {
-      queryClient.setQueryData(
-        KEYS.single(organizationId || '', data.id),
-        data
-      );
+      queryClient.setQueryData(KEYS.single(organizationId || '', data.id), data);
       invalidate();
     },
   });
 
   // ── Add Photo ─────────────────────────────────────────────────────────────────
-  // Appends a photo to the photos jsonb array
   const addPhotoMutation = useMutation({
     mutationFn: async ({ id, photo }: { id: string; photo: SanPhoto }) => {
-      // Fetch current photos first
       const { data: current } = await supabase
         .from('sanitation_work_orders')
         .select('photos')
@@ -366,10 +312,7 @@ export function useSupabaseSanitationWorkOrders() {
       return data as SanitationWorkOrder;
     },
     onSuccess: (data) => {
-      queryClient.setQueryData(
-        KEYS.single(organizationId || '', data.id),
-        data
-      );
+      queryClient.setQueryData(KEYS.single(organizationId || '', data.id), data);
       invalidate();
     },
   });
@@ -396,17 +339,13 @@ export function useSupabaseSanitationWorkOrders() {
       return data as SanitationWorkOrder;
     },
     onSuccess: (data) => {
-      queryClient.setQueryData(
-        KEYS.single(organizationId || '', data.id),
-        data
-      );
+      queryClient.setQueryData(KEYS.single(organizationId || '', data.id), data);
       invalidate();
     },
   });
 
   // ── Helpers ───────────────────────────────────────────────────────────────────
 
-  /** Computes total elapsed seconds including any currently-running segment */
   const computeElapsed = (wo: SanitationWorkOrder): number => {
     let total = wo.total_elapsed_sec ?? 0;
     if (wo.timer_started_at) {
@@ -416,7 +355,6 @@ export function useSupabaseSanitationWorkOrders() {
     return total;
   };
 
-  /** Formats seconds → HH:MM:SS */
   const formatElapsed = (seconds: number): string => {
     const h = Math.floor(seconds / 3600);
     const m = Math.floor((seconds % 3600) / 60);
@@ -453,4 +391,5 @@ export function useSupabaseSanitationWorkOrders() {
   };
 }
 
+// Alias so screens can import either name
 export const useSanitationWorkOrders = useSupabaseSanitationWorkOrders;
