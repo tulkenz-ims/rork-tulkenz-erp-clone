@@ -25,7 +25,7 @@ import {
   CalendarDays,
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
-import { useSupabaseSanitation, SanitationTask, SanitationTaskStatus, SanitationArea } from '@/hooks/useSupabaseSanitation';
+import { useSanitationWorkOrders, SanitationWorkOrder } from '@/hooks/useSupabaseSanitationWorkOrders';
 import { useAuth } from '@/contexts/AuthContext';
 import * as Haptics from 'expo-haptics';
 
@@ -55,15 +55,7 @@ const DAYS_OF_WEEK = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'F
 export default function WeeklyTasksScreen() {
   const { colors } = useTheme();
   const { user } = useAuth();
-  const { 
-    tasks, 
-    updateTask, 
-    completeTask,
-    createTask,
-    generateTaskNumber,
-    refetch, 
-    isLoading 
-  } = useSupabaseSanitation();
+  const { workOrders, isLoading, refetch, startTimer } = useSanitationWorkOrders();
 
   const [refreshing, setRefreshing] = useState(false);
   const [filterStatus, setFilterStatus] = useState<SanitationTaskStatus | 'all'>('all');
