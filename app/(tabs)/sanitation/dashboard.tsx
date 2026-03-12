@@ -241,17 +241,18 @@ function EMPZoneRow({
 // ─────────────────────────────────────────────
 export default function SanitationDashboard() {
   const {
-    tasks, stats: taskStats, loading: tasksLoading,
+    tasks = [], stats: taskStats, loading: tasksLoading,
     fetchTasks, fetchDueTasks,
   } = useSanitationTasks();
 
   const {
-    swabPoints, atpResults, microbialResults, dueSchedule, loading: empLoading,
+    swabPoints = [], atpResults = [], microbialResults = [], dueSchedule = [],
+    loading: empLoading,
     fetchSwabPoints, fetchATPResults, fetchMicrobialResults, fetchDueSchedule,
   } = useEMPSwabs();
 
   const {
-    correctiveActions, loading: caLoading,
+    correctiveActions = [], loading: caLoading,
     fetchCorrectiveActions,
   } = useSanitationCA();
 
