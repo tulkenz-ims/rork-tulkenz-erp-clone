@@ -452,3 +452,5 @@ export function useSupabaseSanitationWorkOrders() {
     },
   };
 }
+
+export const useSanitationWorkOrders = useSupabaseSanitationWorkOrders;
