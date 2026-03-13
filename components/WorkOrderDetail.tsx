@@ -92,6 +92,7 @@ import { useMaterialsQuery, MaterialWithLabels } from '@/hooks/useSupabaseMateri
 import { useFailureCodesQuery, useFailureCodeCategories } from '@/hooks/useSupabaseFailureCodes';
 import { useUpdateWorkOrderDetail, useUploadAttachment, useDeleteAttachment, useWorkOrderParts, useStartWorkOrder, useCompleteWorkOrder } from '@/hooks/useSupabaseWorkOrders';
 import { useWorkOrderChemicals, useAddWorkOrderChemical, useRemoveWorkOrderChemical, WorkOrderChemical } from '@/hooks/useWorkOrderChemicals';
+import { useActiveTimers } from '@/hooks/useSupabaseLaborEntries';
 import { useSDSRecordsQuery } from '@/hooks/useSupabaseSDS';
 
 export interface DowntimeCompletionData {
@@ -357,6 +358,12 @@ export default function WorkOrderDetail({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [failureCodeCategoriesData]);
+
+  // ═══════════════ ACTIVE TIMER / PAUSE MODAL ═══════════════
+  const { data: activeTimersForPause = [] } = useActiveTimers(workOrder.id);
+  const hasActiveTimers = activeTimersForPause.length > 0;
+  const [showPauseModal, setShowPauseModal] = useState(false);
+  const pendingCloseRef = React.useRef(false);
 
   // Downtime completion state
   const [showCompletionModal, setShowCompletionModal] = useState(false);
@@ -2598,7 +2605,16 @@ export default function WorkOrderDetail({
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { borderBottomColor: colors.border }]}>
-        <Pressable onPress={onClose} style={styles.closeButton}>
+        <Pressable
+          onPress={() => {
+            if (hasActiveTimers) {
+              setShowPauseModal(true);
+            } else {
+              onClose();
+            }
+          }}
+          style={styles.closeButton}
+        >
           <X size={24} color={colors.textSecondary} />
         </Pressable>
         <View style={styles.headerContent}>
@@ -2693,6 +2709,7 @@ export default function WorkOrderDetail({
       {renderStartWorkModal()}
       {renderCompletionModal()}
       {renderLOTOModal()}
+      {renderPauseModal()}
       <BarcodeScanner
         visible={showBarcodeScanner}
         onClose={() => setShowBarcodeScanner(false)}
@@ -3686,6 +3703,110 @@ export default function WorkOrderDetail({
               <CheckCircle2 size={18} color="#FFFFFF" />
               <Text style={styles.lotoModalDoneBtnText}>Done</Text>
             </Pressable>
+          </View>
+        </View>
+      </Modal>
+    );
+  }
+
+  function renderPauseModal() {
+    return (
+      <Modal visible={showPauseModal} animationType="fade" transparent>
+        <View style={{
+          flex: 1,
+          backgroundColor: 'rgba(0,0,0,0.7)',
+          justifyContent: 'center',
+          alignItems: 'center',
+          padding: 24,
+        }}>
+          <View style={{
+            backgroundColor: colors.surface,
+            borderRadius: 16,
+            padding: 24,
+            width: '100%',
+            maxWidth: 380,
+            borderWidth: 1,
+            borderColor: '#F59E0B40',
+          }}>
+            {/* Header */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+              <View style={{
+                width: 44, height: 44, borderRadius: 22,
+                backgroundColor: '#F59E0B20',
+                alignItems: 'center', justifyContent: 'center',
+              }}>
+                <Clock size={22} color="#F59E0B" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 17, fontWeight: '700', color: colors.text }}>
+                  Active Task In Progress
+                </Text>
+                <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>
+                  {activeTimersForPause.length} timer{activeTimersForPause.length !== 1 ? 's' : ''} still running
+                </Text>
+              </View>
+            </View>
+
+            {/* Active timers list */}
+            <View style={{
+              backgroundColor: colors.backgroundSecondary,
+              borderRadius: 10,
+              padding: 12,
+              marginBottom: 16,
+              gap: 8,
+            }}>
+              {activeTimersForPause.map(t => (
+                <View key={t.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#10B981' }} />
+                  <Text style={{ fontSize: 13, color: colors.text, flex: 1 }}>
+                    {t.employee_name}
+                  </Text>
+                  <Text style={{ fontSize: 11, color: colors.textSecondary }}>
+                    {t.task_description || 'No description'}
+                  </Text>
+                </View>
+              ))}
+            </View>
+
+            <Text style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 20, lineHeight: 19 }}>
+              You have active labor timers on this work order. Timers will continue running in the background.
+            </Text>
+
+            {/* Buttons */}
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <Pressable
+                style={{
+                  flex: 1,
+                  padding: 14,
+                  borderRadius: 10,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  alignItems: 'center',
+                }}
+                onPress={() => setShowPauseModal(false)}
+              >
+                <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text }}>
+                  Stay on Task
+                </Text>
+              </Pressable>
+              <Pressable
+                style={{
+                  flex: 1,
+                  padding: 14,
+                  borderRadius: 10,
+                  backgroundColor: '#F59E0B',
+                  alignItems: 'center',
+                }}
+                onPress={() => {
+                  setShowPauseModal(false);
+                  onClose();
+                }}
+              >
+                <Text style={{ fontSize: 14, fontWeight: '600', color: '#FFFFFF' }}>
+                  Leave Anyway
+                </Text>
+              </Pressable>
+            </View>
           </View>
         </View>
       </Modal>
