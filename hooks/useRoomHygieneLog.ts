@@ -146,7 +146,6 @@ async function getOrCreateDailyReport(
 ): Promise<string> {
   const today = new Date().toISOString().split('T')[0];
 
-  // Try to find existing report for this room today
   const { data: existing, error: fetchErr } = await supabase
     .from('daily_room_hygiene_reports')
     .select('id')
@@ -159,11 +158,8 @@ async function getOrCreateDailyReport(
     console.error('[RoomHygiene] Error finding daily report:', fetchErr.message);
   }
 
-  if (existing?.id) {
-    return existing.id;
-  }
+  if (existing?.id) return existing.id;
 
-  // Create new daily report
   const { data: newReport, error: createErr } = await supabase
     .from('daily_room_hygiene_reports')
     .insert({
@@ -187,7 +183,6 @@ async function getOrCreateDailyReport(
 
   if (createErr) {
     console.error('[RoomHygiene] Error creating daily report:', createErr.message);
-    // If it failed due to unique constraint (race condition), try fetching again
     const { data: retry } = await supabase
       .from('daily_room_hygiene_reports')
       .select('id')
@@ -207,7 +202,6 @@ async function getOrCreateDailyReport(
 
 async function updateDailyReportCounters(reportId: string) {
   try {
-    // Get all entries for this report
     const { data: entries } = await supabase
       .from('room_hygiene_log')
       .select('status, department_code, contamination_risk')
@@ -220,13 +214,11 @@ async function updateDailyReportCounters(reportId: string) {
     const active = entries.filter(e => e.status === 'active').length;
     const completed = entries.filter(e => e.status === 'completed').length;
 
-    // Department counts
     const deptCounts: Record<string, number> = {};
     entries.forEach(e => {
       deptCounts[e.department_code] = (deptCounts[e.department_code] || 0) + 1;
     });
 
-    // Contamination summary
     const riskLevels = ['none', 'low', 'medium', 'high'];
     let highestRisk = 'none';
     let contaminationCount = 0;
@@ -259,11 +251,9 @@ async function updateDailyReportCounters(reportId: string) {
 // QUERIES
 // ══════════════════════════════════════════════════════════════
 
-// ── Query: get entries (optionally filtered) ──────────────────
-
 export function useRoomHygieneLogQuery(options?: {
   roomId?: string;
-  date?: string; // YYYY-MM-DD
+  date?: string;
   departmentCode?: string;
   limit?: number;
   enabled?: boolean;
@@ -281,23 +271,14 @@ export function useRoomHygieneLogQuery(options?: {
         .eq('organization_id', organizationId)
         .order('entry_time', { ascending: false });
 
-      if (options?.roomId) {
-        query = query.eq('room_id', options.roomId);
-      }
-
+      if (options?.roomId) query = query.eq('room_id', options.roomId);
       if (options?.date) {
         const startOfDay = `${options.date}T00:00:00.000Z`;
         const endOfDay = `${options.date}T23:59:59.999Z`;
         query = query.gte('entry_time', startOfDay).lte('entry_time', endOfDay);
       }
-
-      if (options?.departmentCode) {
-        query = query.eq('department_code', options.departmentCode);
-      }
-
-      if (options?.limit) {
-        query = query.limit(options.limit);
-      }
+      if (options?.departmentCode) query = query.eq('department_code', options.departmentCode);
+      if (options?.limit) query = query.limit(options.limit);
 
       const { data, error } = await query;
       if (error) throw error;
@@ -307,17 +288,13 @@ export function useRoomHygieneLogQuery(options?: {
   });
 }
 
-// ── Query: today's entries for a room ─────────────────────────
-
 export function useTodayRoomLog(roomId: string) {
   const today = new Date().toISOString().split('T')[0];
   return useRoomHygieneLogQuery({ roomId, date: today });
 }
 
-// ── Query: daily reports for a date ───────────────────────────
-
 export function useDailyRoomReportsQuery(options?: {
-  date?: string; // YYYY-MM-DD
+  date?: string;
   roomId?: string;
   status?: 'open' | 'signed_off';
   enabled?: boolean;
@@ -335,17 +312,9 @@ export function useDailyRoomReportsQuery(options?: {
         .eq('organization_id', organizationId)
         .order('room_name', { ascending: true });
 
-      if (options?.date) {
-        query = query.eq('report_date', options.date);
-      }
-
-      if (options?.roomId) {
-        query = query.eq('room_id', options.roomId);
-      }
-
-      if (options?.status) {
-        query = query.eq('status', options.status);
-      }
+      if (options?.date) query = query.eq('report_date', options.date);
+      if (options?.roomId) query = query.eq('room_id', options.roomId);
+      if (options?.status) query = query.eq('status', options.status);
 
       const { data, error } = await query;
       if (error) throw error;
@@ -358,8 +327,6 @@ export function useDailyRoomReportsQuery(options?: {
 // ══════════════════════════════════════════════════════════════
 // MUTATIONS
 // ══════════════════════════════════════════════════════════════
-
-// ── Mutation: create entry ────────────────────────────────────
 
 export interface CreateRoomHygieneInput {
   roomId: string;
@@ -396,7 +363,6 @@ export function useCreateRoomHygieneEntry(callbacks?: {
     mutationFn: async (input: CreateRoomHygieneInput) => {
       if (!organizationId) throw new Error('No organization selected');
 
-      // Step 1: Find or create today's daily report for this room
       const dailyReportId = await getOrCreateDailyReport(
         organizationId,
         facilityId,
@@ -405,7 +371,6 @@ export function useCreateRoomHygieneEntry(callbacks?: {
         input.productionLine,
       );
 
-      // Step 2: Create the log entry linked to the daily report
       const { data, error } = await supabase
         .from('room_hygiene_log')
         .insert({
@@ -445,9 +410,7 @@ export function useCreateRoomHygieneEntry(callbacks?: {
 
       if (error) throw error;
 
-      // Step 3: Update daily report counters
       await updateDailyReportCounters(dailyReportId);
-
       return mapEntryFromDb(data);
     },
     onSuccess: (data) => {
@@ -459,8 +422,6 @@ export function useCreateRoomHygieneEntry(callbacks?: {
   });
 }
 
-// ── Mutation: complete entry (exit room) ──────────────────────
-
 export function useCompleteRoomHygieneEntry(callbacks?: {
   onSuccess?: (data: RoomHygieneEntry) => void;
   onError?: (error: Error) => void;
@@ -471,7 +432,6 @@ export function useCompleteRoomHygieneEntry(callbacks?: {
     mutationFn: async (input: { entryId: string; notes?: string }) => {
       const exitTime = new Date().toISOString();
 
-      // Get entry to calculate duration and get daily_report_id
       const { data: entry } = await supabase
         .from('room_hygiene_log')
         .select('entry_time, daily_report_id')
@@ -499,7 +459,6 @@ export function useCompleteRoomHygieneEntry(callbacks?: {
 
       if (error) throw error;
 
-      // Update daily report counters
       if (entry?.daily_report_id) {
         await updateDailyReportCounters(entry.daily_report_id);
       }
@@ -515,8 +474,6 @@ export function useCompleteRoomHygieneEntry(callbacks?: {
   });
 }
 
-// ── Mutation: flag entry ──────────────────────────────────────
-
 export function useFlagRoomHygieneEntry(callbacks?: {
   onSuccess?: (data: RoomHygieneEntry) => void;
   onError?: (error: Error) => void;
@@ -525,7 +482,6 @@ export function useFlagRoomHygieneEntry(callbacks?: {
 
   return useMutation({
     mutationFn: async (input: { entryId: string; contaminationRisk: string; notes: string }) => {
-      // Get daily_report_id first
       const { data: entry } = await supabase
         .from('room_hygiene_log')
         .select('daily_report_id')
@@ -545,7 +501,6 @@ export function useFlagRoomHygieneEntry(callbacks?: {
 
       if (error) throw error;
 
-      // Update daily report counters
       if (entry?.daily_report_id) {
         await updateDailyReportCounters(entry.daily_report_id);
       }
@@ -560,8 +515,6 @@ export function useFlagRoomHygieneEntry(callbacks?: {
     onError: (error: Error) => callbacks?.onError?.(error),
   });
 }
-
-// ── Mutation: Quality sign-off on daily report ────────────────
 
 export function useSignOffDailyReport(callbacks?: {
   onSuccess?: (data: DailyRoomHygieneReport) => void;
@@ -612,26 +565,27 @@ export function useSignOffDailyReport(callbacks?: {
 export async function autoLogRoomHygieneEntry(params: {
   organizationId: string;
   facilityId?: string;
-  locationId?: string;       // UUID from locations table
-  locationName?: string;     // fallback display name
+  locationId?: string;
+  locationName?: string;
   purpose: 'task_feed' | 'work_order';
-  referenceId: string;       // post_id or work_order_id
-  referenceNumber?: string;  // TF-XXXXX or WO-XXXXX
+  referenceId: string;
+  referenceNumber?: string;
   departmentCode: string;
   departmentName: string;
   performedById?: string;
   performedByName: string;
-  description: string;       // what was done
+  description: string;
 }) {
   try {
     if (!params.organizationId) return;
 
-    // Step 1: Check if this location requires hygiene logging
+    // Step 1: Resolve location — try UUID, then room_code, then name ilike
     let locationId = params.locationId;
     let roomName = params.locationName || 'Unknown';
     let hygieneRequired = false;
 
     if (locationId) {
+      // Direct UUID lookup
       const { data: loc } = await supabase
         .from('locations')
         .select('id, name, hygiene_log_required')
@@ -644,24 +598,38 @@ export async function autoLogRoomHygieneEntry(params: {
       }
     }
 
-    // If no locationId, try matching by name
     if (!locationId && params.locationName) {
-      const { data: loc } = await supabase
+      // Try exact room_code match first (e.g. 'PR1', 'BB1', 'PA1')
+      const { data: byCode } = await supabase
         .from('locations')
         .select('id, name, hygiene_log_required')
         .eq('organization_id', params.organizationId)
-        .ilike('name', `%${params.locationName}%`)
+        .eq('room_code', params.locationName)
         .maybeSingle();
 
-      if (loc) {
-        locationId = loc.id;
-        roomName = loc.name;
-        hygieneRequired = loc.hygiene_log_required === true;
+      if (byCode) {
+        locationId = byCode.id;
+        roomName = byCode.name;
+        hygieneRequired = byCode.hygiene_log_required === true;
+      } else {
+        // Fall back to name ilike for full names like 'Production Room 1'
+        const { data: byName } = await supabase
+          .from('locations')
+          .select('id, name, hygiene_log_required')
+          .eq('organization_id', params.organizationId)
+          .ilike('name', `%${params.locationName}%`)
+          .maybeSingle();
+
+        if (byName) {
+          locationId = byName.id;
+          roomName = byName.name;
+          hygieneRequired = byName.hygiene_log_required === true;
+        }
       }
     }
 
     if (!hygieneRequired || !locationId) {
-      console.log('[autoLogRoomHygiene] Location not hygiene-required, skipping');
+      console.log('[autoLogRoomHygiene] Location not hygiene-required or not found, skipping:', params.locationName);
       return;
     }
 
@@ -696,7 +664,6 @@ export async function autoLogRoomHygieneEntry(params: {
         .single();
 
       if (!newReport) {
-        // Race condition — try fetching again
         const { data: retry } = await supabase
           .from('daily_room_hygiene_reports')
           .select('id')
