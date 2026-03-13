@@ -85,6 +85,7 @@ interface PostDetails {
 }
 
 const MAINTENANCE_DEPT_CODES = ['1001', '3000', 'MAINT', 'MNT'];
+const SANITATION_DEPT_CODE = '1002';
 
 export default function TaskFeedInbox({
   departmentCode,
@@ -117,27 +118,26 @@ export default function TaskFeedInbox({
   const [completionNotes, setCompletionNotes] = useState('');
   const [isCompleting, setIsCompleting] = useState(false);
 
-  // ─── FIX: track when we've navigated away for a form fill ───────
-  // When the screen regains focus (user returns from the form),
-  // useFocusEffect will see pendingDecision=true and open the
-  // PostFormDecisionModal automatically.
+  // Track when we've navigated away for a form fill.
+  // When the screen regains focus, useFocusEffect reads pendingDecision=true
+  // and opens PostFormDecisionModal automatically.
   const [pendingDecision, setPendingDecision] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
       if (pendingDecision && selectedTask) {
         setPendingDecision(false);
-        // Refresh task data so formsCompleted count is up to date
         refetch();
         setShowDecisionModal(true);
       }
     }, [pendingDecision, selectedTask])
   );
-  // ────────────────────────────────────────────────────────────────
 
-  const isMaintenanceDept = requiresFullWorkOrder !== undefined 
-    ? requiresFullWorkOrder 
+  const isMaintenanceDept = requiresFullWorkOrder !== undefined
+    ? requiresFullWorkOrder
     : MAINTENANCE_DEPT_CODES.includes(departmentCode);
+
+  const isSanitationDept = departmentCode === SANITATION_DEPT_CODE;
 
   const accentColor = moduleColor || getDepartmentColor(departmentCode) || colors.primary;
 
@@ -234,10 +234,37 @@ export default function TaskFeedInbox({
   const visibleTasks = showAllTasks ? pendingTasks : pendingTasks.slice(0, maxVisible);
   const hasMoreTasks = pendingTasks.length > maxVisible;
 
+  // ─── Sanitation WO lookup ─────────────────────────────────────
+  // For sanitation tasks that are linked to a scheduled sanitation WO,
+  // look up by post number in sanitation_work_orders and navigate
+  // to SanitationWorkOrderDetail instead of the form picker.
+  const findLinkedSanitationWO = useCallback(async (
+    task: TaskFeedDepartmentTask & { post?: PostDetails }
+  ): Promise<string | null> => {
+    try {
+      const { data, error } = await supabase
+        .from('sanitation_work_orders')
+        .select('id')
+        .eq('org_id', organizationId)
+        .eq('task_feed_post_id', task.postId)
+        .not('status', 'eq', 'completed')
+        .limit(1)
+        .maybeSingle();
+
+      if (error) throw error;
+      return data?.id ?? null;
+    } catch (err) {
+      console.warn('[TaskFeedInbox] Sanitation WO lookup error (non-blocking):', err);
+      return null;
+    }
+  }, [organizationId]);
+
+  // ─── Main action handler ──────────────────────────────────────
   const handleStartComplete = useCallback(async (task: TaskFeedDepartmentTask & { post?: PostDetails }) => {
     setSelectedTask(task);
     setCompletionNotes('');
-    
+
+    // ── Maintenance dept: navigate to CMMS work order ───────────
     if (isMaintenanceDept) {
       const linkedWO = workOrders.find(wo =>
         (wo.description || '').includes(task.postNumber) ||
@@ -248,13 +275,11 @@ export default function TaskFeedInbox({
         router.push(`/(tabs)/cmms/work-orders/${linkedWO.id}`);
         return;
       }
-      // Create an OPEN work order and navigate to the full detail screen
       if (createOpenWorkOrder) {
         try {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           const workOrderId = await createOpenWorkOrder(task);
           if (workOrderId) {
-            // Link WO to department task and mark as in_progress
             try {
               await supabase
                 .from('task_feed_department_tasks')
@@ -271,7 +296,6 @@ export default function TaskFeedInbox({
             }
             queryClient.invalidateQueries({ queryKey: ['task_feed_department_tasks'] });
             await queryClient.refetchQueries({ queryKey: ['work_orders'] });
-            // Small delay to ensure data is ready before navigating
             await new Promise(resolve => setTimeout(resolve, 500));
             router.push(`/(tabs)/cmms/work-orders/${workOrderId}`);
             return;
@@ -286,16 +310,71 @@ export default function TaskFeedInbox({
       } else {
         setShowCompleteModal(true);
       }
-    } else if (task.status === 'in_progress') {
-  // Task already in progress — go straight to decision/completion modal
-  // User can still add more forms via "Another Form" inside the decision modal
-  setShowDecisionModal(true);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      return;
+    }
+
+    // ── Sanitation dept (1002): check for linked scheduled WO ───
+    // Scheduled sanitation tasks (cron-generated) have a corresponding
+    // sanitation_work_order row — navigate to SanitationWorkOrderDetail.
+    // Reactive tasks (no linked WO) fall through to the form picker.
+    if (isSanitationDept) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+      // Always check for a linked sanitation WO first
+      const sanitationWoId = await findLinkedSanitationWO(task);
+
+      if (sanitationWoId) {
+        // Scheduled sanitation WO — navigate to the detail screen
+        // Mark task as in_progress so the inbox shows "Continue" on return
+        try {
+          await supabase
+            .from('task_feed_department_tasks')
+            .update({
+              status: 'in_progress',
+              started_at: new Date().toISOString(),
+              module_reference_type: 'sanitation_work_order',
+              module_reference_id: sanitationWoId,
+            })
+            .eq('id', task.id)
+            .eq('organization_id', organizationId)
+            .neq('status', 'in_progress'); // only update if not already in progress
+        } catch (updateErr) {
+          console.warn('[TaskFeedInbox] Could not update sanitation task status (non-blocking):', updateErr);
+        }
+
+        queryClient.invalidateQueries({ queryKey: ['task_feed_department_tasks'] });
+        setPendingDecision(true);
+
+        setTimeout(() => {
+          router.push(`/(tabs)/sanitation/work-orders/${sanitationWoId}` as any);
+        }, 300);
+        return;
+      }
+
+      // No linked WO → this is a reactive sanitation task
+      // Use the standard form picker flow
+      if (task.status === 'in_progress') {
+        setShowDecisionModal(true);
+      } else {
+        setShowFormPicker(true);
+      }
+      return;
+    }
+
+    // ── All other depts: standard form picker / decision flow ───
+    if (task.status === 'in_progress') {
+      setShowDecisionModal(true);
     } else {
-      // Pending task — show form picker to start
       setShowFormPicker(true);
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  }, [isMaintenanceDept, createFullWorkOrder, createOpenWorkOrder, workOrders, router, organizationId, queryClient]);
+  }, [
+    isMaintenanceDept, isSanitationDept,
+    createFullWorkOrder, createOpenWorkOrder,
+    workOrders, router, organizationId, queryClient,
+    findLinkedSanitationWO,
+  ]);
 
   const handleNotInvolvedPress = useCallback((task: TaskFeedDepartmentTask & { post?: PostDetails }) => {
     setSelectedTask(task);
@@ -305,58 +384,48 @@ export default function TaskFeedInbox({
 
   const handleFormSelected = useCallback((form: { id: string; label: string; route: string }) => {
     if (!selectedTask) return;
-    
-    // Start the task with form info
+
     startTaskMutation.mutate({
       taskId: selectedTask.id,
       formType: form.label,
       formRoute: form.route,
     });
 
-    // Auto-link form to the task feed post
     try {
       linkFormMutation.mutate({
         postId: selectedTask.postId,
         postNumber: selectedTask.postNumber || '',
         formType: form.label,
-        formId: selectedTask.id, // dept task ID as form reference
+        formId: selectedTask.id,
         formTitle: form.label,
         departmentCode: departmentCode,
         departmentName: getDepartmentName(departmentCode),
       });
-      console.log('[TaskFeedInbox] Auto-linked form', form.label, 'to post', selectedTask.postNumber);
     } catch (linkErr) {
       console.error('[TaskFeedInbox] Form link error (non-blocking):', linkErr);
     }
 
     setShowFormPicker(false);
     setShowDecisionModal(false);
-
-    // ─── FIX: mark that we expect a decision modal on return ────
-    // This flag is read by useFocusEffect when the user navigates
-    // back from the form, triggering PostFormDecisionModal to open.
     setPendingDecision(true);
-    // ────────────────────────────────────────────────────────────
 
-    // Delay navigation until the modal has fully dismissed.
-    // Without this, the modal unmount triggers a focus/blur cycle on web
-    // that swallows the router.push, leaving the user on the dashboard.
+    // Pass postId and postNumber as params so the form screen
+    // can pre-populate and lock the linked post banner
+    const separator = form.route.includes('?') ? '&' : '?';
+    const routeWithParams = `${form.route}${separator}postId=${selectedTask.postId}&postNumber=${encodeURIComponent(selectedTask.postNumber || '')}`;
+
     setTimeout(() => {
-      router.push(form.route as any);
+      router.push(routeWithParams as any);
     }, 300);
   }, [selectedTask, startTaskMutation, linkFormMutation, departmentCode, router]);
-  
+
   const handleFormPickerClose = useCallback(() => {
     setShowFormPicker(false);
-    // Just close — don't jump to decision modal
-    // User can tap task again to reopen picker or complete
     setSelectedTask(null);
     setPendingDecision(false);
   }, []);
 
   const handleFormPickerComplete = useCallback(() => {
-    // User clicked "Complete Task" from inside form picker
-    // Close picker, open decision/hold-release modal
     setShowFormPicker(false);
     setShowDecisionModal(true);
   }, []);
@@ -372,13 +441,11 @@ export default function TaskFeedInbox({
 
     setIsCompleting(true);
     try {
-      // Complete the department task
       await completeMutation.mutateAsync({
         taskId: selectedTask.id,
         completionNotes: data.completionNotes,
       });
 
-      // Log the signature
       logSignature.mutate({
         verification: data.signature,
         formType: 'Task Completion',
@@ -387,7 +454,6 @@ export default function TaskFeedInbox({
         referenceNumber: selectedTask.postNumber,
       });
 
-      // Auto-link any work orders that reference this post to this dept task
       try {
         const { data: relatedWOs } = await supabase
           .from('work_orders')
@@ -406,13 +472,11 @@ export default function TaskFeedInbox({
             })
             .eq('id', selectedTask.id)
             .eq('organization_id', organizationId);
-          console.log('[TaskFeedInbox] Auto-linked WO', relatedWOs[0].id, 'to dept task');
         }
       } catch (woLinkErr) {
         console.error('[TaskFeedInbox] WO auto-link error (non-blocking):', woLinkErr);
       }
 
-      // Clear production hold — ONLY Quality (1004) can release the line
       if (data.lineOperational && selectedTask.post?.is_production_hold && departmentCode === '1004') {
         const holdStatus = selectedTask.post?.hold_status || 'active';
         if (holdStatus === 'active' || holdStatus === 'reinstated') {
@@ -428,7 +492,6 @@ export default function TaskFeedInbox({
               rootCauseDepartment: data.rootCauseDepartment,
               rootCauseDepartmentName: data.rootCauseDepartmentName,
             });
-            console.log('[TaskFeedInbox] Production hold cleared successfully');
           } catch (holdErr) {
             console.error('[TaskFeedInbox] Failed to clear hold:', holdErr);
             Alert.alert('Warning', 'Task completed but production hold could not be cleared. Please try clearing it manually.');
@@ -441,7 +504,6 @@ export default function TaskFeedInbox({
       setSelectedTask(null);
       setPendingDecision(false);
 
-      // Force refresh post detail
       queryClient.invalidateQueries({ queryKey: ['task_feed_post_detail'] });
 
       Alert.alert(
@@ -465,13 +527,11 @@ export default function TaskFeedInbox({
 
     setIsCompleting(true);
     try {
-      // Complete with "not involved" notes
       await completeMutation.mutateAsync({
         taskId: selectedTask.id,
         completionNotes: `NOT INVOLVED: ${data.reason}\n\nVerified by: ${data.signature.signatureStamp}`,
       });
 
-      // Log the signature
       logSignature.mutate({
         verification: data.signature,
         formType: 'Not Involved Verification',
@@ -499,17 +559,14 @@ export default function TaskFeedInbox({
   }, [selectedTask, completeMutation, logSignature, onTaskCompleted, departmentCode]);
 
   const handleDecisionEscalate = useCallback(() => {
-    // Close decision, the parent page handles escalation
     setShowDecisionModal(false);
     setPendingDecision(false);
-    // Navigate to post detail where escalation modal lives
     if (selectedTask?.postId) {
       router.push(`/(tabs)/taskfeed/${selectedTask.postId}`);
     }
   }, [selectedTask, router]);
 
   const handleDecisionAnotherForm = useCallback(() => {
-    // Close decision, open form picker
     setShowDecisionModal(false);
     setShowFormPicker(true);
   }, []);
@@ -523,7 +580,6 @@ export default function TaskFeedInbox({
 
       if (createModuleHistoryRecord) {
         moduleHistoryId = await createModuleHistoryRecord(selectedTask, completionNotes);
-        console.log('[TaskFeedInbox] Module history record created:', moduleHistoryId);
       }
 
       await completeMutation.mutateAsync({
@@ -555,13 +611,8 @@ export default function TaskFeedInbox({
 
     setIsCompleting(true);
     try {
-      console.log('[TaskFeedInbox] Creating full work order for task:', selectedTask.postNumber);
-      
-      // Step 1: Create the work order (sets source_id = postId, department = '1001')
       const workOrderId = await createFullWorkOrder(selectedTask, data);
-      console.log('[TaskFeedInbox] Work order created:', workOrderId);
 
-      // Step 2: Link WO to department task BEFORE completing (so cache invalidation picks it up)
       if (workOrderId) {
         try {
           const { error: linkError } = await supabase
@@ -572,18 +623,15 @@ export default function TaskFeedInbox({
             })
             .eq('id', selectedTask.id)
             .eq('organization_id', organizationId);
-          
+
           if (linkError) {
             console.error('[TaskFeedInbox] Error linking WO to dept task:', linkError.message);
-          } else {
-            console.log('[TaskFeedInbox] Linked WO', workOrderId, 'to dept task', selectedTask.id);
           }
         } catch (linkErr) {
           console.error('[TaskFeedInbox] Failed to link WO:', linkErr);
         }
       }
 
-      // Step 3: Complete the department task (triggers cache invalidation)
       const notesForTaskFeed = `Work Order Completed\n\nWork Performed: ${data.workPerformed}\nAction Taken: ${data.actionTaken}${data.partsUsed ? `\nParts Used: ${data.partsUsed}` : ''}${data.laborHours ? `\nLabor Hours: ${data.laborHours}` : ''}${data.rootCause ? `\nRoot Cause: ${data.rootCause}` : ''}${data.additionalNotes ? `\nNotes: ${data.additionalNotes}` : ''}`;
 
       await completeMutation.mutateAsync({
@@ -591,10 +639,6 @@ export default function TaskFeedInbox({
         completionNotes: notesForTaskFeed,
       });
 
-      // Note: Production hold is NOT auto-cleared by maintenance WO completion.
-      // Only Quality (1004) can release the line via the decision modal.
-
-      // Step 4: Force re-invalidate post detail so linked WO shows up
       queryClient.invalidateQueries({ queryKey: ['task_feed_post_detail'] });
       queryClient.invalidateQueries({ queryKey: ['task_feed_posts_with_tasks'] });
 
@@ -724,7 +768,6 @@ export default function TaskFeedInbox({
                   <Text style={[styles.templateName, { color: colors.text }]} numberOfLines={1}>
                     {task.post?.template_name || 'Task'}
                   </Text>
-                  {/* Status indicator for in-progress tasks */}
                   {task.status === 'in_progress' && (
                     <View style={styles.inProgressRow}>
                       <View style={[styles.inProgressBadge, { backgroundColor: '#F59E0B20' }]}>
@@ -758,7 +801,6 @@ export default function TaskFeedInbox({
                 </View>
 
                 <View style={styles.taskActions}>
-                  {/* Not Involved button — only for pending tasks */}
                   {task.status === 'pending' && (
                     <TouchableOpacity
                       style={[styles.actionButton, { backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border }]}
@@ -899,39 +941,22 @@ export default function TaskFeedInbox({
                         <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Form Data</Text>
                       </View>
                       {Object.entries(selectedTask.post.form_data).map(([key, value]) => {
-                        const formatLabel = (str: string) => {
-                          return str
-                            .replace(/_/g, ' ')
-                            .replace(/([A-Z])/g, ' $1')
-                            .replace(/^./, (s) => s.toUpperCase())
-                            .trim();
-                        };
-
+                        const formatLabel = (str: string) => str.replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').replace(/^./, (s) => s.toUpperCase()).trim();
                         const formatValue = (val: any): string => {
                           if (val === null || val === undefined) return '-';
                           if (typeof val === 'boolean') return val ? 'Yes' : 'No';
                           if (typeof val === 'number') return val.toString();
                           if (typeof val === 'string') return val || '-';
                           if (Array.isArray(val)) return val.join(', ') || '-';
-                          if (typeof val === 'object') {
-                            return Object.entries(val)
-                              .map(([k, v]) => `${formatLabel(k)}: ${formatValue(v)}`)
-                              .join(', ');
-                          }
+                          if (typeof val === 'object') return Object.entries(val).map(([k, v]) => `${formatLabel(k)}: ${formatValue(v)}`).join(', ');
                           return String(val);
                         };
-
                         const displayValue = formatValue(value);
                         const isLongValue = displayValue.length > 50;
-
                         return (
                           <View key={key} style={isLongValue ? styles.formDataRowStacked : styles.formDataRow}>
-                            <Text style={[styles.formDataKey, { color: colors.textSecondary }]}>
-                              {formatLabel(key)}:
-                            </Text>
-                            <Text style={[styles.formDataValue, { color: colors.text }]} numberOfLines={isLongValue ? 3 : 1}>
-                              {displayValue}
-                            </Text>
+                            <Text style={[styles.formDataKey, { color: colors.textSecondary }]}>{formatLabel(key)}:</Text>
+                            <Text style={[styles.formDataValue, { color: colors.text }]} numberOfLines={isLongValue ? 3 : 1}>{displayValue}</Text>
                           </View>
                         );
                       })}
@@ -1073,7 +1098,7 @@ export default function TaskFeedInbox({
       <Modal visible={showWorkOrderModal} animationType="slide" presentationStyle="pageSheet">
         <View style={[styles.workOrderModalContainer, { backgroundColor: colors.background }]}>
           <View style={[styles.workOrderModalHeader, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
-            <TouchableOpacity 
+            <TouchableOpacity
               onPress={() => {
                 setShowWorkOrderModal(false);
                 setSelectedTask(null);
@@ -1160,373 +1185,75 @@ export default function TaskFeedInbox({
 }
 
 const styles = StyleSheet.create({
-  container: {
-    borderRadius: 12,
-    borderWidth: 1,
-    marginBottom: 16,
-    overflow: 'hidden',
-  },
-  loadingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 20,
-    gap: 10,
-  },
-  loadingText: {
-    fontSize: 14,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 14,
-  },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    flex: 1,
-  },
-  headerIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerText: {
-    flex: 1,
-  },
-  headerTitle: {
-    fontSize: 15,
-    fontWeight: '600' as const,
-  },
-  headerCount: {
-    fontSize: 12,
-    marginTop: 2,
-  },
-  headerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  countBadge: {
-    minWidth: 24,
-    height: 24,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 8,
-  },
-  countBadgeText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '700' as const,
-  },
-  taskList: {
-    paddingHorizontal: 14,
-    paddingBottom: 8,
-  },
-  taskItem: {
-    paddingVertical: 12,
-  },
-  taskMain: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-  },
-  taskInfo: {
-    flex: 1,
-  },
-  taskHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 4,
-  },
-  postNumber: {
-    fontSize: 13,
-    fontWeight: '700' as const,
-  },
-  timeAgo: {
-    fontSize: 11,
-  },
-  templateName: {
-    fontSize: 14,
-    fontWeight: '500' as const,
-    marginBottom: 4,
-  },
-  inProgressRow: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: 6,
-    marginBottom: 4,
-  },
-  inProgressBadge: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
-  },
-  inProgressText: {
-    fontSize: 10,
-    fontWeight: '700' as const,
-    color: '#F59E0B',
-  },
-  formCountText: {
-    fontSize: 10,
-    fontWeight: '700' as const,
-  },
-  holdIndicator: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: 3,
-    paddingHorizontal: 5,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  holdIndicatorText: {
-    fontSize: 8,
-    fontWeight: '800' as const,
-    letterSpacing: 0.5,
-  },
-  locationRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginBottom: 2,
-  },
-  locationText: {
-    fontSize: 12,
-    flex: 1,
-  },
-  createdByRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  createdByText: {
-    fontSize: 11,
-  },
-  taskActions: {
-    flexDirection: 'column',
-    gap: 6,
-  },
-  actionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 6,
-    gap: 4,
-  },
+  container: { borderRadius: 12, borderWidth: 1, marginBottom: 16, overflow: 'hidden' },
+  loadingContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 20, gap: 10 },
+  loadingText: { fontSize: 14 },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14 },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+  headerIcon: { width: 36, height: 36, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  headerText: { flex: 1 },
+  headerTitle: { fontSize: 15, fontWeight: '600' as const },
+  headerCount: { fontSize: 12, marginTop: 2 },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  countBadge: { minWidth: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 },
+  countBadgeText: { color: '#fff', fontSize: 12, fontWeight: '700' as const },
+  taskList: { paddingHorizontal: 14, paddingBottom: 8 },
+  taskItem: { paddingVertical: 12 },
+  taskMain: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  taskInfo: { flex: 1 },
+  taskHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
+  postNumber: { fontSize: 13, fontWeight: '700' as const },
+  timeAgo: { fontSize: 11 },
+  templateName: { fontSize: 14, fontWeight: '500' as const, marginBottom: 4 },
+  inProgressRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 6, marginBottom: 4 },
+  inProgressBadge: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 4, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
+  inProgressText: { fontSize: 10, fontWeight: '700' as const, color: '#F59E0B' },
+  formCountText: { fontSize: 10, fontWeight: '700' as const },
+  holdIndicator: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 3, paddingHorizontal: 5, paddingVertical: 2, borderRadius: 4 },
+  holdIndicatorText: { fontSize: 8, fontWeight: '800' as const, letterSpacing: 0.5 },
+  locationRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 2 },
+  locationText: { fontSize: 12, flex: 1 },
+  createdByRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  createdByText: { fontSize: 11 },
+  taskActions: { flexDirection: 'column', gap: 6 },
+  actionButton: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 10, borderRadius: 6, gap: 4 },
   completeButton: {},
-  actionButtonText: {
-    fontSize: 12,
-    fontWeight: '600' as const,
-  },
-  showMoreButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 10,
-    gap: 4,
-  },
-  showMoreText: {
-    fontSize: 13,
-    fontWeight: '500' as const,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
-  },
-  modalContainer: {
-    maxHeight: '85%',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-  },
-  completeModalContainer: {
-    maxHeight: '60%',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-  },
-  modalHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  modalTitle: {
-    fontSize: 17,
-    fontWeight: '600' as const,
-  },
-  modalPostNumber: {
-    fontSize: 13,
-    fontWeight: '700' as const,
-  },
-  modalContent: {
-    padding: 16,
-    maxHeight: 400,
-  },
-  completeModalContent: {
-    padding: 16,
-  },
-  detailSection: {
-    padding: 14,
-    borderRadius: 10,
-    marginBottom: 10,
-  },
-  detailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 6,
-  },
-  detailLabel: {
-    fontSize: 12,
-    fontWeight: '500' as const,
-  },
-  detailValue: {
-    fontSize: 14,
-    fontWeight: '500' as const,
-  },
-  postImage: {
-    width: '100%',
-    height: 200,
-    borderRadius: 10,
-    marginTop: 8,
-  },
-  formDataRow: {
-    flexDirection: 'row',
-    marginTop: 8,
-    alignItems: 'flex-start',
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    backgroundColor: 'rgba(0,0,0,0.03)',
-    borderRadius: 6,
-  },
-  formDataRowStacked: {
-    flexDirection: 'column',
-    marginTop: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    backgroundColor: 'rgba(0,0,0,0.03)',
-    borderRadius: 6,
-    gap: 4,
-  },
-  formDataKey: {
-    fontSize: 12,
-    fontWeight: '600' as const,
-    marginRight: 6,
-    minWidth: 80,
-  },
-  formDataValue: {
-    fontSize: 13,
-    fontWeight: '500' as const,
-    flex: 1,
-  },
-  assignedDeptBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    borderRadius: 10,
-    marginTop: 6,
-    gap: 10,
-  },
-  assignedDeptText: {
-    fontSize: 13,
-    fontWeight: '500' as const,
-    flex: 1,
-  },
-  taskSummary: {
-    padding: 14,
-    borderRadius: 10,
-    marginBottom: 16,
-  },
-  taskSummaryTitle: {
-    fontSize: 16,
-    fontWeight: '600' as const,
-  },
-  taskSummaryLocation: {
-    fontSize: 13,
-    marginTop: 4,
-  },
-  inputLabel: {
-    fontSize: 14,
-    fontWeight: '600' as const,
-    marginBottom: 8,
-  },
-  notesInput: {
-    borderRadius: 10,
-    padding: 14,
-    fontSize: 15,
-    minHeight: 100,
-    borderWidth: 1,
-    marginBottom: 16,
-  },
-  completionInfo: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    padding: 12,
-    borderRadius: 10,
-    gap: 10,
-  },
-  completionInfoText: {
-    fontSize: 13,
-    flex: 1,
-    lineHeight: 18,
-  },
-  modalFooter: {
-    flexDirection: 'row',
-    padding: 16,
-    gap: 12,
-  },
-  modalButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 14,
-    borderRadius: 10,
-    borderWidth: 1,
-    gap: 8,
-  },
-  completeModalButton: {
-    borderWidth: 0,
-  },
-  modalButtonText: {
-    fontSize: 15,
-    fontWeight: '600' as const,
-  },
-  workOrderModalContainer: {
-    flex: 1,
-  },
-  workOrderModalHeader: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'space-between' as const,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-  },
-  workOrderModalTitleContainer: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: 8,
-  },
-  workOrderModalTitle: {
-    fontSize: 17,
-    fontWeight: '600' as const,
-  },
+  actionButtonText: { fontSize: 12, fontWeight: '600' as const },
+  showMoreButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 10, gap: 4 },
+  showMoreText: { fontSize: 13, fontWeight: '500' as const },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalContainer: { maxHeight: '85%', borderTopLeftRadius: 24, borderTopRightRadius: 24 },
+  completeModalContainer: { maxHeight: '60%', borderTopLeftRadius: 24, borderTopRightRadius: 24 },
+  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1 },
+  modalHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  modalTitle: { fontSize: 17, fontWeight: '600' as const },
+  modalPostNumber: { fontSize: 13, fontWeight: '700' as const },
+  modalContent: { padding: 16, maxHeight: 400 },
+  completeModalContent: { padding: 16 },
+  detailSection: { padding: 14, borderRadius: 10, marginBottom: 10 },
+  detailRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
+  detailLabel: { fontSize: 12, fontWeight: '500' as const },
+  detailValue: { fontSize: 14, fontWeight: '500' as const },
+  postImage: { width: '100%', height: 200, borderRadius: 10, marginTop: 8 },
+  formDataRow: { flexDirection: 'row', marginTop: 8, alignItems: 'flex-start', paddingVertical: 6, paddingHorizontal: 10, backgroundColor: 'rgba(0,0,0,0.03)', borderRadius: 6 },
+  formDataRowStacked: { flexDirection: 'column', marginTop: 8, paddingVertical: 8, paddingHorizontal: 10, backgroundColor: 'rgba(0,0,0,0.03)', borderRadius: 6, gap: 4 },
+  formDataKey: { fontSize: 12, fontWeight: '600' as const, marginRight: 6, minWidth: 80 },
+  formDataValue: { fontSize: 13, fontWeight: '500' as const, flex: 1 },
+  assignedDeptBanner: { flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: 10, marginTop: 6, gap: 10 },
+  assignedDeptText: { fontSize: 13, fontWeight: '500' as const, flex: 1 },
+  taskSummary: { padding: 14, borderRadius: 10, marginBottom: 16 },
+  taskSummaryTitle: { fontSize: 16, fontWeight: '600' as const },
+  taskSummaryLocation: { fontSize: 13, marginTop: 4 },
+  inputLabel: { fontSize: 14, fontWeight: '600' as const, marginBottom: 8 },
+  notesInput: { borderRadius: 10, padding: 14, fontSize: 15, minHeight: 100, borderWidth: 1, marginBottom: 16 },
+  completionInfo: { flexDirection: 'row', alignItems: 'flex-start', padding: 12, borderRadius: 10, gap: 10 },
+  completionInfoText: { fontSize: 13, flex: 1, lineHeight: 18 },
+  modalFooter: { flexDirection: 'row', padding: 16, gap: 12 },
+  modalButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 14, borderRadius: 10, borderWidth: 1, gap: 8 },
+  completeModalButton: { borderWidth: 0 },
+  modalButtonText: { fontSize: 15, fontWeight: '600' as const },
+  workOrderModalContainer: { flex: 1 },
+  workOrderModalHeader: { flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const, paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1 },
+  workOrderModalTitleContainer: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 8 },
+  workOrderModalTitle: { fontSize: 17, fontWeight: '600' as const },
 });
