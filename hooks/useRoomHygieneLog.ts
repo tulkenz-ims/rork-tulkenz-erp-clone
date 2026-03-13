@@ -3,6 +3,11 @@ import { supabase } from '@/lib/supabase';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import { useUser } from '@/contexts/UserContext';
 
+// Always use Central time for date calculations
+function getTodayCST(): string {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+  // returns 'YYYY-MM-DD' format in CST/CDT
+}
 // ── Types ─────────────────────────────────────────────────────
 
 export interface RoomHygieneEntry {
@@ -144,7 +149,7 @@ async function getOrCreateDailyReport(
   roomName: string,
   productionLine?: string,
 ): Promise<string> {
-  const today = new Date().toISOString().split('T')[0];
+  const today = getTodayCST();
 
   const { data: existing, error: fetchErr } = await supabase
     .from('daily_room_hygiene_reports')
@@ -289,7 +294,7 @@ export function useRoomHygieneLogQuery(options?: {
 }
 
 export function useTodayRoomLog(roomId: string) {
-  const today = new Date().toISOString().split('T')[0];
+  const today = getTodayCST();
   return useRoomHygieneLogQuery({ roomId, date: today });
 }
 
@@ -636,7 +641,7 @@ export async function autoLogRoomHygieneEntry(params: {
     console.log('[autoLogRoomHygiene] Auto-logging for', roomName);
 
     // Step 2: Find or create daily report
-    const today = new Date().toISOString().split('T')[0];
+    const today = getTodayCST();
 
     const { data: existingReport } = await supabase
       .from('daily_room_hygiene_reports')
