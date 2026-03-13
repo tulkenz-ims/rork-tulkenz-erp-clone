@@ -286,8 +286,9 @@ export function useRoomHygieneLogQuery(options?: {
       if (options?.limit) query = query.limit(options.limit);
 
       const { data, error } = await query;
-      if (error) throw error;
-      return (data || []).map(mapEntryFromDb);
+console.log('[RoomHygiene] result:', { count: data?.length, error: error?.message, date: options?.date });
+if (error) throw error;
+return (data || []).map(mapEntryFromDb);
     },
     enabled: options?.enabled !== false && !!organizationId,
   });
