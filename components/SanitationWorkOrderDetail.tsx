@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, Pressable, TextInput,
+  View, Text, StyleSheet, ScrollView, Pressable, Image, TextInput,
   TouchableOpacity, Alert, Modal, BackHandler, Animated,
   KeyboardAvoidingView, Platform, ActivityIndicator,
 } from 'react-native';
@@ -11,8 +11,8 @@ import * as Haptics from 'expo-haptics';
 import {
   X, CheckCircle, Clock, Play, Pause, Camera, Trash2,
   AlertTriangle, ClipboardList, Droplets, FlaskConical,
-  ShieldCheck, UserCheck, Lock, ChevronRight,
-  Activity, Zap, Image as ImageIcon, FileText, Plus,
+  ShieldCheck, UserCheck, Lock,
+  Activity, FileText, Plus,
 } from 'lucide-react-native';
 import {
   SanitationWorkOrder,
@@ -21,7 +21,9 @@ import {
   useSupabaseSanitationWorkOrders,
 } from '@/hooks/useSupabaseSanitationWorkOrders';
 import FormPickerModal from '@/components/FormPickerModal';
+import PinSignatureCapture from '@/components/PinSignatureCapture';
 import { useOrganization } from '@/contexts/OrganizationContext';
+import { useLogSignature, SignatureVerification } from '@/hooks/usePinSignature';
 import { supabase } from '@/lib/supabase';
 
 // ─── HUD Theme ────────────────────────────────────────────────────────────────
@@ -255,21 +257,40 @@ const pmS = StyleSheet.create({
 });
 
 // ─── Photo Thumbnail ──────────────────────────────────────────────────────────
+// FIX: renders the actual image from Supabase Storage URI
 function PhotoThumb({ photo, index, onRemove }: { photo: SanPhoto; index: number; onRemove: () => void }) {
+  const [imgError, setImgError] = useState(false);
   return (
     <View style={ptS.wrap}>
       <View style={[ptS.thumb, { borderColor: HUD.green + '50' }]}>
-        <ImageIcon size={22} color={HUD.green} />
-        <Text style={ptS.num}>#{index + 1}</Text>
+        {!imgError && photo.uri ? (
+          <Image
+            source={{ uri: photo.uri }}
+            style={ptS.img}
+            resizeMode="cover"
+            onError={() => setImgError(true)}
+          />
+        ) : (
+          <View style={ptS.placeholder}>
+            <Camera size={20} color={HUD.green} />
+            <Text style={ptS.num}>#{index + 1}</Text>
+          </View>
+        )}
       </View>
-      <Text style={ptS.time}>{new Date(photo.capturedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
-      <TouchableOpacity onPress={onRemove} style={ptS.del}><Trash2 size={12} color={HUD.red} /></TouchableOpacity>
+      <Text style={ptS.time}>
+        {new Date(photo.capturedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+      </Text>
+      <TouchableOpacity onPress={onRemove} style={ptS.del}>
+        <Trash2 size={12} color={HUD.red} />
+      </TouchableOpacity>
     </View>
   );
 }
 const ptS = StyleSheet.create({
   wrap: { width: 72, alignItems: 'center', gap: 3 },
-  thumb: { width: 64, height: 64, borderRadius: 8, backgroundColor: HUD.green + '12', borderWidth: 1, alignItems: 'center', justifyContent: 'center', gap: 2 },
+  thumb: { width: 64, height: 64, borderRadius: 8, borderWidth: 1, overflow: 'hidden' },
+  img: { width: 64, height: 64 },
+  placeholder: { width: 64, height: 64, backgroundColor: HUD.green + '12', alignItems: 'center', justifyContent: 'center', gap: 2 },
   num: { fontSize: 8, fontWeight: '800', color: HUD.green + '99', letterSpacing: 1 },
   time: { fontSize: 8, color: HUD.textDim },
   del: { padding: 3 },
@@ -365,6 +386,8 @@ export default function SanitationWorkOrderDetail({ workOrder: initialWO, onClos
     formatElapsed,
   } = useSupabaseSanitationWorkOrders();
 
+  const logSignature = useLogSignature();
+
   // ── Local WO state ─────────────────────────────────────────────────────────
   const [wo, setWO] = useState<SanitationWorkOrder>(initialWO);
   useEffect(() => { setWO(initialWO); }, [initialWO.updated_at]);
@@ -417,12 +440,14 @@ export default function SanitationWorkOrderDetail({ workOrder: initialWO, onClos
   const [method, setMethod] = useState(wo.application_method || '');
   const [notes, setNotes] = useState(wo.notes || '');
   const [checklistCompletion, setChecklistCompletion] = useState<ChecklistCompletion>(wo.checklist_completion || {});
-  const [atpReading, setAtpReading] = useState(wo.atp_reading_rlu != null ? String(wo.atp_reading_rlu) : '');
-  const [techInitial, setTechInitial] = useState(wo.tech_initial || '');
-  const [techPPN, setTechPPN] = useState(wo.tech_ppn || '');
-  const [qaInitial, setQAInitial] = useState(wo.qa_initial || '');
-  const [qaPPN, setQAPPN] = useState(wo.qa_ppn || '');
+  const [atpReading, setAtpReading] = useState(wo.atp_reading != null ? String(wo.atp_reading) : '');
   const photos: SanPhoto[] = wo.photos || [];
+
+  // ── Signature state ────────────────────────────────────────────────────────
+  // Tech — holds the verified SignatureVerification object until submit
+  const [techVerification, setTechVerification] = useState<SignatureVerification | null>(null);
+  // QA — same
+  const [qaVerification, setQAVerification] = useState<SignatureVerification | null>(null);
 
   const isCompleted = wo.status === 'completed';
   const isAwaitingQA = wo.status === 'awaiting_qa';
@@ -433,7 +458,7 @@ export default function SanitationWorkOrderDetail({ workOrder: initialWO, onClos
   const atpRLU = parseFloat(atpReading);
   const atpResult = !isNaN(atpRLU) ? (atpRLU <= (wo.atp_pass_threshold || 250) ? 'pass' : 'fail') : null;
 
-  // ── REACTIVE FORMS section ─────────────────────────────────────────────────
+  // ── REACTIVE FORMS ─────────────────────────────────────────────────────────
   const [linkedForms, setLinkedForms] = useState<LinkedForm[]>([]);
   const [formsLoading, setFormsLoading] = useState(false);
   const [showFormPicker, setShowFormPicker] = useState(false);
@@ -443,26 +468,10 @@ export default function SanitationWorkOrderDetail({ workOrder: initialWO, onClos
     setFormsLoading(true);
     try {
       const [capaRes, atpRes, ssopRes] = await Promise.all([
-        supabase
-          .from('sanitation_capa')
-          .select('id, capa_number, how_detected, room, tech_name, tech_signed_at')
-          .eq('sanitation_wo_id', wo.id)
-          .eq('org_id', organizationId)
-          .order('tech_signed_at', { ascending: false }),
-        supabase
-          .from('sanitation_atp_logs')
-          .select('id, log_number, surface_location, room, atp_result, tech_name, tech_signed_at')
-          .eq('sanitation_wo_id', wo.id)
-          .eq('org_id', organizationId)
-          .order('tech_signed_at', { ascending: false }),
-        supabase
-          .from('sanitation_ssop_references')
-          .select('id, ref_number, ssop_code, ssop_title, room, tech_name, tech_signed_at')
-          .eq('sanitation_wo_id', wo.id)
-          .eq('org_id', organizationId)
-          .order('tech_signed_at', { ascending: false }),
+        supabase.from('sanitation_capa').select('id, capa_number, how_detected, room, tech_name, tech_signed_at').eq('sanitation_wo_id', wo.id).eq('org_id', organizationId).order('tech_signed_at', { ascending: false }),
+        supabase.from('sanitation_atp_logs').select('id, log_number, surface_location, room, atp_result, tech_name, tech_signed_at').eq('sanitation_wo_id', wo.id).eq('org_id', organizationId).order('tech_signed_at', { ascending: false }),
+        supabase.from('sanitation_ssop_references').select('id, ref_number, ssop_code, ssop_title, room, tech_name, tech_signed_at').eq('sanitation_wo_id', wo.id).eq('org_id', organizationId).order('tech_signed_at', { ascending: false }),
       ]);
-
       const forms: LinkedForm[] = [];
       for (const row of capaRes.data || []) {
         forms.push({ id: row.id, formType: 'sanitation_capa', formNumber: row.capa_number, formTitle: `CAPA — ${row.room} — ${row.how_detected}`, completedByName: row.tech_name, completedAt: row.tech_signed_at });
@@ -476,7 +485,7 @@ export default function SanitationWorkOrderDetail({ workOrder: initialWO, onClos
       forms.sort((a, b) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime());
       setLinkedForms(forms);
     } catch (err) {
-      console.warn('[SanWO] loadLinkedForms error (non-blocking):', err);
+      console.warn('[SanWO] loadLinkedForms error:', err);
     } finally {
       setFormsLoading(false);
     }
@@ -484,13 +493,9 @@ export default function SanitationWorkOrderDetail({ workOrder: initialWO, onClos
 
   useEffect(() => { loadLinkedForms(); }, [loadLinkedForms]);
 
-  // Refresh linked forms when returning from a reactive form screen
   useFocusEffect(
     useCallback(() => {
-      if (pendingFormReturn) {
-        setPendingFormReturn(false);
-        loadLinkedForms();
-      }
+      if (pendingFormReturn) { setPendingFormReturn(false); loadLinkedForms(); }
     }, [pendingFormReturn, loadLinkedForms])
   );
 
@@ -498,12 +503,10 @@ export default function SanitationWorkOrderDetail({ workOrder: initialWO, onClos
     setShowFormPicker(false);
     setPendingFormReturn(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-
     const postId = wo.task_feed_post_id || '';
     const postNumber = wo.task_feed_post_number || wo.wo_number || '';
     const separator = form.route.includes('?') ? '&' : '?';
     const routeWithParams = `${form.route}${separator}woId=${wo.id}&postId=${encodeURIComponent(postId)}&postNumber=${encodeURIComponent(postNumber)}`;
-
     setTimeout(() => { router.push(routeWithParams as any); }, 300);
   }, [wo.id, wo.task_feed_post_id, wo.task_feed_post_number, wo.wo_number, router]);
 
@@ -557,17 +560,15 @@ export default function SanitationWorkOrderDetail({ workOrder: initialWO, onClos
   const handleChecklistToggle = useCallback((itemId: string) => {
     setChecklistCompletion(prev => ({ ...prev, [itemId]: !prev[itemId] }));
   }, []);
-
   const allRequiredChecked = (wo.checklist_items || []).filter(i => i.required).every(i => checklistCompletion[i.id]);
 
   // ── Validation ─────────────────────────────────────────────────────────────
   const canSubmitTech = (
     chemical.trim() !== '' && concentration.trim() !== '' && method.trim() !== '' &&
-    allRequiredChecked && photos.length >= 1 &&
-    techInitial.trim() !== '' && techPPN.trim() !== '' &&
+    allRequiredChecked && photos.length >= 1 && !!techVerification &&
     (!wo.requires_atp_test || atpReading.trim() !== '')
   );
-  const canSubmitQA = techSigned && qaInitial.trim() !== '' && qaPPN.trim() !== '';
+  const canSubmitQA = techSigned && !!qaVerification;
 
   // ── Auto-save ──────────────────────────────────────────────────────────────
   const saveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -581,8 +582,8 @@ export default function SanitationWorkOrderDetail({ workOrder: initialWO, onClos
 
   // ── Submit Tech ────────────────────────────────────────────────────────────
   const handleSubmitTech = useCallback(async () => {
-    if (!canSubmitTech) {
-      Alert.alert('Incomplete Task', 'All required fields must be filled. Every required checklist item must be checked. At least one photo required. Initial and PPN required.');
+    if (!canSubmitTech || !techVerification) {
+      Alert.alert('Incomplete Task', 'All required fields, checklist items, at least one photo, and a verified signature are required.');
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -591,35 +592,74 @@ export default function SanitationWorkOrderDetail({ workOrder: initialWO, onClos
     const atpRLUVal = wo.requires_atp_test && atpReading ? parseFloat(atpReading) : null;
     try {
       const updated = await submitTechSignature({
-        id: wo.id, initial: techInitial, ppn: techPPN, requiresQA: wo.requires_qa_signoff,
+        id: wo.id,
+        initial: techVerification.employeeInitials,
+        ppn: techVerification.employeeId,
+        requiresQA: wo.requires_qa_signoff,
         finalUpdates: {
-          chemical_used: chemical, actual_concentration: concentration, application_method: method,
-          notes: notes || null, checklist_completion: checklistCompletion,
-          atp_reading_rlu: atpRLUVal,
+          chemical_used: chemical,
+          actual_concentration: concentration,
+          application_method: method,
+          notes: notes || null,
+          checklist_completion: checklistCompletion,
+          atp_reading: atpRLUVal,
           atp_result: atpRLUVal != null ? (atpRLUVal <= wo.atp_pass_threshold ? 'pass' : 'fail') : null,
-          total_elapsed_sec: (wo.total_elapsed_sec ?? 0) + additionalSec, timer_started_at: null,
+          total_elapsed_sec: (wo.total_elapsed_sec ?? 0) + additionalSec,
+          timer_started_at: null,
+          tech_signature_stamp: techVerification.signatureStamp,
         },
       });
       setWO(updated);
+
+      // Log to form_signatures audit table
+      logSignature.mutate({
+        verification: techVerification,
+        formType: 'sanitation_work_order_tech',
+        referenceType: 'sanitation_work_order',
+        referenceId: wo.id,
+        referenceNumber: wo.wo_number,
+      });
+
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (e) {
-      Alert.alert('Submission Error', 'Failed to submit tech signature. Please try again.');
+      Alert.alert('Submission Error', 'Failed to submit signature. Please try again.');
       console.error('[SanWO] submitTech failed', e);
     }
-  }, [canSubmitTech, wo, chemical, concentration, method, notes, checklistCompletion, techInitial, techPPN, atpReading, timerRunning]);
+  }, [canSubmitTech, techVerification, wo, chemical, concentration, method, notes, checklistCompletion, atpReading, timerRunning]);
 
   // ── Submit QA ──────────────────────────────────────────────────────────────
   const handleSubmitQA = useCallback(async () => {
-    if (!canSubmitQA) { Alert.alert('Incomplete QA Sign-Off', 'Tech signature must be complete. Initial and PPN required.'); return; }
+    if (!canSubmitQA || !qaVerification) {
+      Alert.alert('Incomplete QA Sign-Off', 'Tech signature must be complete and a verified QA signature is required.');
+      return;
+    }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     try {
       const updated = await submitQASignature({
-        id: wo.id, initial: qaInitial, ppn: qaPPN,
-        signedByName: user ? `${user.first_name} ${user.last_name}` : 'QA', signedById: user?.id || '',
+        id: wo.id,
+        initial: qaVerification.employeeInitials,
+        ppn: qaVerification.employeeId,
+        signedByName: qaVerification.employeeName,
+        signedById: qaVerification.employeeId,
       });
-      setWO(updated);
-    } catch (e) { Alert.alert('QA Sign-Off Error', 'Failed to submit QA signature.'); console.error('[SanWO] submitQA failed', e); }
-  }, [canSubmitQA, wo.id, qaInitial, qaPPN, user]);
+
+      // Also store QA stamp — direct update since submitQASignature doesn't carry it
+      await updateWorkOrder({ id: wo.id, updates: { qa_signature_stamp: qaVerification.signatureStamp } as any });
+
+      setWO({ ...updated, qa_signature_stamp: qaVerification.signatureStamp } as any);
+
+      logSignature.mutate({
+        verification: qaVerification,
+        formType: 'sanitation_work_order_qa',
+        referenceType: 'sanitation_work_order',
+        referenceId: wo.id,
+        referenceNumber: wo.wo_number,
+      });
+    } catch (e) {
+      Alert.alert('QA Sign-Off Error', 'Failed to submit QA signature. Please try again.');
+      console.error('[SanWO] submitQA failed', e);
+    }
+  }, [canSubmitQA, qaVerification, wo.id, wo.wo_number]);
 
   const statusColor = STATUS_COLOR[wo.status] || HUD.textDim;
   const timerColor = timerRunning ? HUD.cyan : elapsed > 0 ? HUD.textSec : HUD.textDim;
@@ -744,27 +784,23 @@ export default function SanitationWorkOrderDetail({ workOrder: initialWO, onClos
               <Text style={fS.explainer}>
                 File a CAPA, ATP Swab Log, or SSOP Reference if this task uncovered an issue requiring documentation beyond the standard work order.
               </Text>
-
               {formsLoading && (
                 <View style={fS.loadingRow}>
                   <ActivityIndicator size="small" color={HUD.red} />
                   <Text style={fS.loadingTxt}>Loading linked forms...</Text>
                 </View>
               )}
-
               {!formsLoading && linkedForms.length > 0 && (
                 <View style={{ marginBottom: 12 }}>
                   {linkedForms.map(form => <LinkedFormRow key={form.id} form={form} />)}
                 </View>
               )}
-
               {!formsLoading && linkedForms.length === 0 && (
                 <View style={fS.emptyRow}>
                   <FileText size={16} color={HUD.textDim} />
                   <Text style={fS.emptyTxt}>No reactive forms filed yet</Text>
                 </View>
               )}
-
               {isEditable && !techSigned && (
                 <TouchableOpacity
                   activeOpacity={0.75}
@@ -775,7 +811,6 @@ export default function SanitationWorkOrderDetail({ workOrder: initialWO, onClos
                   <Text style={[fS.addBtnTxt, { color: HUD.red }]}>FILE REACTIVE FORM</Text>
                 </TouchableOpacity>
               )}
-
               {(techSigned || isCompleted) && linkedForms.length === 0 && (
                 <View style={[fS.lockedNote, { borderColor: HUD.borderBright, backgroundColor: HUD.bgCardAlt }]}>
                   <Lock size={10} color={HUD.textDim} />
@@ -846,7 +881,7 @@ export default function SanitationWorkOrderDetail({ workOrder: initialWO, onClos
             <HUDCard color={photos.length >= 1 ? HUD.green + '40' : HUD.red + '40'}>
               <View style={s.photoHeader}>
                 <Text style={s.photoCount}>
-                  {photos.length} / {photos.length < 1 ? <Text style={{ color: HUD.red }}>0 — MINIMUM 1 REQUIRED</Text> : photos.length}
+                  {photos.length} photo{photos.length !== 1 ? 's' : ''}{photos.length < 1 && <Text style={{ color: HUD.red }}> — MINIMUM 1 REQUIRED</Text>}
                 </Text>
                 {photos.length < 1 && (
                   <View style={[s.lockedBadge, { backgroundColor: HUD.red + '20', borderColor: HUD.red + '40' }]}>
@@ -879,36 +914,55 @@ export default function SanitationWorkOrderDetail({ workOrder: initialWO, onClos
             <SectionHead icon={<ShieldCheck size={12} color={HUD.cyan} />} label="TECHNICIAN SIGNATURE" />
             <HUDCard color={techSigned ? HUD.green + '50' : HUD.cyan + '40'}>
               {techSigned ? (
+                // Signed — show verified stamp from DB
                 <View style={s.signedConfirm}>
                   <CheckCircle size={18} color={HUD.green} />
                   <View style={{ flex: 1 }}>
                     <Text style={[s.signedTitle, { color: HUD.green }]}>TECH SIGNED</Text>
-                    <Text style={s.signedMeta}>{wo.tech_initial} · PPN {wo.tech_ppn} · {wo.tech_signed_at ? new Date(wo.tech_signed_at).toLocaleString() : ''}</Text>
+                    <Text style={s.signedMeta}>
+                      {(wo as any).tech_signature_stamp || `${wo.tech_initial} · ${wo.tech_signed_at ? new Date(wo.tech_signed_at).toLocaleString() : ''}`}
+                    </Text>
                   </View>
                 </View>
               ) : (
                 <>
-                  <Text style={s.signNote}>By signing, I confirm this task was completed per SSOP and all information above is accurate.</Text>
-                  <View style={s.sigRow}>
-                    <View style={{ flex: 1 }}>
-                      <HUDInput label="INITIAL(S)" value={techInitial} onChangeText={setTechInitial} required maxLength={4} editable={isEditable && !techSigned} placeholder="e.g. VK" />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <HUDInput label="PPN" value={techPPN} onChangeText={setTechPPN} required maxLength={10} editable={isEditable && !techSigned} placeholder="Employee PPN" />
-                    </View>
-                  </View>
+                  <Text style={s.signNote}>
+                    By signing, I confirm this task was completed per SSOP and all information above is accurate.
+                  </Text>
+                  {/* PinSignatureCapture — matches all other forms in the app */}
+                  <PinSignatureCapture
+                    onVerified={(v) => setTechVerification(v)}
+                    onCleared={() => setTechVerification(null)}
+                    formLabel={`Sanitation WO: ${wo.wo_number}`}
+                    accentColor={HUD.cyan}
+                    required
+                    existingVerification={techVerification}
+                  />
                   {isEditable && (
                     <TouchableOpacity
                       activeOpacity={canSubmitTech ? 0.75 : 0.4}
-                      style={[s.submitBtn, { backgroundColor: canSubmitTech ? HUD.cyanDim : HUD.border, borderColor: canSubmitTech ? HUD.cyanMid : HUD.borderBright, opacity: canSubmitTech ? 1 : 0.5 }]}
+                      style={[s.submitBtn, {
+                        backgroundColor: canSubmitTech ? HUD.cyanDim : HUD.border,
+                        borderColor: canSubmitTech ? HUD.cyanMid : HUD.borderBright,
+                        opacity: canSubmitTech ? 1 : 0.5,
+                        marginTop: 12,
+                      }]}
                       onPress={handleSubmitTech}
                       disabled={!canSubmitTech || isSubmittingTech}
                     >
                       {isSubmittingTech ? <ActivityIndicator size="small" color={HUD.cyan} /> : <CheckCircle size={16} color={HUD.cyan} />}
-                      <Text style={[s.submitBtnTxt, { color: HUD.cyan }]}>{wo.requires_qa_signoff ? 'SIGN & SUBMIT FOR QA REVIEW' : 'SIGN & COMPLETE TASK'}</Text>
+                      <Text style={[s.submitBtnTxt, { color: HUD.cyan }]}>
+                        {wo.requires_qa_signoff ? 'SIGN & SUBMIT FOR QA REVIEW' : 'SIGN & COMPLETE TASK'}
+                      </Text>
                     </TouchableOpacity>
                   )}
-                  {!canSubmitTech && isEditable && <Text style={s.submitNote}>Complete all required fields, checklist, and photos before signing</Text>}
+                  {!canSubmitTech && isEditable && (
+                    <Text style={s.submitNote}>
+                      {!techVerification
+                        ? 'Verify your signature above to enable submission'
+                        : 'Complete all required fields, checklist, and photos before signing'}
+                    </Text>
+                  )}
                 </>
               )}
             </HUDCard>
@@ -924,7 +978,9 @@ export default function SanitationWorkOrderDetail({ workOrder: initialWO, onClos
                     <CheckCircle size={18} color={HUD.green} />
                     <View style={{ flex: 1 }}>
                       <Text style={[s.signedTitle, { color: HUD.green }]}>QA SIGNED</Text>
-                      <Text style={s.signedMeta}>{wo.qa_initial} · PPN {wo.qa_ppn} · {wo.qa_signed_by_name} · {wo.qa_signed_at ? new Date(wo.qa_signed_at).toLocaleString() : ''}</Text>
+                      <Text style={s.signedMeta}>
+                        {(wo as any).qa_signature_stamp || `${wo.qa_initial} · ${wo.qa_signed_at ? new Date(wo.qa_signed_at).toLocaleString() : ''}`}
+                      </Text>
                     </View>
                   </View>
                 ) : !techSigned ? (
@@ -934,24 +990,34 @@ export default function SanitationWorkOrderDetail({ workOrder: initialWO, onClos
                   </View>
                 ) : (
                   <>
-                    <Text style={s.signNote}>QA verification: I confirm this area meets sanitation standards and is cleared for production.</Text>
-                    <View style={s.sigRow}>
-                      <View style={{ flex: 1 }}>
-                        <HUDInput label="QA INITIAL(S)" value={qaInitial} onChangeText={setQAInitial} required maxLength={4} editable={true} accentColor={HUD.amber} placeholder="e.g. JR" />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <HUDInput label="QA PPN" value={qaPPN} onChangeText={setQAPPN} required maxLength={10} editable={true} accentColor={HUD.amber} placeholder="QA PPN" />
-                      </View>
-                    </View>
+                    <Text style={s.signNote}>
+                      QA verification: I confirm this area meets sanitation standards and is cleared for production.
+                    </Text>
+                    <PinSignatureCapture
+                      onVerified={(v) => setQAVerification(v)}
+                      onCleared={() => setQAVerification(null)}
+                      formLabel={`QA Sign-Off: ${wo.wo_number}`}
+                      accentColor={HUD.amber}
+                      required
+                      existingVerification={qaVerification}
+                    />
                     <TouchableOpacity
                       activeOpacity={canSubmitQA ? 0.75 : 0.4}
-                      style={[s.submitBtn, { backgroundColor: canSubmitQA ? HUD.amber + '18' : HUD.border, borderColor: canSubmitQA ? HUD.amber + '60' : HUD.borderBright, opacity: canSubmitQA ? 1 : 0.5 }]}
+                      style={[s.submitBtn, {
+                        backgroundColor: canSubmitQA ? HUD.amber + '18' : HUD.border,
+                        borderColor: canSubmitQA ? HUD.amber + '60' : HUD.borderBright,
+                        opacity: canSubmitQA ? 1 : 0.5,
+                        marginTop: 12,
+                      }]}
                       onPress={handleSubmitQA}
                       disabled={!canSubmitQA || isSubmittingQA}
                     >
                       {isSubmittingQA ? <ActivityIndicator size="small" color={HUD.amber} /> : <CheckCircle size={16} color={HUD.amber} />}
                       <Text style={[s.submitBtnTxt, { color: HUD.amber }]}>QA SIGN-OFF — MARK COMPLETE</Text>
                     </TouchableOpacity>
+                    {!canSubmitQA && (
+                      <Text style={s.submitNote}>Verify QA signature above to enable sign-off</Text>
+                    )}
                   </>
                 )}
               </HUDCard>
@@ -1037,11 +1103,10 @@ const s = StyleSheet.create({
   timerBtnTxt: { fontSize: 13, fontWeight: '900', letterSpacing: 1 },
   finalTime: { fontSize: 12, color: HUD.textSec, marginTop: 8, letterSpacing: 1, fontWeight: '700' },
   signNote: { fontSize: 11, color: HUD.textSec, lineHeight: 17, marginBottom: 12 },
-  sigRow: { flexDirection: 'row', gap: 10 },
   signedConfirm: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   signedTitle: { fontSize: 13, fontWeight: '900', letterSpacing: 1 },
-  signedMeta: { fontSize: 10, color: HUD.textSec, marginTop: 2 },
-  submitBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, padding: 15, borderRadius: 12, borderWidth: 1, marginTop: 8 },
+  signedMeta: { fontSize: 11, color: HUD.textSec, marginTop: 2, fontStyle: 'italic', lineHeight: 16 },
+  submitBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, padding: 15, borderRadius: 12, borderWidth: 1 },
   submitBtnTxt: { fontSize: 12, fontWeight: '900', letterSpacing: 0.8 },
   submitNote: { fontSize: 10, color: HUD.textDim, textAlign: 'center', marginTop: 6, fontStyle: 'italic' },
   lockedSection: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 },
