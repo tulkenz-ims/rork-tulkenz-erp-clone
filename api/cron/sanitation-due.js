@@ -8,6 +8,7 @@ const { createClient } = require('@supabase/supabase-js');
 // ══════════════════════════════════ CONFIG ══════════════════════════════════
 
 const ORG_ID = '74ce281d-5630-422d-8326-e5d36cfc1d5e';
+const CST_TIMEZONE = 'America/Chicago';
 
 const DEPARTMENT_NAMES = {
   '1000': 'Projects / Offices',
@@ -21,11 +22,9 @@ const DEPARTMENT_NAMES = {
   '1009': 'IT / Technology',
 };
 
-// How often each frequency generates a work order
-// Cron runs hourly — this controls which frequencies fire on each run
 const FREQUENCY_HOURS = {
   hourly:     1,
-  per_shift:  8,    // 3 shifts = every 8 hours
+  per_shift:  8,
   pre_op:     8,
   daily:      24,
   weekly:     168,
@@ -36,41 +35,40 @@ const FREQUENCY_HOURS = {
 
 // ══════════════════════════════════ HELPERS ══════════════════════════════════
 
+// Always return today's date in CST/CDT as YYYY-MM-DD
+function getTodayCST() {
+  return new Date().toLocaleDateString('en-CA', { timeZone: CST_TIMEZONE });
+}
+
+// Generate post number using CST date
 function generatePostNumber() {
-  const now = new Date();
-  const yy = String(now.getFullYear()).slice(-2);
-  const mm = String(now.getMonth() + 1).padStart(2, '0');
-  const dd = String(now.getDate()).padStart(2, '0');
+  const cstDate = getTodayCST(); // 'YYYY-MM-DD'
+  const [year, month, day] = cstDate.split('-');
+  const yy = year.slice(-2);
   const rand = String(Math.floor(100000 + Math.random() * 900000));
-  return `TF-${yy}${mm}${dd}-${rand}`;
+  return `TF-${yy}${month}${day}-${rand}`;
 }
 
 function generateWONumber(supabase) {
-  // Uses the DB function created in Phase 1
   return supabase.rpc('generate_san_wo_number');
 }
 
 function calculateNextDue(frequency, hourlyIntervalMin) {
   const now = new Date();
-
-  // Hourly — use hourly_interval_min if set, otherwise 60 min
   if (frequency === 'hourly') {
     const intervalMin = hourlyIntervalMin || 60;
     return new Date(now.getTime() + intervalMin * 60 * 1000).toISOString();
   }
-
   const hours = FREQUENCY_HOURS[frequency] || 24;
   return new Date(now.getTime() + hours * 60 * 60 * 1000).toISOString();
 }
 
 function isDue(nextDueDateStr) {
-  if (!nextDueDateStr) return true; // Never run — run now
+  if (!nextDueDateStr) return true;
   return new Date(nextDueDateStr) <= new Date();
 }
 
 function buildChecklistFromTemplate(checklistItems) {
-  // Converts template checklist_items array into
-  // work order checklist_completion tracking structure
   if (!checklistItems || !Array.isArray(checklistItems)) return [];
   return checklistItems.map((item, i) => ({
     id: i,
@@ -97,6 +95,7 @@ module.exports = async (req, res) => {
   );
 
   const now = new Date();
+  const todayCST = getTodayCST(); // YYYY-MM-DD in CST — used for scheduled_date
   const todayISO = now.toISOString();
   const results = { processed: 0, posted: 0, errors: [], skipped: 0 };
 
@@ -122,23 +121,48 @@ module.exports = async (req, res) => {
       return res.status(200).json({ message: 'No templates found', ...results });
     }
 
-    console.log(`Found ${templates.length} active template(s)`);
+    console.log(`Found ${templates.length} active template(s) | CST date: ${todayCST}`);
 
     // ── Step 2: Process each template ──
     for (const template of templates) {
       results.processed++;
 
       try {
-        // Skip if not due yet
+        // ── Skip if not due yet ──
         if (!isDue(template.next_due_date)) {
           results.skipped++;
           console.log(`⏭ Skipping "${template.task_name}" — not due until ${template.next_due_date}`);
           continue;
         }
 
+        // ── Duplicate check: skip if a pending/in_progress WO already exists
+        //    for this template on today's CST date ──
+        const { data: existingWO } = await supabase
+          .from('sanitation_work_orders')
+          .select('id, wo_number')
+          .eq('org_id', ORG_ID)
+          .eq('template_id', template.id)
+          .eq('scheduled_date', todayCST)
+          .in('status', ['pending', 'in_progress'])
+          .maybeSingle();
+
+        if (existingWO) {
+          results.skipped++;
+          console.log(`⏭ Skipping "${template.task_name}" — WO ${existingWO.wo_number} already exists for ${todayCST}`);
+
+          // Still advance next_due_date so it doesn't keep retrying this hour
+          const newNextDue = calculateNextDue(template.frequency, template.hourly_interval_min);
+          await supabase
+            .from('sanitation_templates')
+            .update({ next_due_date: newNextDue })
+            .eq('id', template.id);
+
+          continue;
+        }
+
         const departments = template.departments_notified && template.departments_notified.length > 0
           ? template.departments_notified
-          : [1002]; // Default to Sanitation dept
+          : [1002];
 
         const postNumber = generatePostNumber();
 
@@ -165,15 +189,15 @@ module.exports = async (req, res) => {
           department_id: template.department_id || 1002,
           departments_notified: departments,
           frequency: template.frequency,
-          scheduled_date: now.toISOString().split('T')[0],
+          scheduled_date: todayCST,   // ← CST date, not UTC
           due_date: todayISO,
           is_preop: template.is_preop || false,
           requires_qa_signoff: template.requires_qa_signoff || false,
           requires_atp_test: template.requires_atp_test || false,
           atp_pass_threshold: template.atp_pass_threshold || 250,
           status: 'pending',
-          assigned_to: null,       // Filled when tech taps Start
-          assigned_user_id: null,  // Filled when tech taps Start
+          assigned_to: null,
+          assigned_user_id: null,
           chemical_used: template.chemical_name || null,
           actual_concentration: null,
           contact_time_min: template.contact_time_min || null,
@@ -284,7 +308,7 @@ module.exports = async (req, res) => {
           continue;
         }
 
-        // ── Step 6: Insert Department Tasks (one per dept) ──
+        // ── Step 6: Insert Department Tasks ──
         const deptTasks = departments.map(deptCode => ({
           organization_id: ORG_ID,
           post_id: newPost.id,
@@ -311,7 +335,7 @@ module.exports = async (req, res) => {
           });
         }
 
-        // ── Step 7: Insert Task Verification (appears in feed) ──
+        // ── Step 7: Insert Task Verification ──
         const { error: tvError } = await supabase
           .from('task_verifications')
           .insert({
@@ -404,21 +428,3 @@ module.exports = async (req, res) => {
     return res.status(500).json({ error: 'Cron job failed', details: err.message });
   }
 };
-
-// ══════════════════════════════════════════════════════════════════════════════
-// VERCEL.JSON — Add this to your existing crons array:
-//
-// {
-//   "path": "/api/cron/sanitation-due",
-//   "schedule": "0 * * * *"
-// }
-//
-// Schedule: "0 * * * *" = top of every hour
-// This catches hourly tasks every hour, daily tasks once a day, etc.
-// The isDue() check prevents double-firing.
-//
-// ENVIRONMENT VARIABLES (already set from pm-due.js):
-// - CRON_SECRET
-// - EXPO_PUBLIC_SUPABASE_URL
-// - SUPABASE_SERVICE_ROLE_KEY
-// ══════════════════════════════════════════════════════════════════════════════
