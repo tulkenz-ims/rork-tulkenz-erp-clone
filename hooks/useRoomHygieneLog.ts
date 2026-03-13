@@ -282,8 +282,9 @@ export function useRoomHygieneLogQuery(options?: {
       if (options?.limit) query = query.limit(options.limit);
 
       const { data, error } = await query;
-      if (error) throw error;
-      return (data || []).map(mapEntryFromDb);
+console.log('[RoomHygiene] entries result:', { count: data?.length, error: error?.message, date: options?.date });
+if (error) throw error;
+return (data || []).map(mapEntryFromDb);
     },
     enabled: options?.enabled !== false && !!organizationId,
   });
@@ -318,8 +319,9 @@ export function useDailyRoomReportsQuery(options?: {
       if (options?.status) query = query.eq('status', options.status);
 
       const { data, error } = await query;
-      if (error) throw error;
-      return (data || []).map(mapReportFromDb);
+console.log('[RoomHygiene] reports result:', { count: data?.length, error: error?.message, date: options?.date });
+if (error) throw error;
+return (data || []).map(mapReportFromDb);
     },
     enabled: options?.enabled !== false && !!organizationId,
   });
