@@ -155,14 +155,14 @@ export default function RoomHygieneLogScreen() {
   const [signOffNotes, setSignOffNotes] = useState('');
 
   // Data - entries
-  const { data: entries = [], isFetching, refetch } = useRoomHygieneLogQuery({
+  const { data: entries = [], isFetching, isLoading, refetch } = useRoomHygieneLogQuery({
     date: todayStr,
     roomId: filterRoom,
     limit: 100,
   });
 
   // Data - daily reports
-  const { data: dailyReports = [], isFetching: reportsLoading, refetch: refetchReports } = useDailyRoomReportsQuery({
+  const { data: dailyReports = [], isFetching: reportsLoading, isLoading: reportsInitialLoading, refetch: refetchReports } = useDailyRoomReportsQuery({
     date: todayStr,
   });
 
@@ -450,7 +450,7 @@ export default function RoomHygieneLogScreen() {
 
           <View style={styles.section}>
             <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>LOG HISTORY ({completedEntries.length})</Text>
-            {completedEntries.length === 0 && !isFetching && (
+            {completedEntries.length === 0 && !isLoading && (
               <View style={[styles.emptyState, { backgroundColor: colors.surface }]}>
                 <DoorOpen size={32} color={colors.textTertiary} />
                 <Text style={[styles.emptyText, { color: colors.textTertiary }]}>No entries logged today</Text>
@@ -507,7 +507,7 @@ export default function RoomHygieneLogScreen() {
           style={styles.list}
           refreshControl={<RefreshControl refreshing={reportsLoading} onRefresh={refetchReports} />}
         >
-          {dailyReports.length === 0 && !reportsLoading && (
+          {dailyReports.length === 0 && !reportsInitialLoading && (
             <View style={[styles.emptyState, { backgroundColor: colors.surface, marginTop: 20 }]}>
               <FileText size={32} color={colors.textTertiary} />
               <Text style={[styles.emptyText, { color: colors.textTertiary }]}>No room activity logged today</Text>
