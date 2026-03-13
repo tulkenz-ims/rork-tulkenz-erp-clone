@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   TextInput,
   ScrollView,
-  SectionList,
 } from 'react-native';
 import {
   X,
@@ -25,8 +24,8 @@ import {
   Eye,
   Star,
   CheckCircle,
+  Zap,
 } from 'lucide-react-native';
-import { useRouter } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { getDepartmentColor } from '@/constants/organizationCodes';
 import * as Haptics from 'expo-haptics';
@@ -89,14 +88,24 @@ const SAFETY_FORMS: FormDef[] = [
 ];
 
 const SANITATION_FORMS: FormDef[] = [
+  // Daily Operations
   { id: 'dailytasks', label: 'Daily Sanitation Tasks', route: '/(tabs)/sanitation/dailytasks', category: 'Daily Operations', icon: ClipboardList, description: 'Daily cleaning checklist', keywords: ['daily', 'cleaning', 'checklist'] },
   { id: 'deepclean', label: 'Deep Clean Report', route: '/(tabs)/sanitation/deepclean', category: 'Daily Operations', icon: Droplets, description: 'Deep cleaning documentation', keywords: ['deep clean', 'intensive', 'teardown'] },
   { id: 'preopverification', label: 'Pre-Op Verification', route: '/(tabs)/sanitation/preopverification', category: 'Daily Operations', icon: Eye, keywords: ['pre-op', 'verification', 'startup'] },
+  // Equipment
   { id: 'equipmentcleaning', label: 'Equipment Cleaning Log', route: '/(tabs)/sanitation/equipmentcleaning', category: 'Equipment', icon: Wrench, description: 'Equipment-specific cleaning log', keywords: ['equipment', 'cleaning', 'machine'] },
   { id: 'cipcleaning', label: 'CIP Cleaning Record', route: '/(tabs)/sanitation/cipcleaning', category: 'Equipment', icon: Droplets, description: 'Clean-in-Place documentation', keywords: ['cip', 'clean in place', 'rinse'] },
+  // Chemicals
   { id: 'chemicals', label: 'Chemical Usage Log', route: '/(tabs)/sanitation/chemicals', category: 'Chemicals', icon: FlaskConical, description: 'Chemical mixing and application', keywords: ['chemical', 'mixing', 'concentration', 'dilution'] },
+  // ── REACTIVE INCIDENT FORMS ─────────────────────────────────
+  { id: 'san-capa', label: 'Sanitation CAPA', route: '/(tabs)/sanitation/forms/capa', category: 'Reactive — Incident Response', icon: Zap, description: 'Corrective & preventive action for sanitation failure', keywords: ['capa', 'corrective', 'preventive', 'root cause', 'failure', 'contamination'] },
+  { id: 'san-atp', label: 'ATP Swab Log', route: '/(tabs)/sanitation/forms/atp-swab', category: 'Reactive — Incident Response', icon: FlaskConical, description: 'Reactive swab after incident, CAPA, or line release', keywords: ['atp', 'swab', 'rlu', 'surface', 'test', 'reswab', 'environmental'] },
+  { id: 'san-ssop', label: 'SSOP Reference / Deviation', route: '/(tabs)/sanitation/forms/ssop-reference', category: 'Reactive — Incident Response', icon: Shield, description: 'Reference or document deviation from a sanitation SSOP', keywords: ['ssop', 'deviation', 'procedure', 'reference', 'standard'] },
+  // Incident
   { id: 'spillcleanup', label: 'Spill Cleanup Report', route: '/(tabs)/sanitation/spillcleanup', category: 'Incident', icon: AlertTriangle, description: 'Document spill and cleanup', keywords: ['spill', 'cleanup', 'contamination'] },
+  // Waste
   { id: 'wastemgmt', label: 'Waste Management Log', route: '/(tabs)/sanitation/wastemgmt', category: 'Waste', icon: ClipboardList, keywords: ['waste', 'trash', 'disposal'] },
+  // Facility
   { id: 'restroom', label: 'Restroom Cleaning Log', route: '/(tabs)/sanitation/restroom', category: 'Facility', icon: ClipboardList, keywords: ['restroom', 'bathroom', 'cleaning'] },
   { id: 'floorinspection', label: 'Floor Inspection', route: '/(tabs)/sanitation/floorinspection', category: 'Facility', icon: Eye, keywords: ['floor', 'inspection', 'drain'] },
 ];
@@ -112,7 +121,7 @@ const MAINTENANCE_FORMS: FormDef[] = [
 const DEPARTMENT_FORM_MAP: Record<string, FormDef[]> = {
   '1001': MAINTENANCE_FORMS,
   '1002': SANITATION_FORMS,
-  '1003': QUALITY_FORMS, // Production uses quality forms for their checks
+  '1003': QUALITY_FORMS,
   '1004': QUALITY_FORMS,
   '1005': SAFETY_FORMS,
 };
@@ -126,7 +135,6 @@ interface FormPickerModalProps {
   taskPostNumber?: string;
   templateName?: string;
   onFormSelected: (form: { id: string; label: string; route: string }) => void;
-  // Multi-form support
   completedForms?: { formId: string; formType: string; completedAt: string; completedByName: string }[];
   suggestedForms?: { formId: string; formType: string; formRoute: string; required: boolean }[];
   onMarkComplete?: () => void;
@@ -151,7 +159,6 @@ export default function FormPickerModal({
   const deptColor = getDepartmentColor(departmentCode) || '#6B7280';
 
   const forms = useMemo(() => DEPARTMENT_FORM_MAP[departmentCode] || QUALITY_FORMS, [departmentCode]);
-
   const completedFormIds = useMemo(() => new Set(completedForms.map(f => f.formId)), [completedForms]);
 
   const filtered = useMemo(() => {
@@ -165,7 +172,6 @@ export default function FormPickerModal({
     );
   }, [forms, search]);
 
-  // Group into sections
   const sections = useMemo(() => {
     const grouped = new Map<string, FormDef[]>();
     for (const form of filtered) {
@@ -176,7 +182,6 @@ export default function FormPickerModal({
     return Array.from(grouped.entries()).map(([title, data]) => ({ title, data }));
   }, [filtered]);
 
-  // Smart suggestion based on template name
   const autoSuggestedForms = useMemo(() => {
     if (!templateName) return [];
     const t = templateName.toLowerCase();
@@ -191,27 +196,27 @@ export default function FormPickerModal({
         return ['metaldetectorlog', 'foreignmaterial', 'ncr'].includes(f.id);
       }
       if (t.includes('spill') || t.includes('chemical')) {
-        return ['spillcleanup', 'chemicals', 'hazardid', 'roomhygienelog'].includes(f.id);
+        return ['spillcleanup', 'san-capa', 'san-ssop', 'chemicals', 'hazardid'].includes(f.id);
       }
       if (t.includes('temperature') || t.includes('temp')) {
         return ['temperaturelog', 'ccplog', 'deviation'].includes(f.id);
+      }
+      if (t.includes('atp') || t.includes('swab') || t.includes('contamination') || t.includes('sanit')) {
+        return ['san-capa', 'san-atp', 'san-ssop'].includes(f.id);
       }
       return false;
     }).slice(0, 5);
   }, [templateName, forms]);
 
-  // Merge: prop-suggested forms first, then auto-suggested that aren't already listed
   const mergedSuggestions = useMemo(() => {
     const propSuggestedIds = new Set(suggestedForms.map(f => f.formId));
     const fromProps = suggestedForms.map(sf => {
       const full = forms.find(f => f.id === sf.formId);
       return full ? { ...full, required: sf.required } : null;
     }).filter(Boolean) as (FormDef & { required: boolean })[];
-
     const fromAuto = autoSuggestedForms
       .filter(f => !propSuggestedIds.has(f.id))
       .map(f => ({ ...f, required: false }));
-
     return [...fromProps, ...fromAuto];
   }, [suggestedForms, autoSuggestedForms, forms]);
 
@@ -312,7 +317,7 @@ export default function FormPickerModal({
                 return (
                   <TouchableOpacity
                     key={`suggested-${form.id}`}
-                    style={[styles.suggestedItem, { backgroundColor: '#F59E0B' + '10', borderColor: '#F59E0B' + '40' }]}
+                    style={[styles.suggestedItem, { backgroundColor: '#F59E0B10', borderColor: '#F59E0B40' }]}
                     onPress={() => handleSelect(form)}
                     activeOpacity={0.7}
                   >
@@ -351,20 +356,30 @@ export default function FormPickerModal({
             ) : (
               sections.map(section => (
                 <View key={section.title} style={styles.sectionContainer}>
-                  <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
-                    {section.title.toUpperCase()}
+                  <Text style={[styles.sectionTitle, {
+                    color: section.title === 'Reactive — Incident Response' ? '#ff2d55' : colors.textSecondary,
+                  }]}>
+                    {section.title === 'Reactive — Incident Response'
+                      ? '⚡ ' + section.title.toUpperCase()
+                      : section.title.toUpperCase()}
                   </Text>
                   {section.data.map(form => {
                     const Icon = form.icon || FileText;
+                    const isReactive = form.category === 'Reactive — Incident Response';
+                    const itemColor = isReactive ? '#ff2d55' : deptColor;
                     return (
                       <TouchableOpacity
                         key={form.id}
-                        style={[styles.formItem, { borderBottomColor: colors.border }]}
+                        style={[
+                          styles.formItem,
+                          { borderBottomColor: colors.border },
+                          isReactive && { backgroundColor: '#ff2d5508' },
+                        ]}
                         onPress={() => handleSelect(form)}
                         activeOpacity={0.7}
                       >
-                        <View style={[styles.formIcon, { backgroundColor: deptColor + '15' }]}>
-                          <Icon size={14} color={deptColor} />
+                        <View style={[styles.formIcon, { backgroundColor: itemColor + '15' }]}>
+                          <Icon size={14} color={itemColor} />
                         </View>
                         <View style={styles.formInfo}>
                           <Text style={[styles.formLabel, { color: colors.text }]}>{form.label}</Text>
@@ -384,17 +399,17 @@ export default function FormPickerModal({
             <View style={{ height: 20 }} />
           </ScrollView>
 
-          {/* Skip option */}
+          {/* Footer */}
           <View style={[styles.footer, { borderTopColor: colors.border }]}>
             <TouchableOpacity
-  style={[styles.skipBtn, { borderColor: colors.border }]}
-  onPress={onMarkComplete ?? onClose}
-  activeOpacity={0.7}
->
-  <Text style={[styles.skipBtnText, { color: colors.textSecondary }]}>
-    Complete without form
-  </Text>
-</TouchableOpacity>
+              style={[styles.skipBtn, { borderColor: colors.border }]}
+              onPress={onMarkComplete ?? onClose}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.skipBtnText, { color: colors.textSecondary }]}>
+                Complete without form
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
       </View>
@@ -402,7 +417,6 @@ export default function FormPickerModal({
   );
 }
 
-// ── Exports for external use ──────────────────────────────────
 export { QUALITY_FORMS, SAFETY_FORMS, SANITATION_FORMS, MAINTENANCE_FORMS, DEPARTMENT_FORM_MAP };
 export type { FormDef };
 
