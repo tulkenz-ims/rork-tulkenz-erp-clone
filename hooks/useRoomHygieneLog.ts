@@ -278,8 +278,11 @@ export function useRoomHygieneLogQuery(options?: {
 
       if (options?.roomId) query = query.eq('room_id', options.roomId);
       if (options?.date) {
-        const startOfDay = `${options.date}T00:00:00.000Z`;
-        const endOfDay = `${options.date}T23:59:59.999Z`;
+        if (options?.date) {
+  query = query
+    .gte('entry_time', `${options.date}T00:00:00-06:00`)
+    .lte('entry_time', `${options.date}T23:59:59-06:00`);
+}
         query = query.gte('entry_time', startOfDay).lte('entry_time', endOfDay);
       }
       if (options?.departmentCode) query = query.eq('department_code', options.departmentCode);
