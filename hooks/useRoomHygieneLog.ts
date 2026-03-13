@@ -3,11 +3,6 @@ import { supabase } from '@/lib/supabase';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import { useUser } from '@/contexts/UserContext';
 
-// Always use Central time for date calculations
-function getTodayCST(): string {
-  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
-  // returns 'YYYY-MM-DD' format in CST/CDT
-}
 // ── Types ─────────────────────────────────────────────────────
 
 export interface RoomHygieneEntry {
@@ -149,7 +144,7 @@ async function getOrCreateDailyReport(
   roomName: string,
   productionLine?: string,
 ): Promise<string> {
-  const today = getTodayCST();
+  const today = new Date().toISOString().split('T')[0];
 
   const { data: existing, error: fetchErr } = await supabase
     .from('daily_room_hygiene_reports')
@@ -278,27 +273,24 @@ export function useRoomHygieneLogQuery(options?: {
 
       if (options?.roomId) query = query.eq('room_id', options.roomId);
       if (options?.date) {
-        if (options?.date) {
-  query = query
-    .gte('entry_time', `${options.date}T00:00:00-06:00`)
-    .lte('entry_time', `${options.date}T23:59:59-06:00`);
-}
-        query = query.gte('entry_time', startOfDay).lte('entry_time', endOfDay);
+        // Use CST offset (-06:00) so day boundaries match Central time, not UTC
+        query = query
+          .gte('entry_time', `${options.date}T00:00:00-06:00`)
+          .lte('entry_time', `${options.date}T23:59:59-06:00`);
       }
       if (options?.departmentCode) query = query.eq('department_code', options.departmentCode);
       if (options?.limit) query = query.limit(options.limit);
 
       const { data, error } = await query;
-console.log('[RoomHygiene] result:', { count: data?.length, error: error?.message, date: options?.date });
-if (error) throw error;
-return (data || []).map(mapEntryFromDb);
+      if (error) throw error;
+      return (data || []).map(mapEntryFromDb);
     },
     enabled: options?.enabled !== false && !!organizationId,
   });
 }
 
 export function useTodayRoomLog(roomId: string) {
-  const today = getTodayCST();
+  const today = new Date().toISOString().split('T')[0];
   return useRoomHygieneLogQuery({ roomId, date: today });
 }
 
@@ -645,7 +637,7 @@ export async function autoLogRoomHygieneEntry(params: {
     console.log('[autoLogRoomHygiene] Auto-logging for', roomName);
 
     // Step 2: Find or create daily report
-    const today = getTodayCST();
+    const today = new Date().toISOString().split('T')[0];
 
     const { data: existingReport } = await supabase
       .from('daily_room_hygiene_reports')
