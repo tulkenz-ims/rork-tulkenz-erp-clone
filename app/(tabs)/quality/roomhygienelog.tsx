@@ -96,6 +96,12 @@ const CONTAMINATION_LEVELS = [
   { value: 'high', label: 'High', color: '#DC2626' },
 ] as const;
 
+// ── Timezone helper — always use Central time for date strings ──
+function getTodayCST(): string {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+  // en-CA locale returns YYYY-MM-DD format
+}
+
 // ── Component ──────────────────────────────────────────────────
 
 export default function RoomHygieneLogScreen() {
@@ -103,7 +109,7 @@ export default function RoomHygieneLogScreen() {
   const { user } = useUser();
   const { organizationId } = useOrganization();
   const router = useRouter();
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getTodayCST(); // ← CST/CDT, not UTC
 
   // Pull real locations from DB
   const { data: locations = [] } = useLocations();
