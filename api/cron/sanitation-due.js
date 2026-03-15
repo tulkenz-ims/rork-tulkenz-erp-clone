@@ -22,6 +22,15 @@ const DEPARTMENT_NAMES = {
   '1009': 'IT / Technology',
 };
 
+const ROOM_NAMES = {
+  'PR1': 'Production Room 1',
+  'PR2': 'Production Room 2',
+  'PA1': 'Packet Area 1',
+  'PA2': 'Packet Area 2',
+  'BB1': 'Big Blend',
+  'SB1': 'Small Blend',
+};
+
 const FREQUENCY_HOURS = {
   hourly:     1,
   per_shift:  8,
@@ -263,7 +272,7 @@ module.exports = async (req, res) => {
           created_by_name: 'Sanitation Auto-Scheduler',
           facility_id: null,
           location_id: null,
-          location_name: template.room,
+          location_name: ROOM_NAMES[template.room] || template.room,
           form_data: {
             sanitation_template_id: template.id,
             sanitation_wo_id: newWO.id,
