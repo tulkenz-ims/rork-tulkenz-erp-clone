@@ -36,6 +36,11 @@ export interface RoomHygieneEntry {
   contaminationNotes?: string;
   taskFeedPostId?: string;
   workOrderId?: string;
+  workOrderType?: string;
+  sanitationWorkOrderId?: string;
+  qualityWorkOrderId?: string;
+  safetyWorkOrderId?: string;
+  productionWorkOrderId?: string;
   status: 'active' | 'completed' | 'flagged';
   notes?: string;
   attachments: string[];
@@ -102,6 +107,11 @@ const mapEntryFromDb = (row: any): RoomHygieneEntry => ({
   contaminationNotes: row.contamination_notes,
   taskFeedPostId: row.task_feed_post_id,
   workOrderId: row.work_order_id,
+  workOrderType: row.work_order_type,
+  sanitationWorkOrderId: row.sanitation_work_order_id,
+  qualityWorkOrderId: row.quality_work_order_id,
+  safetyWorkOrderId: row.safety_work_order_id,
+  productionWorkOrderId: row.production_work_order_id,
   status: row.status || 'active',
   notes: row.notes,
   attachments: row.attachments || [],
@@ -282,9 +292,8 @@ export function useRoomHygieneLogQuery(options?: {
       if (options?.limit) query = query.limit(options.limit);
 
       const { data, error } = await query;
-console.log('[RoomHygiene] entries result:', { count: data?.length, error: error?.message, date: options?.date });
-if (error) throw error;
-return (data || []).map(mapEntryFromDb);
+      if (error) throw error;
+      return (data || []).map(mapEntryFromDb);
     },
     enabled: options?.enabled !== false && !!organizationId,
   });
@@ -319,9 +328,8 @@ export function useDailyRoomReportsQuery(options?: {
       if (options?.status) query = query.eq('status', options.status);
 
       const { data, error } = await query;
-console.log('[RoomHygiene] reports result:', { count: data?.length, error: error?.message, date: options?.date });
-if (error) throw error;
-return (data || []).map(mapReportFromDb);
+      if (error) throw error;
+      return (data || []).map(mapReportFromDb);
     },
     enabled: options?.enabled !== false && !!organizationId,
   });
@@ -571,6 +579,7 @@ export async function autoLogRoomHygieneEntry(params: {
   locationId?: string;
   locationName?: string;
   purpose: 'task_feed' | 'work_order';
+  workOrderType?: 'cmms' | 'sanitation' | 'quality' | 'safety' | 'production';
   referenceId: string;
   referenceNumber?: string;
   departmentCode: string;
@@ -712,7 +721,12 @@ export async function autoLogRoomHygieneEntry(params: {
         status: 'completed',
         notes: `Auto-logged from ${params.purpose === 'task_feed' ? 'Task Feed' : 'Work Order'}: ${params.referenceNumber || params.referenceId}`,
         task_feed_post_id: params.purpose === 'task_feed' ? params.referenceId : null,
-        work_order_id: params.purpose === 'work_order' ? params.referenceId : null,
+        work_order_id: (params.purpose === 'work_order' && (!params.workOrderType || params.workOrderType === 'cmms')) ? params.referenceId : null,
+        sanitation_work_order_id: (params.purpose === 'work_order' && params.workOrderType === 'sanitation') ? params.referenceId : null,
+        quality_work_order_id: (params.purpose === 'work_order' && params.workOrderType === 'quality') ? params.referenceId : null,
+        safety_work_order_id: (params.purpose === 'work_order' && params.workOrderType === 'safety') ? params.referenceId : null,
+        production_work_order_id: (params.purpose === 'work_order' && params.workOrderType === 'production') ? params.referenceId : null,
+        work_order_type: params.purpose === 'work_order' ? (params.workOrderType || 'cmms') : null,
         daily_report_id: reportId || null,
       });
 
