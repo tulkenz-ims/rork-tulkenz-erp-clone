@@ -1,6 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useOrganization } from '@/contexts/OrganizationContext';
+import { useUser } from '@/contexts/UserContext';
+import { autoLogRoomHygieneEntry } from '@/hooks/useRoomHygieneLog';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -93,7 +95,8 @@ const KEYS = {
 
 export function useSupabaseSanitationWorkOrders() {
   const queryClient = useQueryClient();
-  const { organizationId } = useOrganization();
+  const { organizationId, facilityId } = useOrganization();
+  const { user } = useUser();
 
   // ── All WOs ──────────────────────────────────────────────────────────────────
   const workOrdersQuery = useQuery({
@@ -250,9 +253,25 @@ export function useSupabaseSanitationWorkOrders() {
       return data as SanitationWorkOrder;
     },
     onSuccess: (data) => {
-      queryClient.setQueryData(KEYS.single(organizationId || '', data.id), data);
-      invalidate();
-    },
+  queryClient.setQueryData(KEYS.single(organizationId || '', data.id), data);
+  invalidate();
+  // Auto-log hygiene when WO completes (no QA required)
+  if (data.status === 'completed' && data.task_feed_post_id) {
+    autoLogRoomHygieneEntry({
+      organizationId: organizationId || '',
+      facilityId: facilityId || undefined,
+      locationName: data.room || undefined,
+      purpose: 'task_feed',
+      referenceId: data.task_feed_post_id,
+      referenceNumber: data.wo_number,
+      departmentCode: '1002',
+      departmentName: 'Sanitation',
+      performedById: user?.id,
+      performedByName: user ? `${user.first_name} ${user.last_name}` : 'Sanitation Tech',
+      description: `Sanitation task completed: ${data.task_name}`,
+    }).catch(e => console.warn('[SanWO] autoLogRoomHygiene error:', e));
+  }
+},
   });
 
   // ── Submit QA Signature ──────────────────────────────────────────────────────
@@ -286,9 +305,25 @@ export function useSupabaseSanitationWorkOrders() {
       return data as SanitationWorkOrder;
     },
     onSuccess: (data) => {
-      queryClient.setQueryData(KEYS.single(organizationId || '', data.id), data);
-      invalidate();
-    },
+  queryClient.setQueryData(KEYS.single(organizationId || '', data.id), data);
+  invalidate();
+  // Auto-log hygiene when QA completes the WO
+  if (data.task_feed_post_id) {
+    autoLogRoomHygieneEntry({
+      organizationId: organizationId || '',
+      facilityId: facilityId || undefined,
+      locationName: data.room || undefined,
+      purpose: 'task_feed',
+      referenceId: data.task_feed_post_id,
+      referenceNumber: data.wo_number,
+      departmentCode: '1002',
+      departmentName: 'Sanitation',
+      performedById: user?.id,
+      performedByName: user ? `${user.first_name} ${user.last_name}` : 'Sanitation Tech',
+      description: `Sanitation task completed: ${data.task_name}`,
+    }).catch(e => console.warn('[SanWO] autoLogRoomHygiene error:', e));
+  }
+},
   });
 
   // ── Add Photo ─────────────────────────────────────────────────────────────────
