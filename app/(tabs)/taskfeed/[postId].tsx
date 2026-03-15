@@ -453,17 +453,29 @@ export default function TaskFeedPostDetailScreen() {
     };
     // Normalize known form types to their route names
     const formTypeRouteMap: Record<string, string> = {
-      'ncr': 'ncr',
-      'non-conformance report (ncr)': 'ncr',
-      'non-conformance report': 'ncr',
-      'nonconformancereport(ncr)': 'ncr',
-      'allergen_changeover': 'allergenchangeover',
-      'allergen changeover checklist': 'allergenchangeover',
-      'capa': 'capa',
-      'deviation': 'deviation',
-      'hold tag': 'holdtag',
-      'customer complaint': 'customercomplaint',
-    };
+  // Quality
+  'ncr': 'ncr',
+  'non-conformance report (ncr)': 'ncr',
+  'non-conformance report': 'ncr',
+  'nonconformancereport(ncr)': 'ncr',
+  'allergen_changeover': 'allergenchangeover',
+  'allergen changeover checklist': 'allergenchangeover',
+  'capa': 'capa',
+  'deviation': 'deviation',
+  'hold tag': 'holdtag',
+  'customer complaint': 'customercomplaint',
+  // Sanitation reactive forms
+  'sanitation_atp_log': 'forms/atp-swab',
+  'atp swab log': 'forms/atp-swab',
+  'sanitation_capa': 'forms/capa',
+  'sanitation capa': 'forms/capa',
+  'sanitation_ssop_reference': 'forms/ssop-reference',
+  'ssop reference / deviation': 'forms/ssop-reference',
+  'ssop reference': 'forms/ssop-reference',
+  // Pre-op
+  'pre-op verification': 'preopverification',
+  'pre_op_verification': 'preopverification',
+};
     const module = deptToModule[link.departmentCode || ''] || 'quality';
     const normalized = link.formType.toLowerCase().trim();
     const formRoute = formTypeRouteMap[normalized] || normalized.replace(/[\s\-()]/g, '');
