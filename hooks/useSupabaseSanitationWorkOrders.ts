@@ -34,7 +34,6 @@ export interface SanPhoto {
   storagePath?: string;
 }
 
-// Matches actual DB columns exactly
 export interface SanitationWorkOrder {
   id: string;
   org_id: string;
@@ -91,6 +90,26 @@ const KEYS = {
   pending: (orgId: string) => ['san_work_orders', orgId, 'pending'] as const,
 };
 
+// ─── Department maps ──────────────────────────────────────────────────────────
+
+const DEPT_NAMES: Record<string, string> = {
+  '1001': 'Maintenance',
+  '1002': 'Sanitation',
+  '1003': 'Production',
+  '1004': 'Quality',
+  '1005': 'Safety',
+};
+
+type WOType = 'cmms' | 'sanitation' | 'quality' | 'safety' | 'production';
+
+const DEPT_WO_TYPE: Record<string, WOType> = {
+  '1001': 'cmms',
+  '1002': 'sanitation',
+  '1003': 'production',
+  '1004': 'quality',
+  '1005': 'safety',
+};
+
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
 export function useSupabaseSanitationWorkOrders() {
@@ -98,7 +117,7 @@ export function useSupabaseSanitationWorkOrders() {
   const { organizationId, facilityId } = useOrganization();
   const { user } = useUser();
 
-  // ── All WOs ──────────────────────────────────────────────────────────────────
+  // ── All WOs ───────────────────────────────────────────────────────────────────
   const workOrdersQuery = useQuery({
     queryKey: KEYS.all(organizationId || ''),
     queryFn: async () => {
@@ -114,7 +133,7 @@ export function useSupabaseSanitationWorkOrders() {
     enabled: !!organizationId,
   });
 
-  // ── Pending / In-Progress WOs ────────────────────────────────────────────────
+  // ── Pending / In-Progress WOs ─────────────────────────────────────────────────
   const pendingQuery = useQuery({
     queryKey: KEYS.pending(organizationId || ''),
     queryFn: async () => {
@@ -131,7 +150,7 @@ export function useSupabaseSanitationWorkOrders() {
     enabled: !!organizationId,
   });
 
-  // ── Single WO by ID ──────────────────────────────────────────────────────────
+  // ── Single WO by ID ───────────────────────────────────────────────────────────
   const useSingleWorkOrder = (id: string | null) =>
     useQuery({
       queryKey: KEYS.single(organizationId || '', id || ''),
@@ -149,12 +168,35 @@ export function useSupabaseSanitationWorkOrders() {
       enabled: !!organizationId && !!id,
     });
 
-  // ── Invalidate helpers ───────────────────────────────────────────────────────
+  // ── Invalidate ────────────────────────────────────────────────────────────────
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['san_work_orders', organizationId || ''] });
   };
 
-  // ── Start Timer ──────────────────────────────────────────────────────────────
+  // ── Shared hygiene log helper ─────────────────────────────────────────────────
+  // Fires for any department's scheduled WO on completion
+  const logHygieneOnComplete = (data: SanitationWorkOrder) => {
+    const deptCode = String(data.department_id || 1002);
+    const workOrderType = DEPT_WO_TYPE[deptCode] || 'sanitation';
+    const deptName = DEPT_NAMES[deptCode] || 'Sanitation';
+
+    autoLogRoomHygieneEntry({
+      organizationId: organizationId || '',
+      facilityId: facilityId || undefined,
+      locationName: data.room || undefined,
+      purpose: 'work_order',
+      workOrderType,
+      referenceId: data.id,
+      referenceNumber: data.wo_number,
+      departmentCode: deptCode,
+      departmentName: deptName,
+      performedById: user?.id,
+      performedByName: user ? `${user.first_name} ${user.last_name}` : `${deptName} Tech`,
+      description: `${deptName} task completed: ${data.task_name}`,
+    }).catch(e => console.warn('[SanWO] autoLogRoomHygiene error:', e));
+  };
+
+  // ── Start Timer ───────────────────────────────────────────────────────────────
   const startTimerMutation = useMutation({
     mutationFn: async ({ id }: { id: string; isFirstStart?: boolean }) => {
       const now = new Date().toISOString();
@@ -173,7 +215,7 @@ export function useSupabaseSanitationWorkOrders() {
     },
   });
 
-  // ── Pause Timer ──────────────────────────────────────────────────────────────
+  // ── Pause Timer ───────────────────────────────────────────────────────────────
   const pauseTimerMutation = useMutation({
     mutationFn: async ({ id, additionalSec }: { id: string; additionalSec: number }) => {
       const { data: current } = await supabase
@@ -253,28 +295,16 @@ export function useSupabaseSanitationWorkOrders() {
       return data as SanitationWorkOrder;
     },
     onSuccess: (data) => {
-  queryClient.setQueryData(KEYS.single(organizationId || '', data.id), data);
-  invalidate();
-  // Auto-log hygiene when WO completes (no QA required)
-  if (data.status === 'completed' && data.task_feed_post_id) {
-    autoLogRoomHygieneEntry({
-      organizationId: organizationId || '',
-      facilityId: facilityId || undefined,
-      locationName: data.room || undefined,
-      purpose: 'task_feed',
-      referenceId: data.task_feed_post_id,
-      referenceNumber: data.wo_number,
-      departmentCode: '1002',
-      departmentName: 'Sanitation',
-      performedById: user?.id,
-      performedByName: user ? `${user.first_name} ${user.last_name}` : 'Sanitation Tech',
-      description: `Sanitation task completed: ${data.task_name}`,
-    }).catch(e => console.warn('[SanWO] autoLogRoomHygiene error:', e));
-  }
-},
+      queryClient.setQueryData(KEYS.single(organizationId || '', data.id), data);
+      invalidate();
+      // Fire hygiene log only when fully completed (no QA required)
+      if (data.status === 'completed') {
+        logHygieneOnComplete(data);
+      }
+    },
   });
 
-  // ── Submit QA Signature ──────────────────────────────────────────────────────
+  // ── Submit QA Signature ───────────────────────────────────────────────────────
   const submitQASignatureMutation = useMutation({
     mutationFn: async ({
       id,
@@ -305,25 +335,11 @@ export function useSupabaseSanitationWorkOrders() {
       return data as SanitationWorkOrder;
     },
     onSuccess: (data) => {
-  queryClient.setQueryData(KEYS.single(organizationId || '', data.id), data);
-  invalidate();
-  // Auto-log hygiene when QA completes the WO
-  if (data.task_feed_post_id) {
-    autoLogRoomHygieneEntry({
-      organizationId: organizationId || '',
-      facilityId: facilityId || undefined,
-      locationName: data.room || undefined,
-      purpose: 'task_feed',
-      referenceId: data.task_feed_post_id,
-      referenceNumber: data.wo_number,
-      departmentCode: '1002',
-      departmentName: 'Sanitation',
-      performedById: user?.id,
-      performedByName: user ? `${user.first_name} ${user.last_name}` : 'Sanitation Tech',
-      description: `Sanitation task completed: ${data.task_name}`,
-    }).catch(e => console.warn('[SanWO] autoLogRoomHygiene error:', e));
-  }
-},
+      queryClient.setQueryData(KEYS.single(organizationId || '', data.id), data);
+      invalidate();
+      // QA sign-off always means completed
+      logHygieneOnComplete(data);
+    },
   });
 
   // ── Add Photo ─────────────────────────────────────────────────────────────────
