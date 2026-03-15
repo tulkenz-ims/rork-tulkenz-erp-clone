@@ -1781,8 +1781,18 @@ export default function TaskFeedScreen() {
                           </Text>
                         </View>
                         <Text style={[styles.cardTime, { color: colors.textTertiary }]}>
-                          {formatTime(verification.createdAt)}
-                        </Text>
+  {formatTime(verification.createdAt)}
+</Text>
+<Text style={[styles.cardTime, { color: colors.textTertiary }]}>
+  {new Date(verification.createdAt).toLocaleDateString('en-US', {
+    timeZone: 'America/Chicago',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  })}
+</Text>
                       </View>
                       <View style={styles.cardLocationRow}>
                         <MapPin size={10} color={colors.textTertiary} />
