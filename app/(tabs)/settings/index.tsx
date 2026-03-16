@@ -342,6 +342,13 @@ export default function SettingsScreen() {
               colors={colors}
             />
             <SettingItem
+  icon={Rocket}
+  label="Tech Platform Presentation"
+  value="12-slide deck for stakeholder meetings"
+  onPress={() => router.push('/settings/tech-presentation')}
+  colors={colors}
+/>
+            <SettingItem
               icon={Rocket}
               label="Feature Roadmap"
               value="What's being built next"
