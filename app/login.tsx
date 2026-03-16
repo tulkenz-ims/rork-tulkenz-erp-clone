@@ -27,11 +27,9 @@ import {
   Lock,
   KeyRound,
   AlertCircle,
-  Shield,
 } from 'lucide-react-native';
 import { useMutation } from '@tanstack/react-query';
 import { useUser } from '@/contexts/UserContext';
-import AuditorPortalView from '@/components/AuditorPortalView';
 
 // ── HUD Theme ──────────────────────────────────────────────────
 const HUD = {
@@ -156,21 +154,7 @@ export default function LoginScreen() {
   const [employeeCode, setEmployeeCode] = useState('');
   const [pin, setPin] = useState('');
 
-  const [showAuditorPortal, setShowAuditorPortal] = useState(false);
-  const [auditToken, setAuditToken] = useState<string | undefined>(undefined);
 
-  useEffect(() => {
-    let urlToken: string | null = null;
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      const searchParams = new URLSearchParams(window.location.search);
-      urlToken = searchParams.get('audit_token') || searchParams.get('token');
-    }
-    if (!urlToken) {
-      const paramToken = params.audit_token || params.token;
-      if (paramToken && typeof paramToken === 'string') urlToken = paramToken;
-    }
-    if (urlToken) { setAuditToken(urlToken); setShowAuditorPortal(true); }
-  }, [params]);
 
   const { mutate: companyMutate, isPending: isCompanyPending } = useMutation({
     mutationFn: async () => signInCompany(email, password),
@@ -209,17 +193,6 @@ export default function LoginScreen() {
   }, [email, password, platformMutate]);
 
   const isLoading = isCompanyPending || isEmployeePending || isPlatformPending;
-
-  if (showAuditorPortal) {
-    return (
-      <SafeAreaView style={s.container}>
-        <AuditorPortalView
-          onExit={() => { setShowAuditorPortal(false); setAuditToken(undefined); }}
-          initialToken={auditToken}
-        />
-      </SafeAreaView>
-    );
-  }
 
   // Active tab color
   const tabColor = loginType === 'platform' ? HUD.amber : HUD.cyan;
@@ -369,31 +342,6 @@ export default function LoginScreen() {
             )}
 
           </View>
-
-          {/* ── AUDITOR PORTAL BUTTON ── */}
-          <Pressable
-            style={s.auditorBtn}
-            onPress={() => { setShowAuditorPortal(true); setAuditToken(undefined); }}
-          >
-            <View style={[s.auditorIcon, { backgroundColor: HUD.purpleDim }]}>
-              <Shield size={16} color={HUD.purple} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[s.auditorTitle, { color: HUD.purple }]}>Auditor Portal</Text>
-              <Text style={s.auditorSub}>Read-only access with audit token</Text>
-            </View>
-            <Text style={[s.auditorArrow, { color: HUD.purple }]}>›</Text>
-          </Pressable>
-
-          {/* ── FOOTER ── */}
-          <Text style={s.footer}>TulKenz OPS  •  Secure Access  •  All activity logged</Text>
-
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
-  );
-}
-
 // ── Styles ─────────────────────────────────────────────────────
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: HUD.bg },
@@ -448,12 +396,6 @@ const s = StyleSheet.create({
   helpText:{ fontSize: 12, color: HUD.textSec, textAlign: 'center' },
   helpSub: { fontSize: 11, color: HUD.textDim, textAlign: 'center' },
 
-  // Auditor
-  auditorBtn:  { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: HUD.bgCard, borderWidth: 1, borderColor: HUD.purple + '30', borderRadius: 14, padding: 14, marginBottom: 20 },
-  auditorIcon: { width: 38, height: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  auditorTitle:{ fontSize: 14, fontWeight: '700' },
-  auditorSub:  { fontSize: 11, color: HUD.textDim, marginTop: 1 },
-  auditorArrow:{ fontSize: 22, fontWeight: '300' },
 
   // Footer
   footer:{ fontSize: 10, color: HUD.textDim, textAlign: 'center', letterSpacing: 0.5, marginBottom: 8 },
