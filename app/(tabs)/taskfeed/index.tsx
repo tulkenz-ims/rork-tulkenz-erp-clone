@@ -479,6 +479,8 @@ export default function TaskFeedScreen() {
   const [showIssueLocationPicker, setShowIssueLocationPicker] = useState(false);
   const [issueStoppedProduction, setIssueStoppedProduction] = useState(false);
   const [issueRoomLine, setIssueRoomLine] = useState('');
+  const [issueEquipment, setIssueEquipment] = useState<string>('');
+const [showIssueEquipmentPicker, setShowIssueEquipmentPicker] = useState(false);
   const [workOrderDescription, setWorkOrderDescription] = useState('');
   const [workOrderPriority, setWorkOrderPriority] = useState<'low' | 'medium' | 'high' | 'critical'>('medium');
 
@@ -776,6 +778,7 @@ export default function TaskFeedScreen() {
             due_date: new Date(Date.now() + (isProductionStopped ? 0 : 3) * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
             department: targetDepartment,
             department_name: getDepartmentName(targetDepartment),
+            equipment: issueEquipment || 'N/A — Reported via Task Feed',
             source: 'request' as const,
             source_id: postResult.id,
           });
@@ -822,6 +825,7 @@ export default function TaskFeedScreen() {
       setIssuePhotoUri(null);
       setIssueStoppedProduction(false);
       setIssueRoomLine('');
+      setIssueEquipment('');
       setIssueDepartment(null);
       setShowReportIssueModal(false);
     } catch (error: any) {
@@ -2691,6 +2695,25 @@ export default function TaskFeedScreen() {
               )}
             </View>
 
+            <Text style={[styles.inputLabel, { color: colors.text }]}>Equipment Involved (optional)</Text>
+<TouchableOpacity
+  style={[styles.selectButton, { backgroundColor: colors.surface }]}
+  onPress={() => setShowIssueEquipmentPicker(true)}
+>
+  <View style={styles.selectButtonContent}>
+    <Wrench size={20} color={colors.textSecondary} />
+    <Text style={[styles.selectButtonText, { color: issueEquipment ? colors.text : colors.textTertiary }]}>
+      {issueEquipment || 'Select equipment or skip'}
+    </Text>
+  </View>
+  <ChevronDown size={20} color={colors.textSecondary} />
+</TouchableOpacity>
+{issueEquipment ? (
+  <TouchableOpacity onPress={() => setIssueEquipment('')} style={{ alignSelf: 'flex-end', marginTop: -6, marginBottom: 8 }}>
+    <Text style={{ fontSize: 12, color: colors.textSecondary }}>Clear</Text>
+  </TouchableOpacity>
+) : null}
+
             <Text style={[styles.inputLabel, { color: colors.text }]}>Describe the Issue *</Text>
             <View style={[styles.notesContainer, { backgroundColor: colors.surface }]}>
               <TextInput
@@ -2809,6 +2832,47 @@ export default function TaskFeedScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Equipment Picker */}
+<Modal visible={showIssueEquipmentPicker} animationType="slide" transparent>
+  <View style={styles.pickerOverlay}>
+    <View style={[styles.pickerContainer, { backgroundColor: colors.surface }]}>
+      <View style={styles.pickerHeader}>
+        <Text style={[styles.pickerTitle, { color: colors.text }]}>Select Equipment</Text>
+        <TouchableOpacity onPress={() => setShowIssueEquipmentPicker(false)}>
+          <X size={24} color={colors.text} />
+        </TouchableOpacity>
+      </View>
+      <ScrollView style={styles.pickerList}>
+        <TouchableOpacity
+          style={styles.pickerItem}
+          onPress={() => { setIssueEquipment('N/A — No specific equipment'); setShowIssueEquipmentPicker(false); }}
+        >
+          <Text style={[styles.pickerItemText, { color: colors.textSecondary }]}>N/A — No specific equipment</Text>
+        </TouchableOpacity>
+        {(equipmentData || [])
+          .filter(eq => eq.status !== 'retired')
+          .map(eq => (
+            <TouchableOpacity
+              key={eq.id}
+              style={[styles.pickerItem, issueEquipment === (eq.equipment_tag ? `${eq.name} (${eq.equipment_tag})` : eq.name) && { backgroundColor: colors.primary + '15' }]}
+              onPress={() => {
+                setIssueEquipment(eq.equipment_tag ? `${eq.name} (${eq.equipment_tag})` : eq.name);
+                setShowIssueEquipmentPicker(false);
+              }}
+            >
+              <View style={styles.pickerItemContent}>
+                <Text style={[styles.pickerItemText, { color: colors.text }]}>{eq.name}</Text>
+                {eq.equipment_tag && (
+                  <Text style={[styles.pickerItemCode, { color: colors.primary }]}>{eq.equipment_tag}</Text>
+                )}
+              </View>
+            </TouchableOpacity>
+          ))}
+      </ScrollView>
+    </View>
+  </View>
+</Modal>
 
       {/* Purchase Request Form Component */}
       <PurchaseRequestForm
