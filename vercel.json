@@ -7,6 +7,10 @@
     {
       "path": "/api/cron/sanitation-due",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/hygiene-signoff-reminder",
+      "schedule": "0 4 * * *"
     }
   ],
   "rewrites": [
