@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -30,6 +30,7 @@ import {
   Droplets,
   Wrench,
   Activity,
+  Bell,
 } from 'lucide-react-native';
 import {
   useRoomHygieneLogQuery,
@@ -39,6 +40,7 @@ import {
   DailyRoomHygieneReport,
 } from '@/hooks/useRoomHygieneLog';
 import { useOrganization } from '@/contexts/OrganizationContext';
+import { useUser } from '@/contexts/UserContext';
 import { getDepartmentColor, getDepartmentName } from '@/constants/organizationCodes';
 import PinSignatureCapture from '@/components/PinSignatureCapture';
 import { SignatureVerification } from '@/hooks/usePinSignature';
@@ -125,7 +127,30 @@ export default function RoomHygieneLogScreen() {
   const { organizationId } = useOrganization();
 
   const todayStr = getTodayCST();
-  const calendarRef = useRef<ScrollView>(null);
+  const { user } = useUser();
+
+  // Only Quality (1004) or platform admins see the overdue modal
+  const isQualityOrAdmin = user?.department_code === '1004' || (user as any)?.is_platform_admin === true;
+
+  // Overdue modal state
+  const [showOverdueModal, setShowOverdueModal] = useState(false);
+  const overdueCheckDone = React.useRef(false);
+
+  const calendarRef = useRef<FlatList>(null);
+
+  // Scroll calendar to today on mount
+  useEffect(() => {
+    const todayIndex = CALENDAR_DAYS.findIndex(d => d.isToday);
+    if (todayIndex > 0) {
+      setTimeout(() => {
+        calendarRef.current?.scrollToIndex({
+          index: todayIndex,
+          animated: false,
+          viewPosition: 0.5,
+        });
+      }, 200);
+    }
+  }, []);
 
   const [selectedDate, setSelectedDate] = useState(todayStr);
   const [search, setSearch] = useState('');
@@ -137,6 +162,17 @@ export default function RoomHygieneLogScreen() {
   const [signOffReport, setSignOffReport] = useState<DailyRoomHygieneReport | null>(null);
   const [signOffVerification, setSignOffVerification] = useState<SignatureVerification | null>(null);
   const [signOffNotes, setSignOffNotes] = useState('');
+
+  // ── Overdue report check on mount ────────────────────────────
+  // Fires once when reports finish loading — shows modal if overdue + Quality/Admin
+  const triggerOverdueCheck = useCallback((reports: DailyRoomHygieneReport[]) => {
+    if (overdueCheckDone.current || !isQualityOrAdmin) return;
+    overdueCheckDone.current = true;
+    const hasOverdue = reports.some(r => r.status === 'open' && r.reportDate < todayStr);
+    if (hasOverdue) {
+      setTimeout(() => setShowOverdueModal(true), 800);
+    }
+  }, [isQualityOrAdmin, todayStr]);
 
   // ── Queries ────────────────────────────────────────────────
   const { data: entries = [], isLoading, isFetching, refetch } = useRoomHygieneLogQuery({
@@ -160,6 +196,13 @@ export default function RoomHygieneLogScreen() {
     });
     return map;
   }, [allRecentReports]);
+
+  // Trigger overdue check whenever reports load
+  useEffect(() => {
+    if (!reportsInitialLoading && dailyReports.length > 0) {
+      triggerOverdueCheck(dailyReports);
+    }
+  }, [reportsInitialLoading, dailyReports, triggerOverdueCheck]);
 
   // ── Sign-off mutation ──────────────────────────────────────
   const signOffMutation = useSignOffDailyReport({
@@ -283,9 +326,9 @@ export default function RoomHygieneLogScreen() {
   };
 
   // ── Report Card ────────────────────────────────────────────
-  const isSigned = report.status === 'signed_off';
-const isOverdue = !isSigned && report.reportDate < getTodayCST();
-const accentColor = isSigned ? HUD.green : isOverdue ? HUD.red : HUD.amber;
+  const renderReport = (report: DailyRoomHygieneReport) => {
+    const isSigned = report.status === 'signed_off';
+    const accentColor = isSigned ? HUD.green : HUD.amber;
 
     return (
       <View key={report.id} style={[s.reportCard, { borderLeftColor: accentColor }]}>
@@ -351,47 +394,54 @@ const accentColor = isSigned ? HUD.green : isOverdue ? HUD.red : HUD.amber;
         </View>
 
         {/* ── CALENDAR STRIP ─────────────────────────────── */}
-        <ScrollView
+        <FlatList
           ref={calendarRef}
           horizontal
+          data={CALENDAR_DAYS}
+          keyExtractor={item => item.date}
           showsHorizontalScrollIndicator={false}
           style={s.calendarStrip}
           contentContainerStyle={s.calendarContent}
-          onLayout={() => {
-            // Scroll to end (today) on mount
-            setTimeout(() => calendarRef.current?.scrollToEnd({ animated: false }), 100);
+          onScrollToIndexFailed={info => {
+            setTimeout(() => {
+              calendarRef.current?.scrollToIndex({ index: info.index, animated: false, viewPosition: 0.5 });
+            }, 300);
           }}
-        >
-          {CALENDAR_DAYS.map(day => {
+          renderItem={({ item: day }) => {
             const count = reportsByDate[day.date] || 0;
             const isSelected = day.date === selectedDate;
+            const hasEntries = count > 0;
             return (
               <Pressable
-                key={day.date}
                 style={[
                   s.calendarDay,
-                  isSelected && { backgroundColor: HUD.cyanDim, borderColor: HUD.cyan },
-                  day.isToday && !isSelected && { borderColor: HUD.cyanMid },
+                  isSelected && s.calendarDaySelected,
+                  day.isToday && !isSelected && s.calendarDayToday,
                 ]}
-                onPress={() => setSelectedDate(day.date)}
+                onPress={() => {
+                  setSelectedDate(day.date);
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                }}
               >
-                <Text style={[s.calDayName, { color: isSelected ? HUD.cyan : HUD.textDim }]}>
+                <Text style={[s.calDayName, { color: isSelected ? HUD.bg : day.isToday ? HUD.cyan : HUD.textDim }]}>
                   {day.dayName}
                 </Text>
-                <Text style={[s.calDayNum, { color: isSelected ? HUD.cyan : HUD.textSec }]}>
+                <Text style={[s.calDayNum, { color: isSelected ? HUD.bg : day.isToday ? HUD.cyan : HUD.text }]}>
                   {day.label}
                 </Text>
-                {count > 0 ? (
-                  <View style={[s.calDot, { backgroundColor: isSelected ? HUD.cyan : HUD.green }]}>
-                    <Text style={s.calDotText}>{count > 9 ? '9+' : count}</Text>
+                {hasEntries ? (
+                  <View style={[s.calDot, { backgroundColor: isSelected ? HUD.bg : HUD.green }]}>
+                    <Text style={[s.calDotText, { color: isSelected ? HUD.cyan : HUD.bg }]}>
+                      {count > 9 ? '9+' : count}
+                    </Text>
                   </View>
                 ) : (
-                  <View style={s.calDotEmpty} />
+                  <View style={[s.calDotEmpty, day.isToday && { backgroundColor: HUD.cyanMid }]} />
                 )}
               </Pressable>
             );
-          })}
-        </ScrollView>
+          }}
+        />
 
         {/* ── SEARCH + DEPT FILTER ───────────────────────── */}
         <View style={s.searchRow}>
@@ -603,6 +653,63 @@ const accentColor = isSigned ? HUD.green : isOverdue ? HUD.red : HUD.amber;
           </View>
         </View>
       </Modal>
+
+      {/* ── OVERDUE SIGN-OFF MODAL ──────────────────────────── */}
+      <Modal visible={showOverdueModal} transparent animationType="fade">
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <View style={{ backgroundColor: HUD.surface, borderRadius: 20, borderWidth: 1, borderColor: HUD.red + '60', width: '100%', maxWidth: 400, overflow: 'hidden' }}>
+            {/* Red accent top bar */}
+            <View style={{ height: 4, backgroundColor: HUD.red }} />
+            <View style={{ padding: 24 }}>
+              {/* Icon + title */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+                <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: HUD.red + '20', borderWidth: 1, borderColor: HUD.red + '50', alignItems: 'center', justifyContent: 'center' }}>
+                  <Bell size={20} color={HUD.red} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 10, fontWeight: '800', color: HUD.red, letterSpacing: 2, marginBottom: 2 }}>SIGN-OFF REQUIRED</Text>
+                  <Text style={{ fontSize: 17, fontWeight: '800', color: HUD.text }}>Overdue Room Reports</Text>
+                </View>
+              </View>
+
+              {/* Overdue report list */}
+              <View style={{ backgroundColor: HUD.card, borderRadius: 12, borderWidth: 1, borderColor: HUD.red + '30', padding: 12, marginBottom: 16, gap: 8 }}>
+                {dailyReports
+                  .filter(r => r.status === 'open' && r.reportDate < todayStr)
+                  .map(r => (
+                    <View key={r.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: HUD.red }} />
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: HUD.text, flex: 1 }}>{r.roomName}</Text>
+                      <Text style={{ fontSize: 11, color: HUD.red, fontWeight: '600' }}>{r.reportDate}</Text>
+                    </View>
+                  ))}
+              </View>
+
+              <Text style={{ fontSize: 12, color: HUD.textSec, lineHeight: 18, marginBottom: 20 }}>
+                The above room hygiene reports were not signed off on their report date. Please review and sign off as soon as possible — late sign-offs are recorded with a timestamp.
+              </Text>
+
+              {/* Buttons */}
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <Pressable
+                  style={{ flex: 1, alignItems: 'center', paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: HUD.border }}
+                  onPress={() => setShowOverdueModal(false)}
+                >
+                  <Text style={{ fontSize: 14, fontWeight: '600', color: HUD.textSec }}>Dismiss</Text>
+                </Pressable>
+                <Pressable
+                  style={{ flex: 2, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, paddingVertical: 12, borderRadius: 12, backgroundColor: HUD.red + '20', borderWidth: 1, borderColor: HUD.red + '50' }}
+                  onPress={() => { setShowOverdueModal(false); setActiveTab('reports'); }}
+                >
+                  <AlertTriangle size={14} color={HUD.red} />
+                  <Text style={{ fontSize: 14, fontWeight: '700', color: HUD.red }}>View Reports</Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -616,14 +723,16 @@ const s = StyleSheet.create({
   headerTitle:     { fontSize: 14, fontWeight: '800', letterSpacing: 2, color: HUD.cyan },
   headerSub:       { fontSize: 11, color: HUD.textSec, marginTop: 1 },
 
-  calendarStrip:   { paddingVertical: 8 },
-  calendarContent: { paddingHorizontal: 12, gap: 6, flexDirection: 'row' },
-  calendarDay:     { alignItems: 'center', paddingVertical: 6, paddingHorizontal: 8, borderRadius: 8, borderWidth: 1, borderColor: HUD.border, minWidth: 40 },
-  calDayName:      { fontSize: 9, fontWeight: '700', letterSpacing: 0.5 },
-  calDayNum:       { fontSize: 14, fontWeight: '700', marginTop: 1 },
-  calDot:          { marginTop: 3, borderRadius: 6, paddingHorizontal: 4, paddingVertical: 1, minWidth: 16, alignItems: 'center' },
-  calDotText:      { fontSize: 8, fontWeight: '800', color: HUD.bg },
-  calDotEmpty:     { marginTop: 3, width: 4, height: 4, borderRadius: 2, backgroundColor: 'transparent' },
+  calendarStrip:        { paddingVertical: 10 },
+  calendarContent:      { paddingHorizontal: 14, gap: 5 },
+  calendarDay:          { alignItems: 'center', paddingVertical: 8, paddingHorizontal: 10, borderRadius: 10, borderWidth: 1, borderColor: HUD.border, minWidth: 44, backgroundColor: HUD.card },
+  calendarDaySelected:  { backgroundColor: HUD.cyan, borderColor: HUD.cyan },
+  calendarDayToday:     { borderColor: HUD.cyan, borderWidth: 1.5 },
+  calDayName:           { fontSize: 9, fontWeight: '800', letterSpacing: 0.8 },
+  calDayNum:            { fontSize: 15, fontWeight: '800', marginTop: 2 },
+  calDot:               { marginTop: 4, borderRadius: 7, paddingHorizontal: 5, paddingVertical: 1, minWidth: 18, alignItems: 'center' },
+  calDotText:           { fontSize: 8, fontWeight: '900' },
+  calDotEmpty:          { marginTop: 4, width: 5, height: 5, borderRadius: 3, backgroundColor: 'transparent' },
 
   searchRow:       { paddingHorizontal: 12, paddingBottom: 8 },
   searchBox:       { flexDirection: 'row', alignItems: 'center', backgroundColor: HUD.card, borderWidth: 1, borderColor: HUD.border, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, gap: 8 },
