@@ -3,23 +3,22 @@
  *
  * Sanitation ATP Swab Log — Reactive / Standalone
  * Filed after an incident, CAPA, or before line release.
- * Separate from the scheduled WO ATP field — this is for
- * reactive/extra swabs triggered by a task feed event.
  *
  * Route params:
  *   postId      — task feed post UUID (pre-linked, locked)
  *   postNumber  — display number
  *   woId        — sanitation work order UUID (optional)
+ *   formId      — existing sanitation_atp_logs UUID (view mode)
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, Alert, ActivityIndicator, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { X, CheckCircle, AlertTriangle, FlaskConical, ChevronDown } from 'lucide-react-native';
+import { X, CheckCircle, AlertTriangle, FlaskConical, ChevronDown, Lock } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import { supabase } from '@/lib/supabase';
@@ -91,14 +90,37 @@ const hC = StyleSheet.create({
   cBR: { position: 'absolute', bottom: 4, right: 4, width: 8, height: 8, borderBottomWidth: 1.5, borderRightWidth: 1.5, borderRadius: 1 },
 });
 
+function ReadOnlyField({ label, value, accentColor = HUD.amber }: { label: string; value: string; accentColor?: string }) {
+  return (
+    <View style={{ marginBottom: 10 }}>
+      <Text style={{ fontSize: 9, fontWeight: '800', color: HUD.textSec, letterSpacing: 1.5, marginBottom: 5 }}>
+        {label}
+      </Text>
+      <View style={{
+        borderWidth: 1, borderRadius: 10, padding: 12,
+        borderColor: accentColor + '40', backgroundColor: HUD.bgCardAlt,
+        flexDirection: 'row', alignItems: 'center', gap: 8,
+      }}>
+        <Lock size={11} color={HUD.textDim} />
+        <Text style={{ fontSize: 13, fontWeight: '500', color: HUD.text, flex: 1 }}>
+          {value || '—'}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
 function HUDInput({
   label, value, onChangeText, placeholder, required = false,
   multiline = false, keyboardType = 'default', accentColor = HUD.amber,
+  readOnly = false,
 }: {
   label: string; value: string; onChangeText: (t: string) => void;
   placeholder?: string; required?: boolean;
   multiline?: boolean; keyboardType?: any; accentColor?: string;
+  readOnly?: boolean;
 }) {
+  if (readOnly) return <ReadOnlyField label={label} value={value} accentColor={accentColor} />;
   const isEmpty = required && value.trim() === '';
   return (
     <View style={{ marginBottom: 10 }}>
@@ -126,12 +148,13 @@ function HUDInput({
 }
 
 function SelectPicker({
-  label, value, options, onSelect, required = false, accentColor = HUD.amber,
+  label, value, options, onSelect, required = false, accentColor = HUD.amber, readOnly = false,
 }: {
   label: string; value: string; options: string[];
-  onSelect: (v: string) => void; required?: boolean; accentColor?: string;
+  onSelect: (v: string) => void; required?: boolean; accentColor?: string; readOnly?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  if (readOnly) return <ReadOnlyField label={label} value={value} accentColor={accentColor} />;
   const isEmpty = required && !value;
   return (
     <View style={{ marginBottom: 10 }}>
@@ -172,9 +195,10 @@ function SelectPicker({
   );
 }
 
-function YesNoToggle({ label, value, onSelect, required = false }: {
-  label: string; value: boolean | null; onSelect: (v: boolean) => void; required?: boolean;
+function YesNoToggle({ label, value, onSelect, required = false, readOnly = false }: {
+  label: string; value: boolean | null; onSelect: (v: boolean) => void; required?: boolean; readOnly?: boolean;
 }) {
+  if (readOnly) return <ReadOnlyField label={label} value={value === true ? 'YES' : value === false ? 'NO' : '—'} />;
   const isEmpty = required && value === null;
   return (
     <View style={{ marginBottom: 10 }}>
@@ -219,21 +243,52 @@ function LinkedPostBanner({ postNumber }: { postNumber: string }) {
   );
 }
 
+function ViewModeBanner({ logNumber, result }: { logNumber: string; result: string }) {
+  const isPass = result === 'pass';
+  return (
+    <View style={{
+      flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14,
+      borderRadius: 12, borderWidth: 1, marginBottom: 16,
+      borderColor: isPass ? HUD.green + '50' : HUD.red + '50',
+      backgroundColor: isPass ? HUD.greenDim : HUD.redDim,
+    }}>
+      <Lock size={16} color={isPass ? HUD.green : HUD.red} />
+      <View style={{ flex: 1 }}>
+        <Text style={{ fontSize: 9, fontWeight: '800', color: HUD.textSec, letterSpacing: 1.5 }}>SUBMITTED RECORD — READ ONLY</Text>
+        <Text style={{ fontSize: 14, fontWeight: '800', color: isPass ? HUD.green : HUD.red, marginTop: 2 }}>{logNumber}</Text>
+      </View>
+      <View style={{
+        paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8,
+        backgroundColor: isPass ? HUD.green + '20' : HUD.red + '20',
+      }}>
+        <Text style={{ fontSize: 12, fontWeight: '900', color: isPass ? HUD.green : HUD.red, letterSpacing: 1 }}>
+          {isPass ? 'PASS' : 'FAIL'}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
 // ═══════════════════════════ MAIN COMPONENT ═══════════════════
 
 export default function SanitationATPSwabScreen() {
-  const { postId, postNumber, woId } = useLocalSearchParams<{
-    postId: string; postNumber: string; woId?: string;
+  const { postId, postNumber, woId, formId } = useLocalSearchParams<{
+    postId: string; postNumber: string; woId?: string; formId?: string;
   }>();
   const router = useRouter();
   const { organizationId } = useOrganization();
   const linkFormMutation = useLinkFormToPost();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoadingRecord, setIsLoadingRecord] = useState(!!formId);
+
+  // View mode — loaded from existing record
+  const isViewMode = !!formId;
 
   const today = new Date().toISOString().split('T')[0];
   const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
   // ── Form state ────────────────────────────────────────────────
+  const [logNumber, setLogNumber] = useState('');
   const [swabDate, setSwabDate] = useState(today);
   const [swabTime, setSwabTime] = useState(nowTime);
   const [room, setRoom] = useState('');
@@ -246,6 +301,49 @@ export default function SanitationATPSwabScreen() {
   const [recleanPerformed, setRecleanPerformed] = useState<boolean | null>(null);
   const [reswabRlu, setReswabRlu] = useState('');
   const [signature, setSignature] = useState<SignatureVerification | null>(null);
+  const [existingSignatureStamp, setExistingSignatureStamp] = useState('');
+  const [submittedAt, setSubmittedAt] = useState('');
+
+  // ── Load existing record if formId provided ───────────────────
+  useEffect(() => {
+    if (!formId) return;
+
+    const loadRecord = async () => {
+      setIsLoadingRecord(true);
+      try {
+        const { data, error } = await supabase
+          .from('sanitation_atp_logs')
+          .select('*')
+          .eq('id', formId)
+          .single();
+
+        if (error) throw error;
+        if (!data) throw new Error('Record not found');
+
+        setLogNumber(data.log_number || '');
+        setSwabDate(data.swab_date || '');
+        setSwabTime(data.swab_time || '');
+        setRoom(data.room || '');
+        setSurfaceLocation(data.surface_location || '');
+        setSurfaceType(data.surface_type || '');
+        setReasonForSwab(data.reason_for_swab || '');
+        setChemicalUsed(data.chemical_used || '');
+        setRluReading(data.rlu_reading != null ? String(data.rlu_reading) : '');
+        setCorrectiveAction(data.corrective_action || '');
+        setRecleanPerformed(data.reclean_performed ?? null);
+        setReswabRlu(data.reswab_rlu != null ? String(data.reswab_rlu) : '');
+        setExistingSignatureStamp(data.tech_signature_stamp || '');
+        setSubmittedAt(data.created_at || '');
+      } catch (err: any) {
+        console.error('[ATPSwab] Load error:', err);
+        Alert.alert('Error', 'Could not load ATP swab record.');
+      } finally {
+        setIsLoadingRecord(false);
+      }
+    };
+
+    loadRecord();
+  }, [formId]);
 
   // ── Computed ATP result ───────────────────────────────────────
   const rluVal = parseFloat(rluReading);
@@ -288,13 +386,13 @@ export default function SanitationATPSwabScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     try {
-      const logNumber = `ATP-SAN-${Date.now()}`;
+      const newLogNumber = `ATP-SAN-${Date.now()}`;
 
       const { data, error } = await supabase
         .from('sanitation_atp_logs')
         .insert({
           org_id: organizationId,
-          log_number: logNumber,
+          log_number: newLogNumber,
           task_feed_post_id: postId || null,
           task_feed_post_number: postNumber || null,
           sanitation_wo_id: woId || null,
@@ -331,7 +429,7 @@ export default function SanitationATPSwabScreen() {
           formType: 'sanitation_atp_log',
           formId: data.id,
           formTitle: `ATP Swab — ${room} — ${surfaceLocation} — ${atpResult?.toUpperCase()}`,
-          formNumber: logNumber,
+          formNumber: newLogNumber,
           departmentCode: '1002',
           departmentName: 'Sanitation',
         });
@@ -340,7 +438,7 @@ export default function SanitationATPSwabScreen() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert(
         atpResult === 'pass' ? 'ATP Swab — PASS ✓' : 'ATP Swab — FAIL ✗',
-        `${logNumber} recorded.\nResult: ${rluVal} RLU — ${atpResult?.toUpperCase()} (threshold ≤${ATP_PASS_THRESHOLD})\nLinked to ${postNumber || 'task'}.`,
+        `${newLogNumber} recorded.\nResult: ${rluVal} RLU — ${atpResult?.toUpperCase()} (threshold ≤${ATP_PASS_THRESHOLD})\nLinked to ${postNumber || 'task'}.`,
         [{ text: 'OK', onPress: () => router.back() }],
       );
     } catch (err: any) {
@@ -357,6 +455,16 @@ export default function SanitationATPSwabScreen() {
     signature, linkFormMutation,
   ]);
 
+  // ── Loading state ─────────────────────────────────────────────
+  if (isLoadingRecord) {
+    return (
+      <View style={{ flex: 1, backgroundColor: HUD.bg, alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+        <ActivityIndicator color={HUD.amber} size="large" />
+        <Text style={{ color: HUD.textSec, fontSize: 13 }}>Loading ATP swab record...</Text>
+      </View>
+    );
+  }
+
   // ─────────────────────────────────── RENDER ──────────────────
   return (
     <View style={{ flex: 1, backgroundColor: HUD.bg }}>
@@ -366,12 +474,12 @@ export default function SanitationATPSwabScreen() {
             <X size={18} color={HUD.cyan} />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
-            <Text style={s.eyebrow}>SANITATION  ·  REACTIVE FORM</Text>
+            <Text style={s.eyebrow}>SANITATION  ·  {isViewMode ? 'SUBMITTED RECORD' : 'REACTIVE FORM'}</Text>
             <Text style={s.title}>ATP Swab Log</Text>
             <Text style={[s.sub, { color: HUD.amber }]}>Environmental Surface Testing</Text>
           </View>
-          <View style={[s.typePill, { backgroundColor: HUD.amber + '20', borderColor: HUD.amber + '60' }]}>
-            <Text style={[s.typeTxt, { color: HUD.amber }]}>REACTIVE</Text>
+          <View style={[s.typePill, { backgroundColor: isViewMode ? HUD.green + '20' : HUD.amber + '20', borderColor: isViewMode ? HUD.green + '60' : HUD.amber + '60' }]}>
+            <Text style={[s.typeTxt, { color: isViewMode ? HUD.green : HUD.amber }]}>{isViewMode ? 'SUBMITTED' : 'REACTIVE'}</Text>
           </View>
         </View>
       </SafeAreaView>
@@ -379,15 +487,31 @@ export default function SanitationATPSwabScreen() {
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 120 }} keyboardShouldPersistTaps="handled">
 
-          {postNumber && <LinkedPostBanner postNumber={postNumber} />}
+          {/* View mode banner */}
+          {isViewMode && logNumber && (
+            <ViewModeBanner logNumber={logNumber} result={atpResult || 'pass'} />
+          )}
 
-          {/* Threshold info banner */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 10, borderWidth: 1, borderColor: HUD.amber + '40', backgroundColor: HUD.amberDim, marginBottom: 16 }}>
-            <FlaskConical size={16} color={HUD.amber} />
-            <Text style={{ fontSize: 12, color: HUD.textSec, flex: 1, lineHeight: 18 }}>
-              Pass threshold: <Text style={{ color: HUD.amber, fontWeight: '800' }}>≤ {ATP_PASS_THRESHOLD} RLU</Text>. Results above this require corrective action and re-swab.
-            </Text>
-          </View>
+          {/* Submitted at */}
+          {isViewMode && submittedAt && (
+            <View style={{ padding: 10, borderRadius: 10, borderWidth: 1, borderColor: HUD.border, backgroundColor: HUD.bgCard, marginBottom: 12 }}>
+              <Text style={{ fontSize: 10, color: HUD.textDim, letterSpacing: 1 }}>SUBMITTED</Text>
+              <Text style={{ fontSize: 13, color: HUD.textSec, marginTop: 2 }}>
+                {new Date(submittedAt).toLocaleString('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
+              </Text>
+            </View>
+          )}
+
+          {/* New form banners */}
+          {!isViewMode && postNumber && <LinkedPostBanner postNumber={postNumber} />}
+          {!isViewMode && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 10, borderWidth: 1, borderColor: HUD.amber + '40', backgroundColor: HUD.amberDim, marginBottom: 16 }}>
+              <FlaskConical size={16} color={HUD.amber} />
+              <Text style={{ fontSize: 12, color: HUD.textSec, flex: 1, lineHeight: 18 }}>
+                Pass threshold: <Text style={{ color: HUD.amber, fontWeight: '800' }}>≤ {ATP_PASS_THRESHOLD} RLU</Text>. Results above this require corrective action and re-swab.
+              </Text>
+            </View>
+          )}
 
           {/* SECTION 1: Swab Details */}
           <View style={s.section}>
@@ -395,17 +519,17 @@ export default function SanitationATPSwabScreen() {
             <HUDCard color={HUD.amber + '40'}>
               <View style={{ flexDirection: 'row', gap: 10 }}>
                 <View style={{ flex: 1 }}>
-                  <HUDInput label="DATE" value={swabDate} onChangeText={setSwabDate} required placeholder="YYYY-MM-DD" />
+                  <HUDInput label="DATE" value={swabDate} onChangeText={setSwabDate} required placeholder="YYYY-MM-DD" readOnly={isViewMode} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <HUDInput label="TIME" value={swabTime} onChangeText={setSwabTime} required placeholder="HH:MM" />
+                  <HUDInput label="TIME" value={swabTime} onChangeText={setSwabTime} required placeholder="HH:MM" readOnly={isViewMode} />
                 </View>
               </View>
-              <SelectPicker label="ROOM" value={room} options={ROOMS} onSelect={setRoom} required accentColor={HUD.amber} />
-              <HUDInput label="SURFACE / LOCATION SWABBED" value={surfaceLocation} onChangeText={setSurfaceLocation} required placeholder="e.g. Conveyor belt surface — near belt joint, floor drain #3" />
-              <SelectPicker label="SURFACE TYPE" value={surfaceType} options={SURFACE_TYPES} onSelect={setSurfaceType} required accentColor={HUD.amber} />
-              <SelectPicker label="REASON FOR SWAB" value={reasonForSwab} options={REASONS_FOR_SWAB} onSelect={setReasonForSwab} required accentColor={HUD.amber} />
-              <HUDInput label="CHEMICAL USED FOR CLEANING (if applicable)" value={chemicalUsed} onChangeText={setChemicalUsed} placeholder="N/A if not applicable" />
+              <SelectPicker label="ROOM" value={room} options={ROOMS} onSelect={setRoom} required accentColor={HUD.amber} readOnly={isViewMode} />
+              <HUDInput label="SURFACE / LOCATION SWABBED" value={surfaceLocation} onChangeText={setSurfaceLocation} required placeholder="e.g. Conveyor belt surface — near belt joint, floor drain #3" readOnly={isViewMode} />
+              <SelectPicker label="SURFACE TYPE" value={surfaceType} options={SURFACE_TYPES} onSelect={setSurfaceType} required accentColor={HUD.amber} readOnly={isViewMode} />
+              <SelectPicker label="REASON FOR SWAB" value={reasonForSwab} options={REASONS_FOR_SWAB} onSelect={setReasonForSwab} required accentColor={HUD.amber} readOnly={isViewMode} />
+              <HUDInput label="CHEMICAL USED FOR CLEANING (if applicable)" value={chemicalUsed} onChangeText={setChemicalUsed} placeholder="N/A if not applicable" readOnly={isViewMode} />
             </HUDCard>
           </View>
 
@@ -421,6 +545,7 @@ export default function SanitationATPSwabScreen() {
                 keyboardType="numeric"
                 accentColor={HUD.cyan}
                 placeholder="Enter RLU value from ATP meter"
+                readOnly={isViewMode}
               />
               {atpResult && (
                 <View style={{
@@ -445,37 +570,41 @@ export default function SanitationATPSwabScreen() {
             </HUDCard>
           </View>
 
-          {/* SECTION 3: Corrective Action (shown when fail) */}
+          {/* SECTION 3: Corrective Action */}
           {isFail && (
             <View style={s.section}>
-              <SectionHead label="CORRECTIVE ACTION (REQUIRED — FAIL)" color={HUD.red} />
+              <SectionHead label={isViewMode ? 'CORRECTIVE ACTION' : 'CORRECTIVE ACTION (REQUIRED — FAIL)'} color={HUD.red} />
               <HUDCard color={HUD.red + '40'}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderRadius: 8, borderWidth: 1, borderColor: HUD.red + '40', backgroundColor: HUD.redDim, marginBottom: 12 }}>
-                  <AlertTriangle size={14} color={HUD.red} />
-                  <Text style={{ fontSize: 11, color: HUD.red, flex: 1, lineHeight: 17, fontWeight: '600' }}>
-                    ATP failure requires immediate corrective action. Re-clean the surface and perform a re-swab.
-                  </Text>
-                </View>
+                {!isViewMode && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderRadius: 8, borderWidth: 1, borderColor: HUD.red + '40', backgroundColor: HUD.redDim, marginBottom: 12 }}>
+                    <AlertTriangle size={14} color={HUD.red} />
+                    <Text style={{ fontSize: 11, color: HUD.red, flex: 1, lineHeight: 17, fontWeight: '600' }}>
+                      ATP failure requires immediate corrective action. Re-clean the surface and perform a re-swab.
+                    </Text>
+                  </View>
+                )}
                 <HUDInput
                   label="CORRECTIVE ACTION TAKEN"
                   value={correctiveAction}
                   onChangeText={setCorrectiveAction}
-                  required
+                  required={!isViewMode}
                   multiline
                   accentColor={HUD.red}
                   placeholder="e.g. Surface re-cleaned with Kay-5 at 200ppm, 5-minute dwell time, rinsed and wiped dry"
+                  readOnly={isViewMode}
                 />
-                <YesNoToggle label="RE-CLEAN PERFORMED?" value={recleanPerformed} onSelect={setRecleanPerformed} required />
+                <YesNoToggle label="RE-CLEAN PERFORMED?" value={recleanPerformed} onSelect={setRecleanPerformed} required={!isViewMode} readOnly={isViewMode} />
                 {recleanPerformed && (
                   <>
                     <HUDInput
                       label="RE-SWAB RLU READING"
                       value={reswabRlu}
                       onChangeText={setReswabRlu}
-                      required
+                      required={!isViewMode}
                       keyboardType="numeric"
                       accentColor={HUD.red}
                       placeholder="RLU value after re-clean"
+                      readOnly={isViewMode}
                     />
                     {reswabResult && (
                       <View style={{
@@ -492,13 +621,6 @@ export default function SanitationATPSwabScreen() {
                         </Text>
                       </View>
                     )}
-                    {reswabResult === 'fail' && (
-                      <View style={{ padding: 10, borderRadius: 8, borderWidth: 1, borderColor: HUD.red + '40', backgroundColor: HUD.redDim, marginTop: 8 }}>
-                        <Text style={{ fontSize: 11, color: HUD.red, lineHeight: 17, fontWeight: '600' }}>
-                          Re-swab still failing. File a Sanitation CAPA and notify Quality (dept 1004) before releasing this area for production.
-                        </Text>
-                      </View>
-                    )}
                   </>
                 )}
               </HUDCard>
@@ -509,37 +631,65 @@ export default function SanitationATPSwabScreen() {
           <View style={s.section}>
             <SectionHead label="TECHNICIAN SIGNATURE" color={HUD.cyan} />
             <HUDCard color={HUD.cyan + '40'}>
-              <Text style={{ fontSize: 11, color: HUD.textSec, lineHeight: 17, marginBottom: 12 }}>
-                By signing, I confirm that the ATP swab was performed as described and the results recorded are accurate.
-              </Text>
-              <PinSignatureCapture
-                onVerified={(v) => setSignature(v)}
-                onCleared={() => setSignature(null)}
-                formLabel="ATP Swab Log — Technician Signature"
-                existingVerification={signature}
-                required
-                accentColor={HUD.cyan}
-              />
+              {isViewMode ? (
+                <>
+                  <Text style={{ fontSize: 9, fontWeight: '800', color: HUD.textSec, letterSpacing: 1.5, marginBottom: 8 }}>VERIFIED BY</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 10, borderWidth: 1, borderColor: HUD.green + '40', backgroundColor: HUD.greenDim }}>
+                    <CheckCircle size={16} color={HUD.green} />
+                    <Text style={{ fontSize: 12, color: HUD.green, fontStyle: 'italic', flex: 1 }}>{existingSignatureStamp}</Text>
+                  </View>
+                </>
+              ) : (
+                <>
+                  <Text style={{ fontSize: 11, color: HUD.textSec, lineHeight: 17, marginBottom: 12 }}>
+                    By signing, I confirm that the ATP swab was performed as described and the results recorded are accurate.
+                  </Text>
+                  <PinSignatureCapture
+                    onVerified={(v) => setSignature(v)}
+                    onCleared={() => setSignature(null)}
+                    formLabel="ATP Swab Log — Technician Signature"
+                    existingVerification={signature}
+                    required
+                    accentColor={HUD.cyan}
+                  />
+                </>
+              )}
             </HUDCard>
           </View>
 
-          {/* Submit */}
-          <TouchableOpacity
-            activeOpacity={0.75}
-            style={[s.submitBtn, {
-              backgroundColor: HUD.amber + '18',
-              borderColor: HUD.amber + '60',
-              opacity: isSubmitting ? 0.6 : 1,
-            }]}
-            onPress={handleSubmit}
-            disabled={isSubmitting}
-          >
-            {isSubmitting
-              ? <ActivityIndicator size="small" color={HUD.amber} />
-              : <CheckCircle size={18} color={HUD.amber} />}
-            <Text style={[s.submitBtnTxt, { color: HUD.amber }]}>SUBMIT ATP SWAB LOG</Text>
-          </TouchableOpacity>
-          <Text style={s.submitNote}>All fields marked * are required. Use "N/A" for non-applicable fields.</Text>
+          {/* Submit — only in new form mode */}
+          {!isViewMode && (
+            <>
+              <TouchableOpacity
+                activeOpacity={0.75}
+                style={[s.submitBtn, {
+                  backgroundColor: HUD.amber + '18',
+                  borderColor: HUD.amber + '60',
+                  opacity: isSubmitting ? 0.6 : 1,
+                }]}
+                onPress={handleSubmit}
+                disabled={isSubmitting}
+              >
+                {isSubmitting
+                  ? <ActivityIndicator size="small" color={HUD.amber} />
+                  : <CheckCircle size={18} color={HUD.amber} />}
+                <Text style={[s.submitBtnTxt, { color: HUD.amber }]}>SUBMIT ATP SWAB LOG</Text>
+              </TouchableOpacity>
+              <Text style={s.submitNote}>All fields marked * are required. Use "N/A" for non-applicable fields.</Text>
+            </>
+          )}
+
+          {/* View mode close button */}
+          {isViewMode && (
+            <TouchableOpacity
+              activeOpacity={0.75}
+              style={[s.submitBtn, { backgroundColor: HUD.cyanDim, borderColor: HUD.cyanMid }]}
+              onPress={() => router.back()}
+            >
+              <X size={18} color={HUD.cyan} />
+              <Text style={[s.submitBtnTxt, { color: HUD.cyan }]}>CLOSE</Text>
+            </TouchableOpacity>
+          )}
         </ScrollView>
       </KeyboardAvoidingView>
     </View>
