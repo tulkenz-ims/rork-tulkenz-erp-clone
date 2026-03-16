@@ -342,6 +342,16 @@ export default function LoginScreen() {
             )}
 
           </View>
+
+          {/* ── FOOTER ── */}
+          <Text style={s.footer}>TulKenz OPS  •  Secure Access  •  All activity logged</Text>
+
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
+  );
+}
+
 // ── Styles ─────────────────────────────────────────────────────
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: HUD.bg },
