@@ -5,20 +5,21 @@
  * Reactive form — filed when a sanitation failure, contamination,
  * ATP failure, or deviation requires root cause investigation.
  *
- * Receives route params:
+ * Route params:
  *   postId       — task feed post UUID (pre-linked, locked)
  *   postNumber   — display number e.g. TF-240301-001
  *   woId         — sanitation work order UUID (optional)
+ *   formId       — existing sanitation_capa UUID (view mode)
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, Alert, ActivityIndicator, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { X, CheckCircle, AlertTriangle, Zap, ChevronDown } from 'lucide-react-native';
+import { X, CheckCircle, AlertTriangle, Zap, ChevronDown, Lock } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useUser } from '@/contexts/UserContext';
 import { useOrganization } from '@/contexts/OrganizationContext';
@@ -27,7 +28,6 @@ import { useLinkFormToPost } from '@/hooks/useTaskFeedFormLinks';
 import PinSignatureCapture, { isSignatureVerified } from '@/components/PinSignatureCapture';
 import { SignatureVerification } from '@/hooks/usePinSignature';
 
-// ─── HUD Theme (matches SanitationWorkOrderDetail) ────────────
 const HUD = {
   bg: '#020912', bgCard: '#050f1e', bgCardAlt: '#071525',
   cyan: '#00e5ff', cyanDim: '#00e5ff22', cyanMid: '#00e5ff55',
@@ -42,15 +42,9 @@ const HUD = {
 const ROOMS = ['PR1', 'PR2', 'PA1', 'PA2', 'BB1', 'SB1', 'All Rooms', 'Other'];
 
 const HOW_DETECTED_OPTIONS = [
-  'ATP Swab Failure',
-  'Visual Inspection',
-  'Quality Hold / Production Stop',
-  'Pre-Op Inspection Failure',
-  'Supervisor Observation',
-  'Employee Report',
-  'Customer Complaint',
-  'Internal Audit',
-  'Other',
+  'ATP Swab Failure', 'Visual Inspection', 'Quality Hold / Production Stop',
+  'Pre-Op Inspection Failure', 'Supervisor Observation', 'Employee Report',
+  'Customer Complaint', 'Internal Audit', 'Other',
 ];
 
 // ─── Sub-components ───────────────────────────────────────────
@@ -80,14 +74,28 @@ const hC = StyleSheet.create({
   cBR: { position: 'absolute', bottom: 4, right: 4, width: 8, height: 8, borderBottomWidth: 1.5, borderRightWidth: 1.5, borderRadius: 1 },
 });
 
+function ReadOnlyField({ label, value, accentColor = HUD.cyan }: { label: string; value: string; accentColor?: string }) {
+  return (
+    <View style={{ marginBottom: 10 }}>
+      <Text style={{ fontSize: 9, fontWeight: '800', color: HUD.textSec, letterSpacing: 1.5, marginBottom: 5 }}>{label}</Text>
+      <View style={{ borderWidth: 1, borderRadius: 10, padding: 12, borderColor: accentColor + '40', backgroundColor: HUD.bgCardAlt, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <Lock size={11} color={HUD.textDim} />
+        <Text style={{ fontSize: 13, fontWeight: '500', color: HUD.text, flex: 1 }}>{value || '—'}</Text>
+      </View>
+    </View>
+  );
+}
+
 function HUDInput({
   label, value, onChangeText, placeholder, required = false,
   editable = true, multiline = false, keyboardType = 'default', accentColor = HUD.cyan,
+  readOnly = false,
 }: {
   label: string; value: string; onChangeText: (t: string) => void;
   placeholder?: string; required?: boolean; editable?: boolean;
-  multiline?: boolean; keyboardType?: any; accentColor?: string;
+  multiline?: boolean; keyboardType?: any; accentColor?: string; readOnly?: boolean;
 }) {
+  if (readOnly) return <ReadOnlyField label={label} value={value} accentColor={accentColor} />;
   const isEmpty = required && value.trim() === '';
   return (
     <View style={{ marginBottom: 10 }}>
@@ -99,16 +107,11 @@ function HUDInput({
           borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 13, fontWeight: '500',
           borderColor: isEmpty ? HUD.red + '80' : accentColor + '60',
           color: HUD.text, backgroundColor: HUD.bgCardAlt,
-          minHeight: multiline ? 80 : undefined,
-          textAlignVertical: multiline ? 'top' : 'center',
+          minHeight: multiline ? 80 : undefined, textAlignVertical: multiline ? 'top' : 'center',
         }}
-        value={value}
-        onChangeText={onChangeText}
+        value={value} onChangeText={onChangeText}
         placeholder={placeholder || (required ? 'Required — cannot be left blank' : 'N/A if not applicable')}
-        placeholderTextColor={HUD.textDim}
-        editable={editable}
-        multiline={multiline}
-        keyboardType={keyboardType}
+        placeholderTextColor={HUD.textDim} editable={editable} multiline={multiline} keyboardType={keyboardType}
       />
       {isEmpty && <Text style={{ fontSize: 9, color: HUD.red, marginTop: 3 }}>This field is required</Text>}
     </View>
@@ -116,12 +119,13 @@ function HUDInput({
 }
 
 function SelectPicker({
-  label, value, options, onSelect, required = false, accentColor = HUD.cyan,
+  label, value, options, onSelect, required = false, accentColor = HUD.cyan, readOnly = false,
 }: {
   label: string; value: string; options: string[];
-  onSelect: (v: string) => void; required?: boolean; accentColor?: string;
+  onSelect: (v: string) => void; required?: boolean; accentColor?: string; readOnly?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  if (readOnly) return <ReadOnlyField label={label} value={value} accentColor={accentColor} />;
   const isEmpty = required && !value;
   return (
     <View style={{ marginBottom: 10 }}>
@@ -129,39 +133,19 @@ function SelectPicker({
         {label}{required && <Text style={{ color: HUD.red }}> *</Text>}
       </Text>
       <TouchableOpacity
-        style={{
-          borderWidth: 1, borderRadius: 10, padding: 12,
-          borderColor: isEmpty ? HUD.red + '80' : accentColor + '60',
-          backgroundColor: HUD.bgCardAlt,
-          flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-        }}
-        onPress={() => setOpen(!open)}
-        activeOpacity={0.7}
+        style={{ borderWidth: 1, borderRadius: 10, padding: 12, borderColor: isEmpty ? HUD.red + '80' : accentColor + '60', backgroundColor: HUD.bgCardAlt, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+        onPress={() => setOpen(!open)} activeOpacity={0.7}
       >
-        <Text style={{ fontSize: 13, fontWeight: '500', color: value ? HUD.text : HUD.textDim }}>
-          {value || 'Select...'}
-        </Text>
+        <Text style={{ fontSize: 13, fontWeight: '500', color: value ? HUD.text : HUD.textDim }}>{value || 'Select...'}</Text>
         <ChevronDown size={16} color={HUD.textSec} />
       </TouchableOpacity>
       {isEmpty && <Text style={{ fontSize: 9, color: HUD.red, marginTop: 3 }}>This field is required</Text>}
       {open && (
-        <View style={{
-          backgroundColor: HUD.bgCard, borderRadius: 10, borderWidth: 1,
-          borderColor: accentColor + '40', marginTop: 4, overflow: 'hidden',
-        }}>
+        <View style={{ backgroundColor: HUD.bgCard, borderRadius: 10, borderWidth: 1, borderColor: accentColor + '40', marginTop: 4, overflow: 'hidden' }}>
           {options.map(opt => (
-            <TouchableOpacity
-              key={opt}
-              style={{
-                padding: 12, borderBottomWidth: 1, borderBottomColor: HUD.border,
-                backgroundColor: value === opt ? accentColor + '15' : 'transparent',
-              }}
-              onPress={() => { onSelect(opt); setOpen(false); }}
-              activeOpacity={0.7}
-            >
-              <Text style={{ fontSize: 13, color: value === opt ? accentColor : HUD.text, fontWeight: value === opt ? '700' : '400' }}>
-                {opt}
-              </Text>
+            <TouchableOpacity key={opt} style={{ padding: 12, borderBottomWidth: 1, borderBottomColor: HUD.border, backgroundColor: value === opt ? accentColor + '15' : 'transparent' }}
+              onPress={() => { onSelect(opt); setOpen(false); }} activeOpacity={0.7}>
+              <Text style={{ fontSize: 13, color: value === opt ? accentColor : HUD.text, fontWeight: value === opt ? '700' : '400' }}>{opt}</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -170,9 +154,10 @@ function SelectPicker({
   );
 }
 
-function YesNoToggle({
-  label, value, onSelect, required = false,
-}: { label: string; value: boolean | null; onSelect: (v: boolean) => void; required?: boolean }) {
+function YesNoToggle({ label, value, onSelect, required = false, readOnly = false }: {
+  label: string; value: boolean | null; onSelect: (v: boolean) => void; required?: boolean; readOnly?: boolean;
+}) {
+  if (readOnly) return <ReadOnlyField label={label} value={value === true ? 'YES' : value === false ? 'NO' : '—'} />;
   const isEmpty = required && value === null;
   return (
     <View style={{ marginBottom: 10 }}>
@@ -181,19 +166,10 @@ function YesNoToggle({
       </Text>
       <View style={{ flexDirection: 'row', gap: 10 }}>
         {[true, false].map(v => (
-          <TouchableOpacity
-            key={String(v)}
-            style={{
-              flex: 1, padding: 12, borderRadius: 10, borderWidth: 1, alignItems: 'center',
-              borderColor: value === v ? (v ? HUD.red : HUD.green) : HUD.borderBright,
-              backgroundColor: value === v ? (v ? HUD.redDim : HUD.greenDim) : HUD.bgCardAlt,
-            }}
-            onPress={() => onSelect(v)}
-            activeOpacity={0.7}
-          >
-            <Text style={{ fontSize: 13, fontWeight: '700', color: value === v ? (v ? HUD.red : HUD.green) : HUD.textSec }}>
-              {v ? 'YES' : 'NO'}
-            </Text>
+          <TouchableOpacity key={String(v)}
+            style={{ flex: 1, padding: 12, borderRadius: 10, borderWidth: 1, alignItems: 'center', borderColor: value === v ? (v ? HUD.red : HUD.green) : HUD.borderBright, backgroundColor: value === v ? (v ? HUD.redDim : HUD.greenDim) : HUD.bgCardAlt }}
+            onPress={() => onSelect(v)} activeOpacity={0.7}>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: value === v ? (v ? HUD.red : HUD.green) : HUD.textSec }}>{v ? 'YES' : 'NO'}</Text>
           </TouchableOpacity>
         ))}
       </View>
@@ -202,11 +178,10 @@ function YesNoToggle({
   );
 }
 
-// ─── Linked Post Banner (locked, pre-populated) ───────────────
-function LinkedPostBanner({ postId, postNumber }: { postId: string; postNumber: string }) {
+function LinkedPostBanner({ postNumber }: { postNumber: string }) {
   return (
-    <View style={[lpS.banner, { borderColor: HUD.cyan + '50', backgroundColor: HUD.cyanDim }]}>
-      <View style={[lpS.dot, { backgroundColor: HUD.cyan }]} />
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: HUD.cyan + '50', backgroundColor: HUD.cyanDim, marginBottom: 16 }}>
+      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: HUD.cyan }} />
       <View style={{ flex: 1 }}>
         <Text style={{ fontSize: 9, fontWeight: '800', color: HUD.textSec, letterSpacing: 1.5 }}>LINKED TASK FEED POST</Text>
         <Text style={{ fontSize: 14, fontWeight: '800', color: HUD.cyan, marginTop: 2 }}>{postNumber}</Text>
@@ -217,27 +192,47 @@ function LinkedPostBanner({ postId, postNumber }: { postId: string; postNumber: 
     </View>
   );
 }
-const lpS = StyleSheet.create({
-  banner: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, borderRadius: 12, borderWidth: 1, marginBottom: 16 },
-  dot: { width: 8, height: 8, borderRadius: 4 },
-});
+
+function ViewModeBanner({ capaNumber, submittedAt }: { capaNumber: string; submittedAt: string }) {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, borderRadius: 12, borderWidth: 1, marginBottom: 16, borderColor: HUD.red + '50', backgroundColor: HUD.redDim }}>
+      <Lock size={16} color={HUD.red} />
+      <View style={{ flex: 1 }}>
+        <Text style={{ fontSize: 9, fontWeight: '800', color: HUD.textSec, letterSpacing: 1.5 }}>SUBMITTED RECORD — READ ONLY</Text>
+        <Text style={{ fontSize: 14, fontWeight: '800', color: HUD.red, marginTop: 2 }}>{capaNumber}</Text>
+        {submittedAt && (
+          <Text style={{ fontSize: 11, color: HUD.textSec, marginTop: 2 }}>
+            {new Date(submittedAt).toLocaleString('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
+          </Text>
+        )}
+      </View>
+      <View style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: HUD.red + '20' }}>
+        <Text style={{ fontSize: 10, fontWeight: '900', color: HUD.red, letterSpacing: 1 }}>CAPA</Text>
+      </View>
+    </View>
+  );
+}
 
 // ═══════════════════════════ MAIN COMPONENT ═══════════════════
 
 export default function SanitationCAPAScreen() {
-  const { postId, postNumber, woId } = useLocalSearchParams<{
-    postId: string; postNumber: string; woId?: string;
+  const { postId, postNumber, woId, formId } = useLocalSearchParams<{
+    postId: string; postNumber: string; woId?: string; formId?: string;
   }>();
   const router = useRouter();
   const { user } = useUser();
   const { organizationId } = useOrganization();
   const linkFormMutation = useLinkFormToPost();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoadingRecord, setIsLoadingRecord] = useState(!!formId);
+  const isViewMode = !!formId;
 
-  // ── Form state ────────────────────────────────────────────────
   const today = new Date().toISOString().split('T')[0];
   const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
+  // ── Form state ────────────────────────────────────────────────
+  const [capaNumber, setCapaNumber] = useState('');
+  const [submittedAt, setSubmittedAt] = useState('');
   const [detectedDate, setDetectedDate] = useState(today);
   const [detectedTime, setDetectedTime] = useState(nowTime);
   const [room, setRoom] = useState('');
@@ -247,25 +242,61 @@ export default function SanitationCAPAScreen() {
   const [productOnHold, setProductOnHold] = useState<boolean | null>(null);
   const [affectedProduct, setAffectedProduct] = useState('');
   const [immediateContainment, setImmediateContainment] = useState('');
-
-  // 5 Whys
   const [why1, setWhy1] = useState('');
   const [why2, setWhy2] = useState('');
   const [why3, setWhy3] = useState('');
   const [why4, setWhy4] = useState('');
   const [why5, setWhy5] = useState('');
   const [rootCauseSummary, setRootCauseSummary] = useState('');
-
-  // Actions
   const [correctiveAction, setCorrectiveAction] = useState('');
   const [preventiveAction, setPreventiveAction] = useState('');
   const [ssopRevisionRequired, setSsopRevisionRequired] = useState<boolean | null>(null);
   const [ssopRevisedNote, setSsopRevisedNote] = useState('');
   const [followUpDate, setFollowUpDate] = useState('');
   const [responsiblePerson, setResponsiblePerson] = useState('');
-
-  // Signature
   const [signature, setSignature] = useState<SignatureVerification | null>(null);
+  const [existingSignatureStamp, setExistingSignatureStamp] = useState('');
+
+  // ── Load existing record ──────────────────────────────────────
+  useEffect(() => {
+    if (!formId) return;
+    const load = async () => {
+      setIsLoadingRecord(true);
+      try {
+        const { data, error } = await supabase.from('sanitation_capa').select('*').eq('id', formId).single();
+        if (error) throw error;
+        setCapaNumber(data.capa_number || '');
+        setSubmittedAt(data.created_at || '');
+        setDetectedDate(data.detected_date || '');
+        setDetectedTime(data.detected_time || '');
+        setRoom(data.room || '');
+        setAreaDescription(data.area_description || '');
+        setHowDetected(data.how_detected || '');
+        setIncidentDescription(data.incident_description || '');
+        setProductOnHold(data.product_on_hold ?? null);
+        setAffectedProduct(data.affected_product || '');
+        setImmediateContainment(data.immediate_containment || '');
+        setWhy1(data.why_1 || '');
+        setWhy2(data.why_2 || '');
+        setWhy3(data.why_3 || '');
+        setWhy4(data.why_4 || '');
+        setWhy5(data.why_5 || '');
+        setRootCauseSummary(data.root_cause_summary || '');
+        setCorrectiveAction(data.corrective_action || '');
+        setPreventiveAction(data.preventive_action || '');
+        setSsopRevisionRequired(data.ssop_revision_required ?? null);
+        setSsopRevisedNote(data.ssop_revised_code || '');
+        setFollowUpDate(data.follow_up_date || '');
+        setResponsiblePerson(data.responsible_person || '');
+        setExistingSignatureStamp(data.tech_signature_stamp || '');
+      } catch (err: any) {
+        Alert.alert('Error', 'Could not load CAPA record.');
+      } finally {
+        setIsLoadingRecord(false);
+      }
+    };
+    load();
+  }, [formId]);
 
   // ── Validation ────────────────────────────────────────────────
   const validate = (): string[] => {
@@ -279,9 +310,9 @@ export default function SanitationCAPAScreen() {
     if (productOnHold === null) missing.push('Product on Hold (Yes/No)');
     if (productOnHold && !affectedProduct.trim()) missing.push('Affected Product');
     if (!immediateContainment.trim()) missing.push('Immediate Containment Action');
-    if (!why1.trim()) missing.push('Why #1 (Root Cause — Step 1)');
-    if (!why2.trim()) missing.push('Why #2 (Root Cause — Step 2)');
-    if (!why3.trim()) missing.push('Why #3 (Root Cause — Step 3)');
+    if (!why1.trim()) missing.push('Why #1');
+    if (!why2.trim()) missing.push('Why #2');
+    if (!why3.trim()) missing.push('Why #3');
     if (!rootCauseSummary.trim()) missing.push('Root Cause Summary');
     if (!correctiveAction.trim()) missing.push('Corrective Action');
     if (!preventiveAction.trim()) missing.push('Preventive Action');
@@ -297,143 +328,94 @@ export default function SanitationCAPAScreen() {
   const handleSubmit = useCallback(async () => {
     const missing = validate();
     if (missing.length > 0) {
-      Alert.alert(
-        'All Fields Required',
-        `Every field must be filled in (use "N/A" if not applicable).\n\nMissing:\n• ${missing.join('\n• ')}`,
-      );
+      Alert.alert('All Fields Required', `Every field must be filled in (use "N/A" if not applicable).\n\nMissing:\n• ${missing.join('\n• ')}`);
       return;
     }
-
     setIsSubmitting(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-
     try {
-      const capaNumber = `CAPA-SAN-${Date.now()}`;
-
-      const { data, error } = await supabase
-        .from('sanitation_capa')
-        .insert({
-          org_id: organizationId,
-          capa_number: capaNumber,
-          task_feed_post_id: postId || null,
-          task_feed_post_number: postNumber || null,
-          sanitation_wo_id: woId || null,
-          detected_date: detectedDate,
-          detected_time: detectedTime,
-          room,
-          area_description: areaDescription,
-          how_detected: howDetected,
-          incident_description: incidentDescription,
-          product_on_hold: productOnHold,
-          affected_product: affectedProduct || null,
-          immediate_containment: immediateContainment,
-          why_1: why1,
-          why_2: why2,
-          why_3: why3,
-          why_4: why4 || null,
-          why_5: why5 || null,
-          root_cause_summary: rootCauseSummary,
-          corrective_action: correctiveAction,
-          preventive_action: preventiveAction,
-          ssop_revision_required: ssopRevisionRequired,
-          ssop_revised_code: ssopRevisionRequired ? ssopRevisedNote : null,
-          follow_up_date: followUpDate,
-          responsible_person: responsiblePerson,
-          tech_name: signature!.employeeName,
-          tech_employee_id: signature!.employeeId,
-          tech_initials: signature!.employeeInitials,
-          tech_department_code: signature!.departmentCode,
-          tech_signature_stamp: signature!.signatureStamp,
-          tech_signed_at: signature!.verifiedAt,
-          status: 'open',
-        })
-        .select('id')
-        .single();
-
+      const newCapaNumber = `CAPA-SAN-${Date.now()}`;
+      const { data, error } = await supabase.from('sanitation_capa').insert({
+        org_id: organizationId, capa_number: newCapaNumber,
+        task_feed_post_id: postId || null, task_feed_post_number: postNumber || null,
+        sanitation_wo_id: woId || null, detected_date: detectedDate, detected_time: detectedTime,
+        room, area_description: areaDescription, how_detected: howDetected,
+        incident_description: incidentDescription, product_on_hold: productOnHold,
+        affected_product: affectedProduct || null, immediate_containment: immediateContainment,
+        why_1: why1, why_2: why2, why_3: why3, why_4: why4 || null, why_5: why5 || null,
+        root_cause_summary: rootCauseSummary, corrective_action: correctiveAction,
+        preventive_action: preventiveAction, ssop_revision_required: ssopRevisionRequired,
+        ssop_revised_code: ssopRevisionRequired ? ssopRevisedNote : null,
+        follow_up_date: followUpDate, responsible_person: responsiblePerson,
+        tech_name: signature!.employeeName, tech_employee_id: signature!.employeeId,
+        tech_initials: signature!.employeeInitials, tech_department_code: signature!.departmentCode,
+        tech_signature_stamp: signature!.signatureStamp, tech_signed_at: signature!.verifiedAt,
+        status: 'open',
+      }).select('id').single();
       if (error) throw error;
-
-      // Link to task feed post
       if (postId && postNumber) {
         await linkFormMutation.mutateAsync({
-          postId,
-          postNumber,
-          formType: 'sanitation_capa',
-          formId: data.id,
+          postId, postNumber, formType: 'sanitation_capa', formId: data.id,
           formTitle: `Sanitation CAPA — ${room} — ${howDetected}`,
-          formNumber: capaNumber,
-          departmentCode: '1002',
-          departmentName: 'Sanitation',
+          formNumber: newCapaNumber, departmentCode: '1002', departmentName: 'Sanitation',
         });
       }
-
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert(
-        'CAPA Submitted',
-        `Sanitation CAPA ${capaNumber} has been filed and linked to ${postNumber || 'the task'}.`,
-        [{ text: 'OK', onPress: () => router.back() }],
-      );
+      Alert.alert('CAPA Submitted', `Sanitation CAPA ${newCapaNumber} has been filed and linked to ${postNumber || 'the task'}.`, [{ text: 'OK', onPress: () => router.back() }]);
     } catch (err: any) {
-      console.error('[SanitationCAPA] Submit error:', err);
-      Alert.alert('Submission Error', err?.message || 'Failed to submit CAPA. Please try again.');
+      Alert.alert('Submission Error', err?.message || 'Failed to submit CAPA.');
     } finally {
       setIsSubmitting(false);
     }
-  }, [
-    organizationId, postId, postNumber, woId,
-    detectedDate, detectedTime, room, areaDescription, howDetected,
-    incidentDescription, productOnHold, affectedProduct, immediateContainment,
-    why1, why2, why3, why4, why5, rootCauseSummary,
-    correctiveAction, preventiveAction, ssopRevisionRequired, ssopRevisedNote,
-    followUpDate, responsiblePerson, signature, linkFormMutation,
-  ]);
+  }, [organizationId, postId, postNumber, woId, detectedDate, detectedTime, room, areaDescription, howDetected, incidentDescription, productOnHold, affectedProduct, immediateContainment, why1, why2, why3, why4, why5, rootCauseSummary, correctiveAction, preventiveAction, ssopRevisionRequired, ssopRevisedNote, followUpDate, responsiblePerson, signature, linkFormMutation]);
 
-  // ─────────────────────────────────── RENDER ──────────────────
+  if (isLoadingRecord) {
+    return (
+      <View style={{ flex: 1, backgroundColor: HUD.bg, alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+        <ActivityIndicator color={HUD.red} size="large" />
+        <Text style={{ color: HUD.textSec, fontSize: 13 }}>Loading CAPA record...</Text>
+      </View>
+    );
+  }
+
+  const ro = isViewMode;
+
   return (
     <View style={{ flex: 1, backgroundColor: HUD.bg }}>
-      {/* Header */}
       <SafeAreaView edges={['top']} style={{ backgroundColor: HUD.bgCard }}>
         <View style={[s.header, { borderBottomColor: HUD.red + '50' }]}>
           <TouchableOpacity style={s.backBtn} onPress={() => router.back()}>
             <X size={18} color={HUD.cyan} />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
-            <Text style={s.eyebrow}>SANITATION  ·  REACTIVE FORM</Text>
+            <Text style={s.eyebrow}>SANITATION  ·  {ro ? 'SUBMITTED RECORD' : 'REACTIVE FORM'}</Text>
             <Text style={s.title}>CAPA Report</Text>
             <Text style={[s.sub, { color: HUD.red }]}>Corrective &amp; Preventive Action</Text>
           </View>
-          <View style={[s.typePill, { backgroundColor: HUD.red + '20', borderColor: HUD.red + '60' }]}>
-            <Text style={[s.typeTxt, { color: HUD.red }]}>REACTIVE</Text>
+          <View style={[s.typePill, { backgroundColor: ro ? HUD.green + '20' : HUD.red + '20', borderColor: ro ? HUD.green + '60' : HUD.red + '60' }]}>
+            <Text style={[s.typeTxt, { color: ro ? HUD.green : HUD.red }]}>{ro ? 'SUBMITTED' : 'REACTIVE'}</Text>
           </View>
         </View>
       </SafeAreaView>
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView
-          style={{ flex: 1 }}
-          contentContainerStyle={{ padding: 16, paddingBottom: 120 }}
-          keyboardShouldPersistTaps="handled"
-        >
-          {/* Linked Post */}
-          {postId && postNumber && (
-            <LinkedPostBanner postId={postId} postNumber={postNumber} />
-          )}
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 120 }} keyboardShouldPersistTaps="handled">
+
+          {ro && capaNumber && <ViewModeBanner capaNumber={capaNumber} submittedAt={submittedAt} />}
+          {!ro && postId && postNumber && <LinkedPostBanner postNumber={postNumber} />}
 
           {/* SECTION 1: Incident Details */}
           <View style={s.section}>
             <SectionHead label="INCIDENT DETAILS" color={HUD.red} />
             <HUDCard color={HUD.red + '40'}>
               <View style={{ flexDirection: 'row', gap: 10 }}>
-                <View style={{ flex: 1 }}>
-                  <HUDInput label="DATE DETECTED" value={detectedDate} onChangeText={setDetectedDate} required placeholder="YYYY-MM-DD" />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <HUDInput label="TIME DETECTED" value={detectedTime} onChangeText={setDetectedTime} required placeholder="HH:MM" />
-                </View>
+                <View style={{ flex: 1 }}><HUDInput label="DATE DETECTED" value={detectedDate} onChangeText={setDetectedDate} required placeholder="YYYY-MM-DD" readOnly={ro} /></View>
+                <View style={{ flex: 1 }}><HUDInput label="TIME DETECTED" value={detectedTime} onChangeText={setDetectedTime} required placeholder="HH:MM" readOnly={ro} /></View>
               </View>
-              <SelectPicker label="ROOM" value={room} options={ROOMS} onSelect={setRoom} required accentColor={HUD.red} />
-              <HUDInput label="AREA / SURFACE DESCRIPTION" value={areaDescription} onChangeText={setAreaDescription} required placeholder="e.g. Conveyor belt surface, floor drain near mixer" />
-              <SelectPicker label="HOW DETECTED" value={howDetected} options={HOW_DETECTED_OPTIONS} onSelect={setHowDetected} required accentColor={HUD.red} />
-              <HUDInput label="INCIDENT DESCRIPTION" value={incidentDescription} onChangeText={setIncidentDescription} required multiline placeholder="Describe what was found, observed, or reported in detail" />
+              <SelectPicker label="ROOM" value={room} options={ROOMS} onSelect={setRoom} required accentColor={HUD.red} readOnly={ro} />
+              <HUDInput label="AREA / SURFACE DESCRIPTION" value={areaDescription} onChangeText={setAreaDescription} required placeholder="e.g. Conveyor belt surface, floor drain near mixer" readOnly={ro} />
+              <SelectPicker label="HOW DETECTED" value={howDetected} options={HOW_DETECTED_OPTIONS} onSelect={setHowDetected} required accentColor={HUD.red} readOnly={ro} />
+              <HUDInput label="INCIDENT DESCRIPTION" value={incidentDescription} onChangeText={setIncidentDescription} required multiline placeholder="Describe what was found, observed, or reported in detail" readOnly={ro} />
             </HUDCard>
           </View>
 
@@ -441,29 +423,31 @@ export default function SanitationCAPAScreen() {
           <View style={s.section}>
             <SectionHead label="IMMEDIATE CONTAINMENT" color={HUD.amber} />
             <HUDCard color={HUD.amber + '40'}>
-              <YesNoToggle label="WAS PRODUCT PLACED ON HOLD?" value={productOnHold} onSelect={setProductOnHold} required />
+              <YesNoToggle label="WAS PRODUCT PLACED ON HOLD?" value={productOnHold} onSelect={setProductOnHold} required readOnly={ro} />
               {productOnHold && (
-                <HUDInput label="AFFECTED PRODUCT / LOT" value={affectedProduct} onChangeText={setAffectedProduct} required accentColor={HUD.amber} placeholder="Product name, lot number, quantity" />
+                <HUDInput label="AFFECTED PRODUCT / LOT" value={affectedProduct} onChangeText={setAffectedProduct} required accentColor={HUD.amber} placeholder="Product name, lot number, quantity" readOnly={ro} />
               )}
-              <HUDInput label="IMMEDIATE CONTAINMENT ACTION TAKEN" value={immediateContainment} onChangeText={setImmediateContainment} required multiline accentColor={HUD.amber} placeholder="What was done immediately to contain the issue? (re-clean, quarantine, stop production, etc.)" />
+              <HUDInput label="IMMEDIATE CONTAINMENT ACTION TAKEN" value={immediateContainment} onChangeText={setImmediateContainment} required multiline accentColor={HUD.amber} placeholder="What was done immediately to contain the issue?" readOnly={ro} />
             </HUDCard>
           </View>
 
           {/* SECTION 3: Root Cause — 5 Whys */}
           <View style={s.section}>
             <SectionHead label="ROOT CAUSE ANALYSIS — 5 WHYS" color={HUD.purple} />
-            <View style={[s.whyNote, { borderColor: HUD.purple + '40', backgroundColor: HUD.purpleDim }]}>
-              <Text style={{ fontSize: 11, color: HUD.textSec, lineHeight: 17 }}>
-                Start with the problem and ask "Why?" repeatedly until you reach the true root cause. Whys 1–3 are required. Add 4–5 if needed to reach the actual cause.
-              </Text>
-            </View>
+            {!ro && (
+              <View style={[s.whyNote, { borderColor: HUD.purple + '40', backgroundColor: HUD.purpleDim }]}>
+                <Text style={{ fontSize: 11, color: HUD.textSec, lineHeight: 17 }}>
+                  Start with the problem and ask "Why?" repeatedly until you reach the true root cause. Whys 1–3 are required.
+                </Text>
+              </View>
+            )}
             <HUDCard color={HUD.purple + '40'}>
-              <HUDInput label="WHY #1 — Why did this happen?" value={why1} onChangeText={setWhy1} required multiline accentColor={HUD.purple} placeholder="e.g. Surface was not properly sanitized during last cleaning cycle" />
-              <HUDInput label="WHY #2 — Why did that happen?" value={why2} onChangeText={setWhy2} required multiline accentColor={HUD.purple} placeholder="e.g. Tech did not follow the correct dwell time for the sanitizer" />
-              <HUDInput label="WHY #3 — Why did that happen?" value={why3} onChangeText={setWhy3} required multiline accentColor={HUD.purple} placeholder="e.g. SSOP dwell time requirement was unclear / not posted at station" />
-              <HUDInput label="WHY #4 (if needed)" value={why4} onChangeText={setWhy4} multiline accentColor={HUD.purple} placeholder="Continue if root cause not yet reached" />
-              <HUDInput label="WHY #5 (if needed)" value={why5} onChangeText={setWhy5} multiline accentColor={HUD.purple} placeholder="Continue if root cause not yet reached" />
-              <HUDInput label="ROOT CAUSE SUMMARY" value={rootCauseSummary} onChangeText={setRootCauseSummary} required multiline accentColor={HUD.purple} placeholder="Summarize the true root cause identified through the 5 Whys analysis" />
+              <HUDInput label="WHY #1 — Why did this happen?" value={why1} onChangeText={setWhy1} required multiline accentColor={HUD.purple} readOnly={ro} />
+              <HUDInput label="WHY #2 — Why did that happen?" value={why2} onChangeText={setWhy2} required multiline accentColor={HUD.purple} readOnly={ro} />
+              <HUDInput label="WHY #3 — Why did that happen?" value={why3} onChangeText={setWhy3} required multiline accentColor={HUD.purple} readOnly={ro} />
+              {(why4 || !ro) && <HUDInput label="WHY #4 (if needed)" value={why4} onChangeText={setWhy4} multiline accentColor={HUD.purple} readOnly={ro} />}
+              {(why5 || !ro) && <HUDInput label="WHY #5 (if needed)" value={why5} onChangeText={setWhy5} multiline accentColor={HUD.purple} readOnly={ro} />}
+              <HUDInput label="ROOT CAUSE SUMMARY" value={rootCauseSummary} onChangeText={setRootCauseSummary} required multiline accentColor={HUD.purple} readOnly={ro} />
             </HUDCard>
           </View>
 
@@ -471,32 +455,14 @@ export default function SanitationCAPAScreen() {
           <View style={s.section}>
             <SectionHead label="CORRECTIVE & PREVENTIVE ACTIONS" color={HUD.green} />
             <HUDCard color={HUD.green + '40'}>
-              <HUDInput
-                label="CORRECTIVE ACTION — What was done to fix this now?"
-                value={correctiveAction}
-                onChangeText={setCorrectiveAction}
-                required multiline accentColor={HUD.green}
-                placeholder="e.g. Full re-clean of affected area per SSOP-PR1-FLOOR-D, ATP reswab performed and passed"
-              />
-              <HUDInput
-                label="PREVENTIVE ACTION — What will prevent recurrence?"
-                value={preventiveAction}
-                onChangeText={setPreventiveAction}
-                required multiline accentColor={HUD.green}
-                placeholder="e.g. Post dwell time requirements at each sanitation station, add to pre-shift briefing checklist"
-              />
-              <YesNoToggle label="IS AN SSOP REVISION REQUIRED?" value={ssopRevisionRequired} onSelect={setSsopRevisionRequired} required />
+              <HUDInput label="CORRECTIVE ACTION" value={correctiveAction} onChangeText={setCorrectiveAction} required multiline accentColor={HUD.green} readOnly={ro} />
+              <HUDInput label="PREVENTIVE ACTION" value={preventiveAction} onChangeText={setPreventiveAction} required multiline accentColor={HUD.green} readOnly={ro} />
+              <YesNoToggle label="IS AN SSOP REVISION REQUIRED?" value={ssopRevisionRequired} onSelect={setSsopRevisionRequired} required readOnly={ro} />
               {ssopRevisionRequired && (
-                <HUDInput
-                  label="WHICH SSOP REQUIRES REVISION?"
-                  value={ssopRevisedNote}
-                  onChangeText={setSsopRevisedNote}
-                  required accentColor={HUD.green}
-                  placeholder="SSOP code or title (e.g. SSOP-PR1-FLOOR-D)"
-                />
+                <HUDInput label="WHICH SSOP REQUIRES REVISION?" value={ssopRevisedNote} onChangeText={setSsopRevisedNote} required accentColor={HUD.green} readOnly={ro} />
               )}
-              <HUDInput label="FOLLOW-UP VERIFICATION DATE" value={followUpDate} onChangeText={setFollowUpDate} required placeholder="YYYY-MM-DD" />
-              <HUDInput label="PERSON RESPONSIBLE FOR FOLLOW-UP" value={responsiblePerson} onChangeText={setResponsiblePerson} required placeholder="Name and title" />
+              <HUDInput label="FOLLOW-UP VERIFICATION DATE" value={followUpDate} onChangeText={setFollowUpDate} required placeholder="YYYY-MM-DD" readOnly={ro} />
+              <HUDInput label="PERSON RESPONSIBLE FOR FOLLOW-UP" value={responsiblePerson} onChangeText={setResponsiblePerson} required readOnly={ro} />
             </HUDCard>
           </View>
 
@@ -504,40 +470,39 @@ export default function SanitationCAPAScreen() {
           <View style={s.section}>
             <SectionHead label="TECHNICIAN SIGNATURE" color={HUD.cyan} />
             <HUDCard color={HUD.cyan + '40'}>
-              <Text style={{ fontSize: 11, color: HUD.textSec, lineHeight: 17, marginBottom: 12 }}>
-                By signing, I confirm that the information in this CAPA is accurate and complete, and that the corrective actions described have been or will be implemented.
-              </Text>
-              <PinSignatureCapture
-                onVerified={(v) => setSignature(v)}
-                onCleared={() => setSignature(null)}
-                formLabel="Sanitation CAPA — Technician Signature"
-                existingVerification={signature}
-                required
-                accentColor={HUD.cyan}
-              />
+              {ro ? (
+                <>
+                  <Text style={{ fontSize: 9, fontWeight: '800', color: HUD.textSec, letterSpacing: 1.5, marginBottom: 8 }}>VERIFIED BY</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 10, borderWidth: 1, borderColor: HUD.green + '40', backgroundColor: HUD.greenDim }}>
+                    <CheckCircle size={16} color={HUD.green} />
+                    <Text style={{ fontSize: 12, color: HUD.green, fontStyle: 'italic', flex: 1 }}>{existingSignatureStamp}</Text>
+                  </View>
+                </>
+              ) : (
+                <>
+                  <Text style={{ fontSize: 11, color: HUD.textSec, lineHeight: 17, marginBottom: 12 }}>
+                    By signing, I confirm that the information in this CAPA is accurate and complete.
+                  </Text>
+                  <PinSignatureCapture onVerified={v => setSignature(v)} onCleared={() => setSignature(null)} formLabel="Sanitation CAPA — Technician Signature" existingVerification={signature} required accentColor={HUD.cyan} />
+                </>
+              )}
             </HUDCard>
           </View>
 
-          {/* Submit */}
-          <TouchableOpacity
-            activeOpacity={0.75}
-            style={[s.submitBtn, {
-              backgroundColor: HUD.red + '18',
-              borderColor: HUD.red + '60',
-              opacity: isSubmitting ? 0.6 : 1,
-            }]}
-            onPress={handleSubmit}
-            disabled={isSubmitting}
-          >
-            {isSubmitting
-              ? <ActivityIndicator size="small" color={HUD.red} />
-              : <CheckCircle size={18} color={HUD.red} />}
-            <Text style={[s.submitBtnTxt, { color: HUD.red }]}>SUBMIT SANITATION CAPA</Text>
-          </TouchableOpacity>
-
-          <Text style={s.submitNote}>
-            All fields marked * are required. Use "N/A" for non-applicable fields.
-          </Text>
+          {!ro ? (
+            <>
+              <TouchableOpacity activeOpacity={0.75} style={[s.submitBtn, { backgroundColor: HUD.red + '18', borderColor: HUD.red + '60', opacity: isSubmitting ? 0.6 : 1 }]} onPress={handleSubmit} disabled={isSubmitting}>
+                {isSubmitting ? <ActivityIndicator size="small" color={HUD.red} /> : <CheckCircle size={18} color={HUD.red} />}
+                <Text style={[s.submitBtnTxt, { color: HUD.red }]}>SUBMIT SANITATION CAPA</Text>
+              </TouchableOpacity>
+              <Text style={s.submitNote}>All fields marked * are required. Use "N/A" for non-applicable fields.</Text>
+            </>
+          ) : (
+            <TouchableOpacity activeOpacity={0.75} style={[s.submitBtn, { backgroundColor: HUD.cyanDim, borderColor: HUD.cyanMid }]} onPress={() => router.back()}>
+              <X size={18} color={HUD.cyan} />
+              <Text style={[s.submitBtnTxt, { color: HUD.cyan }]}>CLOSE</Text>
+            </TouchableOpacity>
+          )}
         </ScrollView>
       </KeyboardAvoidingView>
     </View>
@@ -545,11 +510,7 @@ export default function SanitationCAPAScreen() {
 }
 
 const s = StyleSheet.create({
-  header: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 14, paddingTop: 12, paddingBottom: 14,
-    borderBottomWidth: 2, gap: 10, backgroundColor: HUD.bgCard,
-  },
+  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingTop: 12, paddingBottom: 14, borderBottomWidth: 2, gap: 10, backgroundColor: HUD.bgCard },
   backBtn: { padding: 8, backgroundColor: HUD.cyanDim, borderRadius: 10, borderWidth: 1, borderColor: HUD.cyanMid },
   eyebrow: { fontSize: 8, fontWeight: '800', color: HUD.textDim, letterSpacing: 2, marginBottom: 2 },
   title: { fontSize: 18, fontWeight: '900', color: HUD.text, letterSpacing: 0.5 },
@@ -558,10 +519,7 @@ const s = StyleSheet.create({
   typeTxt: { fontSize: 8, fontWeight: '900', letterSpacing: 1.5 },
   section: { marginBottom: 16 },
   whyNote: { padding: 12, borderRadius: 10, borderWidth: 1, marginBottom: 10 },
-  submitBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 10, padding: 16, borderRadius: 14, borderWidth: 1, marginTop: 8,
-  },
+  submitBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, padding: 16, borderRadius: 14, borderWidth: 1, marginTop: 8 },
   submitBtnTxt: { fontSize: 14, fontWeight: '900', letterSpacing: 0.8 },
   submitNote: { fontSize: 10, color: HUD.textDim, textAlign: 'center', marginTop: 10, fontStyle: 'italic' },
 });
