@@ -283,9 +283,9 @@ export default function RoomHygieneLogScreen() {
   };
 
   // ── Report Card ────────────────────────────────────────────
-  const renderReport = (report: DailyRoomHygieneReport) => {
-    const isSigned = report.status === 'signed_off';
-    const accentColor = isSigned ? HUD.green : HUD.amber;
+  const isSigned = report.status === 'signed_off';
+const isOverdue = !isSigned && report.reportDate < getTodayCST();
+const accentColor = isSigned ? HUD.green : isOverdue ? HUD.red : HUD.amber;
 
     return (
       <View key={report.id} style={[s.reportCard, { borderLeftColor: accentColor }]}>
