@@ -326,7 +326,6 @@ export default function EmergencyProtocolScreen() {
     if (timerRef.current) {
       clearInterval(timerRef.current);
     }
-    // Fallback: if eventId wasn't set yet, find and cancel any active event we just created
     if (!eventId && organizationId) {
       try {
         const { data } = await supabase
@@ -363,7 +362,7 @@ export default function EmergencyProtocolScreen() {
     setEmergencyServicesCalled(false);
     unregisterRollCall();
     console.log('[EmergencyProtocol] Emergency closed');
-  }, [successAnim]);
+  }, [successAnim, eventId, organizationId, unregisterRollCall]);
 
   const handleViewLog = useCallback(() => {
     handleClose();
@@ -411,177 +410,40 @@ export default function EmergencyProtocolScreen() {
   }, [eventId, updateEvent, addTimelineEntry, handleClose, router]);
 
   // ── Register active roll call with AI assistant context ──
-
-  // Must be AFTER markEmployeeSafe is defined (avoids TDZ error)
-
+  // Placed AFTER all useCallback definitions to avoid TDZ crash
   useEffect(() => {
-
     if (emergency.isActive && emergency.employees.length > 0) {
-
       registerRollCall(
-
         emergency.employees.map(e => ({
-
           id: e.employee.id,
-
           firstName: e.employee.firstName,
-
           lastName: e.employee.lastName,
-
           department: e.employee.department,
-
           position: e.employee.position,
-
           status: e.status,
-
         })),
-
         markEmployeeSafe,
-
         isDrill,
-
         emergencyType,
-
         {
-
           initiateEmergency,
-
           handleEndProtocol,
-
           handleCancelEvent,
-
           handleSaveDetails,
-
           handleViewLog,
-
           handleClose,
-
           setLocationDetails,
-
           setDescription,
-
           setSeverity,
-
           setEmergencyServicesCalled,
-
         },
-
       );
-
     }
-
     return () => {
-
       if (!emergency.isActive) unregisterRollCall();
-
     };
-
   }, [emergency.isActive, emergency.employees, markEmployeeSafe, isDrill, emergencyType,
-
       initiateEmergency, handleEndProtocol, handleCancelEvent, handleSaveDetails,
-
-      handleViewLog, handleClose, registerRollCall, unregisterRollCall]);
-
-  const backgroundColor = allSafe
-    ? successAnim.interpolate({
-        inputRange: [0, 1],
-        outputRange: ['#1C1C1E', '#064E3B'],
-      })
-    : flashAnim.interpolate({
-        inputRange: [0, 1],
-        outputRange: ['#1C1C1E', '#2C2C2E'],
-      });
-
-  if (!emergency.isActive) {  const handleCancelEvent = useCallback(async () => {
-    if (eventId) {
-      try {
-        await updateEvent({
-          id: eventId,
-          status: 'cancelled',
-          resolved_at: new Date().toISOString(),
-        });
-        await addTimelineEntry({
-          eventId,
-          action: 'Event cancelled — started by accident',
-        });
-      } catch (err) {
-        console.error('[EmergencyProtocol] Error cancelling:', err);
-      }
-    }
-    handleClose();
-    router.back();
-  }, [eventId, updateEvent, addTimelineEntry, handleClose, router]);
-
-  // ── Register active roll call with AI assistant context ──
-
-  // Must be AFTER markEmployeeSafe is defined (avoids TDZ error)
-
-  useEffect(() => {
-
-    if (emergency.isActive && emergency.employees.length > 0) {
-
-      registerRollCall(
-
-        emergency.employees.map(e => ({
-
-          id: e.employee.id,
-
-          firstName: e.employee.firstName,
-
-          lastName: e.employee.lastName,
-
-          department: e.employee.department,
-
-          position: e.employee.position,
-
-          status: e.status,
-
-        })),
-
-        markEmployeeSafe,
-
-        isDrill,
-
-        emergencyType,
-
-        {
-
-          initiateEmergency,
-
-          handleEndProtocol,
-
-          handleCancelEvent,
-
-          handleSaveDetails,
-
-          handleViewLog,
-
-          handleClose,
-
-          setLocationDetails,
-
-          setDescription,
-
-          setSeverity,
-
-          setEmergencyServicesCalled,
-
-        },
-
-      );
-
-    }
-
-    return () => {
-
-      if (!emergency.isActive) unregisterRollCall();
-
-    };
-
-  }, [emergency.isActive, emergency.employees, markEmployeeSafe, isDrill, emergencyType,
-
-      initiateEmergency, handleEndProtocol, handleCancelEvent, handleSaveDetails,
-
       handleViewLog, handleClose, registerRollCall, unregisterRollCall]);
 
   const backgroundColor = allSafe
@@ -728,40 +590,40 @@ export default function EmergencyProtocolScreen() {
             <Text style={styles.overallTimerText}>{formatTime(emergency.elapsedSeconds)}</Text>
           </View>
           {!allSafe && (
-        <>
-        <TouchableOpacity
-          style={styles.endEmergencyButton}
-          onPress={() => {
-            Alert.alert(
-              'End Protocol?',
-              'This will end the emergency protocol and mark the event as resolved. Not all personnel have been accounted for.',
-              [
-                { text: 'Cancel', style: 'cancel' },
-                { text: 'End Protocol', style: 'destructive', onPress: handleEndProtocol },
-              ],
-            );
-          }}
-        >
-          <X size={18} color="#FFFFFF" />
-          <Text style={styles.endEmergencyText}>END PROTOCOL</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.cancelDrillButton}
-          onPress={() => {
-            Alert.alert(
-              'Cancel?',
-              'This will cancel the event and clear all alerts. This action cannot be undone.',
-              [
-                { text: 'No', style: 'cancel' },
-                { text: 'Yes, Cancel', style: 'destructive', onPress: handleCancelEvent },
-              ],
-            );
-          }}
-        >
-          <Text style={styles.cancelDrillText}>CANCEL EVENT </Text>
-        </TouchableOpacity>
-        </>
-      )}
+            <>
+              <TouchableOpacity
+                style={styles.endEmergencyButton}
+                onPress={() => {
+                  Alert.alert(
+                    'End Protocol?',
+                    'This will end the emergency protocol and mark the event as resolved. Not all personnel have been accounted for.',
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      { text: 'End Protocol', style: 'destructive', onPress: handleEndProtocol },
+                    ],
+                  );
+                }}
+              >
+                <X size={18} color="#FFFFFF" />
+                <Text style={styles.endEmergencyText}>END PROTOCOL</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.cancelDrillButton}
+                onPress={() => {
+                  Alert.alert(
+                    'Cancel?',
+                    'This will cancel the event and clear all alerts. This action cannot be undone.',
+                    [
+                      { text: 'No', style: 'cancel' },
+                      { text: 'Yes, Cancel', style: 'destructive', onPress: handleCancelEvent },
+                    ],
+                  );
+                }}
+              >
+                <Text style={styles.cancelDrillText}>CANCEL EVENT</Text>
+              </TouchableOpacity>
+            </>
+          )}
         </View>
       </View>
 
@@ -1027,19 +889,6 @@ export default function EmergencyProtocolScreen() {
         </View>
       )}
 
-      {!allSafe && (
-        <TouchableOpacity
-          style={styles.endEmergencyButton}
-          onPress={() => {
-            handleClose();
-            router.back();
-          }}
-        >
-          <X size={18} color="#FFFFFF" />
-          <Text style={styles.endEmergencyText}>END PROTOCOL</Text>
-        </TouchableOpacity>
-      )}
-
       <Modal
         visible={showInstructions}
         animationType="slide"
@@ -1080,674 +929,117 @@ export default function EmergencyProtocolScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  headerButton: {
-    padding: 8,
-    marginLeft: -8,
-  },
-  content: {
-    flex: 1,
-  },
-  contentContainer: {
-    padding: 16,
-  },
-  infoCard: {
-    borderRadius: 16,
-    padding: 24,
-    alignItems: 'center' as const,
-    marginBottom: 16,
-  },
-  iconCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    marginBottom: 16,
-  },
-  infoTitle: {
-    fontSize: 22,
-    fontWeight: '700' as const,
-    marginBottom: 8,
-    textAlign: 'center' as const,
-  },
-  infoDesc: {
-    fontSize: 14,
-    textAlign: 'center' as const,
-    lineHeight: 20,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600' as const,
-    marginBottom: 12,
-  },
-  employeesPreview: {
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-  },
-  employeeChips: {
-    flexDirection: 'row' as const,
-    flexWrap: 'wrap' as const,
-    gap: 8,
-    marginBottom: 12,
-  },
-  employeeChip: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 16,
-    gap: 4,
-  },
-  employeeChipText: {
-    fontSize: 12,
-    fontWeight: '500' as const,
-  },
-  kioskBadge: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: '#3B82F6',
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-  },
-  kioskBadgeText: {
-    fontSize: 9,
-    fontWeight: '700' as const,
-    color: '#FFFFFF',
-  },
-  legendRow: {
-    flexDirection: 'row' as const,
-  },
-  legendItem: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
-  },
-  legendText: {
-    fontSize: 11,
-    fontWeight: '500' as const,
-  },
-  initiateButton: {
-    backgroundColor: '#EF4444',
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    padding: 18,
-    borderRadius: 12,
-    gap: 12,
-    marginBottom: 12,
-  },
-  initiateButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '700' as const,
-  },
-  disclaimer: {
-    fontSize: 12,
-    textAlign: 'center' as const,
-    marginBottom: 24,
-  },
-  emergencyContainer: {
-    flex: 1,
-  },
-  drillBadge: {
-    marginTop: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  emergencyHeader: {
-    backgroundColor: '#B91C1C',
-    paddingTop: 60,
-    paddingBottom: 16,
-    paddingHorizontal: 16,
-    alignItems: 'center' as const,
-  },
-  emergencyTitleRow: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: 12,
-    marginBottom: 8,
-  },
-  emergencyTitle: {
-    fontSize: 28,
-    fontWeight: '900' as const,
-    color: '#FFFFFF',
-    letterSpacing: 2,
-  },
-  emergencyInstructions: {
-    fontSize: 12,
-    fontWeight: '600' as const,
-    color: '#FEE2E2',
-    textAlign: 'center' as const,
-    marginBottom: 12,
-  },
-  successTitleRow: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: 12,
-    marginBottom: 8,
-  },
-  successTitle: {
-    fontSize: 24,
-    fontWeight: '900' as const,
-    color: '#FFFFFF',
-    letterSpacing: 1,
-  },
-  successSubtitle: {
-    fontSize: 12,
-    fontWeight: '500' as const,
-    color: '#D1FAE5',
-    textAlign: 'center' as const,
-    marginBottom: 12,
-  },
-  overallTimerRow: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: 12,
-  },
-  overallTimer: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    backgroundColor: 'rgba(0,0,0,0.3)',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    gap: 8,
-  },
-  overallTimerSuccess: {
-    backgroundColor: 'rgba(16, 185, 129, 0.3)',
-  },
-  overallTimerText: {
-    fontSize: 24,
-    fontWeight: '700' as const,
-    color: '#FFFFFF',
-    fontVariant: ['tabular-nums'],
-  },
-  infoButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(0,0,0,0.3)',
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-  },
-  statsBar: {
-    flexDirection: 'row' as const,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-  },
-  statItem: {
-    flex: 1,
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    gap: 6,
-  },
-  statItemDivider: {
-    borderLeftWidth: 1,
-    borderLeftColor: 'rgba(255,255,255,0.2)',
-  },
-  statValue: {
-    fontSize: 18,
-    fontWeight: '700' as const,
-    color: '#FFFFFF',
-  },
-  statLabel: {
-    fontSize: 11,
-    color: 'rgba(255,255,255,0.7)',
-  },
-  splitContainer: {
-    flex: 1,
-    flexDirection: 'row' as const,
-  },
-  splitPane: {
-    flex: 1,
-    borderRightWidth: 1,
-    borderRightColor: 'rgba(255,255,255,0.1)',
-  },
-  paneHeader: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    paddingVertical: 10,
-    gap: 8,
-  },
-  paneHeaderText: {
-    fontSize: 13,
-    fontWeight: '700' as const,
-    color: '#FFFFFF',
-    letterSpacing: 0.5,
-  },
-  paneContent: {
-    flex: 1,
-    padding: 8,
-  },
-  employeeCard: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 8,
-    borderLeftWidth: 3,
-    borderLeftColor: '#EF4444',
-  },
-  employeeCardInfo: {
-    flex: 1,
-  },
-  employeeNameRow: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: 6,
-    flexWrap: 'wrap' as const,
-  },
-  employeeCardName: {
-    fontSize: 14,
-    fontWeight: '600' as const,
-    color: '#FFFFFF',
-  },
-  employeeCardDetails: {
-    fontSize: 11,
-    color: 'rgba(255,255,255,0.6)',
-    marginTop: 2,
-  },
-  kioskTagSmall: {
-    backgroundColor: '#3B82F6',
-    paddingHorizontal: 5,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  kioskTagText: {
-    fontSize: 8,
-    fontWeight: '700' as const,
-    color: '#FFFFFF',
-  },
-  specialNeedsTag: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    backgroundColor: 'rgba(245, 158, 11, 0.3)',
-    alignSelf: 'flex-start' as const,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    marginTop: 4,
-    gap: 4,
-  },
-  specialNeedsText: {
-    fontSize: 9,
-    color: '#F59E0B',
-    fontWeight: '500' as const,
-  },
-  markSafeButton: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 8,
-    backgroundColor: '#10B981',
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    marginLeft: 8,
-  },
-  markSafeButtonText: {
-    fontSize: 12,
-    fontWeight: '700' as const,
-    color: '#FFFFFF',
-    letterSpacing: 0.5,
-  },
-  safeCard: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    backgroundColor: 'rgba(16, 185, 129, 0.15)',
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 8,
-    borderLeftWidth: 3,
-    borderLeftColor: '#10B981',
-    gap: 10,
-  },
-  safeCardInfo: {
-    flex: 1,
-  },
-  safeCardName: {
-    fontSize: 14,
-    fontWeight: '600' as const,
-    color: '#FFFFFF',
-  },
-  safeCardDetails: {
-    fontSize: 11,
-    color: 'rgba(255,255,255,0.6)',
-    marginTop: 2,
-  },
-  emptyPane: {
-    flex: 1,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    paddingVertical: 40,
-  },
-  emptyPaneText: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.5)',
-    marginTop: 12,
-  },
-  endEmergencyButton: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.2)',
-    paddingVertical: 14,
-    gap: 8,
-  },
-  endEmergencyText: {
-    fontSize: 13,
-    fontWeight: '600' as const,
-    color: '#FFFFFF',
-  },
-  cancelDrillButton: {
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    backgroundColor: 'rgba(239, 68, 68, 0.2)',
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(239, 68, 68, 0.3)',
-    paddingVertical: 12,
-  },
-  cancelDrillText: {
-    fontSize: 12,
-    fontWeight: '700' as const,
-    color: '#EF4444',
-    letterSpacing: 0.5,
-  },
-  successScrollView: {
-    flex: 1,
-  },
-  successScrollContent: {
-    alignItems: 'center' as const,
-    padding: 20,
-  },
-  successIconContainer: {
-    marginTop: 12,
-    marginBottom: 12,
-  },
-  successMessage: {
-    fontSize: 22,
-    fontWeight: '700' as const,
-    color: '#FFFFFF',
-    marginBottom: 4,
-  },
-  successTime: {
-    fontSize: 16,
-    color: '#D1FAE5',
-    marginBottom: 20,
-  },
-  detailsFormCard: {
-    width: '100%',
-    backgroundColor: 'rgba(0,0,0,0.3)',
-    borderRadius: 14,
-    padding: 18,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-  },
-  detailsFormHeader: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: 8,
-    marginBottom: 6,
-  },
-  detailsFormTitle: {
-    fontSize: 17,
-    fontWeight: '700' as const,
-    color: '#FFFFFF',
-  },
-  detailsFormDesc: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.6)',
-    marginBottom: 16,
-    lineHeight: 18,
-  },
-  detailsFieldLabel: {
-    fontSize: 11,
-    fontWeight: '600' as const,
-    color: 'rgba(255,255,255,0.5)',
-    marginBottom: 6,
-    letterSpacing: 0.5,
-  },
-  severityRow: {
-    flexDirection: 'row' as const,
-    gap: 6,
-    marginBottom: 14,
-  },
-  severityChip: {
-    flex: 1,
-    paddingVertical: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-    alignItems: 'center' as const,
-  },
-  severityChipText: {
-    fontSize: 12,
-    fontWeight: '600' as const,
-  },
-  detailsInput: {
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.15)',
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    padding: 12,
-    fontSize: 14,
-    color: '#FFFFFF',
-    marginBottom: 14,
-  },
-  detailsTextArea: {
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.15)',
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    padding: 12,
-    fontSize: 14,
-    color: '#FFFFFF',
-    minHeight: 70,
-    marginBottom: 14,
-  },
-  servicesToggle: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: 10,
-    padding: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.15)',
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    marginBottom: 16,
-  },
-  servicesToggleActive: {
-    backgroundColor: 'rgba(239, 68, 68, 0.15)',
-    borderColor: 'rgba(239, 68, 68, 0.4)',
-  },
-  servicesToggleText: {
-    fontSize: 14,
-    fontWeight: '600' as const,
-  },
-  saveDetailsButton: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    gap: 8,
-    backgroundColor: '#10B981',
-    paddingVertical: 14,
-    borderRadius: 10,
-    marginBottom: 10,
-  },
-  saveDetailsButtonText: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '700' as const,
-    letterSpacing: 0.3,
-  },
-  skipDetailsButton: {
-    alignItems: 'center' as const,
-    paddingVertical: 10,
-  },
-  skipDetailsButtonText: {
-    color: 'rgba(255,255,255,0.45)',
-    fontSize: 13,
-    fontWeight: '500' as const,
-  },
-  detailsSavedCard: {
-    width: '100%',
-    backgroundColor: 'rgba(16, 185, 129, 0.15)',
-    borderRadius: 14,
-    padding: 20,
-    alignItems: 'center' as const,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.3)',
-    gap: 10,
-  },
-  detailsSavedText: {
-    fontSize: 17,
-    fontWeight: '700' as const,
-    color: '#FFFFFF',
-  },
-  detailsSavedActions: {
-    flexDirection: 'row' as const,
-    gap: 10,
-    marginTop: 6,
-  },
-  viewLogButton: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: 6,
-    backgroundColor: '#3B82F6',
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-  },
-  viewLogButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600' as const,
-  },
-  doneButton: {
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-  },
-  doneButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600' as const,
-  },
-  safeListContainer: {
-    width: '100%',
-    backgroundColor: 'rgba(0,0,0,0.2)',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-  },
-  safeListTitle: {
-    fontSize: 14,
-    fontWeight: '600' as const,
-    color: '#FFFFFF',
-    marginBottom: 12,
-  },
-  safeEmployeeRow: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.1)',
-    gap: 10,
-  },
-  hereBadge: {
-    backgroundColor: '#10B981',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
-  },
-  hereBadgeText: {
-    fontSize: 11,
-    fontWeight: '700' as const,
-    color: '#FFFFFF',
-    letterSpacing: 0.5,
-  },
-  hereBadgeSmall: {
-    backgroundColor: '#10B981',
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-    borderRadius: 4,
-  },
-  hereBadgeTextSmall: {
-    fontSize: 10,
-    fontWeight: '700' as const,
-    color: '#FFFFFF',
-    letterSpacing: 0.5,
-  },
-  safeEmployeeName: {
-    flex: 1,
-    fontSize: 14,
-    color: '#FFFFFF',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.8)',
-    justifyContent: 'flex-end' as const,
-  },
-  instructionsModal: {
-    backgroundColor: '#1F2937',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: '80%',
-  },
-  instructionsHeader: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'space-between' as const,
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.1)',
-  },
-  instructionsTitle: {
-    fontSize: 18,
-    fontWeight: '700' as const,
-    color: '#FFFFFF',
-  },
-  instructionsContent: {
-    padding: 20,
-  },
-  instructionText: {
-    fontSize: 15,
-    color: '#FFFFFF',
-    lineHeight: 22,
-    marginBottom: 20,
-  },
-  emergencyContacts: {
-    backgroundColor: 'rgba(0,0,0,0.3)',
-    borderRadius: 12,
-    padding: 16,
-    marginTop: 12,
-  },
-  emergencyContactsTitle: {
-    fontSize: 14,
-    fontWeight: '600' as const,
-    color: '#FFFFFF',
-    marginBottom: 12,
-  },
-  contactRow: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: 10,
-    marginBottom: 8,
-  },
-  contactText: {
-    fontSize: 14,
-    color: '#FFFFFF',
-  },
+  container: { flex: 1 },
+  headerButton: { padding: 8, marginLeft: -8 },
+  content: { flex: 1 },
+  contentContainer: { padding: 16 },
+  infoCard: { borderRadius: 16, padding: 24, alignItems: 'center' as const, marginBottom: 16 },
+  iconCircle: { width: 80, height: 80, borderRadius: 40, alignItems: 'center' as const, justifyContent: 'center' as const, marginBottom: 16 },
+  infoTitle: { fontSize: 22, fontWeight: '700' as const, marginBottom: 8, textAlign: 'center' as const },
+  infoDesc: { fontSize: 14, textAlign: 'center' as const, lineHeight: 20 },
+  drillBadge: { marginTop: 10, paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8 },
+  sectionTitle: { fontSize: 16, fontWeight: '600' as const, marginBottom: 12 },
+  employeesPreview: { borderRadius: 12, padding: 16, marginBottom: 16 },
+  employeeChips: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: 8, marginBottom: 12 },
+  employeeChip: { flexDirection: 'row' as const, alignItems: 'center' as const, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 16, gap: 4 },
+  employeeChipText: { fontSize: 12, fontWeight: '500' as const },
+  kioskBadge: { width: 16, height: 16, borderRadius: 8, backgroundColor: '#3B82F6', alignItems: 'center' as const, justifyContent: 'center' as const },
+  kioskBadgeText: { fontSize: 9, fontWeight: '700' as const, color: '#FFFFFF' },
+  legendRow: { flexDirection: 'row' as const },
+  legendItem: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4 },
+  legendText: { fontSize: 11, fontWeight: '500' as const },
+  initiateButton: { backgroundColor: '#EF4444', flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'center' as const, padding: 18, borderRadius: 12, gap: 12, marginBottom: 12 },
+  initiateButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' as const },
+  disclaimer: { fontSize: 12, textAlign: 'center' as const, marginBottom: 24 },
+  emergencyContainer: { flex: 1 },
+  emergencyHeader: { backgroundColor: '#B91C1C', paddingTop: 60, paddingBottom: 16, paddingHorizontal: 16, alignItems: 'center' as const },
+  emergencyTitleRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 12, marginBottom: 8 },
+  emergencyTitle: { fontSize: 28, fontWeight: '900' as const, color: '#FFFFFF', letterSpacing: 2 },
+  emergencyInstructions: { fontSize: 12, fontWeight: '600' as const, color: '#FEE2E2', textAlign: 'center' as const, marginBottom: 12 },
+  successTitleRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 12, marginBottom: 8 },
+  successTitle: { fontSize: 24, fontWeight: '900' as const, color: '#FFFFFF', letterSpacing: 1 },
+  successSubtitle: { fontSize: 12, fontWeight: '500' as const, color: '#D1FAE5', textAlign: 'center' as const, marginBottom: 12 },
+  overallTimerRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 12 },
+  overallTimer: { flexDirection: 'row' as const, alignItems: 'center' as const, backgroundColor: 'rgba(0,0,0,0.3)', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, gap: 8 },
+  overallTimerSuccess: { backgroundColor: 'rgba(16, 185, 129, 0.3)' },
+  overallTimerText: { fontSize: 24, fontWeight: '700' as const, color: '#FFFFFF', fontVariant: ['tabular-nums'] },
+  infoButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(0,0,0,0.3)', alignItems: 'center' as const, justifyContent: 'center' as const },
+  statsBar: { flexDirection: 'row' as const, backgroundColor: 'rgba(0,0,0,0.5)', paddingVertical: 12, paddingHorizontal: 16 },
+  statItem: { flex: 1, flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'center' as const, gap: 6 },
+  statItemDivider: { borderLeftWidth: 1, borderLeftColor: 'rgba(255,255,255,0.2)' },
+  statValue: { fontSize: 18, fontWeight: '700' as const, color: '#FFFFFF' },
+  statLabel: { fontSize: 11, color: 'rgba(255,255,255,0.7)' },
+  splitContainer: { flex: 1, flexDirection: 'row' as const },
+  splitPane: { flex: 1, borderRightWidth: 1, borderRightColor: 'rgba(255,255,255,0.1)' },
+  paneHeader: { flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'center' as const, paddingVertical: 10, gap: 8 },
+  paneHeaderText: { fontSize: 13, fontWeight: '700' as const, color: '#FFFFFF', letterSpacing: 0.5 },
+  paneContent: { flex: 1, padding: 8 },
+  employeeCard: { flexDirection: 'row' as const, alignItems: 'center' as const, backgroundColor: 'rgba(255, 255, 255, 0.08)', borderRadius: 10, padding: 12, marginBottom: 8, borderLeftWidth: 3, borderLeftColor: '#EF4444' },
+  employeeCardInfo: { flex: 1 },
+  employeeNameRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 6, flexWrap: 'wrap' as const },
+  employeeCardName: { fontSize: 14, fontWeight: '600' as const, color: '#FFFFFF' },
+  employeeCardDetails: { fontSize: 11, color: 'rgba(255,255,255,0.6)', marginTop: 2 },
+  kioskTagSmall: { backgroundColor: '#3B82F6', paddingHorizontal: 5, paddingVertical: 2, borderRadius: 4 },
+  kioskTagText: { fontSize: 8, fontWeight: '700' as const, color: '#FFFFFF' },
+  specialNeedsTag: { flexDirection: 'row' as const, alignItems: 'center' as const, backgroundColor: 'rgba(245, 158, 11, 0.3)', alignSelf: 'flex-start' as const, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginTop: 4, gap: 4 },
+  specialNeedsText: { fontSize: 9, color: '#F59E0B', fontWeight: '500' as const },
+  markSafeButton: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 8, backgroundColor: '#10B981', alignItems: 'center' as const, justifyContent: 'center' as const, marginLeft: 8 },
+  markSafeButtonText: { fontSize: 12, fontWeight: '700' as const, color: '#FFFFFF', letterSpacing: 0.5 },
+  safeCard: { flexDirection: 'row' as const, alignItems: 'center' as const, backgroundColor: 'rgba(16, 185, 129, 0.15)', borderRadius: 10, padding: 12, marginBottom: 8, borderLeftWidth: 3, borderLeftColor: '#10B981', gap: 10 },
+  safeCardInfo: { flex: 1 },
+  safeCardName: { fontSize: 14, fontWeight: '600' as const, color: '#FFFFFF' },
+  safeCardDetails: { fontSize: 11, color: 'rgba(255,255,255,0.6)', marginTop: 2 },
+  emptyPane: { flex: 1, alignItems: 'center' as const, justifyContent: 'center' as const, paddingVertical: 40 },
+  emptyPaneText: { fontSize: 14, color: 'rgba(255,255,255,0.5)', marginTop: 12 },
+  endEmergencyButton: { flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'center' as const, backgroundColor: 'rgba(255,255,255,0.1)', borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.2)', paddingVertical: 14, gap: 8 },
+  endEmergencyText: { fontSize: 13, fontWeight: '600' as const, color: '#FFFFFF' },
+  cancelDrillButton: { alignItems: 'center' as const, justifyContent: 'center' as const, backgroundColor: 'rgba(239, 68, 68, 0.2)', borderTopWidth: 1, borderTopColor: 'rgba(239, 68, 68, 0.3)', paddingVertical: 12 },
+  cancelDrillText: { fontSize: 12, fontWeight: '700' as const, color: '#EF4444', letterSpacing: 0.5 },
+  successScrollView: { flex: 1 },
+  successScrollContent: { alignItems: 'center' as const, padding: 20 },
+  successIconContainer: { marginTop: 12, marginBottom: 12 },
+  successMessage: { fontSize: 22, fontWeight: '700' as const, color: '#FFFFFF', marginBottom: 4 },
+  successTime: { fontSize: 16, color: '#D1FAE5', marginBottom: 20 },
+  detailsFormCard: { width: '100%', backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: 14, padding: 18, marginBottom: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
+  detailsFormHeader: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 8, marginBottom: 6 },
+  detailsFormTitle: { fontSize: 17, fontWeight: '700' as const, color: '#FFFFFF' },
+  detailsFormDesc: { fontSize: 13, color: 'rgba(255,255,255,0.6)', marginBottom: 16, lineHeight: 18 },
+  detailsFieldLabel: { fontSize: 11, fontWeight: '600' as const, color: 'rgba(255,255,255,0.5)', marginBottom: 6, letterSpacing: 0.5 },
+  severityRow: { flexDirection: 'row' as const, gap: 6, marginBottom: 14 },
+  severityChip: { flex: 1, paddingVertical: 8, borderRadius: 8, borderWidth: 1, alignItems: 'center' as const },
+  severityChipText: { fontSize: 12, fontWeight: '600' as const },
+  detailsInput: { borderRadius: 10, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', backgroundColor: 'rgba(255,255,255,0.06)', padding: 12, fontSize: 14, color: '#FFFFFF', marginBottom: 14 },
+  detailsTextArea: { borderRadius: 10, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', backgroundColor: 'rgba(255,255,255,0.06)', padding: 12, fontSize: 14, color: '#FFFFFF', minHeight: 70, marginBottom: 14 },
+  servicesToggle: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 10, padding: 12, borderRadius: 10, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', backgroundColor: 'rgba(255,255,255,0.04)', marginBottom: 16 },
+  servicesToggleActive: { backgroundColor: 'rgba(239, 68, 68, 0.15)', borderColor: 'rgba(239, 68, 68, 0.4)' },
+  servicesToggleText: { fontSize: 14, fontWeight: '600' as const },
+  saveDetailsButton: { flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'center' as const, gap: 8, backgroundColor: '#10B981', paddingVertical: 14, borderRadius: 10, marginBottom: 10 },
+  saveDetailsButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' as const, letterSpacing: 0.3 },
+  skipDetailsButton: { alignItems: 'center' as const, paddingVertical: 10 },
+  skipDetailsButtonText: { color: 'rgba(255,255,255,0.45)', fontSize: 13, fontWeight: '500' as const },
+  detailsSavedCard: { width: '100%', backgroundColor: 'rgba(16, 185, 129, 0.15)', borderRadius: 14, padding: 20, alignItems: 'center' as const, marginBottom: 20, borderWidth: 1, borderColor: 'rgba(16, 185, 129, 0.3)', gap: 10 },
+  detailsSavedText: { fontSize: 17, fontWeight: '700' as const, color: '#FFFFFF' },
+  detailsSavedActions: { flexDirection: 'row' as const, gap: 10, marginTop: 6 },
+  viewLogButton: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 6, backgroundColor: '#3B82F6', paddingVertical: 10, paddingHorizontal: 16, borderRadius: 8 },
+  viewLogButtonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '600' as const },
+  doneButton: { backgroundColor: 'rgba(255,255,255,0.15)', paddingVertical: 10, paddingHorizontal: 20, borderRadius: 8 },
+  doneButtonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '600' as const },
+  safeListContainer: { width: '100%', backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: 12, padding: 16, marginBottom: 16 },
+  safeListTitle: { fontSize: 14, fontWeight: '600' as const, color: '#FFFFFF', marginBottom: 12 },
+  safeEmployeeRow: { flexDirection: 'row' as const, alignItems: 'center' as const, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.1)', gap: 10 },
+  hereBadge: { backgroundColor: '#10B981', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4 },
+  hereBadgeText: { fontSize: 11, fontWeight: '700' as const, color: '#FFFFFF', letterSpacing: 0.5 },
+  hereBadgeSmall: { backgroundColor: '#10B981', paddingHorizontal: 6, paddingVertical: 3, borderRadius: 4 },
+  hereBadgeTextSmall: { fontSize: 10, fontWeight: '700' as const, color: '#FFFFFF', letterSpacing: 0.5 },
+  safeEmployeeName: { flex: 1, fontSize: 14, color: '#FFFFFF' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'flex-end' as const },
+  instructionsModal: { backgroundColor: '#1F2937', borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '80%' },
+  instructionsHeader: { flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const, padding: 20, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.1)' },
+  instructionsTitle: { fontSize: 18, fontWeight: '700' as const, color: '#FFFFFF' },
+  instructionsContent: { padding: 20 },
+  instructionText: { fontSize: 15, color: '#FFFFFF', lineHeight: 22, marginBottom: 20 },
+  emergencyContacts: { backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: 12, padding: 16, marginTop: 12 },
+  emergencyContactsTitle: { fontSize: 14, fontWeight: '600' as const, color: '#FFFFFF', marginBottom: 12 },
+  contactRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 10, marginBottom: 8 },
+  contactText: { fontSize: 14, color: '#FFFFFF' },
 });
