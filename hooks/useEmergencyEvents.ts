@@ -36,8 +36,12 @@ export function useEmergencyEvents() {
   const queryClient = useQueryClient();
   const orgContext = useOrganization();
   const userContext = useUser();
-  const organizationId = orgContext?.organizationId;
-  const facilityId = orgContext?.facilityId;
+
+  // ── Resolve org ID from either OrganizationContext or UserContext ──
+  // OrganizationContext may not be hydrated on direct navigation to event log
+  const organizationId = orgContext?.organizationId || userContext?.company?.id || null;
+  const facilityId = orgContext?.facilityId || null;
+
   const userName = userContext?.userProfile
     ? `${userContext.userProfile.first_name} ${userContext.userProfile.last_name}`.trim()
     : 'Unknown';
@@ -244,7 +248,10 @@ export function useEmergencyEvents() {
 
 export function useEmergencyEvent(eventId: string | undefined) {
   const orgContext = useOrganization();
-  const organizationId = orgContext?.organizationId;
+  const userContext = useUser();
+
+  // Same fallback pattern
+  const organizationId = orgContext?.organizationId || userContext?.company?.id || null;
 
   return useQuery({
     queryKey: ['emergency_events', organizationId, eventId],
