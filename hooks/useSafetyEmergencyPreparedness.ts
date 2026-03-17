@@ -36,7 +36,15 @@ function mapEventToFireDrill(row: any): FireDrillEntry {
     facility_name:            row.facility_name || meta.facility_name || '',
     alarm_activation_time:    meta.alarm_activation_time || '',
     building_clear_time:      meta.building_clear_time || '',
-    total_evacuation_time:    meta.total_evacuation_time || '',
+    total_evacuation_time: meta.total_evacuation_time ||
+  (row.all_clear_at && row.initiated_at
+    ? (() => {
+        const secs = Math.floor((new Date(row.all_clear_at).getTime() - new Date(row.initiated_at).getTime()) / 1000);
+        const mins = Math.floor(secs / 60);
+        const s = secs % 60;
+        return `${mins}:${s.toString().padStart(2, '0')}`;
+      })()
+    : ''),
     total_participants:       row.total_evacuated || meta.total_participants || 0,
     assembly_points_used:     row.assembly_points_used || meta.assembly_points_used || [],
     headcount_completed:      meta.headcount_completed ?? true,
