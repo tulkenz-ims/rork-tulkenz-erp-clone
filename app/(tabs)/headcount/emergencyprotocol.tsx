@@ -276,43 +276,6 @@ export default function EmergencyProtocolScreen() {
     console.log('[EmergencyProtocol] Employee marked safe:', employeeId);
   }, []);
 
-  // ── Register active roll call with AI assistant context ──
-  // Must be AFTER markEmployeeSafe is defined (avoids TDZ error)
-  useEffect(() => {
-    if (emergency.isActive && emergency.employees.length > 0) {
-      registerRollCall(
-        emergency.employees.map(e => ({
-          id: e.employee.id,
-          firstName: e.employee.firstName,
-          lastName: e.employee.lastName,
-          department: e.employee.department,
-          position: e.employee.position,
-          status: e.status,
-        })),
-        markEmployeeSafe,
-        isDrill,
-        emergencyType,
-        {
-          initiateEmergency,
-          handleEndProtocol,
-          handleCancelEvent,
-          handleSaveDetails,
-          handleViewLog,
-          handleClose,
-          setLocationDetails,
-          setDescription,
-          setSeverity,
-          setEmergencyServicesCalled,
-        },
-      );
-    }
-    return () => {
-      if (!emergency.isActive) unregisterRollCall();
-    };
-  }, [emergency.isActive, emergency.employees, markEmployeeSafe, isDrill, emergencyType,
-      initiateEmergency, handleEndProtocol, handleCancelEvent, handleSaveDetails,
-      handleViewLog, handleClose, registerRollCall, unregisterRollCall]);
-
   const handleSaveDetails = useCallback(async () => {
     if (!eventId) {
       console.warn('[EmergencyProtocol] No event ID to update');
@@ -446,6 +409,180 @@ export default function EmergencyProtocolScreen() {
     handleClose();
     router.back();
   }, [eventId, updateEvent, addTimelineEntry, handleClose, router]);
+
+  // ── Register active roll call with AI assistant context ──
+
+  // Must be AFTER markEmployeeSafe is defined (avoids TDZ error)
+
+  useEffect(() => {
+
+    if (emergency.isActive && emergency.employees.length > 0) {
+
+      registerRollCall(
+
+        emergency.employees.map(e => ({
+
+          id: e.employee.id,
+
+          firstName: e.employee.firstName,
+
+          lastName: e.employee.lastName,
+
+          department: e.employee.department,
+
+          position: e.employee.position,
+
+          status: e.status,
+
+        })),
+
+        markEmployeeSafe,
+
+        isDrill,
+
+        emergencyType,
+
+        {
+
+          initiateEmergency,
+
+          handleEndProtocol,
+
+          handleCancelEvent,
+
+          handleSaveDetails,
+
+          handleViewLog,
+
+          handleClose,
+
+          setLocationDetails,
+
+          setDescription,
+
+          setSeverity,
+
+          setEmergencyServicesCalled,
+
+        },
+
+      );
+
+    }
+
+    return () => {
+
+      if (!emergency.isActive) unregisterRollCall();
+
+    };
+
+  }, [emergency.isActive, emergency.employees, markEmployeeSafe, isDrill, emergencyType,
+
+      initiateEmergency, handleEndProtocol, handleCancelEvent, handleSaveDetails,
+
+      handleViewLog, handleClose, registerRollCall, unregisterRollCall]);
+
+  const backgroundColor = allSafe
+    ? successAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: ['#1C1C1E', '#064E3B'],
+      })
+    : flashAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: ['#1C1C1E', '#2C2C2E'],
+      });
+
+  if (!emergency.isActive) {  const handleCancelEvent = useCallback(async () => {
+    if (eventId) {
+      try {
+        await updateEvent({
+          id: eventId,
+          status: 'cancelled',
+          resolved_at: new Date().toISOString(),
+        });
+        await addTimelineEntry({
+          eventId,
+          action: 'Event cancelled — started by accident',
+        });
+      } catch (err) {
+        console.error('[EmergencyProtocol] Error cancelling:', err);
+      }
+    }
+    handleClose();
+    router.back();
+  }, [eventId, updateEvent, addTimelineEntry, handleClose, router]);
+
+  // ── Register active roll call with AI assistant context ──
+
+  // Must be AFTER markEmployeeSafe is defined (avoids TDZ error)
+
+  useEffect(() => {
+
+    if (emergency.isActive && emergency.employees.length > 0) {
+
+      registerRollCall(
+
+        emergency.employees.map(e => ({
+
+          id: e.employee.id,
+
+          firstName: e.employee.firstName,
+
+          lastName: e.employee.lastName,
+
+          department: e.employee.department,
+
+          position: e.employee.position,
+
+          status: e.status,
+
+        })),
+
+        markEmployeeSafe,
+
+        isDrill,
+
+        emergencyType,
+
+        {
+
+          initiateEmergency,
+
+          handleEndProtocol,
+
+          handleCancelEvent,
+
+          handleSaveDetails,
+
+          handleViewLog,
+
+          handleClose,
+
+          setLocationDetails,
+
+          setDescription,
+
+          setSeverity,
+
+          setEmergencyServicesCalled,
+
+        },
+
+      );
+
+    }
+
+    return () => {
+
+      if (!emergency.isActive) unregisterRollCall();
+
+    };
+
+  }, [emergency.isActive, emergency.employees, markEmployeeSafe, isDrill, emergencyType,
+
+      initiateEmergency, handleEndProtocol, handleCancelEvent, handleSaveDetails,
+
+      handleViewLog, handleClose, registerRollCall, unregisterRollCall]);
 
   const backgroundColor = allSafe
     ? successAnim.interpolate({
