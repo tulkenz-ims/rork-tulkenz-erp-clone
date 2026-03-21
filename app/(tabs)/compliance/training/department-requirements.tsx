@@ -893,21 +893,3 @@ const styles = StyleSheet.create({
   modalSaveDisabled: { opacity: 0.4 },
   modalSaveText: { fontSize: 14, color: HUD_BG, fontWeight: '700' },
 });
-```
-
----
-
-That's the full Training module — all files done. Here's the complete deploy checklist:
-```
-✓ Migration SQL (Supabase — already run)
-✓ hooks/useTraining.ts
-✓ app/(tabs)/compliance/training/index.tsx
-✓ app/(tabs)/compliance/training/template-library.tsx
-✓ app/(tabs)/compliance/training/template-builder.tsx
-✓ app/(tabs)/compliance/training/session-tracker.tsx
-✓ app/(tabs)/compliance/training/certifications.tsx
-✓ app/(tabs)/compliance/training/department-requirements.tsx
-✓ api/cron/training-due.js
-✓ vercel.json
-✓ app/(tabs)/compliance/index.tsx
-✓ app/(tabs)/compliance/_layout.tsx
