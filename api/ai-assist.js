@@ -13,8 +13,50 @@ try {
 
 const SYSTEM_PROMPT = `You are the TulKenz OPS AI Assistant for NextLN, a food manufacturing facility (Chike brand). You help operators, technicians, supervisors, and managers execute tasks through the TulKenz OPS platform using tools.
 
+## LANGUAGE
+You are fully bilingual — English and Spanish. 
+- ALWAYS detect the language of the user's message and respond in that same language.
+- If they write in Spanish → respond entirely in Spanish.
+- If they write in English → respond in English.
+- If context.language is set, honor it. But if the user's actual message is in a different language, match the message language — it overrides the setting.
+- Tool field names, enum values, and table names always stay in English regardless of response language.
+- Short confirmations: "Done" → "Listo", "Opening..." → "Abriendo...", "Got it" → "Entendido"
+- Never mix languages in a single response sentence.
+
 ## HOW YOU WORK
 You have tools for every action in the app. When a user asks you to do something, pick the right tool and fill in ALL parameters from what they said. If a required field is missing, use ask_clarification. For optional fields not mentioned, use "N/A".
+
+## WHO YOU ARE TALKING TO
+You know the current user's name, role, department, and what screen they are on from the context block at the end of each message. Use this to be more helpful:
+- A maintenance tech asking about equipment → they probably want a work order or part lookup
+- A sanitation supervisor on the hygiene log screen → they are logging room status
+- A QA manager → they care about NCRs, CAPAs, and inspections
+- A production operator → they care about room status, pre-ops, and runs
+- Always address them by name when starting a conversation or confirming an action.
+
+## WHAT YOU KNOW ABOUT THIS FACILITY
+Organization ID: 74ce281d-5630-422d-8326-e5d36cfc1d5e
+Facility: NextLN — Chike brand food manufacturing
+Rooms: PR1 (Protein Room 1), PR2 (Protein Room 2), PA1 (Packaging Area 1), PA2 (Packaging Area 2), BB1 (Bulk Blending 1), SB1 (Small Batch 1)
+Departments: 1001=Maintenance, 1002=Sanitation, 1003=Production, 1004=Quality, 1005=Safety
+Time zone: Central Standard Time (CST)
+
+## MODULES IN THIS APP
+- CMMS: Work orders, PM schedules, equipment, LOTO, downtime tracking
+- Inventory: Parts/materials, purchase requests, receiving, cycle counts
+- Procurement: Purchase orders, vendors, approvals, blanket POs
+- Production: Room status, production runs, pre-op inspections, line checks
+- Quality: NCRs, CAPAs, deviations, customer complaints, metal detector logs, temp logs
+- Safety: Safety observations, incidents, OSHA 300, emergency protocols, fire drills
+- Sanitation: Room hygiene logs, chemical inventory, SDS library, master sanitation schedule
+- Compliance: Audits, food safety plan, FSMA, SQF documentation, form builder
+- HR: Employees, time clock (Check In/Check Out), time adjustments, break violations
+- Training: Training templates (OJT 4-step), sessions, certifications, department requirements — SQF 2.9.1
+- Documents: SOPs, OPLs, policies, work instructions, specifications, SDS
+- Task Feed: Central audit trail — all events, incidents, reports, and actions post here
+- Planner: Projects and tasks
+- Recycling: Cardboard, metal, paper, batteries, bulbs, toner
+- Finance: Budgets, cost reports, labor costs
 
 ## CRITICAL ROUTING RULES
 
@@ -40,6 +82,7 @@ USE query_records when someone says ANYTHING like:
   "list downtime events this week", "show inspection records", "find open NCRs",
   "list employees on attendance points", "show recycling records", "pull up safety observations",
   "show me item records in inventory", "list all PM schedules", "show purchase requests"
+- SPANISH EQUIVALENTS: "Muéstrame...", "Lista...", "Encuentra...", "¿Qué...hay?", "Dame..." → same rules apply
 
 TABLE MAP — match user intent to exact table name:
 MAINTENANCE: work_orders, pm_schedules, pm_work_orders, equipment, equipment_sensors, equipment_downtime_log, downtime_events, loto_procedures, loto_events, maintenance_activity_log, maintenance_alerts, work_order_chemicals, maintenance_metrics, maintenance_budgets
@@ -51,6 +94,7 @@ SAFETY: safety_observations, accident_investigations, first_aid_log, osha_300_lo
 SANITATION: room_hygiene_log, daily_room_hygiene_reports, chemical_inventory, haz_waste, sds_records, sds_index, sds_training_records
 PRODUCTION: production_runs, production_events, production_hold_log, room_status, room_equipment, sensor_readings, downtime_events
 COMPLIANCE/AUDITS: audit_sessions, capa_records, deviation_records, documents, document_versions, document_categories, document_acknowledgments, custom_form_templates, custom_form_submissions, form_signatures, inspection_templates, inspection_records
+TRAINING: training_templates, training_sessions, training_session_steps, training_session_attempts, training_certifications, department_required_training
 EMPLOYEES/HR: employees, positions, departments, shifts, attendance_records, time_entries, time_punches, time_off_requests, overtime_requests, overtime_alerts, performance_reviews, employee_goals, feedback_360, succession_plans, talent_profiles, drug_alcohol_tests, job_requisitions, candidates, interviews, job_offers, position_assignments, position_history, medical_restrictions, return_to_work_forms, attendance_points_balance, attendance_points_history, break_violations, shift_swaps
 RECYCLING: recycling_cardboard, recycling_metal, recycling_paper, recycling_batteries, recycling_bulbs, recycling_toner, recycling_files
 PLANNER: planner_projects, planner_tasks, planner_task_comments, planner_task_time_entries, planner_task_templates
@@ -69,19 +113,29 @@ FILTER GUIDANCE — common filter columns:
 USE mark_employee_safe for a single name: "[name] checked in", "[name] is safe", "[name] is here", "mark [name]", "[name] for the drill", "[name] accounted for".
   - Extract ONLY the name. "John Smith checked in for the drill" → employee_name: "John Smith"
   - Works by name, first name only, last name only, or partial match.
+  - SPANISH: "[nombre] está seguro", "[nombre] llegó", "marca a [nombre]" → same tool
 
 USE mark_multiple_employees_safe when several names come at once:
   - "John, Maria, and Carlos are all here" → employee_names: ["John", "Maria", "Carlos"]
   - "East side is clear — Smith, Garcia, Thompson" → employee_names: ["Smith", "Garcia", "Thompson"]
-  - "Employees 2, 9, and 6 checked in" → treat as names if you know them, or pass as-is
+  - SPANISH: "Juan, María y Carlos están aquí" → employee_names: ["Juan", "María", "Carlos"]
 
-USE get_roll_call_status when asked: "who's missing", "how many left", "roll call status", "who hasn't checked in", "who do we still need".
-USE initiate_roll_call when already on the screen: "start it", "begin", "initiate", "go", "hit start", "start the drill".
-USE end_emergency_protocol: "end protocol", "end the emergency", "wrap it up", "end drill", "close it out".
-USE cancel_emergency_event: "cancel", "false alarm", "started by accident", "cancel the drill", "cancel the event".
-USE save_emergency_details: "save details", "save and close", "close the event", or when they provide severity/location/notes.
-USE view_emergency_log: "view the log", "show event log", "see history".
-USE close_emergency_screen: "close", "go back", "dismiss", "skip details".
+USE get_roll_call_status when asked: "who's missing", "how many left", "roll call status", "who hasn't checked in", "who do we still need"
+  - SPANISH: "¿quién falta?", "¿cuántos faltan?", "estado del pase de lista"
+
+USE initiate_roll_call when already on the screen: "start it", "begin", "initiate", "go", "hit start", "start the drill"
+  - SPANISH: "empieza", "inicia", "comienza", "dale"
+
+USE end_emergency_protocol: "end protocol", "end the emergency", "wrap it up", "end drill", "close it out"
+  - SPANISH: "termina el protocolo", "fin del simulacro", "ciérralo"
+
+USE cancel_emergency_event: "cancel", "false alarm", "started by accident", "cancel the drill", "cancel the event"
+  - SPANISH: "cancela", "falsa alarma", "fue un error"
+
+USE save_emergency_details: "save details", "save and close", "close the event", or when they provide severity/location/notes
+USE view_emergency_log: "view the log", "show event log", "see history"
+  - SPANISH: "ver el registro", "historial de eventos"
+USE close_emergency_screen: "close", "go back", "dismiss", "skip details"
 
 USE start_emergency_protocol when someone says:
 - "fire", "there's a fire", "fire emergency" → emergency_type: "fire"
@@ -95,73 +149,77 @@ USE start_emergency_protocol when someone says:
 - "flood", "flooding" → emergency_type: "flood"
 - "earthquake" → emergency_type: "earthquake"
 - "structural collapse", "building collapse" → emergency_type: "structural_collapse"
-- Add is_drill: true if they say "drill", "practice", "test" — otherwise default false
-- CRITICAL: For any real emergency, set is_drill: false. This goes directly to roll call.
-
+- SPANISH: "incendio", "hay fuego" → fire | "tornado" → tornado | "tirador activo" → active_shooter
+  "derrame químico" → chemical_spill | "fuga de gas" → gas_leak | "amenaza de bomba" → bomb_threat
+  "emergencia médica", "alguien está herido" → medical_emergency | "corte de luz" → power_outage
+  "inundación" → flood | "terremoto" → earthquake
+- Add is_drill: true if they say "drill", "practice", "test", "simulacro", "práctica" — otherwise default false
+- CRITICAL: For any real emergency, set is_drill: false.
 
 NAVIGATE SCREEN NAMES (say the exact screen name):
-- "dashboard", "home" → dashboard
-- "task feed", "tasks", "feed", "posts" → task_feed
-- "maintenance", "cmms" → cmms
-- "work orders", "WO", "repairs" → work_orders
-- "equipment", "machines", "assets" → equipment
-- "PM schedule", "preventive maintenance", "PMs" → pm_schedule
-- "item records", "materials", "parts", "inventory", "items", "stock" → parts_inventory
-- "inventory hub" → inventory
-- "purchase orders", "POs" → purchase_orders
-- "purchase requests", "requisitions", "PR" → purchase_requests
-- "vendors", "supplier list" → vendors
-- "procurement" → procurement
-- "production runs", "runs", "batches" → production_runs
-- "room status", "room dashboard", "rooms", "line status", "PR1","PR2","PA1","PA2","BB1","SB1" → room_status
-- "quality", "QA", "QC" → quality
-- "NCR", "non-conformance" → ncr
-- "CAPA", "corrective action" → capa
-- "safety", "EHS" → safety
-- "incidents", "incident report" → incident_report
-- "emergency", "emergency hub" → emergency
+- "dashboard", "home", "inicio" → dashboard
+- "task feed", "tasks", "feed", "posts", "tareas" → task_feed
+- "maintenance", "cmms", "mantenimiento" → cmms
+- "work orders", "WO", "repairs", "órdenes de trabajo" → work_orders
+- "equipment", "machines", "assets", "equipos" → equipment
+- "PM schedule", "preventive maintenance", "PMs", "mantenimiento preventivo" → pm_schedule
+- "item records", "materials", "parts", "inventory", "items", "stock", "inventario", "partes" → parts_inventory
+- "inventory hub", "centro de inventario" → inventory
+- "purchase orders", "POs", "órdenes de compra" → purchase_orders
+- "purchase requests", "requisitions", "PR", "solicitudes de compra" → purchase_requests
+- "vendors", "supplier list", "proveedores" → vendors
+- "procurement", "compras" → procurement
+- "production runs", "runs", "batches", "corridas", "producción" → production_runs
+- "room status", "room dashboard", "rooms", "line status", "cuartos", "líneas" → room_status
+- "quality", "QA", "QC", "calidad" → quality
+- "NCR", "non-conformance", "no conformidad" → ncr
+- "CAPA", "corrective action", "acción correctiva" → capa
+- "safety", "EHS", "seguridad" → safety
+- "incidents", "incident report", "incidentes" → incident_report
+- "emergency", "emergency hub", "emergencia" → emergency
 - "LOTO", "lockout tagout" → loto
-- "sanitation", "cleaning", "hygiene" → sanitation
-- "chemicals", "chemical hub" → chemical_hub
-- "SDS", "safety data sheets" → sds_library
-- "documents", "document library" → documents
-- "compliance", "regulatory" → compliance
-- "audits", "audit sessions" → audits
-- "employees", "staff", "directory" → employee_directory
-- "time clock", "check in", "check out" → time_clock
-- "attendance" → attendance
-- "HR", "human resources" → hr
-- "finance", "accounting" → finance
-- "payroll" → payroll
-- "reports", "analytics" → reports
-- "planner", "projects" → planner
-- "recycling", "waste" → recycling
-- "portal", "announcements", "bulletin" → portal
-- "settings", "config", "admin" → settings
-- "approvals" → approvals
+- "sanitation", "cleaning", "hygiene", "sanitización", "limpieza" → sanitation
+- "chemicals", "chemical hub", "químicos" → chemical_hub
+- "SDS", "safety data sheets", "hojas de seguridad" → sds_library
+- "documents", "document library", "documentos" → documents
+- "compliance", "regulatory", "cumplimiento" → compliance
+- "training", "entrenamiento", "capacitación" → training
+- "audits", "audit sessions", "auditorías" → audits
+- "employees", "staff", "directory", "empleados", "directorio" → employee_directory
+- "time clock", "check in", "check out", "reloj", "entrada", "salida" → time_clock
+- "attendance", "asistencia" → attendance
+- "HR", "human resources", "recursos humanos" → hr
+- "finance", "accounting", "finanzas" → finance
+- "payroll", "nómina" → payroll
+- "reports", "analytics", "reportes", "informes" → reports
+- "planner", "projects", "proyectos" → planner
+- "recycling", "waste", "reciclaje" → recycling
+- "portal", "announcements", "bulletin", "anuncios" → portal
+- "settings", "config", "admin", "configuración" → settings
+- "approvals", "aprobaciones" → approvals
 
 ## PARTS LOOKUP RULES
 When someone asks about a part or needs to find a part:
 1. ALWAYS call lookup_part first — this searches the Item Records (master materials/parts inventory).
 2. If lookup_part returns results → show them (in stock location, quantity, price, vendor part #).
-3. If lookup_part returns zero results → immediately use web_search to find:
-   - Manufacturer specs and part numbers
-   - Where to buy / typical vendors
-   - Pricing estimates
-   - Compatible alternatives
-   Tell the user the part wasn't found in Item Records, then give them what you found online.
+3. If lookup_part returns zero results → immediately use web_search to find manufacturer specs, where to buy, pricing, compatible alternatives.
+4. Tell the user the part wasn't found in Item Records, then give them what you found online.
+- SPANISH: "busca la parte", "¿tienes [parte]?", "necesito [parte]" → same lookup rules
 
 ## WEB SEARCH RULES
 Use web_search when:
-- lookup_part returned no results ("not in our inventory")
+- lookup_part returned no results
 - User explicitly asks to search online for a part, spec sheet, or manual
 - User asks about industry standards, equipment specs, or regulatory requirements
 Keep web search results concise — summarize key specs and sourcing info in 2-3 sentences.
 
 ## BEHAVIOR RULES
 1. ALWAYS use a tool. Never just describe what you would do.
-2. Be conversational — talk like a knowledgeable maintenance supervisor.
+2. Be conversational — talk like a knowledgeable maintenance supervisor who is also fluent in Spanish.
 3. Keep responses under 3 sentences unless detail is requested.
+4. Use the user's name when confirming actions.
+5. If you know the user's department from context, tailor your response to what matters to them.
+6. The time clock is called "Check In / Check Out" — never say "clock in" or "clock out".
 
 ## FACILITY
 Rooms: PR1, PR2, PA1, PA2, BB1, SB1
@@ -380,49 +438,26 @@ const TOOLS = [
 
   {
     name: 'query_records',
-    description: 'Search and list records from ANY module or table in the app. Use for any "show me", "list", "find", "pull up", "what are" request about data. Covers all 200+ tables including parts, work orders, equipment, employees, vendors, SDS, LOTO, CAPA, NCR, purchase orders, PM schedules, production runs, safety records, quality records, recycling, planner, attendance, and everything else.',
+    description: 'Search and list records from ANY module or table in the app. Use for any "show me", "list", "find", "pull up", "what are" request about data. Also handles Spanish equivalents: "muéstrame", "lista", "encuentra", "dame", "¿qué hay en...?". Covers all 200+ tables.',
     input_schema: {
       type: 'object',
       properties: {
         table: {
           type: 'string',
-          description: 'Exact Supabase table name. Examples: materials, work_orders, pm_schedules, employees, vendors, sds_records, loto_procedures, capa_records, ncr_records, purchase_orders, purchase_requests, production_runs, safety_observations, quality_inspections, chemical_inventory, downtime_events, parts_issues, inventory_adjustments, attendance_records, time_entries, planner_projects, recycling_cardboard, etc.',
+          description: 'Exact Supabase table name.',
         },
         filters: {
           type: 'object',
-          description: 'Exact match filters as key:value pairs. Common: {"status":"open"}, {"department":"Maintenance"}, {"location":"PA1"}, {"category":"Electrical"}, {"priority":"high"}, {"type":"preventive"}',
+          description: 'Exact match filters as key:value pairs.',
           additionalProperties: true,
         },
-        search_column: {
-          type: 'string',
-          description: 'Column for text search (ilike). Use: "name" for parts/equipment/chemicals, "title" for work orders/tasks, "first_name" or "last_name" for employees, "chemical_name" for SDS, "procedure_number" for LOTO, "equipment_name" for PM schedules.',
-        },
-        search_term: {
-          type: 'string',
-          description: 'Text to search for in search_column.',
-        },
-        order_by: {
-          type: 'string',
-          description: 'Sort column. Default: created_at. Use due_date for WOs/PMs, name for parts/equipment lists, incident_date for safety/OSHA records.',
-        },
-        order_direction: {
-          type: 'string',
-          enum: ['asc', 'desc'],
-          description: 'asc or desc. Default desc for dates, asc for name lists.',
-        },
-        date_filter_column: {
-          type: 'string',
-          description: 'Column for date filtering: created_at, due_date, incident_date, started_at, scheduled_date, next_due_date.',
-        },
-        date_range: {
-          type: 'string',
-          enum: ['today', 'this_week', 'this_month', 'this_year', 'all'],
-          description: 'Time range filter. Only set if user specified.',
-        },
-        limit: {
-          type: 'number',
-          description: 'Max records. Default 25. Use 50 for "all" or "everything" requests.',
-        },
+        search_column: { type: 'string' },
+        search_term: { type: 'string' },
+        order_by: { type: 'string' },
+        order_direction: { type: 'string', enum: ['asc', 'desc'] },
+        date_filter_column: { type: 'string' },
+        date_range: { type: 'string', enum: ['today', 'this_week', 'this_month', 'this_year', 'all'] },
+        limit: { type: 'number' },
       },
       required: ['table'],
     },
@@ -463,7 +498,7 @@ const TOOLS = [
 
   {
     name: 'lookup_part',
-    description: 'Search Item Records (the master parts/materials inventory) by name, part number, SKU, vendor part number, or manufacturer part number. This is the primary parts database — always try this first before web search. If results come back empty, use the built-in web_search tool to find the part specs, pricing, and vendor sources online.',
+    description: 'Search Item Records (the master parts/materials inventory) by name, part number, SKU, vendor part number, or manufacturer part number. Always try this first before web search.',
     input_schema: {
       type: 'object',
       properties: { query: { type: 'string' } },
@@ -544,14 +579,11 @@ const TOOLS = [
 
   {
     name: 'mark_employee_safe',
-    description: 'Mark an employee as safe/accounted for during an active emergency roll call or drill. Use when someone says "[name] is safe", "[name] checked in", "[name] is here", "[name] is accounted for", "mark [name] safe", "[name] for the drill", "[name] on the east side", etc. Works for real emergencies and drills.',
+    description: 'Mark an employee as safe/accounted for during an active emergency roll call or drill.',
     input_schema: {
       type: 'object',
       properties: {
-        employee_name: {
-          type: 'string',
-          description: 'Full or partial name of the employee. E.g. "John Smith", "John S.", "Maria". Extract just the name, not phrases like "checked in" or "is safe".',
-        },
+        employee_name: { type: 'string' },
       },
       required: ['employee_name'],
     },
@@ -559,15 +591,11 @@ const TOOLS = [
 
   {
     name: 'mark_multiple_employees_safe',
-    description: 'Mark multiple employees safe at once. Use when someone reports several names together: "John Smith, Maria Garcia, and Carlos checked in", "employees 2, 9, and 6 are here", "east side is all clear — John, Maria, Carlos".',
+    description: 'Mark multiple employees safe at once.',
     input_schema: {
       type: 'object',
       properties: {
-        employee_names: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'Array of employee names to mark safe.',
-        },
+        employee_names: { type: 'array', items: { type: 'string' } },
       },
       required: ['employee_names'],
     },
@@ -575,38 +603,38 @@ const TOOLS = [
 
   {
     name: 'get_roll_call_status',
-    description: 'Get the current roll call status — who is safe, who is still pending, total count. Use when someone asks "who is still missing", "how many checked in", "roll call status", "who do we still need", "who hasn\'t checked in".',
+    description: 'Get the current roll call status.',
     input_schema: { type: 'object', properties: {}, required: [] },
   },
 
   {
     name: 'initiate_roll_call',
-    description: 'Press the INITIATE button on the emergency protocol screen to start the roll call. Use when the user is already on the screen and says "start it", "begin", "initiate", "start the drill", "go", "hit start".',
+    description: 'Press the INITIATE button on the emergency protocol screen to start the roll call.',
     input_schema: { type: 'object', properties: {}, required: [] },
   },
 
   {
     name: 'end_emergency_protocol',
-    description: 'End the emergency protocol early and mark the event as resolved, even if not everyone is accounted for. Use when someone says "end protocol", "end the emergency", "close it out", "wrap it up", "end drill".',
+    description: 'End the emergency protocol early and mark the event as resolved.',
     input_schema: { type: 'object', properties: {}, required: [] },
   },
 
   {
     name: 'cancel_emergency_event',
-    description: 'Cancel the emergency event entirely — use when it was started by accident or is a false alarm. Use when someone says "cancel", "false alarm", "cancel the drill", "cancel the event", "started by accident".',
+    description: 'Cancel the emergency event entirely — false alarm or started by accident.',
     input_schema: { type: 'object', properties: {}, required: [] },
   },
 
   {
     name: 'save_emergency_details',
-    description: 'Save post-event details after everyone is accounted for. Can set severity, location, notes, and whether 911 was called. Use when someone says "save details", "close the event", "save and close", or provides details like "severity was high, location was Building A, 911 was called".',
+    description: 'Save post-event details after everyone is accounted for.',
     input_schema: {
       type: 'object',
       properties: {
-        severity: { type: 'string', enum: ['critical','high','medium','low'], description: 'Severity level of the event.' },
-        location: { type: 'string', description: 'Location description, e.g. "Building A, 2nd Floor".' },
-        notes: { type: 'string', description: 'Additional notes about the event.' },
-        emergency_services_called: { type: 'boolean', description: 'Whether 911 / emergency services were called.' },
+        severity: { type: 'string', enum: ['critical','high','medium','low'] },
+        location: { type: 'string' },
+        notes: { type: 'string' },
+        emergency_services_called: { type: 'boolean' },
       },
       required: [],
     },
@@ -614,31 +642,27 @@ const TOOLS = [
 
   {
     name: 'view_emergency_log',
-    description: 'Navigate to the emergency event log. Use when someone says "view the log", "show event log", "see history", "open the log".',
+    description: 'Navigate to the emergency event log.',
     input_schema: { type: 'object', properties: {}, required: [] },
   },
 
   {
     name: 'close_emergency_screen',
-    description: 'Close the emergency protocol screen without saving details. Use when someone says "close", "go back", "dismiss", "skip details".',
+    description: 'Close the emergency protocol screen without saving details.',
     input_schema: { type: 'object', properties: {}, required: [] },
   },
 
   {
     name: 'start_emergency_protocol',
-    description: 'Initiate an emergency protocol or drill. Navigates directly to the roll call screen with the correct emergency type. Use when someone says "start emergency", "fire emergency", "initiate tornado drill", "we have a gas leak", "medical emergency", "active shooter", "bomb threat", "chemical spill", etc.',
+    description: 'Initiate an emergency protocol or drill.',
     input_schema: {
       type: 'object',
       properties: {
         emergency_type: {
           type: 'string',
-          description: 'Type of emergency.',
           enum: ['fire','tornado','active_shooter','chemical_spill','gas_leak','bomb_threat','medical_emergency','earthquake','flood','power_outage','structural_collapse','other'],
         },
-        is_drill: {
-          type: 'boolean',
-          description: 'True if this is a drill, false if this is a real emergency. Default false.',
-        },
+        is_drill: { type: 'boolean' },
       },
       required: ['emergency_type'],
     },
@@ -648,13 +672,12 @@ const TOOLS = [
 
   {
     name: 'navigate',
-    description: 'Navigate to any screen in the app. Modal closes before navigating.',
+    description: 'Navigate to any screen in the app.',
     input_schema: {
       type: 'object',
       properties: {
         screen: {
           type: 'string',
-          description: 'Screen name to navigate to.',
           enum: [
             'dashboard',
             'task_feed',
@@ -666,6 +689,7 @@ const TOOLS = [
             'safety', 'safety_observations', 'incident_report', 'first_aid', 'osha_300', 'emergency', 'loto_program', 'chemical_hub',
             'sanitation', 'sanitation_chemicals', 'master_sanitation', 'daily_sanitation',
             'compliance', 'audits', 'food_safety_plan', 'recall_plan', 'compliance_calendar',
+            'training', 'training_templates', 'training_sessions', 'training_certifications',
             'documents', 'sds_library',
             'hr', 'employee_directory', 'attendance', 'time_clock', 'overtime', 'performance', 'onboarding',
             'finance', 'budgets', 'payroll',
@@ -707,23 +731,18 @@ const TOOLS = [
 
 const { createClient } = require('@supabase/supabase-js');
 
-// ── Schema injection ─────────────────────────────────────────────────────────
-
-// Extract table names mentioned in a command string
 function extractTableNames(command, tableMap) {
   if (!command) return [];
   const lower = command.toLowerCase();
   return Object.keys(tableMap).filter(t => lower.includes(t.replace(/_/g,' ')) || lower.includes(t));
 }
 
-// Build a compact schema block for the tables most relevant to this request
 async function buildSchemaBlock(command) {
   try {
     const schema = await getSchema();
     if (!schema) return '';
 
-    // Always include high-traffic tables + any mentioned in the command
-    const alwaysInclude = ['materials','work_orders','employees','equipment','pm_schedules','task_feed_posts','purchase_orders','vendors'];
+    const alwaysInclude = ['materials','work_orders','employees','equipment','pm_schedules','task_feed_posts','purchase_orders','vendors','training_sessions','training_templates','training_certifications'];
     const mentioned = extractTableNames(command || '', schema);
     const tables = [...new Set([...alwaysInclude, ...mentioned])].filter(t => schema[t]);
 
@@ -734,15 +753,13 @@ async function buildSchemaBlock(command) {
       const cols = schema[t].map(c => `${c.name}(${c.type.replace('timestamp with time zone','ts').replace('character varying','text').replace('integer','int')})`).join(', ');
       lines.push(`${t}: ${cols}`);
     }
-    lines.push('CRITICAL: Never use a column name not listed above. For filters, use exact column names and correct value types.');
+    lines.push('CRITICAL: Never use a column name not listed above.');
     return lines.join('\n');
   } catch (e) {
     console.warn('[ai-assist] buildSchemaBlock failed:', e.message);
     return '';
   }
 }
-
-// ── Memory helpers ──────────────────────────────────────────────────────────
 
 function getSupabaseAdmin() {
   const url  = process.env.EXPO_PUBLIC_SUPABASE_URL  || process.env.SUPABASE_URL;
@@ -756,7 +773,6 @@ async function loadMemory(orgId, userId) {
     const sb = getSupabaseAdmin();
     if (!sb) return { memories: [], summaries: [] };
 
-    // Fetch top memories (high confidence first, most recently seen)
     const { data: memories } = await sb
       .from('ai_assistant_memory')
       .select('category,key,value,context,times_confirmed')
@@ -766,7 +782,6 @@ async function loadMemory(orgId, userId) {
       .order('last_seen_at', { ascending: false })
       .limit(40);
 
-    // Fetch last 5 conversation summaries for this user
     const { data: summaries } = await sb
       .from('ai_conversation_summaries')
       .select('summary,topics,actions_taken,unresolved,created_at')
@@ -787,7 +802,7 @@ function buildMemoryBlock(memories, summaries) {
 
   if (summaries.length > 0) {
     lines.push('## RECENT CONVERSATION HISTORY');
-    summaries.forEach((s, i) => {
+    summaries.forEach((s) => {
       const date = new Date(s.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
       lines.push(`[${date}] ${s.summary}`);
       if (s.unresolved) lines.push(`  ↳ Unresolved: ${s.unresolved}`);
@@ -832,18 +847,19 @@ async function extractAndSaveMemory(orgId, userId, userName, conversation, sb) {
 From this conversation, extract:
 1. A 2-3 sentence SUMMARY of what happened
 2. Any FACTS to remember about this user (preferences, shortcuts they use, equipment nicknames, frequent tasks, their role patterns)
+3. Note the language used (English or Spanish)
 
 Conversation:
 ${convoText}
 
-Respond ONLY with valid JSON in this exact shape:
+Respond ONLY with valid JSON:
 {
   "summary": "...",
   "topics": ["topic1","topic2"],
   "actions_taken": ["action1"],
   "unresolved": "anything left open or null",
   "memories": [
-    { "category": "preference|part|equipment|shorthand|workflow|person", "key": "short_key", "value": "value", "context": "optional detail or null" }
+    { "category": "preference|part|equipment|shorthand|workflow|person|language", "key": "short_key", "value": "value", "context": "optional detail or null" }
   ]
 }`
       }],
@@ -853,7 +869,6 @@ Respond ONLY with valid JSON in this exact shape:
     const clean = raw.replace(/```json|```/g, '').trim();
     const parsed = JSON.parse(clean);
 
-    // Save summary
     if (parsed.summary) {
       await sb.from('ai_conversation_summaries').insert({
         organization_id: orgId,
@@ -867,7 +882,6 @@ Respond ONLY with valid JSON in this exact shape:
       });
     }
 
-    // Upsert memories
     if (parsed.memories?.length > 0) {
       for (const mem of parsed.memories) {
         if (!mem.key || !mem.value) continue;
@@ -905,6 +919,21 @@ Respond ONLY with valid JSON in this exact shape:
   }
 }
 
+// Detect language from message text
+function detectLanguage(text) {
+  if (!text) return 'en';
+  const spanishIndicators = [
+    /\b(el|la|los|las|un|una|unos|unas)\b/i,
+    /\b(es|son|está|están|hay|tiene|tienen)\b/i,
+    /\b(que|qué|cómo|dónde|cuándo|quién|cuál)\b/i,
+    /\b(muéstrame|lista|encuentra|dame|abre|crea|inicia|termina|cancela)\b/i,
+    /\b(por favor|gracias|hola|buenos|buenas|sí|no)\b/i,
+    /[áéíóúüñ¿¡]/i,
+  ];
+  const matches = spanishIndicators.filter(r => r.test(text)).length;
+  return matches >= 2 ? 'es' : 'en';
+}
+
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -922,26 +951,25 @@ module.exports = async (req, res) => {
 
     const client = new Anthropic({ apiKey });
 
-    // ── Load memory for this user ──
-    const orgId   = context?.organizationId || null;
-    const userId  = context?.userId || null;
+    const orgId    = context?.organizationId || null;
+    const userId   = context?.userId || null;
     const userName = context?.userName || 'Operator';
-    const userLanguage = context?.language || 'en';
+
+    // Auto-detect language from message — overrides context.language setting
+    const detectedLang = detectLanguage(command || '');
+    const contextLang  = context?.language || 'en';
+    const userLanguage = detectedLang === 'es' ? 'es' : contextLang;
+
     const sb = getSupabaseAdmin();
 
-    // Language instruction injected into system prompt
-    const languageBlock = userLanguage === 'es'
-      ? `LANGUAGE: The user has selected Spanish. You MUST respond entirely in Spanish for all speech/text responses. Tool calls and field names remain in English, but every word the user will hear or read must be in Spanish. Even short confirmations like "Done" should be "Listo" or "Hecho".`
-      : `LANGUAGE: Respond in English.`;
-
-    // Load memory and live schema in parallel
     const [memoryResult, schemaBlock] = await Promise.all([
       (orgId && userId) ? loadMemory(orgId, userId) : Promise.resolve({ memories: [], summaries: [] }),
       buildSchemaBlock(command),
     ]);
     const memoryBlock = buildMemoryBlock(memoryResult.memories, memoryResult.summaries);
 
-    const extras = [languageBlock, memoryBlock, schemaBlock].filter(Boolean).join('\n\n');
+    // Language block is now baked into the system prompt — no separate injection needed
+    const extras = [memoryBlock, schemaBlock].filter(Boolean).join('\n\n');
     const dynamicSystem = extras
       ? `${SYSTEM_PROMPT}\n\n${extras}`
       : SYSTEM_PROMPT;
@@ -967,7 +995,6 @@ module.exports = async (req, res) => {
 
     const photoTemplates = ['create_task_feed_post_broken_glove','create_task_feed_post_chemical_spill','create_task_feed_post_equipment_breakdown','create_task_feed_post_foreign_material','create_task_feed_post_metal_detector_reject','create_task_feed_post_pest_sighting','create_task_feed_post_temperature_deviation'];
 
-    // ── Agentic loop — handles web_search multi-turn automatically ──
     let response;
     let loopCount = 0;
     const MAX_LOOPS = 5;
@@ -982,14 +1009,11 @@ module.exports = async (req, res) => {
         messages,
       });
 
-      // If Claude is done (end_turn or called a non-web-search tool) → break
       const hasWebSearch = response.content.some(b => b.type === 'server_tool_use');
       if (!hasWebSearch || response.stop_reason === 'end_turn') break;
 
-      // Otherwise: append assistant turn + web search results, loop again
       messages.push({ role: 'assistant', content: response.content });
 
-      // Build tool_result blocks for every server_tool_use block
       const toolResults = response.content
         .filter(b => b.type === 'server_tool_use')
         .map(b => ({
@@ -998,7 +1022,7 @@ module.exports = async (req, res) => {
           content: b.output || '',
         }));
 
-      if (toolResults.length === 0) break; // safety
+      if (toolResults.length === 0) break;
       messages.push({ role: 'user', content: toolResults });
     }
 
@@ -1018,10 +1042,8 @@ module.exports = async (req, res) => {
         console.log('[ai-assist] Tool:', block.name, JSON.stringify(block.input).substring(0, 200));
       }
       if (block.type === 'text') result.speech = block.text;
-      // server_tool_use / web_search_result blocks handled in loop above
     }
 
-    // ── Bilingual speech fallbacks ──
     const es = userLanguage === 'es';
 
     if (result.tool_name === 'ask_clarification') { result.conversation_continue = true; result.speech = result.params?.question || result.speech; result.action = 'clarify'; }
@@ -1042,16 +1064,13 @@ module.exports = async (req, res) => {
       const names = (result.params?.employee_names || []).join(', ');
       result.speech = result.speech || (es ? `Marcando como seguros: ${names}.` : `Marking ${names} safe.`);
     }
-    if (result.tool_name === 'get_roll_call_status') {
-      result.action = 'get_roll_call_status';
-      result.speech = result.speech || (es ? 'Verificando el estado del pase de lista.' : 'Checking roll call status.');
-    }
+    if (result.tool_name === 'get_roll_call_status') { result.action = 'get_roll_call_status'; result.speech = result.speech || (es ? 'Verificando el estado del pase de lista.' : 'Checking roll call status.'); }
     if (result.tool_name === 'initiate_roll_call') { result.action = 'initiate_roll_call'; result.speech = result.speech || (es ? 'Iniciando el pase de lista ahora.' : 'Initiating roll call now.'); }
-    if (result.tool_name === 'end_emergency_protocol') { result.action = 'end_emergency_protocol'; result.speech = result.speech || (es ? 'Protocolo finalizado. Evento marcado como resuelto.' : 'Ending protocol and resolving event.'); }
+    if (result.tool_name === 'end_emergency_protocol') { result.action = 'end_emergency_protocol'; result.speech = result.speech || (es ? 'Protocolo finalizado.' : 'Ending protocol and resolving event.'); }
     if (result.tool_name === 'cancel_emergency_event') { result.action = 'cancel_emergency_event'; result.speech = result.speech || (es ? 'Evento cancelado.' : 'Cancelling event.'); }
-    if (result.tool_name === 'save_emergency_details') { result.action = 'save_emergency_details'; result.speech = result.speech || (es ? 'Detalles del evento guardados.' : 'Saving event details.'); }
+    if (result.tool_name === 'save_emergency_details') { result.action = 'save_emergency_details'; result.speech = result.speech || (es ? 'Detalles guardados.' : 'Saving event details.'); }
     if (result.tool_name === 'view_emergency_log') { result.action = 'view_emergency_log'; result.speech = result.speech || (es ? 'Abriendo el registro de eventos.' : 'Opening event log.'); }
-    if (result.tool_name === 'close_emergency_screen') { result.action = 'close_emergency_screen'; result.speech = result.speech || (es ? 'Cerrando la pantalla de protocolo.' : 'Closing protocol screen.'); }
+    if (result.tool_name === 'close_emergency_screen') { result.action = 'close_emergency_screen'; result.speech = result.speech || (es ? 'Cerrando pantalla.' : 'Closing protocol screen.'); }
     if (result.tool_name === 'start_emergency_protocol') {
       result.action = 'emergency_protocol';
       const isDrill = result.params?.is_drill === true;
@@ -1059,12 +1078,10 @@ module.exports = async (req, res) => {
       const labelEN = type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
       const labelES = type.replace(/_/g, ' ');
       result.speech = result.speech || (es
-        ? (isDrill ? `Iniciando simulacro de ${labelES}. Dirigiéndose al pase de lista.` : `⚠️ Iniciando protocolo de emergencia: ${labelES}. Comenzando pase de lista.`)
+        ? (isDrill ? `Iniciando simulacro de ${labelES}.` : `⚠️ Protocolo de emergencia: ${labelES}. Iniciando pase de lista.`)
         : (isDrill ? `Starting ${labelEN} drill. Navigating to roll call now.` : `⚠️ Initiating ${labelEN} emergency protocol. Roll call starting immediately.`));
     }
 
-    // ── Fire-and-forget memory extraction ──
-    // Runs after response is sent — doesn't block the user
     if (orgId && userId && sb && conversation && conversation.length >= 4) {
       const fullConvo = [...(conversation || []),
         { role: 'user', content: command || '' },
