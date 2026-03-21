@@ -30,10 +30,12 @@ import {
   Leaf,
   Factory,
   BookOpen,
+  GraduationCap,
 } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '@/contexts/ThemeContext';
 import * as Haptics from 'expo-haptics';
+import { useTrainingComplianceStats } from '@/hooks/useTraining';
 
 interface FormItem {
   id: string;
@@ -304,6 +306,8 @@ export default function ComplianceScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
 
+  const { data: trainingStats } = useTrainingComplianceStats();
+
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     setTimeout(() => setRefreshing(false), 1000);
@@ -334,6 +338,10 @@ export default function ComplianceScreen() {
     { label: 'Open Findings', value: '7', icon: AlertCircle, color: '#EF4444' },
   ];
 
+  const trainingAlerts =
+    (trainingStats?.overdueSessions ?? 0) +
+    (trainingStats?.expiringCertifications ?? 0);
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['left', 'right']}>
       <ScrollView
@@ -357,8 +365,8 @@ export default function ComplianceScreen() {
           {stats.map((stat, index) => {
             const IconComponent = stat.icon;
             return (
-              <View 
-                key={index} 
+              <View
+                key={index}
                 style={[styles.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
               >
                 <View style={[styles.statIcon, { backgroundColor: stat.color + '15' }]}>
@@ -371,11 +379,84 @@ export default function ComplianceScreen() {
           })}
         </View>
 
+        {/* ── TRAINING & COMPLIANCE FEATURED CARD ── */}
+        <Pressable
+          style={({ pressed }) => [
+            styles.trainingCard,
+            { opacity: pressed ? 0.9 : 1 },
+          ]}
+          onPress={() => handleFormPress('/compliance/training')}
+        >
+          <View style={styles.trainingCardLeft}>
+            <View style={styles.trainingIconWrap}>
+              <GraduationCap size={26} color="#00d4ff" />
+            </View>
+            <View style={styles.trainingCardBody}>
+              <View style={styles.trainingCardTitleRow}>
+                <Text style={styles.trainingCardTitle}>Training & Compliance</Text>
+                {trainingAlerts > 0 && (
+                  <View style={styles.trainingAlertBadge}>
+                    <Text style={styles.trainingAlertBadgeText}>{trainingAlerts}</Text>
+                  </View>
+                )}
+              </View>
+              <Text style={styles.trainingCardSub}>
+                SQF 2.9.1 — OJT templates, sessions, certifications & retraining
+              </Text>
+              <View style={styles.trainingKpiRow}>
+                <View style={styles.trainingKpi}>
+                  <Text style={[styles.trainingKpiValue, { color: '#00d4ff' }]}>
+                    {trainingStats?.activeSessions ?? 0}
+                  </Text>
+                  <Text style={styles.trainingKpiLabel}>Active</Text>
+                </View>
+                <View style={styles.trainingKpiDivider} />
+                <View style={styles.trainingKpi}>
+                  <Text style={[styles.trainingKpiValue, { color: '#00ff88' }]}>
+                    {trainingStats?.activeCertifications ?? 0}
+                  </Text>
+                  <Text style={styles.trainingKpiLabel}>Certs</Text>
+                </View>
+                <View style={styles.trainingKpiDivider} />
+                <View style={styles.trainingKpi}>
+                  <Text style={[
+                    styles.trainingKpiValue,
+                    {
+                      color: (trainingStats?.overdueSessions ?? 0) > 0
+                        ? '#ff4444'
+                        : '#64748b'
+                    }
+                  ]}>
+                    {trainingStats?.overdueSessions ?? 0}
+                  </Text>
+                  <Text style={styles.trainingKpiLabel}>Overdue</Text>
+                </View>
+                <View style={styles.trainingKpiDivider} />
+                <View style={styles.trainingKpi}>
+                  <Text style={[
+                    styles.trainingKpiValue,
+                    {
+                      color: (trainingStats?.expiringCertifications ?? 0) > 0
+                        ? '#ffcc00'
+                        : '#64748b'
+                    }
+                  ]}>
+                    {trainingStats?.expiringCertifications ?? 0}
+                  </Text>
+                  <Text style={styles.trainingKpiLabel}>Expiring</Text>
+                </View>
+              </View>
+            </View>
+          </View>
+          <ChevronRight size={20} color="#00d4ff" />
+        </Pressable>
+
+        {/* Master Policy + Auditor Portal */}
         <Pressable
           style={({ pressed }) => [
             styles.masterPolicyCard,
-            { 
-              backgroundColor: colors.surface, 
+            {
+              backgroundColor: colors.surface,
               borderColor: MASTER_POLICY_LINK.color + '40',
               opacity: pressed ? 0.9 : 1,
             },
@@ -395,8 +476,8 @@ export default function ComplianceScreen() {
         <Pressable
           style={({ pressed }) => [
             styles.masterPolicyCard,
-            { 
-              backgroundColor: colors.surface, 
+            {
+              backgroundColor: colors.surface,
               borderColor: AUDITOR_PORTAL_LINK.color + '40',
               opacity: pressed ? 0.9 : 1,
             },
@@ -418,14 +499,14 @@ export default function ComplianceScreen() {
         {COMPLIANCE_FORM_CATEGORIES.map((category) => {
           const IconComponent = category.icon;
           const isExpanded = expandedCategories.has(category.id);
-          
+
           return (
             <View key={category.id} style={styles.categoryContainer}>
               <Pressable
                 style={({ pressed }) => [
                   styles.categoryHeader,
-                  { 
-                    backgroundColor: colors.surface, 
+                  {
+                    backgroundColor: colors.surface,
                     borderColor: colors.border,
                     opacity: pressed ? 0.9 : 1,
                   },
@@ -449,7 +530,7 @@ export default function ComplianceScreen() {
                   <ChevronDown size={20} color={colors.textSecondary} />
                 )}
               </Pressable>
-              
+
               {isExpanded && (
                 <View style={[styles.formsContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                   {category.forms.map((form, index) => (
@@ -479,15 +560,9 @@ export default function ComplianceScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  content: {
-    padding: 16,
-  },
+  container: { flex: 1 },
+  scrollView: { flex: 1 },
+  content: { padding: 16 },
   headerCard: {
     borderRadius: 16,
     padding: 24,
@@ -503,21 +578,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center' as const,
     marginBottom: 16,
   },
-  title: {
-    fontSize: 24,
-    fontWeight: '700' as const,
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 14,
-    textAlign: 'center' as const,
-    lineHeight: 20,
-  },
+  title: { fontSize: 24, fontWeight: '700' as const, marginBottom: 8 },
+  subtitle: { fontSize: 14, textAlign: 'center' as const, lineHeight: 20 },
   statsGrid: {
     flexDirection: 'row' as const,
     flexWrap: 'wrap' as const,
     gap: 10,
-    marginBottom: 24,
+    marginBottom: 16,
   },
   statCard: {
     width: '48%',
@@ -534,23 +601,99 @@ const styles = StyleSheet.create({
     justifyContent: 'center' as const,
     marginBottom: 8,
   },
-  statValue: {
-    fontSize: 22,
+  statValue: { fontSize: 22, fontWeight: '700' as const, marginBottom: 2 },
+  statLabel: { fontSize: 11, fontWeight: '500' as const },
+
+  // Training card — HUD styled to stand out from the rest
+  trainingCard: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    backgroundColor: '#0d1117',
+    borderWidth: 1.5,
+    borderColor: '#00d4ff44',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 12,
+    gap: 12,
+  },
+  trainingCardLeft: {
+    flex: 1,
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+    gap: 12,
+  },
+  trainingIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: '#00d4ff22',
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  trainingCardBody: { flex: 1 },
+  trainingCardTitleRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 8,
+    marginBottom: 3,
+  },
+  trainingCardTitle: {
+    fontSize: 15,
     fontWeight: '700' as const,
-    marginBottom: 2,
+    color: '#ffffff',
   },
-  statLabel: {
+  trainingAlertBadge: {
+    backgroundColor: '#ff4444',
+    borderRadius: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    minWidth: 18,
+    alignItems: 'center' as const,
+  },
+  trainingAlertBadgeText: {
+    fontSize: 10,
+    fontWeight: '700' as const,
+    color: '#ffffff',
+  },
+  trainingCardSub: {
     fontSize: 11,
-    fontWeight: '500' as const,
+    color: '#64748b',
+    marginBottom: 10,
+    lineHeight: 15,
   },
+  trainingKpiRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 0,
+  },
+  trainingKpi: {
+    alignItems: 'center' as const,
+    flex: 1,
+  },
+  trainingKpiValue: {
+    fontSize: 16,
+    fontWeight: '800' as const,
+  },
+  trainingKpiLabel: {
+    fontSize: 9,
+    color: '#64748b',
+    fontWeight: '600' as const,
+    letterSpacing: 0.5,
+    marginTop: 1,
+  },
+  trainingKpiDivider: {
+    width: 1,
+    height: 24,
+    backgroundColor: '#1a2332',
+  },
+
   sectionTitle: {
     fontSize: 18,
     fontWeight: '600' as const,
     marginBottom: 12,
+    marginTop: 4,
   },
-  categoryContainer: {
-    marginBottom: 12,
-  },
+  categoryContainer: { marginBottom: 12 },
   categoryHeader: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
@@ -572,17 +715,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center' as const,
     marginRight: 12,
   },
-  categoryTitleContainer: {
-    flex: 1,
-  },
-  categoryTitle: {
-    fontSize: 15,
-    fontWeight: '600' as const,
-    marginBottom: 2,
-  },
-  categoryCount: {
-    fontSize: 12,
-  },
+  categoryTitleContainer: { flex: 1 },
+  categoryTitle: { fontSize: 15, fontWeight: '600' as const, marginBottom: 2 },
+  categoryCount: { fontSize: 12 },
   formsContainer: {
     marginTop: 4,
     borderRadius: 12,
@@ -596,20 +731,15 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 16,
   },
-  formTitle: {
-    fontSize: 14,
-    fontWeight: '500' as const,
-  },
-  bottomPadding: {
-    height: 32,
-  },
+  formTitle: { fontSize: 14, fontWeight: '500' as const },
+  bottomPadding: { height: 32 },
   masterPolicyCard: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     padding: 16,
     borderRadius: 12,
     borderWidth: 1.5,
-    marginBottom: 20,
+    marginBottom: 12,
     gap: 14,
   },
   masterPolicyIcon: {
@@ -619,16 +749,7 @@ const styles = StyleSheet.create({
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
   },
-  masterPolicyContent: {
-    flex: 1,
-  },
-  masterPolicyTitle: {
-    fontSize: 16,
-    fontWeight: '600' as const,
-    marginBottom: 4,
-  },
-  masterPolicyDescription: {
-    fontSize: 13,
-    lineHeight: 18,
-  },
+  masterPolicyContent: { flex: 1 },
+  masterPolicyTitle: { fontSize: 16, fontWeight: '600' as const, marginBottom: 4 },
+  masterPolicyDescription: { fontSize: 13, lineHeight: 18 },
 });
