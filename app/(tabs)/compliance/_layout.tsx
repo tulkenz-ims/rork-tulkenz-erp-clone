@@ -178,20 +178,4 @@ export default function ComplianceLayout() {
     </Stack>
   );
 }
-```
 
----
-
-That's everything for the Training module. Here's the full file checklist to push:
-```
-Migration (Supabase) ✓
-hooks/useTraining.ts ✓
-app/(tabs)/compliance/training/index.tsx ✓
-app/(tabs)/compliance/training/template-library.tsx ✓
-app/(tabs)/compliance/training/template-builder.tsx ✓
-app/(tabs)/compliance/training/session-tracker.tsx ✓
-app/(tabs)/compliance/training/certifications.tsx ✓
-api/cron/training-due.js ✓
-vercel.json ✓
-app/(tabs)/compliance/index.tsx ✓
-app/(tabs)/compliance/_layout.tsx ✓
