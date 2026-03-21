@@ -1133,28 +1133,46 @@ module.exports = async (req, res) => {
 
     const es = userLanguage === 'es';
 
-    // ── Code Editor tool handling ────────────────────────────────────────────
-    const codeEditorTools = ['list_screens', 'read_screen', 'edit_screen', 'deploy_change'];
-    if (result.tool_name && codeEditorTools.includes(result.tool_name)) {
-      const editorResult = await handleCodeEditorTool(
-        result.tool_name,
-        result.params || {},
-        userLanguage
-      );
-      result.action = editorResult.action || result.tool_name;
-      result.speech = editorResult.speech || result.speech;
-      result.code_editor = editorResult;
+   // ── Code Editor tool handling ────────────────────────────────────────────
+const codeEditorTools = ['list_screens', 'read_screen', 'edit_screen', 'deploy_change'];
+if (result.tool_name && codeEditorTools.includes(result.tool_name)) {
 
-      if (result.tool_name === 'edit_screen' && editorResult.pending_commit) {
-        result.pending_diff = {
-          path: editorResult.path,
-          new_content: editorResult.new_content,
-          original_sha: editorResult.original_sha,
-          diff_summary: editorResult.diff_summary,
-        };
-        result.conversation_continue = true;
-      }
+  // ── PLATFORM ADMIN GUARD ─────────────────────────────────────────────
+  const PLATFORM_ADMIN_EMAILS = [ process.env.PLATFORM_ADMIN_EMAIL || '' ];
+  const PLATFORM_ADMIN_IDS    = [ process.env.PLATFORM_ADMIN_USER_ID || '' ];
+  const requestingEmail = context?.userEmail || '';
+  const requestingId    = context?.userId    || '';
+  const isAdmin =
+    (requestingEmail && PLATFORM_ADMIN_EMAILS.includes(requestingEmail)) ||
+    (requestingId    && PLATFORM_ADMIN_IDS.includes(requestingId));
+
+  if (!isAdmin) {
+    result.action = 'info';
+    result.speech = userLanguage === 'es'
+      ? 'No tienes permiso para modificar el código de la aplicación.'
+      : 'You do not have permission to modify app code. This feature is restricted to the platform administrator.';
+    result.code_editor = { success: false, speech: result.speech };
+  } else {
+    const editorResult = await handleCodeEditorTool(
+      result.tool_name,
+      result.params || {},
+      userLanguage
+    );
+    result.action = editorResult.action || result.tool_name;
+    result.speech = editorResult.speech || result.speech;
+    result.code_editor = editorResult;
+
+    if (result.tool_name === 'edit_screen' && editorResult.pending_commit) {
+      result.pending_diff = {
+        path: editorResult.path,
+        new_content: editorResult.new_content,
+        original_sha: editorResult.original_sha,
+        diff_summary: editorResult.diff_summary,
+      };
+      result.conversation_continue = true;
     }
+  }
+}
 
     // ── Standard tool speech fallbacks ──────────────────────────────────────
     if (result.tool_name === 'ask_clarification') { result.conversation_continue = true; result.speech = result.params?.question || result.speech; result.action = 'clarify'; }
