@@ -177,6 +177,49 @@ export function useIsOnBreak(employeeId: string | undefined) {
   });
 }
 
+// ============================================
+// SHARED HELPER: auto-close a stale active entry
+// Used by both useClockIn and useClockInWithLocation
+// ============================================
+async function autoCloseStaleEntry(
+  organizationId: string,
+  employeeId: string
+): Promise<void> {
+  const { data: staleEntry, error: staleError } = await supabase
+    .from('time_entries')
+    .select('id, clock_in, break_minutes, date')
+    .eq('organization_id', organizationId)
+    .eq('employee_id', employeeId)
+    .eq('status', 'active')
+    .maybeSingle();
+
+  if (staleError) throw staleError;
+  if (!staleEntry) return; // nothing to close
+
+  // Close at 23:59:59 of the check-in date
+  const clockOut = new Date(`${staleEntry.date}T23:59:59.000Z`);
+  const clockIn = new Date(staleEntry.clock_in);
+  const rawMinutes = (clockOut.getTime() - clockIn.getTime()) / 1000 / 60;
+  const breakMins = staleEntry.break_minutes || 0;
+  const workedMinutes = Math.max(rawMinutes - breakMins, 0);
+  const totalHours = parseFloat((workedMinutes / 60).toFixed(4));
+
+  const { error: closeError } = await supabase
+    .from('time_entries')
+    .update({
+      clock_out: clockOut.toISOString(),
+      total_hours: totalHours,
+      status: 'completed',
+      notes: 'Auto-closed — new check-in started before previous check-out.',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', staleEntry.id);
+
+  if (closeError) throw closeError;
+
+  console.log(`[autoCloseStaleEntry] Closed stale entry ${staleEntry.id} for employee ${employeeId}`);
+}
+
 export function useClockIn() {
   const queryClient = useQueryClient();
   const { organizationId } = useOrganization();
@@ -191,19 +234,8 @@ export function useClockIn() {
       const today = now.toISOString().split('T')[0];
       const timestamp = now.toISOString();
 
-      const { data: existingEntry } = await supabase
-        .from('time_entries')
-        .select('*')
-        .eq('organization_id', organizationId)
-        .eq('employee_id', employeeId)
-        .eq('date', today)
-        .eq('status', 'active')
-        .maybeSingle();
-
-      if (existingEntry) {
-        console.log('[useClockIn] Already clocked in today');
-        return { punch: null, entry: existingEntry as TimeEntry };
-      }
+      // Auto-close any existing active entry (from today OR a prior date)
+      await autoCloseStaleEntry(organizationId, employeeId);
 
       const { data: punch, error: punchError } = await insertRecord('time_punches', {
         organization_id: organizationId,
@@ -1425,19 +1457,8 @@ export function useClockInWithLocation() {
       const today = now.toISOString().split('T')[0];
       const timestamp = now.toISOString();
 
-      const { data: existingEntry } = await supabase
-        .from('time_entries')
-        .select('*')
-        .eq('organization_id', organizationId)
-        .eq('employee_id', employeeId)
-        .eq('date', today)
-        .eq('status', 'active')
-        .maybeSingle();
-
-      if (existingEntry) {
-        console.log('[useClockInWithLocation] Already clocked in today');
-        return { punch: null, entry: existingEntry as TimeEntry };
-      }
+      // Auto-close any existing active entry (from today OR a prior date)
+      await autoCloseStaleEntry(organizationId, employeeId);
 
       // Build location string with all relevant info
       let locationStr: string | null = null;
@@ -2000,6 +2021,7 @@ export function useWeekTimeEntries(employeeId: string | undefined, weekStartDate
     queryFn: async () => {
       if (!organizationId || !employeeId) {
         return [];
+ридцят[];
       }
 
       const { data, error } = await supabase
