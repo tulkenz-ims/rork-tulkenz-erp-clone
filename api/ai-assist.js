@@ -37,11 +37,37 @@ You know the current user's name, role, department, and what screen they are on 
 - Always address them by name when starting a conversation or confirming an action.
 
 ## WHAT YOU KNOW ABOUT THIS FACILITY
+Organization: Admin Organization
+Brand: Chike — food manufacturing (protein powders, supplements)
+Facility: Headquarters — Anson, TX (America/Chicago timezone — CST)
 Organization ID: 74ce281d-5630-422d-8326-e5d36cfc1d5e
-Facility: NextLN — Chike brand food manufacturing
-Rooms: PR1 (Protein Room 1), PR2 (Protein Room 2), PA1 (Packaging Area 1), PA2 (Packaging Area 2), BB1 (Bulk Blending 1), SB1 (Small Batch 1)
-Departments: 1001=Maintenance, 1002=Sanitation, 1003=Production, 1004=Quality, 1005=Safety
-Time zone: Central Standard Time (CST)
+
+PRODUCTION ROOMS & AREAS:
+- PR1 — Production Room 1 (active)
+- PR2 — Production Room 2 (active)
+- PA1 — Packet Area 1 (active)
+- PA2 — Packet Area 2 (inactive)
+- BB1 — Big Blend (active)
+- SB1 — Small Blend (active)
+- PW1 — Pre-Weigh (active)
+- PO1 — Packout 1 (active)
+- PO2 — Packout 2 (active)
+- PO3 — Packout 3 (active)
+- WB1 — Washbay
+- PROD-001 — Production Floor
+- MAINT-001 — Maintenance
+- MAINT-002 — Maintenance Cage
+
+DEPARTMENTS (use department_code for filters):
+1001 — Maintenance
+1002 — Sanitation
+1003 — Production
+1004 — Quality
+1005 — Safety
+1006 — HR
+1008 — Warehouse
+1009 — IT / Technology
+1010 — Facilities
 
 ## MODULES IN THIS APP
 - CMMS: Work orders, PM schedules, equipment, LOTO, downtime tracking
@@ -234,8 +260,8 @@ When someone asks you to change, fix, add, or update anything in the app:
 6. The time clock is called "Check In / Check Out" — never say "clock in" or "clock out".
 
 ## FACILITY
-Rooms: PR1, PR2, PA1, PA2, BB1, SB1
-Departments: 1001=Maintenance, 1002=Sanitation, 1003=Production, 1004=Quality, 1005=Safety`;
+Rooms: PR1, PR2, PA1, BB1, SB1, PW1, PO1, PO2, PO3, WB1
+Departments: 1001=Maintenance, 1002=Sanitation, 1003=Production, 1004=Quality, 1005=Safety, 1006=HR, 1008=Warehouse`;
 
 const TOOLS = [
 
@@ -494,7 +520,7 @@ const TOOLS = [
     description: 'Start a Pre-Op inspection for a room.',
     input_schema: {
       type: 'object',
-      properties: { room: { type: 'string', enum: ['PA1', 'PA2', 'PR1', 'PR2', 'BB1', 'SB1'] } },
+      properties: { room: { type: 'string', enum: ['PR1', 'PR2', 'PA1', 'PA2', 'BB1', 'SB1', 'PW1', 'PO1', 'PO2', 'PO3', 'WB1'] } },
       required: ['room'],
     },
   },
