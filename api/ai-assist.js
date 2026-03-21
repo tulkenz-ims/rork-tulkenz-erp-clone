@@ -1138,13 +1138,9 @@ const codeEditorTools = ['list_screens', 'read_screen', 'edit_screen', 'deploy_c
 if (result.tool_name && codeEditorTools.includes(result.tool_name)) {
 
   // ── PLATFORM ADMIN GUARD ─────────────────────────────────────────────
-  const PLATFORM_ADMIN_EMAILS = [ process.env.PLATFORM_ADMIN_EMAIL || '' ];
-  const PLATFORM_ADMIN_IDS    = [ process.env.PLATFORM_ADMIN_USER_ID || '' ];
-  const requestingEmail = context?.userEmail || '';
-  const requestingId    = context?.userId    || '';
   const isAdmin =
-    (requestingEmail && PLATFORM_ADMIN_EMAILS.includes(requestingEmail)) ||
-    (requestingId    && PLATFORM_ADMIN_IDS.includes(requestingId));
+    context?.userRole === 'platform_admin' ||
+    (context?.userEmail && context.userEmail === process.env.PLATFORM_ADMIN_EMAIL);
 
   if (!isAdmin) {
     result.action = 'info';
