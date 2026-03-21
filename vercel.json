@@ -1,4 +1,9 @@
 {
+  "functions": {
+    "api/ai-assist.js": {
+      "maxDuration": 60
+    }
+  },
   "crons": [
     {
       "path": "/api/cron/pm-due",
