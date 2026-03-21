@@ -3,6 +3,8 @@
 // Uses Claude TOOL USE (function calling) — reliable, schema-enforced actions
 
 const Anthropic = require('@anthropic-ai/sdk').default;
+const { handleCodeEditorTool } = require('./ai-tools/code-editor');
+
 let getSchema;
 try {
   getSchema = require('./schema').getSchema;
@@ -213,6 +215,16 @@ Use web_search when:
 - User asks about industry standards, equipment specs, or regulatory requirements
 Keep web search results concise — summarize key specs and sourcing info in 2-3 sentences.
 
+## CODE EDITING RULES
+When someone asks you to change, fix, add, or update anything in the app:
+1. Call read_screen first to get the current code (unless you already read it this conversation)
+2. Call edit_screen with a precise instruction — be specific about what to add/change/remove
+3. Present the diff to the user and wait for approval
+4. Only call deploy_change after the user says "looks good", "deploy it", "yes", "sí", "publícalo"
+5. Never call deploy_change without prior edit_screen approval in the same conversation
+6. If the user says "change X first" after seeing the diff — call edit_screen again with the updated instruction before deploying
+- SPANISH: "publícalo", "despliégalo", "sí", "dale" → deploy | "cámbia X primero" → edit again first
+
 ## BEHAVIOR RULES
 1. ALWAYS use a tool. Never just describe what you would do.
 2. Be conversational — talk like a knowledgeable maintenance supervisor who is also fluent in Spanish.
@@ -227,7 +239,7 @@ Departments: 1001=Maintenance, 1002=Sanitation, 1003=Production, 1004=Quality, 1
 
 const TOOLS = [
 
-  // ── Web Search (parts fallback + general) ───
+  // ── Web Search ───────────────────────────────
   {
     type: 'web_search_20250305',
     name: 'web_search',
@@ -442,15 +454,8 @@ const TOOLS = [
     input_schema: {
       type: 'object',
       properties: {
-        table: {
-          type: 'string',
-          description: 'Exact Supabase table name.',
-        },
-        filters: {
-          type: 'object',
-          description: 'Exact match filters as key:value pairs.',
-          additionalProperties: true,
-        },
+        table: { type: 'string', description: 'Exact Supabase table name.' },
+        filters: { type: 'object', description: 'Exact match filters as key:value pairs.', additionalProperties: true },
         search_column: { type: 'string' },
         search_term: { type: 'string' },
         order_by: { type: 'string' },
@@ -498,7 +503,7 @@ const TOOLS = [
 
   {
     name: 'lookup_part',
-    description: 'Search Item Records (the master parts/materials inventory) by name, part number, SKU, vendor part number, or manufacturer part number. Always try this first before web search.',
+    description: 'Search Item Records by name, part number, SKU, vendor part number, or manufacturer part number. Always try this first before web search.',
     input_schema: {
       type: 'object',
       properties: { query: { type: 'string' } },
@@ -582,9 +587,7 @@ const TOOLS = [
     description: 'Mark an employee as safe/accounted for during an active emergency roll call or drill.',
     input_schema: {
       type: 'object',
-      properties: {
-        employee_name: { type: 'string' },
-      },
+      properties: { employee_name: { type: 'string' } },
       required: ['employee_name'],
     },
   },
@@ -594,9 +597,7 @@ const TOOLS = [
     description: 'Mark multiple employees safe at once.',
     input_schema: {
       type: 'object',
-      properties: {
-        employee_names: { type: 'array', items: { type: 'string' } },
-      },
+      properties: { employee_names: { type: 'array', items: { type: 'string' } } },
       required: ['employee_names'],
     },
   },
@@ -699,6 +700,71 @@ const TOOLS = [
         record_id: { type: 'string' },
       },
       required: ['screen'],
+    },
+  },
+
+  // ── Code Editor ──────────────────────────────
+
+  {
+    name: 'list_screens',
+    description: 'List all screens, hooks, and API files in the TulKenz OPS codebase. Use when someone asks "what screens are there", "what files exist", "show me the file map".',
+    input_schema: { type: 'object', properties: {}, required: [] },
+  },
+
+  {
+    name: 'read_screen',
+    description: 'Read the current source code of any screen, hook, or API file in the app. Use before editing so you know exactly what is there.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        screen_name: {
+          type: 'string',
+          description: 'Screen name from the map — e.g. "quality", "training_sessions", "hook_timeclock". Use this OR file_path.',
+        },
+        file_path: {
+          type: 'string',
+          description: 'Exact file path — e.g. "app/(tabs)/quality/index.tsx". Use this OR screen_name.',
+        },
+      },
+      required: [],
+    },
+  },
+
+  {
+    name: 'edit_screen',
+    description: 'Read a file and generate an edited version based on the instruction. Shows the user a diff before committing. ALWAYS use read_screen first if you have not already read the file in this conversation.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        screen_name: {
+          type: 'string',
+          description: 'Screen name from the map. Use this OR file_path.',
+        },
+        file_path: {
+          type: 'string',
+          description: 'Exact file path. Use this OR screen_name.',
+        },
+        instruction: {
+          type: 'string',
+          description: 'Clear description of what to change. Be specific.',
+        },
+      },
+      required: ['instruction'],
+    },
+  },
+
+  {
+    name: 'deploy_change',
+    description: 'Commit an approved code change to GitHub main branch. Only call this after the user has reviewed the diff from edit_screen and approved it. Triggers Vercel auto-deploy (~35 seconds).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        file_path: { type: 'string', description: 'File path being committed.' },
+        new_content: { type: 'string', description: 'The complete new file content from the edit_screen result.' },
+        original_sha: { type: 'string', description: 'The SHA from the read_screen result — required by GitHub API.' },
+        commit_message: { type: 'string', description: 'Git commit message describing the change.' },
+      },
+      required: ['file_path', 'new_content', 'original_sha'],
     },
   },
 
@@ -919,7 +985,6 @@ Respond ONLY with valid JSON:
   }
 }
 
-// Detect language from message text
 function detectLanguage(text) {
   if (!text) return 'en';
   const spanishIndicators = [
@@ -955,7 +1020,6 @@ module.exports = async (req, res) => {
     const userId   = context?.userId || null;
     const userName = context?.userName || 'Operator';
 
-    // Auto-detect language from message — overrides context.language setting
     const detectedLang = detectLanguage(command || '');
     const contextLang  = context?.language || 'en';
     const userLanguage = detectedLang === 'es' ? 'es' : contextLang;
@@ -968,11 +1032,8 @@ module.exports = async (req, res) => {
     ]);
     const memoryBlock = buildMemoryBlock(memoryResult.memories, memoryResult.summaries);
 
-    // Language block is now baked into the system prompt — no separate injection needed
     const extras = [memoryBlock, schemaBlock].filter(Boolean).join('\n\n');
-    const dynamicSystem = extras
-      ? `${SYSTEM_PROMPT}\n\n${extras}`
-      : SYSTEM_PROMPT;
+    const dynamicSystem = extras ? `${SYSTEM_PROMPT}\n\n${extras}` : SYSTEM_PROMPT;
 
     const userContent = [];
 
@@ -1046,6 +1107,30 @@ module.exports = async (req, res) => {
 
     const es = userLanguage === 'es';
 
+    // ── Code Editor tool handling ────────────────────────────────────────────
+    const codeEditorTools = ['list_screens', 'read_screen', 'edit_screen', 'deploy_change'];
+    if (result.tool_name && codeEditorTools.includes(result.tool_name)) {
+      const editorResult = await handleCodeEditorTool(
+        result.tool_name,
+        result.params || {},
+        userLanguage
+      );
+      result.action = editorResult.action || result.tool_name;
+      result.speech = editorResult.speech || result.speech;
+      result.code_editor = editorResult;
+
+      if (result.tool_name === 'edit_screen' && editorResult.pending_commit) {
+        result.pending_diff = {
+          path: editorResult.path,
+          new_content: editorResult.new_content,
+          original_sha: editorResult.original_sha,
+          diff_summary: editorResult.diff_summary,
+        };
+        result.conversation_continue = true;
+      }
+    }
+
+    // ── Standard tool speech fallbacks ──────────────────────────────────────
     if (result.tool_name === 'ask_clarification') { result.conversation_continue = true; result.speech = result.params?.question || result.speech; result.action = 'clarify'; }
     if (result.tool_name === 'general_response') { result.speech = result.params?.message || result.speech; result.action = 'info'; }
     if (result.tool_name === 'navigate') {
