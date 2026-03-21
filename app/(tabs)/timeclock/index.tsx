@@ -24,6 +24,7 @@ import {
   Search,
   RefreshCw,
   Building2,
+  MapPin,
 } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -38,7 +39,12 @@ import {
   type EmployeeClockStatus,
 } from '@/hooks/useSupabaseTimeClock';
 import BreakTypeSelectionModal from '@/components/BreakTypeSelectionModal';
+import RoomCheckInPicker from '@/components/RoomCheckInPicker';
 import { getStatusColor, getStatusLabel } from '@/constants/timeclockConstants';
+import {
+  useActiveRoomEntry,
+  useCheckOutOfRoom,
+} from '@/hooks/useRoomLaborEntries';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -65,7 +71,7 @@ const generateQRCode = (): QRCodeData => {
 export default function TimeClockScreen() {
   const { colors } = useTheme();
   const router = useRouter();
-  
+
   const [selectedEmployee, setSelectedEmployee] = useState<EmployeeClockStatus | null>(null);
   const [pinInput, setPinInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -75,7 +81,11 @@ export default function TimeClockScreen() {
   const [showPinModal, setShowPinModal] = useState(false);
   const [showActionsModal, setShowActionsModal] = useState(false);
   const [showBreakTypeModal, setShowBreakTypeModal] = useState(false);
-  
+
+  // Room check-in state
+  const [showRoomPicker, setShowRoomPicker] = useState(false);
+  const [checkedInTimeEntryId, setCheckedInTimeEntryId] = useState<string | undefined>(undefined);
+
   const pinInputRef = useRef<TextInput>(null);
   const qrIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -87,13 +97,22 @@ export default function TimeClockScreen() {
 
   const { isSubscribed } = useTimeClockRealtime();
 
-  const clockInMutation = useClockInWithLocation();
+  const clockInMutation  = useClockInWithLocation();
   const clockOutMutation = useClockOutWithLocation();
   const startBreakMutation = useStartBreak();
-  const endBreakMutation = useEndBreak();
+  const endBreakMutation   = useEndBreak();
+  const checkOutOfRoom     = useCheckOutOfRoom();
 
-  const isProcessing = clockInMutation.isPending || clockOutMutation.isPending || 
-    startBreakMutation.isPending || endBreakMutation.isPending;
+  // Active room entry for the selected employee (used to show current room in actions modal)
+  const { data: activeRoomEntry } = useActiveRoomEntry(
+    selectedEmployee?.employee_id ?? undefined
+  );
+
+  const isProcessing =
+    clockInMutation.isPending ||
+    clockOutMutation.isPending ||
+    startBreakMutation.isPending ||
+    endBreakMutation.isPending;
 
   useEffect(() => {
     if (showQRModal) {
@@ -109,18 +128,15 @@ export default function TimeClockScreen() {
         });
       }, 1000);
     }
-
     return () => {
-      if (qrIntervalRef.current) {
-        clearInterval(qrIntervalRef.current);
-      }
+      if (qrIntervalRef.current) clearInterval(qrIntervalRef.current);
     };
   }, [showQRModal]);
 
   const filteredEmployees = useMemo(() => {
     if (!searchQuery.trim()) return employees;
     const query = searchQuery.toLowerCase();
-    return employees.filter(emp => 
+    return employees.filter(emp =>
       `${emp.first_name} ${emp.last_name}`.toLowerCase().includes(query) ||
       emp.employee_code?.toLowerCase().includes(query) ||
       emp.department?.toLowerCase().includes(query)
@@ -128,7 +144,6 @@ export default function TimeClockScreen() {
   }, [employees, searchQuery]);
 
   const handleSelectEmployee = useCallback((employee: EmployeeClockStatus) => {
-    console.log('[CheckInKiosk] Selected employee:', employee.first_name, employee.last_name);
     setSelectedEmployee(employee);
     setPinInput('');
     setShowPinModal(true);
@@ -140,11 +155,8 @@ export default function TimeClockScreen() {
       Alert.alert('Invalid PIN', 'Please enter your 4-digit PIN');
       return;
     }
-    
     const expectedPin = selectedEmployee?.employee_code?.slice(-4) || '1234';
-    
     if (pinInput === expectedPin || pinInput === '1234') {
-      console.log('[CheckInKiosk] PIN verified for:', selectedEmployee?.first_name);
       setShowPinModal(false);
       setShowActionsModal(true);
     } else {
@@ -159,31 +171,55 @@ export default function TimeClockScreen() {
 
       try {
         const actionLabels = {
-          clock_in: 'Check In',
-          clock_out: 'Check Out',
+          clock_in:    'Check In',
+          clock_out:   'Check Out',
           break_start: 'Break Start',
-          break_end: 'Break End',
+          break_end:   'Break End',
         };
 
         if (action === 'clock_in') {
-          await clockInMutation.mutateAsync({
+          const result = await clockInMutation.mutateAsync({
             employeeId: selectedEmployee.employee_id,
             method: 'employee_number',
           });
+
+          // Store the new time entry ID so we can link it to room labor
+          const timeEntryId = (result as any)?.id ?? undefined;
+          setCheckedInTimeEntryId(timeEntryId);
+
+          // Close actions modal, then show room picker
+          setShowActionsModal(false);
+          setShowRoomPicker(true);
+          refetchEmployees();
+          return; // Skip the generic success alert — room picker is the next step
+
         } else if (action === 'clock_out') {
+          // Auto-exit room if the employee is currently in one
+          if (activeRoomEntry) {
+            try {
+              await checkOutOfRoom.mutateAsync({
+                employeeId: selectedEmployee.employee_id,
+                entryId: activeRoomEntry.id,
+              });
+            } catch (roomErr) {
+              console.warn('[TimeClockScreen] Could not exit room on check-out:', roomErr);
+            }
+          }
+
           await clockOutMutation.mutateAsync({
             employeeId: selectedEmployee.employee_id,
             method: 'employee_number',
           });
+
         } else if (action === 'break_start') {
           setShowBreakTypeModal(true);
           return;
+
         } else if (action === 'break_end') {
           try {
             const result = await endBreakMutation.mutateAsync({
               employeeId: selectedEmployee.employee_id,
             });
-            
             if (result.wasOvertime) {
               Alert.alert(
                 'Break Exceeded',
@@ -207,77 +243,90 @@ export default function TimeClockScreen() {
 
         Alert.alert(
           'Success',
-          `${selectedEmployee.first_name} ${selectedEmployee.last_name} - ${actionLabels[action]}`,
-          [
-            {
-              text: 'OK',
-              onPress: () => {
-                setSelectedEmployee(null);
-                setShowActionsModal(false);
-                setPinInput('');
-                refetchEmployees();
-              },
+          `${selectedEmployee.first_name} ${selectedEmployee.last_name} — ${actionLabels[action]}`,
+          [{
+            text: 'OK',
+            onPress: () => {
+              setSelectedEmployee(null);
+              setShowActionsModal(false);
+              setPinInput('');
+              setCheckedInTimeEntryId(undefined);
+              refetchEmployees();
             },
-          ]
+          }]
         );
       } catch (error) {
         console.error('[handleClockAction] Error:', error);
-        Alert.alert(
-          'Error',
-          error instanceof Error ? error.message : 'Failed to process clock action'
-        );
+        Alert.alert('Error', error instanceof Error ? error.message : 'Failed to process action');
       }
     },
-    [selectedEmployee, clockInMutation, clockOutMutation, startBreakMutation, endBreakMutation, refetchEmployees]
+    [
+      selectedEmployee,
+      clockInMutation, clockOutMutation,
+      startBreakMutation, endBreakMutation,
+      checkOutOfRoom, activeRoomEntry,
+      refetchEmployees,
+    ]
   );
 
   const handleBreakTypeSelect = useCallback(
     async (breakType: 'paid' | 'unpaid', scheduledMinutes: number) => {
       if (!selectedEmployee) return;
-
       try {
         await startBreakMutation.mutateAsync({
           employeeId: selectedEmployee.employee_id,
           breakType,
           scheduledMinutes,
         });
-
         setShowBreakTypeModal(false);
-        
         const breakTypeLabel = breakType === 'paid' ? 'Paid' : 'Unpaid';
         Alert.alert(
           'Break Started',
-          `${selectedEmployee.first_name} ${selectedEmployee.last_name} - ${breakTypeLabel} Break (${scheduledMinutes} min)`,
-          [
-            {
-              text: 'OK',
-              onPress: () => {
-                setSelectedEmployee(null);
-                setShowActionsModal(false);
-                setPinInput('');
-                refetchEmployees();
-              },
+          `${selectedEmployee.first_name} ${selectedEmployee.last_name} — ${breakTypeLabel} Break (${scheduledMinutes} min)`,
+          [{
+            text: 'OK',
+            onPress: () => {
+              setSelectedEmployee(null);
+              setShowActionsModal(false);
+              setPinInput('');
+              setCheckedInTimeEntryId(undefined);
+              refetchEmployees();
             },
-          ]
+          }]
         );
       } catch (error) {
         console.error('[handleBreakTypeSelect] Error:', error);
-        Alert.alert(
-          'Error',
-          error instanceof Error ? error.message : 'Failed to start break'
-        );
+        Alert.alert('Error', error instanceof Error ? error.message : 'Failed to start break');
       }
     },
     [selectedEmployee, startBreakMutation, refetchEmployees]
   );
 
+  const handleRoomPickerClose = useCallback(() => {
+    setShowRoomPicker(false);
+    setSelectedEmployee(null);
+    setPinInput('');
+    setCheckedInTimeEntryId(undefined);
+    refetchEmployees();
+  }, [refetchEmployees]);
+
   const handleCloseModals = useCallback(() => {
     setShowPinModal(false);
     setShowActionsModal(false);
     setShowBreakTypeModal(false);
+    setShowRoomPicker(false);
     setSelectedEmployee(null);
     setPinInput('');
+    setCheckedInTimeEntryId(undefined);
   }, []);
+
+  // ── Change Room (standalone action from actions modal) ─────
+  const handleChangeRoom = useCallback(() => {
+    setShowActionsModal(false);
+    setShowRoomPicker(true);
+  }, []);
+
+  // ── Renders ────────────────────────────────────────────────
 
   const renderQRModal = () => (
     <Modal visible={showQRModal} animationType="slide" transparent>
@@ -289,11 +338,9 @@ export default function TimeClockScreen() {
               <X size={24} color={colors.textSecondary} />
             </TouchableOpacity>
           </View>
-
           <Text style={[styles.qrSubtitle, { color: colors.textSecondary }]}>
             Employees scan this code with their phone to check in
           </Text>
-
           <View style={[styles.qrCodeBox, { backgroundColor: '#FFFFFF' }]}>
             <View style={styles.qrPattern}>
               <Text style={styles.qrCodeText}>{qrData.code}</Text>
@@ -305,11 +352,12 @@ export default function TimeClockScreen() {
                         key={col}
                         style={[
                           styles.qrCell,
-                          { 
-                            backgroundColor: (qrData.code.charCodeAt((row * 5 + col) % 8) % 2 === 0) 
-                              ? '#000000' 
-                              : '#FFFFFF' 
-                          }
+                          {
+                            backgroundColor:
+                              qrData.code.charCodeAt((row * 5 + col) % 8) % 2 === 0
+                                ? '#000000'
+                                : '#FFFFFF',
+                          },
                         ]}
                       />
                     ))}
@@ -318,14 +366,12 @@ export default function TimeClockScreen() {
               </View>
             </View>
           </View>
-
           <View style={styles.qrCountdownContainer}>
             <RefreshCw size={16} color={colors.textSecondary} />
             <Text style={[styles.qrCountdownText, { color: colors.textSecondary }]}>
               New code in {qrCountdown}s
             </Text>
           </View>
-
           <View style={[styles.qrInfoBanner, { backgroundColor: `${colors.primary}10` }]}>
             <Building2 size={18} color={colors.primary} />
             <Text style={[styles.qrInfoText, { color: colors.primary }]}>
@@ -356,7 +402,7 @@ export default function TimeClockScreen() {
         </View>
       </View>
       <View style={styles.headerActions}>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={[styles.headerActionBtn, { backgroundColor: colors.background, borderColor: colors.border }]}
           onPress={() => setShowQRModal(true)}
         >
@@ -393,12 +439,12 @@ export default function TimeClockScreen() {
           <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Loading employees...</Text>
         </View>
       ) : (
-        <ScrollView 
+        <ScrollView
           style={styles.employeeList}
-          showsVerticalScrollIndicator={true}
+          showsVerticalScrollIndicator
           contentContainerStyle={styles.employeeListContent}
         >
-          {filteredEmployees.map((employee) => (
+          {filteredEmployees.map(employee => (
             <TouchableOpacity
               key={employee.id}
               style={[styles.employeeCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
@@ -426,7 +472,7 @@ export default function TimeClockScreen() {
               <ChevronRight size={20} color={colors.textSecondary} />
             </TouchableOpacity>
           ))}
-          
+
           {filteredEmployees.length === 0 && !isLoading && (
             <View style={styles.emptyState}>
               <User size={48} color={colors.textSecondary} />
@@ -472,28 +518,24 @@ export default function TimeClockScreen() {
 
           <View style={styles.pinContainer}>
             <View style={styles.pinDots}>
-              {[0, 1, 2, 3].map((i) => (
+              {[0, 1, 2, 3].map(i => (
                 <View
                   key={i}
                   style={[
                     styles.pinDot,
-                    { 
+                    {
                       backgroundColor: pinInput.length > i ? colors.primary : 'transparent',
                       borderColor: pinInput.length > i ? colors.primary : colors.border,
-                    }
+                    },
                   ]}
                 />
               ))}
             </View>
-
             <TextInput
               ref={pinInputRef}
               style={styles.hiddenInput}
               value={pinInput}
-              onChangeText={(text) => {
-                const digits = text.replace(/\D/g, '').slice(0, 4);
-                setPinInput(digits);
-              }}
+              onChangeText={text => setPinInput(text.replace(/\D/g, '').slice(0, 4))}
               keyboardType="number-pad"
               maxLength={4}
               autoFocus={Platform.OS !== 'web'}
@@ -507,7 +549,7 @@ export default function TimeClockScreen() {
                 style={[
                   styles.numpadBtn,
                   { backgroundColor: num === null ? 'transparent' : colors.background },
-                  num !== null && { borderColor: colors.border }
+                  num !== null && { borderColor: colors.border },
                 ]}
                 disabled={num === null}
                 onPress={() => {
@@ -528,10 +570,7 @@ export default function TimeClockScreen() {
           </View>
 
           <TouchableOpacity
-            style={[
-              styles.submitPinBtn,
-              { backgroundColor: pinInput.length === 4 ? colors.primary : colors.border }
-            ]}
+            style={[styles.submitPinBtn, { backgroundColor: pinInput.length === 4 ? colors.primary : colors.border }]}
             onPress={handlePinSubmit}
             disabled={pinInput.length < 4}
           >
@@ -546,7 +585,6 @@ export default function TimeClockScreen() {
 
   const renderActionsModal = () => {
     const status = selectedEmployee?.status || 'clocked_out';
-
     return (
       <Modal visible={showActionsModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
@@ -566,13 +604,27 @@ export default function TimeClockScreen() {
               <Text style={[styles.selectedName, { color: colors.text }]}>
                 {selectedEmployee?.first_name} {selectedEmployee?.last_name}
               </Text>
-              
+
               <View style={[styles.currentStatus, { backgroundColor: `${getStatusColor(status)}15` }]}>
                 <View style={[styles.statusDotLarge, { backgroundColor: getStatusColor(status) }]} />
                 <Text style={[styles.currentStatusText, { color: getStatusColor(status) }]}>
                   {getStatusLabel(status)}
                 </Text>
               </View>
+
+              {/* Current room display */}
+              {activeRoomEntry && (
+                <TouchableOpacity
+                  style={styles.currentRoomBadge}
+                  onPress={handleChangeRoom}
+                >
+                  <MapPin size={12} color="#00e5ff" />
+                  <Text style={styles.currentRoomText}>
+                    {activeRoomEntry.location_name}
+                  </Text>
+                  <Text style={styles.currentRoomChange}>Change</Text>
+                </TouchableOpacity>
+              )}
 
               <View style={styles.hoursRow}>
                 <View style={styles.hoursItem}>
@@ -611,6 +663,18 @@ export default function TimeClockScreen() {
 
               {status === 'clocked_in' && (
                 <>
+                  {/* Change Room button when already checked in */}
+                  <TouchableOpacity
+                    style={[styles.actionBtn, styles.roomBtn]}
+                    onPress={handleChangeRoom}
+                    disabled={isProcessing}
+                  >
+                    <MapPin size={28} color="#FFFFFF" />
+                    <Text style={styles.actionBtnText}>
+                      {activeRoomEntry ? 'Change Room' : 'Select Room'}
+                    </Text>
+                  </TouchableOpacity>
+
                   <TouchableOpacity
                     style={[styles.actionBtn, styles.breakBtn]}
                     onPress={() => handleClockAction('break_start')}
@@ -625,6 +689,7 @@ export default function TimeClockScreen() {
                       </>
                     )}
                   </TouchableOpacity>
+
                   <TouchableOpacity
                     style={[styles.actionBtn, styles.clockOutBtn]}
                     onPress={() => handleClockAction('clock_out')}
@@ -676,7 +741,7 @@ export default function TimeClockScreen() {
               )}
             </View>
 
-            <TouchableOpacity 
+            <TouchableOpacity
               style={[styles.cancelBtn, { borderColor: colors.border }]}
               onPress={handleCloseModals}
             >
@@ -688,8 +753,6 @@ export default function TimeClockScreen() {
     );
   };
 
-
-
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {renderHeader()}
@@ -697,455 +760,121 @@ export default function TimeClockScreen() {
       {renderQRModal()}
       {renderPinModal()}
       {renderActionsModal()}
-      
+
       <BreakTypeSelectionModal
         visible={showBreakTypeModal}
         onClose={() => setShowBreakTypeModal(false)}
         onSelectBreak={handleBreakTypeSelect}
         isLoading={startBreakMutation.isPending}
-        employeeName={selectedEmployee ? `${selectedEmployee.first_name} ${selectedEmployee.last_name}` : undefined}
+        employeeName={
+          selectedEmployee
+            ? `${selectedEmployee.first_name} ${selectedEmployee.last_name}`
+            : undefined
+        }
       />
+
+      {/* Room picker — shown after check-in and from Change Room button */}
+      {selectedEmployee && (
+        <RoomCheckInPicker
+          visible={showRoomPicker}
+          onClose={handleRoomPickerClose}
+          employeeId={selectedEmployee.employee_id}
+          employeeName={`${selectedEmployee.first_name} ${selectedEmployee.last_name}`}
+          employeeCode={selectedEmployee.employee_code ?? undefined}
+          timeEntryId={checkedInTimeEntryId}
+        />
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-  },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '700' as const,
-  },
-  headerSubRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 2,
-  },
-  employeeCount: {
-    fontSize: 11,
-    marginLeft: 4,
-  },
-  liveIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 10,
-    gap: 4,
-  },
-  liveDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  headerActions: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  headerActionBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    gap: 5,
-  },
-  headerActionText: {
-    fontSize: 12,
-    fontWeight: '600' as const,
-  },
-  employeeListContainer: {
-    flex: 1,
-    padding: 16,
-  },
-  searchBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    gap: 10,
-    marginBottom: 20,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 16,
-  },
-  stepTitle: {
-    fontSize: 18,
-    fontWeight: '700' as const,
-    marginBottom: 16,
-  },
-  loadingContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 60,
-  },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 14,
-  },
-  employeeList: {
-    flex: 1,
-  },
-  employeeListContent: {
-    gap: 10,
-    paddingBottom: 20,
-  },
-  employeeCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 14,
-    borderRadius: 12,
-    borderWidth: 1,
-    gap: 12,
-  },
-  employeeAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  avatarText: {
-    fontSize: 16,
-    fontWeight: '600' as const,
-  },
-  employeeInfo: {
-    flex: 1,
-  },
-  employeeName: {
-    fontSize: 16,
-    fontWeight: '600' as const,
-  },
-  employeeDept: {
-    fontSize: 13,
-    marginTop: 2,
-  },
-  statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 12,
-    gap: 5,
-  },
-  statusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  statusText: {
-    fontSize: 11,
-    fontWeight: '500' as const,
-  },
-  emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 60,
-  },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: '600' as const,
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  emptyText: {
-    fontSize: 14,
-    textAlign: 'center',
-  },
-  selectedEmployeeCard: {
-    alignItems: 'center',
-    padding: 24,
-    borderRadius: 16,
-    borderWidth: 1,
-    marginBottom: 24,
-  },
-  largeAvatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  largeAvatarText: {
-    fontSize: 28,
-    fontWeight: '700' as const,
-  },
-  selectedName: {
-    fontSize: 22,
-    fontWeight: '700' as const,
-    marginBottom: 4,
-  },
-  selectedDept: {
-    fontSize: 14,
-  },
-  pinTitle: {
-    fontSize: 20,
-    fontWeight: '700' as const,
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  pinSubtitle: {
-    fontSize: 14,
-    textAlign: 'center',
-    marginBottom: 24,
-  },
-  pinContainer: {
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  pinDots: {
-    flexDirection: 'row',
-    gap: 16,
-  },
-  pinDot: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    borderWidth: 2,
-  },
-  hiddenInput: {
-    position: 'absolute',
-    opacity: 0,
-    height: 1,
-    width: 1,
-  },
-  numpad: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: 12,
-    marginBottom: 24,
-  },
-  numpadBtn: {
-    width: (SCREEN_WIDTH - 80) / 3,
-    maxWidth: 80,
-    height: 60,
-    borderRadius: 12,
-    borderWidth: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  numpadText: {
-    fontSize: 24,
-    fontWeight: '600' as const,
-  },
-  submitPinBtn: {
-    paddingVertical: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  submitPinText: {
-    fontSize: 16,
-    fontWeight: '600' as const,
-  },
-  clockActionsCard: {
-    alignItems: 'center',
-    padding: 24,
-    borderRadius: 16,
-    borderWidth: 1,
-    marginBottom: 24,
-  },
-  currentStatus: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    gap: 8,
-    marginTop: 12,
-    marginBottom: 20,
-  },
-  statusDotLarge: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
-  currentStatusText: {
-    fontSize: 15,
-    fontWeight: '600' as const,
-  },
-  hoursRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    width: '100%',
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(0,0,0,0.05)',
-  },
-  hoursItem: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  hoursValue: {
-    fontSize: 28,
-    fontWeight: '700' as const,
-  },
-  hoursLabel: {
-    fontSize: 12,
-    marginTop: 2,
-  },
-  hoursDivider: {
-    width: 1,
-    height: 40,
-  },
-  actionButtons: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 16,
-  },
-  actionBtn: {
-    flex: 1,
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 24,
-    borderRadius: 16,
-    gap: 10,
-  },
-  actionBtnText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '700' as const,
-  },
-  clockInBtn: {
-    backgroundColor: '#10B981',
-  },
-  clockOutBtn: {
-    backgroundColor: '#EF4444',
-  },
-  breakBtn: {
-    backgroundColor: '#F59E0B',
-  },
-  endBreakBtn: {
-    backgroundColor: '#3B82F6',
-  },
-  cancelBtn: {
-    paddingVertical: 14,
-    borderRadius: 12,
-    borderWidth: 1,
-    alignItems: 'center',
-  },
-  cancelBtnText: {
-    fontSize: 15,
-    fontWeight: '500' as const,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
-  },
-  qrModalContent: {
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 20,
-    paddingBottom: 40,
-    alignItems: 'center',
-  },
-  qrModalHeader: {
-    width: '100%',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  qrModalTitle: {
-    fontSize: 20,
-    fontWeight: '700' as const,
-  },
-  pinModalContent: {
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 20,
-    paddingBottom: 40,
-  },
-  pinModalHeader: {
-    width: '100%',
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    marginBottom: 8,
-  },
-  actionsModalContent: {
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 20,
-    paddingBottom: 40,
-  },
-  actionsModalHeader: {
-    width: '100%',
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    marginBottom: 8,
-  },
-  qrSubtitle: {
-    fontSize: 14,
-    textAlign: 'center',
-    marginBottom: 20,
-  },
-  qrCodeBox: {
-    padding: 20,
-    borderRadius: 16,
-    marginBottom: 16,
-  },
-  qrPattern: {
-    alignItems: 'center',
-  },
-  qrCodeText: {
-    fontSize: 32,
-    fontWeight: '800' as const,
-    letterSpacing: 4,
-    color: '#000000',
-    marginBottom: 16,
-  },
-  qrVisual: {
-    gap: 4,
-  },
-  qrRow: {
-    flexDirection: 'row',
-    gap: 4,
-  },
-  qrCell: {
-    width: 24,
-    height: 24,
-    borderRadius: 4,
-  },
-  qrCountdownContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 16,
-  },
-  qrCountdownText: {
-    fontSize: 13,
-  },
-  qrInfoBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 14,
-    borderRadius: 12,
-    gap: 12,
-  },
-  qrInfoText: {
-    flex: 1,
-    fontSize: 13,
-    lineHeight: 18,
-  },
+  container:             { flex: 1 },
+  header:                { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1 },
+  headerLeft:            { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  headerTitle:           { fontSize: 18, fontWeight: '700' as const },
+  headerSubRow:          { flexDirection: 'row', alignItems: 'center', marginTop: 2 },
+  employeeCount:         { fontSize: 11, marginLeft: 4 },
+  liveIndicator:         { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, gap: 4 },
+  liveDot:               { width: 6, height: 6, borderRadius: 3 },
+  headerActions:         { flexDirection: 'row', gap: 8 },
+  headerActionBtn:       { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, borderWidth: 1, gap: 5 },
+  headerActionText:      { fontSize: 12, fontWeight: '600' as const },
+  employeeListContainer: { flex: 1, padding: 16 },
+  searchBox:             { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 12, borderRadius: 12, borderWidth: 1, gap: 10, marginBottom: 20 },
+  searchInput:           { flex: 1, fontSize: 16 },
+  stepTitle:             { fontSize: 18, fontWeight: '700' as const, marginBottom: 16 },
+  loadingContainer:      { alignItems: 'center', justifyContent: 'center', paddingVertical: 60 },
+  loadingText:           { marginTop: 12, fontSize: 14 },
+  employeeList:          { flex: 1 },
+  employeeListContent:   { gap: 10, paddingBottom: 20 },
+  employeeCard:          { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 12, borderWidth: 1, gap: 12 },
+  employeeAvatar:        { width: 48, height: 48, borderRadius: 24, justifyContent: 'center', alignItems: 'center' },
+  avatarText:            { fontSize: 16, fontWeight: '600' as const },
+  employeeInfo:          { flex: 1 },
+  employeeName:          { fontSize: 16, fontWeight: '600' as const },
+  employeeDept:          { fontSize: 13, marginTop: 2 },
+  statusBadge:           { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12, gap: 5 },
+  statusDot:             { width: 6, height: 6, borderRadius: 3 },
+  statusText:            { fontSize: 11, fontWeight: '500' as const },
+  emptyState:            { alignItems: 'center', justifyContent: 'center', paddingVertical: 60 },
+  emptyTitle:            { fontSize: 18, fontWeight: '600' as const, marginTop: 16, marginBottom: 8 },
+  emptyText:             { fontSize: 14, textAlign: 'center' },
+  selectedEmployeeCard:  { alignItems: 'center', padding: 24, borderRadius: 16, borderWidth: 1, marginBottom: 24 },
+  largeAvatar:           { width: 80, height: 80, borderRadius: 40, justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
+  largeAvatarText:       { fontSize: 28, fontWeight: '700' as const },
+  selectedName:          { fontSize: 22, fontWeight: '700' as const, marginBottom: 4 },
+  selectedDept:          { fontSize: 14 },
+  pinTitle:              { fontSize: 20, fontWeight: '700' as const, textAlign: 'center', marginBottom: 8 },
+  pinSubtitle:           { fontSize: 14, textAlign: 'center', marginBottom: 24 },
+  pinContainer:          { alignItems: 'center', marginBottom: 24 },
+  pinDots:               { flexDirection: 'row', gap: 16 },
+  pinDot:                { width: 20, height: 20, borderRadius: 10, borderWidth: 2 },
+  hiddenInput:           { position: 'absolute', opacity: 0, height: 1, width: 1 },
+  numpad:                { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 12, marginBottom: 24 },
+  numpadBtn:             { width: (SCREEN_WIDTH - 80) / 3, maxWidth: 80, height: 60, borderRadius: 12, borderWidth: 1, justifyContent: 'center', alignItems: 'center' },
+  numpadText:            { fontSize: 24, fontWeight: '600' as const },
+  submitPinBtn:          { paddingVertical: 16, borderRadius: 12, alignItems: 'center' },
+  submitPinText:         { fontSize: 16, fontWeight: '600' as const },
+  clockActionsCard:      { alignItems: 'center', padding: 24, borderRadius: 16, borderWidth: 1, marginBottom: 24 },
+  currentStatus:         { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, gap: 8, marginTop: 12, marginBottom: 8 },
+  statusDotLarge:        { width: 10, height: 10, borderRadius: 5 },
+  currentStatusText:     { fontSize: 15, fontWeight: '600' as const },
+  currentRoomBadge:      { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 5, borderRadius: 16, backgroundColor: '#00e5ff15', borderWidth: 1, borderColor: '#00e5ff40', marginBottom: 12 },
+  currentRoomText:       { fontSize: 12, fontWeight: '600', color: '#00e5ff' },
+  currentRoomChange:     { fontSize: 11, color: '#00e5ff80', marginLeft: 4 },
+  hoursRow:              { flexDirection: 'row', alignItems: 'center', width: '100%', paddingTop: 16, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.05)' },
+  hoursItem:             { flex: 1, alignItems: 'center' },
+  hoursValue:            { fontSize: 28, fontWeight: '700' as const },
+  hoursLabel:            { fontSize: 12, marginTop: 2 },
+  hoursDivider:          { width: 1, height: 40 },
+  actionButtons:         { flexDirection: 'row', gap: 10, marginBottom: 16, flexWrap: 'wrap' },
+  actionBtn:             { flex: 1, minWidth: 80, flexDirection: 'column', alignItems: 'center', justifyContent: 'center', paddingVertical: 20, borderRadius: 16, gap: 8 },
+  actionBtnText:         { color: '#FFFFFF', fontSize: 13, fontWeight: '700' as const, textAlign: 'center' },
+  clockInBtn:            { backgroundColor: '#10B981' },
+  clockOutBtn:           { backgroundColor: '#EF4444' },
+  breakBtn:              { backgroundColor: '#F59E0B' },
+  endBreakBtn:           { backgroundColor: '#3B82F6' },
+  roomBtn:               { backgroundColor: '#007B9A' },
+  cancelBtn:             { paddingVertical: 14, borderRadius: 12, borderWidth: 1, alignItems: 'center' },
+  cancelBtnText:         { fontSize: 15, fontWeight: '500' as const },
+  modalOverlay:          { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  qrModalContent:        { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 40, alignItems: 'center' },
+  qrModalHeader:         { width: '100%', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  qrModalTitle:          { fontSize: 20, fontWeight: '700' as const },
+  pinModalContent:       { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 40 },
+  pinModalHeader:        { width: '100%', flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 8 },
+  actionsModalContent:   { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 40 },
+  actionsModalHeader:    { width: '100%', flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 8 },
+  qrSubtitle:            { fontSize: 14, textAlign: 'center', marginBottom: 20 },
+  qrCodeBox:             { padding: 20, borderRadius: 16, marginBottom: 16 },
+  qrPattern:             { alignItems: 'center' },
+  qrCodeText:            { fontSize: 32, fontWeight: '800' as const, letterSpacing: 4, color: '#000000', marginBottom: 16 },
+  qrVisual:              { gap: 4 },
+  qrRow:                 { flexDirection: 'row', gap: 4 },
+  qrCell:                { width: 24, height: 24, borderRadius: 4 },
+  qrCountdownContainer:  { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 16 },
+  qrCountdownText:       { fontSize: 13 },
+  qrInfoBanner:          { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 12, gap: 12 },
+  qrInfoText:            { flex: 1, fontSize: 13, lineHeight: 18 },
 });
