@@ -13,14 +13,23 @@ export default function ComplianceLayout() {
         contentStyle: { backgroundColor: colors.background },
       }}
     >
-      <Stack.Screen 
-        name="index" 
-        options={{ 
+      <Stack.Screen
+        name="index"
+        options={{
           title: 'Compliance',
           headerShown: true,
-        }} 
+        }}
       />
       <Stack.Screen name="masterpolicies" options={{ title: 'Master Policy Program' }} />
+
+      {/* ── TRAINING MODULE ── */}
+      <Stack.Screen name="training/index" options={{ headerShown: false }} />
+      <Stack.Screen name="training/template-library" options={{ headerShown: false }} />
+      <Stack.Screen name="training/template-builder" options={{ headerShown: false }} />
+      <Stack.Screen name="training/session-tracker" options={{ headerShown: false }} />
+      <Stack.Screen name="training/certifications" options={{ headerShown: false }} />
+      <Stack.Screen name="training/department-requirements" options={{ headerShown: false }} />
+
       {/* FDA / FSMA Regulatory */}
       <Stack.Screen name="foodsafetyplan" options={{ title: 'Food Safety Plan' }} />
       <Stack.Screen name="hazardanalysis" options={{ title: 'Hazard Analysis' }} />
@@ -32,7 +41,7 @@ export default function ComplianceLayout() {
       <Stack.Screen name="reportablefood" options={{ title: 'Reportable Food Registry' }} />
       <Stack.Screen name="fda483response" options={{ title: 'FDA 483 Response' }} />
       <Stack.Screen name="iaassessment" options={{ title: 'IA Vulnerability Assessment' }} />
-      
+
       {/* FSMA 204 / Traceability Rule */}
       <Stack.Screen name="kdelog" options={{ title: 'KDE Log' }} />
       <Stack.Screen name="cterecord" options={{ title: 'CTE Record' }} />
@@ -42,7 +51,7 @@ export default function ComplianceLayout() {
       <Stack.Screen name="transformationkde" options={{ title: 'Transformation KDE' }} />
       <Stack.Screen name="traceabilityplan" options={{ title: 'Traceability Plan' }} />
       <Stack.Screen name="fsma204assessment" options={{ title: 'FSMA 204 Assessment' }} />
-      
+
       {/* SQF / GFSI Certification */}
       <Stack.Screen name="sqfelements" options={{ title: 'SQF System Elements' }} />
       <Stack.Screen name="mgmtreviewminutes" options={{ title: 'Management Review Minutes' }} />
@@ -55,7 +64,7 @@ export default function ComplianceLayout() {
       <Stack.Screen name="carcloseout" options={{ title: 'CAR Close-Out' }} />
       <Stack.Screen name="continualimprovement" options={{ title: 'Continual Improvement' }} />
       <Stack.Screen name="auditsessions" options={{ title: 'Auditor Portal Sessions' }} />
-      
+
       {/* Environmental Compliance (EPA) */}
       <Stack.Screen name="wastewaterpermit" options={{ title: 'Wastewater Permit' }} />
       <Stack.Screen name="wastewatermonitoring" options={{ title: 'Wastewater Monitoring' }} />
@@ -67,7 +76,7 @@ export default function ComplianceLayout() {
       <Stack.Screen name="spccplan" options={{ title: 'SPCC Plan' }} />
       <Stack.Screen name="tieriireport" options={{ title: 'Tier II Report' }} />
       <Stack.Screen name="envincident" options={{ title: 'Environmental Incident' }} />
-      
+
       {/* OSHA Regulatory Compliance */}
       <Stack.Screen name="lotoprogram" options={{ title: 'LOTO Program' }} />
       <Stack.Screen name="confinedspaceprogram" options={{ title: 'Confined Space Program' }} />
@@ -79,7 +88,7 @@ export default function ComplianceLayout() {
       <Stack.Screen name="bloodborneprogram" options={{ title: 'Bloodborne Pathogen' }} />
       <Stack.Screen name="psmdocumentation" options={{ title: 'PSM Documentation' }} />
       <Stack.Screen name="annualprogramreview" options={{ title: 'Annual Program Review' }} />
-      
+
       {/* Labor / Employment Compliance */}
       <Stack.Screen name="i9verification" options={{ title: 'I-9 Verification' }} />
       <Stack.Screen name="everifydoc" options={{ title: 'E-Verify Documentation' }} />
@@ -91,7 +100,7 @@ export default function ComplianceLayout() {
       <Stack.Screen name="workerscompolicy" options={{ title: 'Workers Comp Policy' }} />
       <Stack.Screen name="handbookack" options={{ title: 'Handbook Acknowledgment' }} />
       <Stack.Screen name="antiharassmenttraining" options={{ title: 'Anti-Harassment Training' }} />
-      
+
       {/* State & Local Permits */}
       <Stack.Screen name="businesslicense" options={{ title: 'Business License' }} />
       <Stack.Screen name="manufacturinglicense" options={{ title: 'Manufacturing License' }} />
@@ -103,7 +112,7 @@ export default function ComplianceLayout() {
       <Stack.Screen name="greasetraplog" options={{ title: 'Grease Trap Log' }} />
       <Stack.Screen name="pestcontrollicense" options={{ title: 'Pest Control License' }} />
       <Stack.Screen name="zoningpermit" options={{ title: 'Zoning Permit' }} />
-      
+
       {/* Third-Party Certifications */}
       <Stack.Screen name="organiccert" options={{ title: 'Organic Certification' }} />
       <Stack.Screen name="organicaudit" options={{ title: 'Organic Audit' }} />
@@ -115,7 +124,7 @@ export default function ComplianceLayout() {
       <Stack.Screen name="customeraudits" options={{ title: 'Customer Audits' }} />
       <Stack.Screen name="certrenewaltracker" options={{ title: 'Cert Renewal Tracker' }} />
       <Stack.Screen name="logousage" options={{ title: 'Logo Usage Authorization' }} />
-      
+
       {/* Food Defense (FSMA IA) */}
       <Stack.Screen name="fooddefenseplan" options={{ title: 'Food Defense Plan' }} />
       <Stack.Screen name="vulnerabilityassessment" options={{ title: 'Vulnerability Assessment' }} />
@@ -125,7 +134,7 @@ export default function ComplianceLayout() {
       <Stack.Screen name="broadmitigation" options={{ title: 'Broad Mitigation' }} />
       <Stack.Screen name="fooddefensetraining" options={{ title: 'Food Defense Training' }} />
       <Stack.Screen name="fooddefensereanalysis" options={{ title: 'Food Defense Reanalysis' }} />
-      
+
       {/* Import / Export Compliance */}
       <Stack.Screen name="countryoforigin" options={{ title: 'Country of Origin' }} />
       <Stack.Screen name="importalert" options={{ title: 'Import Alert Monitoring' }} />
@@ -135,14 +144,14 @@ export default function ComplianceLayout() {
       <Stack.Screen name="phytosanitary" options={{ title: 'Phytosanitary Certificate' }} />
       <Stack.Screen name="exportcert" options={{ title: 'Export Certificate' }} />
       <Stack.Screen name="tariffclassification" options={{ title: 'Tariff Classification' }} />
-      
+
       {/* Weights & Measures */}
       <Stack.Screen name="weightsmeasuresinspection" options={{ title: 'Weights & Measures Inspection' }} />
       <Stack.Screen name="netcontentsverification" options={{ title: 'Net Contents Verification' }} />
       <Stack.Screen name="tareweight" options={{ title: 'Tare Weight' }} />
       <Stack.Screen name="netweightcompliance" options={{ title: 'Net Weight Compliance' }} />
       <Stack.Screen name="scalecertification" options={{ title: 'Scale Certification' }} />
-      
+
       {/* Insurance & Liability */}
       <Stack.Screen name="generalliability" options={{ title: 'General Liability' }} />
       <Stack.Screen name="productliability" options={{ title: 'Product Liability' }} />
@@ -150,7 +159,7 @@ export default function ComplianceLayout() {
       <Stack.Screen name="propertyinsurance" options={{ title: 'Property Insurance' }} />
       <Stack.Screen name="coitracker" options={{ title: 'COI Tracker' }} />
       <Stack.Screen name="insurancerenewal" options={{ title: 'Insurance Renewal' }} />
-      
+
       {/* Record Retention & Document Control */}
       <Stack.Screen name="retentionschedule" options={{ title: 'Retention Schedule' }} />
       <Stack.Screen name="destructionlog" options={{ title: 'Destruction Log' }} />
@@ -158,7 +167,7 @@ export default function ComplianceLayout() {
       <Stack.Screen name="compliancecalendar" options={{ title: 'Compliance Calendar' }} />
       <Stack.Screen name="versioncontrol" options={{ title: 'Version Control' }} />
       <Stack.Screen name="backupverification" options={{ title: 'Backup Verification' }} />
-      
+
       {/* Customer & Contract Compliance */}
       <Stack.Screen name="customerspec" options={{ title: 'Customer Specification' }} />
       <Stack.Screen name="customerconduct" options={{ title: 'Customer Code of Conduct' }} />
@@ -169,3 +178,20 @@ export default function ComplianceLayout() {
     </Stack>
   );
 }
+```
+
+---
+
+That's everything for the Training module. Here's the full file checklist to push:
+```
+Migration (Supabase) ✓
+hooks/useTraining.ts ✓
+app/(tabs)/compliance/training/index.tsx ✓
+app/(tabs)/compliance/training/template-library.tsx ✓
+app/(tabs)/compliance/training/template-builder.tsx ✓
+app/(tabs)/compliance/training/session-tracker.tsx ✓
+app/(tabs)/compliance/training/certifications.tsx ✓
+api/cron/training-due.js ✓
+vercel.json ✓
+app/(tabs)/compliance/index.tsx ✓
+app/(tabs)/compliance/_layout.tsx ✓
