@@ -11,6 +11,10 @@
     {
       "path": "/api/cron/hygiene-signoff-reminder",
       "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/cron/timeclock-cleanup",
+      "schedule": "0 8 * * *"
     }
   ],
   "rewrites": [
