@@ -2021,7 +2021,6 @@ export function useWeekTimeEntries(employeeId: string | undefined, weekStartDate
     queryFn: async () => {
       if (!organizationId || !employeeId) {
         return [];
-ридцят[];
       }
 
       const { data, error } = await supabase
