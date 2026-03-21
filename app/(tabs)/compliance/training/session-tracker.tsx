@@ -91,9 +91,7 @@ export default function SessionTrackerScreen() {
 
   // Hands-on modal
   const [handsOnModal, setHandsOnModal] = useState(false);
-  const [handsOnResults, setHandsOnResults] = useState
-    Record<string, { result: 'pass' | 'fail' | 'na'; notes: string }>
-  >({});
+  const [handsOnResults, setHandsOnResults] = useState<Record<string, { result: 'pass' | 'fail' | 'na'; notes: string }>>({});
   const [handsOnEvaluator, setHandsOnEvaluator] = useState('');
   const [handsOnNotes, setHandsOnNotes] = useState('');
   const [handsOnSubmitting, setHandsOnSubmitting] = useState(false);
