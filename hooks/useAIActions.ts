@@ -863,6 +863,12 @@ export function useAIActions() {
         return { success:true, message:`${wos.length} open work order${wos.length!==1?'s':''}. Most recent: ${wos[0].work_order_number} — ${wos[0].title}.`, data:{ results:wos, resultType:'work_orders' } };
       }
 
+      case 'list_screens':
+      case 'read_screen':
+      case 'edit_screen':
+      case 'deploy_change':
+        return { success: true, message: 'Code editor action executed.' };
+
       default:
         console.warn('[AIActions] Unknown tool:', toolName);
         return { success:false, message:`Unknown action: ${toolName}` };
