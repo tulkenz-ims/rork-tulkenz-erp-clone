@@ -3,7 +3,6 @@
 // Uses Claude TOOL USE (function calling) — reliable, schema-enforced actions
 
 const Anthropic = require('@anthropic-ai/sdk').default;
-const { handleCodeEditorTool } = require('./ai-tools/code-editor');
 
 let getSchema;
 try {
@@ -38,36 +37,13 @@ You know the current user's name, role, department, and what screen they are on 
 
 ## WHAT YOU KNOW ABOUT THIS FACILITY
 Organization: Admin Organization
-Brand: TulKenz — food manufacturing platform (client brand TBD)
 Facility: Headquarters — Anson, TX (America/Chicago — CST)
-Organization ID: 74ce281d-5630-422d-8326-e5d36cfc1d5e
 
-PRODUCTION ROOMS & AREAS:
-- PR1 — Production Room 1 (active)
-- PR2 — Production Room 2 (active)
-- PA1 — Packet Area 1 (active)
-- PA2 — Packet Area 2 (inactive)
-- BB1 — Big Blend (active)
-- SB1 — Small Blend (active)
-- PW1 — Pre-Weigh (active)
-- PO1 — Packout 1 (active)
-- PO2 — Packout 2 (active)
-- PO3 — Packout 3 (active)
-- WB1 — Washbay
-- PROD-001 — Production Floor
-- MAINT-001 — Maintenance
-- MAINT-002 — Maintenance Cage
+PRODUCTION ROOMS:
+PR1, PR2, PA1, PA2, BB1, SB1, PW1, PO1, PO2, PO3, WB1, PROD-001, MAINT-001, MAINT-002
 
-DEPARTMENTS (use department_code for filters):
-1001 — Maintenance
-1002 — Sanitation
-1003 — Production
-1004 — Quality
-1005 — Safety
-1006 — HR
-1008 — Warehouse
-1009 — IT / Technology
-1010 — Facilities
+DEPARTMENTS:
+1001=Maintenance, 1002=Sanitation, 1003=Production, 1004=Quality, 1005=Safety, 1006=HR, 1008=Warehouse, 1009=IT/Technology, 1010=Facilities
 
 ## MODULES IN THIS APP
 - CMMS: Work orders, PM schedules, equipment, LOTO, downtime tracking
@@ -79,7 +55,7 @@ DEPARTMENTS (use department_code for filters):
 - Sanitation: Room hygiene logs, chemical inventory, SDS library, master sanitation schedule
 - Compliance: Audits, food safety plan, FSMA, SQF documentation, form builder
 - HR: Employees, time clock (Check In/Check Out), time adjustments, break violations
-- Training: Training templates (OJT 4-step), sessions, certifications, department requirements — SQF 2.9.1
+- Training: Training templates (OJT 4-step), sessions, certifications, department requirements
 - Documents: SOPs, OPLs, policies, work instructions, specifications, SDS
 - Task Feed: Central audit trail — all events, incidents, reports, and actions post here
 - Planner: Projects and tasks
@@ -91,7 +67,6 @@ DEPARTMENTS (use department_code for filters):
 USE TASK FEED TEMPLATES when someone says:
 - "Report..." / "Log..." / "Found a..." / "There's a..." / "We have a..."
 - Any incident, finding, issue, complaint, or observation
-- Broken glove, foreign material, chemical spill, pest, injury, equipment problem, temp issue, metal detector hit, customer complaint
 
 USE create_work_order ONLY when someone says:
 - "Schedule maintenance on..." / "Create a work order for..." / "Need to repair..."
@@ -103,14 +78,7 @@ USE query_task_feed when someone says:
 
 USE query_records when someone says ANYTHING like:
 - "Show me...", "List...", "Find...", "Pull up...", "What are...", "Get me..." about any data
-- Browsing, searching, or filtering records in any module or submodule
-- Examples: "show me all parts for production", "list open purchase orders",
-  "find employees in maintenance", "show chemical inventory", "pull up LOTO procedures",
-  "list all vendors", "show SDS records for sanitizers", "what CAPAs are open",
-  "list downtime events this week", "show inspection records", "find open NCRs",
-  "list employees on attendance points", "show recycling records", "pull up safety observations",
-  "show me item records in inventory", "list all PM schedules", "show purchase requests"
-- SPANISH EQUIVALENTS: "Muéstrame...", "Lista...", "Encuentra...", "¿Qué...hay?", "Dame..." → same rules apply
+- SPANISH EQUIVALENTS: "Muéstrame...", "Lista...", "Encuentra...", "¿Qué...hay?", "Dame..."
 
 TABLE MAP — match user intent to exact table name:
 MAINTENANCE: work_orders, pm_schedules, pm_work_orders, equipment, equipment_sensors, equipment_downtime_log, downtime_events, loto_procedures, loto_events, maintenance_activity_log, maintenance_alerts, work_order_chemicals, maintenance_metrics, maintenance_budgets
@@ -132,126 +100,42 @@ ASSETS: assets, warranty_records, warranty_claims, locations, facilities
 EMERGENCY: emergency_events, emergency_contacts, emergency_equipment, emergency_action_plan_entries, emergency_roll_calls
 WATCH SYSTEM: ai_user_notes, ai_saved_conversations, ai_watch_list, ai_watch_logs, ai_consent_records
 
-FILTER GUIDANCE — common filter columns:
+FILTER GUIDANCE:
 - status: open, pending, closed, active, inactive, completed, in_progress
 - department / department_name / department_code
 - location / room / room_code
 - category / type / priority
-- Use filters object for exact matches
 
-USE mark_employee_safe for a single name: "[name] checked in", "[name] is safe", "[name] is here", "mark [name]", "[name] for the drill", "[name] accounted for".
-  - Extract ONLY the name. "John Smith checked in for the drill" → employee_name: "John Smith"
-  - Works by name, first name only, last name only, or partial match.
-  - SPANISH: "[nombre] está seguro", "[nombre] llegó", "marca a [nombre]" → same tool
-
-USE mark_multiple_employees_safe when several names come at once:
-  - "John, Maria, and Carlos are all here" → employee_names: ["John", "Maria", "Carlos"]
-  - "East side is clear — Smith, Garcia, Thompson" → employee_names: ["Smith", "Garcia", "Thompson"]
-  - SPANISH: "Juan, María y Carlos están aquí" → employee_names: ["Juan", "María", "Carlos"]
-
-USE get_roll_call_status when asked: "who's missing", "how many left", "roll call status", "who hasn't checked in", "who do we still need"
-  - SPANISH: "¿quién falta?", "¿cuántos faltan?", "estado del pase de lista"
-
-USE initiate_roll_call when already on the screen: "start it", "begin", "initiate", "go", "hit start", "start the drill"
-  - SPANISH: "empieza", "inicia", "comienza", "dale"
-
-USE end_emergency_protocol: "end protocol", "end the emergency", "wrap it up", "end drill", "close it out"
-  - SPANISH: "termina el protocolo", "fin del simulacro", "ciérralo"
-
-USE cancel_emergency_event: "cancel", "false alarm", "started by accident", "cancel the drill", "cancel the event"
-  - SPANISH: "cancela", "falsa alarma", "fue un error"
-
-USE save_emergency_details: "save details", "save and close", "close the event", or when they provide severity/location/notes
+USE mark_employee_safe for a single name: "[name] checked in", "[name] is safe", "[name] is here", "mark [name]"
+USE mark_multiple_employees_safe when several names come at once
+USE get_roll_call_status: "who's missing", "how many left", "roll call status"
+USE initiate_roll_call: "start it", "begin", "initiate", "go", "hit start"
+USE end_emergency_protocol: "end protocol", "end the emergency", "wrap it up", "end drill"
+USE cancel_emergency_event: "cancel", "false alarm", "started by accident"
+USE save_emergency_details: "save details", "save and close", or when they provide severity/location/notes
 USE view_emergency_log: "view the log", "show event log", "see history"
-  - SPANISH: "ver el registro", "historial de eventos"
-USE close_emergency_screen: "close", "go back", "dismiss", "skip details"
+USE close_emergency_screen: "close", "go back", "dismiss"
 
 USE start_emergency_protocol when someone says:
-- "fire", "there's a fire", "fire emergency" → emergency_type: "fire"
-- "tornado", "tornado warning", "take cover" → emergency_type: "tornado"
-- "active shooter", "shooter" → emergency_type: "active_shooter"
-- "chemical spill", "chemical leak" → emergency_type: "chemical_spill"
-- "gas leak", "smell gas" → emergency_type: "gas_leak"
-- "bomb threat", "bomb" → emergency_type: "bomb_threat"
-- "medical emergency", "someone is hurt", "person down", "heart attack" → emergency_type: "medical_emergency"
-- "power outage", "power is out", "lights out" → emergency_type: "power_outage"
-- "flood", "flooding" → emergency_type: "flood"
-- "earthquake" → emergency_type: "earthquake"
-- "structural collapse", "building collapse" → emergency_type: "structural_collapse"
-- SPANISH: "incendio", "hay fuego" → fire | "tornado" → tornado | "tirador activo" → active_shooter
+- "fire" → fire | "tornado" → tornado | "active shooter" → active_shooter
+- "chemical spill" → chemical_spill | "gas leak" → gas_leak | "bomb threat" → bomb_threat
+- "medical emergency", "person down" → medical_emergency | "power outage" → power_outage
+- "flood" → flood | "earthquake" → earthquake | "structural collapse" → structural_collapse
+- SPANISH: "incendio" → fire | "tornado" → tornado | "tirador activo" → active_shooter
   "derrame químico" → chemical_spill | "fuga de gas" → gas_leak | "amenaza de bomba" → bomb_threat
-  "emergencia médica", "alguien está herido" → medical_emergency | "corte de luz" → power_outage
-  "inundación" → flood | "terremoto" → earthquake
-- Add is_drill: true if they say "drill", "practice", "test", "simulacro", "práctica" — otherwise default false
-- CRITICAL: For any real emergency, set is_drill: false.
+  "emergencia médica" → medical_emergency | "corte de luz" → power_outage | "inundación" → flood
+- Add is_drill: true if they say "drill", "practice", "test", "simulacro" — otherwise false
 
-NAVIGATE SCREEN NAMES (say the exact screen name):
-- "dashboard", "home", "inicio" → dashboard
-- "task feed", "tasks", "feed", "posts", "tareas" → task_feed
-- "maintenance", "cmms", "mantenimiento" → cmms
-- "work orders", "WO", "repairs", "órdenes de trabajo" → work_orders
-- "equipment", "machines", "assets", "equipos" → equipment
-- "PM schedule", "preventive maintenance", "PMs", "mantenimiento preventivo" → pm_schedule
-- "item records", "materials", "parts", "inventory", "items", "stock", "inventario", "partes" → parts_inventory
-- "inventory hub", "centro de inventario" → inventory
-- "purchase orders", "POs", "órdenes de compra" → purchase_orders
-- "purchase requests", "requisitions", "PR", "solicitudes de compra" → purchase_requests
-- "vendors", "supplier list", "proveedores" → vendors
-- "procurement", "compras" → procurement
-- "production runs", "runs", "batches", "corridas", "producción" → production_runs
-- "room status", "room dashboard", "rooms", "line status", "cuartos", "líneas" → room_status
-- "quality", "QA", "QC", "calidad" → quality
-- "NCR", "non-conformance", "no conformidad" → ncr
-- "CAPA", "corrective action", "acción correctiva" → capa
-- "safety", "EHS", "seguridad" → safety
-- "incidents", "incident report", "incidentes" → incident_report
-- "emergency", "emergency hub", "emergencia" → emergency
-- "LOTO", "lockout tagout" → loto
-- "sanitation", "cleaning", "hygiene", "sanitización", "limpieza" → sanitation
-- "chemicals", "chemical hub", "químicos" → chemical_hub
-- "SDS", "safety data sheets", "hojas de seguridad" → sds_library
-- "documents", "document library", "documentos" → documents
-- "compliance", "regulatory", "cumplimiento" → compliance
-- "training", "entrenamiento", "capacitación" → training
-- "audits", "audit sessions", "auditorías" → audits
-- "employees", "staff", "directory", "empleados", "directorio" → employee_directory
-- "time clock", "check in", "check out", "reloj", "entrada", "salida" → time_clock
-- "attendance", "asistencia" → attendance
-- "HR", "human resources", "recursos humanos" → hr
-- "finance", "accounting", "finanzas" → finance
-- "payroll", "nómina" → payroll
-- "reports", "analytics", "reportes", "informes" → reports
-- "planner", "projects", "proyectos" → planner
-- "recycling", "waste", "reciclaje" → recycling
-- "portal", "announcements", "bulletin", "anuncios" → portal
-- "settings", "config", "admin", "configuración" → settings
-- "approvals", "aprobaciones" → approvals
-- "watch screen", "watch", "monitoring", "pantalla de vigilancia" → watch_screen
+NAVIGATE SCREEN NAMES:
+dashboard, task_feed, cmms, work_orders, new_work_order, equipment, pm_schedule, parts_list, downtime, loto, cmms_kpi, cmms_vendors, inventory, parts_inventory, on_hand, low_stock, cycle_count, lot_tracking, replenishment, transfers, procurement, purchase_orders, purchase_requests, vendors, receiving, po_approvals, production, production_runs, room_status, production_materials, quality, ncr, capa, deviations, complaints, metal_detector, pre_op, temp_log, safety, safety_observations, incident_report, first_aid, osha_300, emergency, loto_program, chemical_hub, sanitation, sanitation_chemicals, master_sanitation, daily_sanitation, compliance, audits, food_safety_plan, recall_plan, compliance_calendar, training, training_templates, training_sessions, training_certifications, documents, sds_library, hr, employee_directory, attendance, time_clock, overtime, performance, onboarding, finance, budgets, payroll, planner, recycling, portal, reports, settings, users, departments, approvals, watch_screen
 
 ## PARTS LOOKUP RULES
-When someone asks about a part or needs to find a part:
-1. ALWAYS call lookup_part first — this searches the Item Records (master materials/parts inventory).
-2. If lookup_part returns results → show them (in stock location, quantity, price, vendor part #).
-3. If lookup_part returns zero results → immediately use web_search to find manufacturer specs, where to buy, pricing, compatible alternatives.
-4. Tell the user the part wasn't found in Item Records, then give them what you found online.
-- SPANISH: "busca la parte", "¿tienes [parte]?", "necesito [parte]" → same lookup rules
+1. ALWAYS call lookup_part first
+2. If results found → show them
+3. If no results → use web_search for specs, pricing, alternatives
 
 ## WEB SEARCH RULES
-Use web_search when:
-- lookup_part returned no results
-- User explicitly asks to search online for a part, spec sheet, or manual
-- User asks about industry standards, equipment specs, or regulatory requirements
-Keep web search results concise — summarize key specs and sourcing info in 2-3 sentences.
-
-## CODE EDITING RULES
-When someone asks you to change, fix, add, or update anything in the app:
-1. Call read_screen first to get the current code (unless you already read it this conversation)
-2. Call edit_screen with a precise instruction — be specific about what to add/change/remove
-3. Present the diff to the user and wait for approval
-4. Only call deploy_change after the user says "looks good", "deploy it", "yes", "sí", "publícalo"
-5. Never call deploy_change without prior edit_screen approval in the same conversation
-6. If the user says "change X first" after seeing the diff — call edit_screen again with the updated instruction before deploying
-- SPANISH: "publícalo", "despliégalo", "sí", "dale" → deploy | "cámbia X primero" → edit again first
+Use when: lookup_part returned nothing, user asks for online specs/manuals, industry standards or regulatory requirements.
 
 ## BEHAVIOR RULES
 1. ALWAYS use a tool. Never just describe what you would do.
@@ -260,24 +144,13 @@ When someone asks you to change, fix, add, or update anything in the app:
 4. Use the user's name when confirming actions.
 5. If you know the user's department from context, tailor your response to what matters to them.
 6. The time clock is called "Check In / Check Out" — never say "clock in" or "clock out".
-7. NOTES & REMINDERS: When user says "remind me in X", always use set_reminder. When they say "save a note" or "remember this", use save_note. When they say "save this conversation", use save_conversation.
-   - "remind me in 30 minutes to call Oscar" → set_reminder, content="Call Oscar", reminder_in_minutes=30
-   - "remind me in an hour to check the filler" → set_reminder, reminder_in_minutes=60
-   - "save a note — the conveyor belt is making a noise" → save_note
-   - "save this conversation" → save_conversation
-   - SPANISH: "recuérdame en X", "ponme un recordatorio" → set_reminder | "guarda una nota" → save_note | "guarda esta conversación" → save_conversation
-
-## FACILITY
-Rooms: PR1, PR2, PA1, BB1, SB1, PW1, PO1, PO2, PO3, WB1
-Departments: 1001=Maintenance, 1002=Sanitation, 1003=Production, 1004=Quality, 1005=Safety, 1006=HR, 1008=Warehouse`;
+7. NOTES & REMINDERS: When user says "remind me in X" → set_reminder. "save a note" → save_note. "save this conversation" → save_conversation.
+   - SPANISH: "recuérdame en X" → set_reminder | "guarda una nota" → save_note | "guarda esta conversación" → save_conversation`;
 
 const TOOLS = [
 
   // ── Web Search ───────────────────────────────
-  {
-    type: 'web_search_20250305',
-    name: 'web_search',
-  },
+  { type: 'web_search_20250305', name: 'web_search' },
 
   // ── Task Feed Templates ──────────────────────
 
@@ -484,7 +357,7 @@ const TOOLS = [
 
   {
     name: 'query_records',
-    description: 'Search and list records from ANY module or table in the app. Use for any "show me", "list", "find", "pull up", "what are" request about data. Also handles Spanish equivalents: "muéstrame", "lista", "encuentra", "dame", "¿qué hay en...?". Covers all 200+ tables.',
+    description: 'Search and list records from ANY module or table in the app. Use for any "show me", "list", "find", "pull up", "what are" request about data.',
     input_schema: {
       type: 'object',
       properties: {
@@ -714,8 +587,7 @@ const TOOLS = [
         screen: {
           type: 'string',
           enum: [
-            'dashboard',
-            'task_feed',
+            'dashboard', 'task_feed',
             'cmms', 'work_orders', 'new_work_order', 'equipment', 'pm_schedule', 'parts_list', 'downtime', 'loto', 'cmms_kpi', 'cmms_vendors',
             'inventory', 'parts_inventory', 'on_hand', 'low_stock', 'cycle_count', 'lot_tracking', 'replenishment', 'transfers',
             'procurement', 'purchase_orders', 'purchase_requests', 'vendors', 'receiving', 'po_approvals',
@@ -738,56 +610,6 @@ const TOOLS = [
     },
   },
 
-  // ── Code Editor ──────────────────────────────
-
-  {
-    name: 'list_screens',
-    description: 'List all screens, hooks, and API files in the TulKenz OPS codebase.',
-    input_schema: { type: 'object', properties: {}, required: [] },
-  },
-
-  {
-    name: 'read_screen',
-    description: 'Read the current source code of any screen, hook, or API file in the app.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        screen_name: { type: 'string' },
-        file_path: { type: 'string' },
-      },
-      required: [],
-    },
-  },
-
-  {
-    name: 'edit_screen',
-    description: 'Read a file and generate an edited version based on the instruction. Shows the user a diff before committing.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        screen_name: { type: 'string' },
-        file_path: { type: 'string' },
-        instruction: { type: 'string' },
-      },
-      required: ['instruction'],
-    },
-  },
-
-  {
-    name: 'deploy_change',
-    description: 'Commit an approved code change to GitHub main branch. Only call after user approves the diff.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        file_path: { type: 'string' },
-        new_content: { type: 'string' },
-        original_sha: { type: 'string' },
-        commit_message: { type: 'string' },
-      },
-      required: ['file_path', 'new_content', 'original_sha'],
-    },
-  },
-
   // ── Notes & Reminders ────────────────────────
 
   {
@@ -805,7 +627,7 @@ const TOOLS = [
 
   {
     name: 'set_reminder',
-    description: 'Set a reminder for the user at a specific time. Use when someone says "remind me in X minutes/hours", "remind me to...", "set a reminder for...", "alert me in...".',
+    description: 'Set a reminder for the user. Use when someone says "remind me in X minutes/hours", "remind me to...", "set a reminder for...", "alert me in...".',
     input_schema: {
       type: 'object',
       properties: {
@@ -820,7 +642,7 @@ const TOOLS = [
 
   {
     name: 'save_conversation',
-    description: 'Save the current conversation to the user\'s personal log. Use when someone says "save this conversation", "save this chat", "save this session", "keep this", "log this conversation".',
+    description: 'Save the current conversation to the user\'s personal log. Use when someone says "save this conversation", "save this chat", "keep this", "log this conversation".',
     input_schema: {
       type: 'object',
       properties: {
@@ -904,14 +726,14 @@ async function loadMemory(orgId, userId) {
       .or(`user_id.eq.${userId},user_id.is.null`)
       .order('times_confirmed', { ascending: false })
       .order('last_seen_at', { ascending: false })
-      .limit(40);
+      .limit(20);
     const { data: summaries } = await sb
       .from('ai_conversation_summaries')
       .select('summary,topics,actions_taken,unresolved,created_at')
       .eq('organization_id', orgId)
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
-      .limit(5);
+      .limit(3);
     return { memories: memories || [], summaries: summaries || [] };
   } catch (e) {
     console.warn('[ai-assist] loadMemory failed:', e.message);
@@ -959,12 +781,10 @@ async function extractAndSaveMemory(orgId, userId, userName, conversation, sb) {
       max_tokens: 600,
       messages: [{
         role: 'user',
-        content: `You are a memory extractor for an AI assistant used in a food manufacturing facility.
-
-From this conversation, extract:
-1. A 2-3 sentence SUMMARY of what happened
-2. Any FACTS to remember about this user
-3. Note the language used (English or Spanish)
+        content: `You are a memory extractor for an AI assistant in a food manufacturing facility. Extract from this conversation:
+1. A 2-3 sentence SUMMARY
+2. Facts to remember about this user
+3. Language used (English or Spanish)
 
 Conversation:
 ${convoText}
@@ -972,11 +792,11 @@ ${convoText}
 Respond ONLY with valid JSON:
 {
   "summary": "...",
-  "topics": ["topic1","topic2"],
+  "topics": ["topic1"],
   "actions_taken": ["action1"],
   "unresolved": "anything left open or null",
   "memories": [
-    { "category": "preference|part|equipment|shorthand|workflow|person|language", "key": "short_key", "value": "value", "context": "optional detail or null" }
+    { "category": "preference|part|equipment|shorthand|workflow|person|language", "key": "short_key", "value": "value", "context": "optional or null" }
   ]
 }`
       }],
@@ -1055,11 +875,8 @@ async function logUsage(sb, {
 }) {
   if (!sb || !orgId) return;
   try {
-    // Sonnet 4 pricing: $3/M input, $15/M output
     const inputCost  = ((usage?.input_tokens  || 0) / 1_000_000) * 3;
     const outputCost = ((usage?.output_tokens || 0) / 1_000_000) * 15;
-    const totalCost  = inputCost + outputCost;
-
     await sb.from('ai_usage_log').insert({
       organization_id:    orgId,
       employee_id:        userId    || null,
@@ -1072,7 +889,7 @@ async function logUsage(sb, {
       input_tokens:       usage?.input_tokens  || 0,
       output_tokens:      usage?.output_tokens || 0,
       total_tokens:       (usage?.input_tokens || 0) + (usage?.output_tokens || 0),
-      estimated_cost_usd: totalCost,
+      estimated_cost_usd: inputCost + outputCost,
       model:              model    || 'claude-sonnet-4-20250514',
       language:           language || 'en',
       had_image:          hadImage      || false,
@@ -1120,17 +937,10 @@ async function captureWatchedConversation(sb, orgId, watchEntry, userId, userNam
       messages: [{
         role: 'user',
         content: `Summarize this AI assistant conversation from a food manufacturing facility.
-
 Conversation:
 ${convoText}
-
 Respond ONLY with valid JSON:
-{
-  "summary": "2-3 sentence summary",
-  "topics": ["topic1"],
-  "actions_taken": ["action1"],
-  "unresolved": "anything unresolved or null"
-}`
+{"summary":"2-3 sentence summary","topics":["topic1"],"actions_taken":["action1"],"unresolved":"anything unresolved or null"}`
       }],
     });
 
@@ -1169,8 +979,6 @@ Respond ONLY with valid JSON:
         conversation_count: (current.conversation_count || 0) + 1,
       }).eq('id', watchEntry.id);
     }
-
-    console.log(`[ai-assist] Watch log captured for ${userName}`);
   } catch (e) {
     console.warn('[ai-assist] captureWatchedConversation failed:', e.message);
   }
@@ -1219,17 +1027,10 @@ async function saveConversationRecord(sb, orgId, userId, userName, deptCode, dep
       messages: [{
         role: 'user',
         content: `Summarize this AI assistant conversation briefly.
-
 Conversation:
 ${convoText}
-
 Respond ONLY with valid JSON:
-{
-  "summary": "2-3 sentence summary",
-  "topics": ["topic1"],
-  "actions_taken": ["action1"],
-  "unresolved": "anything unresolved or null"
-}`
+{"summary":"2-3 sentence summary","topics":["topic1"],"actions_taken":["action1"],"unresolved":"anything unresolved or null"}`
       }],
     });
 
@@ -1346,11 +1147,7 @@ module.exports = async (req, res) => {
 
       const toolResults = response.content
         .filter(b => b.type === 'server_tool_use')
-        .map(b => ({
-          type: 'tool_result',
-          tool_use_id: b.id,
-          content: b.output || '',
-        }));
+        .map(b => ({ type: 'tool_result', tool_use_id: b.id, content: b.output || '' }));
 
       if (toolResults.length === 0) break;
       messages.push({ role: 'user', content: toolResults });
@@ -1376,52 +1173,14 @@ module.exports = async (req, res) => {
 
     const es = userLanguage === 'es';
 
-    // ── Code Editor tool handling ─────────────────────────────────────────────
-    const codeEditorTools = ['list_screens', 'read_screen', 'edit_screen', 'deploy_change'];
-    if (result.tool_name && codeEditorTools.includes(result.tool_name)) {
-      const isAdmin =
-        context?.userRole === 'platform_admin' ||
-        (context?.userEmail && context.userEmail === process.env.PLATFORM_ADMIN_EMAIL);
-
-      if (!isAdmin) {
-        result.action = 'info';
-        result.speech = es
-          ? 'No tienes permiso para modificar el código de la aplicación.'
-          : 'You do not have permission to modify app code. This feature is restricted to the platform administrator.';
-        result.code_editor = { success: false, speech: result.speech };
-      } else {
-        const editorResult = await handleCodeEditorTool(
-          result.tool_name,
-          result.params || {},
-          userLanguage
-        );
-        result.action = editorResult.action || result.tool_name;
-        result.speech = editorResult.speech || result.speech;
-        result.code_editor = editorResult;
-
-        if (result.tool_name === 'edit_screen' && editorResult.pending_commit) {
-          result.pending_diff = {
-            path: editorResult.path,
-            new_content: editorResult.new_content,
-            original_sha: editorResult.original_sha,
-            diff_summary: editorResult.diff_summary,
-          };
-          result.conversation_continue = true;
-        }
-      }
-    }
-
     // ── Notes, Reminders & Save Conversation ─────────────────────────────────
     const noteTools = ['save_note', 'set_reminder', 'save_conversation'];
     if (result.tool_name && noteTools.includes(result.tool_name)) {
 
       if (result.tool_name === 'save_note') {
         const saved = await saveUserNote(
-          sb, orgId, userId, userName,
-          'note',
-          result.params?.content || '',
-          result.params?.title || null,
-          null
+          sb, orgId, userId, userName, 'note',
+          result.params?.content || '', result.params?.title || null, null
         );
         result.action = 'info';
         result.speech = saved
@@ -1436,11 +1195,8 @@ module.exports = async (req, res) => {
           reminderAt = new Date(Date.now() + mins * 60 * 1000).toISOString();
         }
         const saved = await saveUserNote(
-          sb, orgId, userId, userName,
-          'reminder',
-          result.params?.content || '',
-          result.params?.title || null,
-          reminderAt
+          sb, orgId, userId, userName, 'reminder',
+          result.params?.content || '', result.params?.title || null, reminderAt
         );
         const mins = result.params?.reminder_in_minutes;
         const timeLabel = mins
@@ -1459,11 +1215,8 @@ module.exports = async (req, res) => {
         setImmediate(async () => {
           await saveConversationRecord(
             sb, orgId, userId, userName,
-            context?.userDepartment || null,
-            null,
-            conversation || [],
-            result.speech || '',
-            command || ''
+            context?.userDepartment || null, null,
+            conversation || [], result.speech || '', command || ''
           );
         });
         result.action = 'info';
@@ -1510,7 +1263,7 @@ module.exports = async (req, res) => {
         : (isDrill ? `Starting ${labelEN} drill. Navigating to roll call now.` : `⚠️ Initiating ${labelEN} emergency protocol. Roll call starting immediately.`));
     }
 
-   // ── Background tasks — usage log + watch capture + memory ────────────────
+    // ── Background tasks — usage log + watch capture + memory ─────────────────
     setImmediate(async () => {
       try {
         const responseMs = Date.now() - requestStart;
@@ -1518,16 +1271,13 @@ module.exports = async (req, res) => {
           b.type === 'server_tool_use' || b.type === 'tool_result'
         );
 
-        // Log usage — free data from Anthropic response
         await logUsage(sb, {
-          orgId,
-          userId,
-          userName,
-          userRole:      context?.userRole     || null,
+          orgId, userId, userName,
+          userRole:      context?.userRole       || null,
           deptCode:      context?.userDepartment || null,
-          screen:        context?.screen        || null,
-          toolUsed:      result.tool_name       || null,
-          commandPreview: command               || null,
+          screen:        context?.screen         || null,
+          toolUsed:      result.tool_name        || null,
+          commandPreview: command                || null,
           usage:         response.usage,
           model:         'claude-sonnet-4-20250514',
           language:      userLanguage,
@@ -1538,20 +1288,17 @@ module.exports = async (req, res) => {
         });
 
         if (orgId && userId && sb) {
-          // Check watch list and capture if monitored
           const watchEntry = await checkWatchList(sb, orgId, userId);
           if (watchEntry && conversation && conversation.length >= 2) {
             const shouldCapture = conversation.length % 4 === 0 || conversation.length >= 10;
             if (shouldCapture) {
               await captureWatchedConversation(
                 sb, orgId, watchEntry, userId, userName,
-                conversation, result.speech || '', command || '',
-                false
+                conversation, result.speech || '', command || '', false
               );
             }
           }
 
-          // Regular memory extraction
           if (conversation && conversation.length >= 4) {
             const fullConvo = [
               ...(conversation || []),
