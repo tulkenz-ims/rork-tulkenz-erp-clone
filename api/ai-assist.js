@@ -130,6 +130,7 @@ COMMUNICATIONS: bulletin_posts, portal_announcements, notifications, scheduled_t
 FINANCIAL: department_budgets, maintenance_budgets, cost_reports, labor_costs, parts_costs, gl_accounts
 ASSETS: assets, warranty_records, warranty_claims, locations, facilities
 EMERGENCY: emergency_events, emergency_contacts, emergency_equipment, emergency_action_plan_entries, emergency_roll_calls
+WATCH SYSTEM: ai_user_notes, ai_saved_conversations, ai_watch_list, ai_watch_logs, ai_consent_records
 
 FILTER GUIDANCE — common filter columns:
 - status: open, pending, closed, active, inactive, completed, in_progress
@@ -225,6 +226,7 @@ NAVIGATE SCREEN NAMES (say the exact screen name):
 - "portal", "announcements", "bulletin", "anuncios" → portal
 - "settings", "config", "admin", "configuración" → settings
 - "approvals", "aprobaciones" → approvals
+- "watch screen", "watch", "monitoring", "pantalla de vigilancia" → watch_screen
 
 ## PARTS LOOKUP RULES
 When someone asks about a part or needs to find a part:
@@ -258,6 +260,12 @@ When someone asks you to change, fix, add, or update anything in the app:
 4. Use the user's name when confirming actions.
 5. If you know the user's department from context, tailor your response to what matters to them.
 6. The time clock is called "Check In / Check Out" — never say "clock in" or "clock out".
+7. NOTES & REMINDERS: When user says "remind me in X", always use set_reminder. When they say "save a note" or "remember this", use save_note. When they say "save this conversation", use save_conversation.
+   - "remind me in 30 minutes to call Oscar" → set_reminder, content="Call Oscar", reminder_in_minutes=30
+   - "remind me in an hour to check the filler" → set_reminder, reminder_in_minutes=60
+   - "save a note — the conveyor belt is making a noise" → save_note
+   - "save this conversation" → save_conversation
+   - SPANISH: "recuérdame en X", "ponme un recordatorio" → set_reminder | "guarda una nota" → save_note | "guarda esta conversación" → save_conversation
 
 ## FACILITY
 Rooms: PR1, PR2, PA1, BB1, SB1, PW1, PO1, PO2, PO3, WB1
@@ -721,6 +729,7 @@ const TOOLS = [
             'hr', 'employee_directory', 'attendance', 'time_clock', 'overtime', 'performance', 'onboarding',
             'finance', 'budgets', 'payroll',
             'planner', 'recycling', 'portal', 'reports', 'settings', 'users', 'departments', 'approvals',
+            'watch_screen',
           ],
         },
         record_id: { type: 'string' },
@@ -733,24 +742,18 @@ const TOOLS = [
 
   {
     name: 'list_screens',
-    description: 'List all screens, hooks, and API files in the TulKenz OPS codebase. Use when someone asks "what screens are there", "what files exist", "show me the file map".',
+    description: 'List all screens, hooks, and API files in the TulKenz OPS codebase.',
     input_schema: { type: 'object', properties: {}, required: [] },
   },
 
   {
     name: 'read_screen',
-    description: 'Read the current source code of any screen, hook, or API file in the app. Use before editing so you know exactly what is there.',
+    description: 'Read the current source code of any screen, hook, or API file in the app.',
     input_schema: {
       type: 'object',
       properties: {
-        screen_name: {
-          type: 'string',
-          description: 'Screen name from the map — e.g. "quality", "training_sessions", "hook_timeclock". Use this OR file_path.',
-        },
-        file_path: {
-          type: 'string',
-          description: 'Exact file path — e.g. "app/(tabs)/quality/index.tsx". Use this OR screen_name.',
-        },
+        screen_name: { type: 'string' },
+        file_path: { type: 'string' },
       },
       required: [],
     },
@@ -758,22 +761,13 @@ const TOOLS = [
 
   {
     name: 'edit_screen',
-    description: 'Read a file and generate an edited version based on the instruction. Shows the user a diff before committing. ALWAYS use read_screen first if you have not already read the file in this conversation.',
+    description: 'Read a file and generate an edited version based on the instruction. Shows the user a diff before committing.',
     input_schema: {
       type: 'object',
       properties: {
-        screen_name: {
-          type: 'string',
-          description: 'Screen name from the map. Use this OR file_path.',
-        },
-        file_path: {
-          type: 'string',
-          description: 'Exact file path. Use this OR screen_name.',
-        },
-        instruction: {
-          type: 'string',
-          description: 'Clear description of what to change. Be specific.',
-        },
+        screen_name: { type: 'string' },
+        file_path: { type: 'string' },
+        instruction: { type: 'string' },
       },
       required: ['instruction'],
     },
@@ -781,16 +775,58 @@ const TOOLS = [
 
   {
     name: 'deploy_change',
-    description: 'Commit an approved code change to GitHub main branch. Only call this after the user has reviewed the diff from edit_screen and approved it. Triggers Vercel auto-deploy (~35 seconds).',
+    description: 'Commit an approved code change to GitHub main branch. Only call after user approves the diff.',
     input_schema: {
       type: 'object',
       properties: {
-        file_path: { type: 'string', description: 'File path being committed.' },
-        new_content: { type: 'string', description: 'The complete new file content from the edit_screen result.' },
-        original_sha: { type: 'string', description: 'The SHA from the read_screen result — required by GitHub API.' },
-        commit_message: { type: 'string', description: 'Git commit message describing the change.' },
+        file_path: { type: 'string' },
+        new_content: { type: 'string' },
+        original_sha: { type: 'string' },
+        commit_message: { type: 'string' },
       },
       required: ['file_path', 'new_content', 'original_sha'],
+    },
+  },
+
+  // ── Notes & Reminders ────────────────────────
+
+  {
+    name: 'save_note',
+    description: 'Save a personal note for the user. Use when someone says "save a note", "remember this", "make a note that...", "note that...", "save this".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'Short title for the note.' },
+        content: { type: 'string', description: 'Full note content.' },
+      },
+      required: ['content'],
+    },
+  },
+
+  {
+    name: 'set_reminder',
+    description: 'Set a reminder for the user at a specific time. Use when someone says "remind me in X minutes/hours", "remind me to...", "set a reminder for...", "alert me in...".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        content: { type: 'string', description: 'What to remind the user about.' },
+        title: { type: 'string', description: 'Short reminder title.' },
+        reminder_in_minutes: { type: 'number', description: 'How many minutes from now. Convert hours to minutes.' },
+        reminder_at_time: { type: 'string', description: 'Specific ISO datetime string if user gave an exact time.' },
+      },
+      required: ['content'],
+    },
+  },
+
+  {
+    name: 'save_conversation',
+    description: 'Save the current conversation to the user\'s personal log. Use when someone says "save this conversation", "save this chat", "save this session", "keep this", "log this conversation".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        reason: { type: 'string', description: 'Optional reason the user wants to save this conversation.' },
+      },
+      required: [],
     },
   },
 
@@ -833,13 +869,10 @@ async function buildSchemaBlock(command) {
   try {
     const schema = await getSchema();
     if (!schema) return '';
-
     const alwaysInclude = ['materials','work_orders','employees','equipment','pm_schedules','task_feed_posts','purchase_orders','vendors','training_sessions','training_templates','training_certifications'];
     const mentioned = extractTableNames(command || '', schema);
     const tables = [...new Set([...alwaysInclude, ...mentioned])].filter(t => schema[t]);
-
     if (tables.length === 0) return '';
-
     const lines = ['## EXACT SUPABASE COLUMN NAMES (use ONLY these — no guessing)'];
     for (const t of tables) {
       const cols = schema[t].map(c => `${c.name}(${c.type.replace('timestamp with time zone','ts').replace('character varying','text').replace('integer','int')})`).join(', ');
@@ -854,8 +887,8 @@ async function buildSchemaBlock(command) {
 }
 
 function getSupabaseAdmin() {
-  const url  = process.env.EXPO_PUBLIC_SUPABASE_URL  || process.env.SUPABASE_URL;
-  const key  = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+  const url = process.env.EXPO_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !key) return null;
   return createClient(url, key);
 }
@@ -864,7 +897,6 @@ async function loadMemory(orgId, userId) {
   try {
     const sb = getSupabaseAdmin();
     if (!sb) return { memories: [], summaries: [] };
-
     const { data: memories } = await sb
       .from('ai_assistant_memory')
       .select('category,key,value,context,times_confirmed')
@@ -873,7 +905,6 @@ async function loadMemory(orgId, userId) {
       .order('times_confirmed', { ascending: false })
       .order('last_seen_at', { ascending: false })
       .limit(40);
-
     const { data: summaries } = await sb
       .from('ai_conversation_summaries')
       .select('summary,topics,actions_taken,unresolved,created_at')
@@ -881,7 +912,6 @@ async function loadMemory(orgId, userId) {
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
       .limit(5);
-
     return { memories: memories || [], summaries: summaries || [] };
   } catch (e) {
     console.warn('[ai-assist] loadMemory failed:', e.message);
@@ -891,7 +921,6 @@ async function loadMemory(orgId, userId) {
 
 function buildMemoryBlock(memories, summaries) {
   const lines = [];
-
   if (summaries.length > 0) {
     lines.push('## RECENT CONVERSATION HISTORY');
     summaries.forEach((s) => {
@@ -901,7 +930,6 @@ function buildMemoryBlock(memories, summaries) {
     });
     lines.push('');
   }
-
   if (memories.length > 0) {
     lines.push('## WHAT I KNOW ABOUT THIS USER');
     const byCategory = {};
@@ -914,7 +942,6 @@ function buildMemoryBlock(memories, summaries) {
     });
     lines.push('');
   }
-
   return lines.length > 0 ? lines.join('\n') : '';
 }
 
@@ -924,11 +951,9 @@ async function extractAndSaveMemory(orgId, userId, userName, conversation, sb) {
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) return;
     const client = new Anthropic({ apiKey });
-
     const convoText = conversation.map(m =>
       `${m.role.toUpperCase()}: ${typeof m.content === 'string' ? m.content : JSON.stringify(m.content)}`
     ).join('\n');
-
     const extractResp = await client.messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 600,
@@ -938,7 +963,7 @@ async function extractAndSaveMemory(orgId, userId, userName, conversation, sb) {
 
 From this conversation, extract:
 1. A 2-3 sentence SUMMARY of what happened
-2. Any FACTS to remember about this user (preferences, shortcuts they use, equipment nicknames, frequent tasks, their role patterns)
+2. Any FACTS to remember about this user
 3. Note the language used (English or Spanish)
 
 Conversation:
@@ -956,11 +981,9 @@ Respond ONLY with valid JSON:
 }`
       }],
     });
-
     const raw = extractResp.content[0]?.text || '';
     const clean = raw.replace(/```json|```/g, '').trim();
     const parsed = JSON.parse(clean);
-
     if (parsed.summary) {
       await sb.from('ai_conversation_summaries').insert({
         organization_id: orgId,
@@ -973,7 +996,6 @@ Respond ONLY with valid JSON:
         message_count: conversation.length,
       });
     }
-
     if (parsed.memories?.length > 0) {
       for (const mem of parsed.memories) {
         if (!mem.key || !mem.value) continue;
@@ -985,7 +1007,6 @@ Respond ONLY with valid JSON:
           .eq('category', mem.category)
           .eq('key', mem.key)
           .maybeSingle();
-
         if (existing) {
           await sb.from('ai_assistant_memory').update({
             value: mem.value,
@@ -1024,6 +1045,188 @@ function detectLanguage(text) {
   const matches = spanishIndicators.filter(r => r.test(text)).length;
   return matches >= 2 ? 'es' : 'en';
 }
+
+// ── Watch System ─────────────────────────────────────────────────────────────
+
+async function checkWatchList(sb, orgId, userId) {
+  if (!sb || !orgId || !userId) return null;
+  try {
+    const { data } = await sb
+      .from('ai_watch_list')
+      .select('id, is_active, email_alerts, alert_email')
+      .eq('organization_id', orgId)
+      .eq('employee_id', userId)
+      .eq('is_active', true)
+      .maybeSingle();
+    return data || null;
+  } catch (e) {
+    console.warn('[ai-assist] checkWatchList failed:', e.message);
+    return null;
+  }
+}
+
+async function captureWatchedConversation(sb, orgId, watchEntry, userId, userName, conversation, speechText, command, includeFullTranscript = false) {
+  if (!sb || !watchEntry) return;
+  try {
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) return;
+    const client = new Anthropic({ apiKey });
+    const convoText = conversation.map(m =>
+      `${m.role.toUpperCase()}: ${typeof m.content === 'string' ? m.content : JSON.stringify(m.content)}`
+    ).join('\n') + `\nUSER: ${command}\nASSISTANT: ${speechText}`;
+
+    const extractResp = await client.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 400,
+      messages: [{
+        role: 'user',
+        content: `Summarize this AI assistant conversation from a food manufacturing facility.
+
+Conversation:
+${convoText}
+
+Respond ONLY with valid JSON:
+{
+  "summary": "2-3 sentence summary",
+  "topics": ["topic1"],
+  "actions_taken": ["action1"],
+  "unresolved": "anything unresolved or null"
+}`
+      }],
+    });
+
+    const raw = extractResp.content[0]?.text || '';
+    const clean = raw.replace(/```json|```/g, '').trim();
+    let parsed = { summary: speechText, topics: [], actions_taken: [], unresolved: null };
+    try { parsed = JSON.parse(clean); } catch (e) { /* use defaults */ }
+
+    await sb.from('ai_watch_logs').insert({
+      organization_id: orgId,
+      watch_id: watchEntry.id,
+      employee_id: userId,
+      employee_name: userName,
+      conversation_id: `watch-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      summary: parsed.summary || null,
+      topics: parsed.topics || [],
+      actions_taken: parsed.actions_taken || [],
+      unresolved: parsed.unresolved || null,
+      message_count: conversation.length + 1,
+      full_transcript: includeFullTranscript ? conversation : null,
+    });
+
+    await sb.from('ai_watch_list').update({
+      last_activity_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }).eq('id', watchEntry.id);
+
+    const { data: current } = await sb
+      .from('ai_watch_list')
+      .select('conversation_count')
+      .eq('id', watchEntry.id)
+      .single();
+
+    if (current) {
+      await sb.from('ai_watch_list').update({
+        conversation_count: (current.conversation_count || 0) + 1,
+      }).eq('id', watchEntry.id);
+    }
+
+    console.log(`[ai-assist] Watch log captured for ${userName}`);
+  } catch (e) {
+    console.warn('[ai-assist] captureWatchedConversation failed:', e.message);
+  }
+}
+
+// ── Notes & Reminders ────────────────────────────────────────────────────────
+
+async function saveUserNote(sb, orgId, userId, userName, noteType, content, title, reminderAt) {
+  if (!sb || !orgId || !userId) return null;
+  try {
+    const { data, error } = await sb
+      .from('ai_user_notes')
+      .insert({
+        organization_id: orgId,
+        employee_id: userId,
+        employee_name: userName,
+        note_type: noteType || 'note',
+        title: title || null,
+        content,
+        reminder_at: reminderAt || null,
+        source: 'ai_assistant',
+      })
+      .select('id')
+      .single();
+    if (error) throw error;
+    return data;
+  } catch (e) {
+    console.warn('[ai-assist] saveUserNote failed:', e.message);
+    return null;
+  }
+}
+
+async function saveConversationRecord(sb, orgId, userId, userName, deptCode, deptName, conversation, speechText, command) {
+  if (!sb || !orgId || !userId) return null;
+  try {
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) return null;
+    const client = new Anthropic({ apiKey });
+    const convoText = conversation.map(m =>
+      `${m.role.toUpperCase()}: ${typeof m.content === 'string' ? m.content : JSON.stringify(m.content)}`
+    ).join('\n') + `\nUSER: ${command}\nASSISTANT: ${speechText}`;
+
+    const extractResp = await client.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 400,
+      messages: [{
+        role: 'user',
+        content: `Summarize this AI assistant conversation briefly.
+
+Conversation:
+${convoText}
+
+Respond ONLY with valid JSON:
+{
+  "summary": "2-3 sentence summary",
+  "topics": ["topic1"],
+  "actions_taken": ["action1"],
+  "unresolved": "anything unresolved or null"
+}`
+      }],
+    });
+
+    const raw = extractResp.content[0]?.text || '';
+    const clean = raw.replace(/```json|```/g, '').trim();
+    let parsed = { summary: speechText, topics: [], actions_taken: [], unresolved: null };
+    try { parsed = JSON.parse(clean); } catch (e) { /* use defaults */ }
+
+    const { data, error } = await sb
+      .from('ai_saved_conversations')
+      .insert({
+        organization_id: orgId,
+        employee_id: userId,
+        employee_name: userName,
+        department_code: deptCode || null,
+        department_name: deptName || null,
+        conversation_id: `conv-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        summary: parsed.summary || null,
+        topics: parsed.topics || [],
+        actions_taken: parsed.actions_taken || [],
+        unresolved: parsed.unresolved || null,
+        message_count: conversation.length + 1,
+        saved_by: 'user',
+        full_transcript: conversation,
+      })
+      .select('id')
+      .single();
+    if (error) throw error;
+    return data;
+  } catch (e) {
+    console.warn('[ai-assist] saveConversationRecord failed:', e.message);
+    return null;
+  }
+}
+
+// ── Main Handler ─────────────────────────────────────────────────────────────
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -1133,44 +1336,104 @@ module.exports = async (req, res) => {
 
     const es = userLanguage === 'es';
 
-   // ── Code Editor tool handling ────────────────────────────────────────────
-const codeEditorTools = ['list_screens', 'read_screen', 'edit_screen', 'deploy_change'];
-if (result.tool_name && codeEditorTools.includes(result.tool_name)) {
+    // ── Code Editor tool handling ─────────────────────────────────────────────
+    const codeEditorTools = ['list_screens', 'read_screen', 'edit_screen', 'deploy_change'];
+    if (result.tool_name && codeEditorTools.includes(result.tool_name)) {
+      const isAdmin =
+        context?.userRole === 'platform_admin' ||
+        (context?.userEmail && context.userEmail === process.env.PLATFORM_ADMIN_EMAIL);
 
-  // ── PLATFORM ADMIN GUARD ─────────────────────────────────────────────
-  const isAdmin =
-    context?.userRole === 'platform_admin' ||
-    (context?.userEmail && context.userEmail === process.env.PLATFORM_ADMIN_EMAIL);
+      if (!isAdmin) {
+        result.action = 'info';
+        result.speech = es
+          ? 'No tienes permiso para modificar el código de la aplicación.'
+          : 'You do not have permission to modify app code. This feature is restricted to the platform administrator.';
+        result.code_editor = { success: false, speech: result.speech };
+      } else {
+        const editorResult = await handleCodeEditorTool(
+          result.tool_name,
+          result.params || {},
+          userLanguage
+        );
+        result.action = editorResult.action || result.tool_name;
+        result.speech = editorResult.speech || result.speech;
+        result.code_editor = editorResult;
 
-  if (!isAdmin) {
-    result.action = 'info';
-    result.speech = userLanguage === 'es'
-      ? 'No tienes permiso para modificar el código de la aplicación.'
-      : 'You do not have permission to modify app code. This feature is restricted to the platform administrator.';
-    result.code_editor = { success: false, speech: result.speech };
-  } else {
-    const editorResult = await handleCodeEditorTool(
-      result.tool_name,
-      result.params || {},
-      userLanguage
-    );
-    result.action = editorResult.action || result.tool_name;
-    result.speech = editorResult.speech || result.speech;
-    result.code_editor = editorResult;
-
-    if (result.tool_name === 'edit_screen' && editorResult.pending_commit) {
-      result.pending_diff = {
-        path: editorResult.path,
-        new_content: editorResult.new_content,
-        original_sha: editorResult.original_sha,
-        diff_summary: editorResult.diff_summary,
-      };
-      result.conversation_continue = true;
+        if (result.tool_name === 'edit_screen' && editorResult.pending_commit) {
+          result.pending_diff = {
+            path: editorResult.path,
+            new_content: editorResult.new_content,
+            original_sha: editorResult.original_sha,
+            diff_summary: editorResult.diff_summary,
+          };
+          result.conversation_continue = true;
+        }
+      }
     }
-  }
-}
 
-    // ── Standard tool speech fallbacks ──────────────────────────────────────
+    // ── Notes, Reminders & Save Conversation ─────────────────────────────────
+    const noteTools = ['save_note', 'set_reminder', 'save_conversation'];
+    if (result.tool_name && noteTools.includes(result.tool_name)) {
+
+      if (result.tool_name === 'save_note') {
+        const saved = await saveUserNote(
+          sb, orgId, userId, userName,
+          'note',
+          result.params?.content || '',
+          result.params?.title || null,
+          null
+        );
+        result.action = 'info';
+        result.speech = saved
+          ? (es ? `Nota guardada: "${result.params?.title || result.params?.content}"` : `Note saved: "${result.params?.title || result.params?.content}"`)
+          : (es ? 'No pude guardar la nota.' : 'Could not save the note.');
+      }
+
+      if (result.tool_name === 'set_reminder') {
+        let reminderAt = result.params?.reminder_at_time || null;
+        if (!reminderAt && result.params?.reminder_in_minutes) {
+          const mins = Number(result.params.reminder_in_minutes);
+          reminderAt = new Date(Date.now() + mins * 60 * 1000).toISOString();
+        }
+        const saved = await saveUserNote(
+          sb, orgId, userId, userName,
+          'reminder',
+          result.params?.content || '',
+          result.params?.title || null,
+          reminderAt
+        );
+        const mins = result.params?.reminder_in_minutes;
+        const timeLabel = mins
+          ? (mins >= 60 ? `in ${Math.round(mins/60)} hour${Math.round(mins/60) !== 1 ? 's' : ''}` : `in ${mins} minute${mins !== 1 ? 's' : ''}`)
+          : 'at the specified time';
+        const timeLabelES = mins
+          ? (mins >= 60 ? `en ${Math.round(mins/60)} hora${Math.round(mins/60) !== 1 ? 's' : ''}` : `en ${mins} minuto${mins !== 1 ? 's' : ''}`)
+          : 'a la hora especificada';
+        result.action = 'info';
+        result.speech = saved
+          ? (es ? `Recordatorio establecido ${timeLabelES}: "${result.params?.content}"` : `Reminder set ${timeLabel}: "${result.params?.content}"`)
+          : (es ? 'No pude establecer el recordatorio.' : 'Could not set the reminder.');
+      }
+
+      if (result.tool_name === 'save_conversation') {
+        setImmediate(async () => {
+          await saveConversationRecord(
+            sb, orgId, userId, userName,
+            context?.userDepartment || null,
+            null,
+            conversation || [],
+            result.speech || '',
+            command || ''
+          );
+        });
+        result.action = 'info';
+        result.speech = es
+          ? 'Conversación guardada en tu historial personal.'
+          : 'Conversation saved to your personal log.';
+      }
+    }
+
+    // ── Standard tool speech fallbacks ───────────────────────────────────────
     if (result.tool_name === 'ask_clarification') { result.conversation_continue = true; result.speech = result.params?.question || result.speech; result.action = 'clarify'; }
     if (result.tool_name === 'general_response') { result.speech = result.params?.message || result.speech; result.action = 'info'; }
     if (result.tool_name === 'navigate') {
@@ -1207,13 +1470,37 @@ if (result.tool_name && codeEditorTools.includes(result.tool_name)) {
         : (isDrill ? `Starting ${labelEN} drill. Navigating to roll call now.` : `⚠️ Initiating ${labelEN} emergency protocol. Roll call starting immediately.`));
     }
 
-    if (orgId && userId && sb && conversation && conversation.length >= 4) {
-      const fullConvo = [...(conversation || []),
-        { role: 'user', content: command || '' },
-        { role: 'assistant', content: result.speech || '' },
-      ];
-      setImmediate(() => extractAndSaveMemory(orgId, userId, userName, fullConvo, sb));
-    }
+    // ── Background tasks — watch capture + memory ─────────────────────────────
+    setImmediate(async () => {
+      try {
+        if (orgId && userId && sb) {
+          // Check watch list and capture if monitored
+          const watchEntry = await checkWatchList(sb, orgId, userId);
+          if (watchEntry && conversation && conversation.length >= 2) {
+            const shouldCapture = conversation.length % 4 === 0 || conversation.length >= 10;
+            if (shouldCapture) {
+              await captureWatchedConversation(
+                sb, orgId, watchEntry, userId, userName,
+                conversation, result.speech || '', command || '',
+                false
+              );
+            }
+          }
+
+          // Regular memory extraction
+          if (conversation && conversation.length >= 4) {
+            const fullConvo = [
+              ...(conversation || []),
+              { role: 'user', content: command || '' },
+              { role: 'assistant', content: result.speech || '' },
+            ];
+            await extractAndSaveMemory(orgId, userId, userName, fullConvo, sb);
+          }
+        }
+      } catch (e) {
+        console.warn('[ai-assist] Background tasks failed:', e.message);
+      }
+    });
 
     return res.status(200).json(result);
 
