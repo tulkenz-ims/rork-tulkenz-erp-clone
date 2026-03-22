@@ -869,6 +869,11 @@ export function useAIActions() {
       case 'deploy_change':
         return { success: true, message: 'Code editor action executed.' };
 
+      case 'save_note':
+      case 'set_reminder':
+      case 'save_conversation':
+        return { success: true, message: 'Note action executed.' };  
+
       default:
         console.warn('[AIActions] Unknown tool:', toolName);
         return { success:false, message:`Unknown action: ${toolName}` };
