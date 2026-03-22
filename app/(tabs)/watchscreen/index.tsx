@@ -51,8 +51,6 @@ const HUD_TEXT    = '#e2e8f0';
 const HUD_DIM     = '#64748b';
 const HUD_BRIGHT  = '#ffffff';
 
-const ORG_ID = '74ce281d-5630-422d-8326-e5d36cfc1d5e';
-
 const SEVERITY_COLORS: Record<string, string> = {
   low: HUD_GREEN, medium: HUD_YELLOW, high: HUD_ORANGE, critical: HUD_RED,
 };
@@ -65,13 +63,16 @@ export default function WatchScreen() {
   const router = useRouter();
   const { userProfile } = useUser();
 
+  const orgId = userProfile?.organization_id || null;
+
   // ── Role guard ──
   const isAuthorized =
     userProfile?.is_platform_admin === true ||
     userProfile?.role === 'super_admin' ||
+    userProfile?.role === 'superadmin' ||
     userProfile?.role === 'platform_admin';
 
-  const [activeTab, setActiveTab] = useState<'watched' | 'logs' | 'saved'>('watched');
+  const [activeTab, setActiveTab] = useState<'watched' | 'logs' | 'saved' | 'usage'>('watched');
   const [refreshing, setRefreshing] = useState(false);
   const [flagModal, setFlagModal] = useState(false);
   const [selectedEntry, setSelectedEntry] = useState<AIWatchEntry | null>(null);
@@ -79,8 +80,8 @@ export default function WatchScreen() {
   const [logDetailModal, setLogDetailModal] = useState(false);
   const [unflagModal, setUnflagModal] = useState(false);
   const [unflagReason, setUnflagReason] = useState('');
-  const [reviewModal, setReviewModal] = useState(false);
   const [reviewNotes, setReviewNotes] = useState('');
+  const [usageDateRange, setUsageDateRange] = useState<'today' | 'this_week' | 'this_month'>('today');
 
   // Flag form
   const [flagEmployeeId, setFlagEmployeeId] = useState('');
@@ -100,31 +101,100 @@ export default function WatchScreen() {
   const { data: savedConvos = [], isLoading: loadingSaved, refetch: refetchSaved } =
     useAllSavedConversations();
 
+  // ── Usage Stats ──
+  const { data: usageStats, refetch: refetchUsage } = useQuery({
+    queryKey: ['ai_usage_stats', orgId, usageDateRange],
+    queryFn: async () => {
+      if (!orgId) return null;
+      const now = new Date();
+      let fromDate: string;
+      if (usageDateRange === 'today') {
+        fromDate = now.toISOString().split('T')[0] + 'T00:00:00';
+      } else if (usageDateRange === 'this_week') {
+        fromDate = new Date(now.getTime() - 7 * 86400000).toISOString();
+      } else {
+        fromDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+      }
+
+      const { data, error } = await supabase
+        .from('ai_usage_log')
+        .select('*')
+        .eq('organization_id', orgId)
+        .gte('created_at', fromDate)
+        .order('created_at', { ascending: false })
+        .limit(500);
+
+      if (error) throw error;
+      const logs = data || [];
+
+      const totalCalls  = logs.length;
+      const totalTokens = logs.reduce((s: number, l: any) => s + (l.total_tokens || 0), 0);
+      const totalCost   = logs.reduce((s: number, l: any) => s + (l.estimated_cost_usd || 0), 0);
+      const totalInput  = logs.reduce((s: number, l: any) => s + (l.input_tokens || 0), 0);
+      const totalOutput = logs.reduce((s: number, l: any) => s + (l.output_tokens || 0), 0);
+
+      const byEmployee: Record<string, any> = {};
+      logs.forEach((l: any) => {
+        const key = l.employee_id || 'unknown';
+        if (!byEmployee[key]) {
+          byEmployee[key] = {
+            employee_id: l.employee_id,
+            employee_name: l.employee_name || 'Unknown',
+            employee_role: l.employee_role || 'unknown',
+            calls: 0, tokens: 0, cost: 0,
+          };
+        }
+        byEmployee[key].calls++;
+        byEmployee[key].tokens += l.total_tokens || 0;
+        byEmployee[key].cost   += l.estimated_cost_usd || 0;
+      });
+
+      const employeeList = Object.values(byEmployee).sort((a: any, b: any) => b.calls - a.calls);
+
+      const byTool: Record<string, number> = {};
+      logs.forEach((l: any) => {
+        if (l.tool_used) byTool[l.tool_used] = (byTool[l.tool_used] || 0) + 1;
+      });
+      const topTools = Object.entries(byTool)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 8)
+        .map(([tool, count]) => ({ tool, count }));
+
+      return {
+        totalCalls, totalTokens, totalCost,
+        totalInput, totalOutput,
+        employeeList, topTools,
+        recentLogs: logs.slice(0, 30),
+      };
+    },
+    enabled: !!orgId,
+  });
+
   // Employee search for flag modal
   const [employeeSearch, setEmployeeSearch] = useState('');
   const { data: employeeResults = [] } = useQuery({
-    queryKey: ['employee_search_watch', employeeSearch],
+    queryKey: ['employee_search_watch', employeeSearch, orgId],
     queryFn: async () => {
-      if (employeeSearch.length < 2) return [];
+      if (employeeSearch.length < 2 || !orgId) return [];
       const { data } = await supabase
         .from('employees')
         .select('id, first_name, last_name, department_code, position')
-        .eq('organization_id', ORG_ID)
+        .eq('organization_id', orgId)
         .or(`first_name.ilike.%${employeeSearch}%,last_name.ilike.%${employeeSearch}%`)
         .limit(8);
       return data || [];
     },
-    enabled: employeeSearch.length >= 2,
+    enabled: employeeSearch.length >= 2 && !!orgId,
   });
 
-  const flagEmployee = useFlagEmployee();
+  const flagEmployee   = useFlagEmployee();
   const unflagEmployee = useUnflagEmployee();
-  const markReviewed = useMarkLogReviewed();
-  const markEmailed = useMarkLogEmailed();
+  const markReviewed   = useMarkLogReviewed();
+  const markEmailed    = useMarkLogEmailed();
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([refetchStats(), refetchWatch(), refetchUnreviewed(), refetchLogs(), refetchSaved()]);
+    await Promise.all([refetchStats(), refetchWatch(), refetchUnreviewed(), refetchLogs(), refetchSaved(), refetchUsage()]);
     setRefreshing(false);
   };
 
@@ -142,7 +212,6 @@ export default function WatchScreen() {
     );
   }
 
-  // ── Flag employee handler ──
   const handleFlag = async () => {
     if (!flagEmployeeId || !flagEmployeeName || !flagReason) {
       Alert.alert('Required', 'Please select an employee and enter a reason.');
@@ -204,7 +273,6 @@ export default function WatchScreen() {
         reviewed_by: `${userProfile?.first_name || ''} ${userProfile?.last_name || ''}`.trim() || 'Platform Admin',
         review_notes: reviewNotes || undefined,
       });
-      setReviewModal(false);
       setLogDetailModal(false);
       setSelectedLog(null);
       setReviewNotes('');
@@ -222,21 +290,10 @@ export default function WatchScreen() {
       async (email) => {
         if (!email) return;
         try {
-          await markEmailed.mutateAsync({
-            id: log.id,
-            watch_id: log.watch_id,
-            emailed_to: email,
-          });
-          // Open mail client with pre-filled summary
+          await markEmailed.mutateAsync({ id: log.id, watch_id: log.watch_id, emailed_to: email });
           const subject = encodeURIComponent(`AI Watch Log — ${log.employee_name} — ${new Date(log.created_at).toLocaleDateString()}`);
           const body = encodeURIComponent(
-            `Employee: ${log.employee_name}\n` +
-            `Date: ${new Date(log.created_at).toLocaleString()}\n` +
-            `Messages: ${log.message_count}\n\n` +
-            `Summary:\n${log.summary || 'No summary available.'}\n\n` +
-            `Topics: ${log.topics?.join(', ') || 'N/A'}\n\n` +
-            `Actions Taken:\n${log.actions_taken?.map(a => `• ${a}`).join('\n') || 'None'}\n\n` +
-            `Unresolved: ${log.unresolved || 'None'}`
+            `Employee: ${log.employee_name}\nDate: ${new Date(log.created_at).toLocaleString()}\nMessages: ${log.message_count}\n\nSummary:\n${log.summary || 'No summary available.'}\n\nTopics: ${log.topics?.join(', ') || 'N/A'}\n\nActions Taken:\n${log.actions_taken?.map(a => `• ${a}`).join('\n') || 'None'}\n\nUnresolved: ${log.unresolved || 'None'}`
           );
           Linking.openURL(`mailto:${email}?subject=${subject}&body=${body}`);
           Alert.alert('Done', `Summary marked as emailed to ${email}.`);
@@ -250,17 +307,12 @@ export default function WatchScreen() {
   };
 
   const resetFlagForm = () => {
-    setFlagEmployeeId('');
-    setFlagEmployeeName('');
-    setFlagReason('');
-    setFlagSeverity('low');
-    setFlagEmailAlerts(false);
-    setFlagAlertEmail('');
-    setFlagNotes('');
-    setEmployeeSearch('');
+    setFlagEmployeeId(''); setFlagEmployeeName(''); setFlagReason('');
+    setFlagSeverity('low'); setFlagEmailAlerts(false);
+    setFlagAlertEmail(''); setFlagNotes(''); setEmployeeSearch('');
   };
 
-  const activeWatched = watchList.filter(w => w.is_active);
+  const activeWatched   = watchList.filter(w => w.is_active);
   const inactiveWatched = watchList.filter(w => !w.is_active);
 
   return (
@@ -282,10 +334,7 @@ export default function WatchScreen() {
           </View>
           <Text style={styles.headerSub}>Platform Admin · Silent Monitoring</Text>
         </View>
-        <TouchableOpacity
-          style={styles.flagBtn}
-          onPress={() => setFlagModal(true)}
-        >
+        <TouchableOpacity style={styles.flagBtn} onPress={() => setFlagModal(true)}>
           <Ionicons name="add" size={16} color={HUD_BG} />
           <Text style={styles.flagBtnText}>Flag</Text>
         </TouchableOpacity>
@@ -294,10 +343,10 @@ export default function WatchScreen() {
       {/* KPI Strip */}
       <View style={styles.kpiStrip}>
         {[
-          { label: 'WATCHED', value: stats?.activeWatched || 0, color: HUD_RED },
+          { label: 'WATCHED',    value: stats?.activeWatched  || 0, color: HUD_RED    },
           { label: 'UNREVIEWED', value: stats?.unreviewedLogs || 0, color: HUD_YELLOW },
-          { label: 'TOTAL LOGS', value: stats?.totalLogs || 0, color: HUD_ACCENT },
-          { label: 'EMAIL ALERTS', value: stats?.emailAlerts || 0, color: HUD_ORANGE },
+          { label: 'TOTAL LOGS', value: stats?.totalLogs      || 0, color: HUD_ACCENT },
+          { label: 'ALERTS',     value: stats?.emailAlerts    || 0, color: HUD_ORANGE },
         ].map(k => (
           <View key={k.label} style={[styles.kpiCard, { borderTopColor: k.color }]}>
             <Text style={[styles.kpiValue, { color: k.color }]}>{k.value}</Text>
@@ -307,28 +356,27 @@ export default function WatchScreen() {
       </View>
 
       {/* Tab Strip */}
-      <View style={styles.tabStrip}>
-        {[
-          { key: 'watched', label: 'Watch List', icon: 'eye-outline' },
-          { key: 'logs', label: 'Conversation Logs', icon: 'chatbubbles-outline' },
-          { key: 'saved', label: 'Saved Convos', icon: 'bookmark-outline' },
-        ].map(tab => (
-          <TouchableOpacity
-            key={tab.key}
-            style={[styles.tab, activeTab === tab.key && styles.tabActive]}
-            onPress={() => setActiveTab(tab.key as any)}
-          >
-            <Ionicons
-              name={tab.icon as any}
-              size={14}
-              color={activeTab === tab.key ? HUD_ACCENT : HUD_DIM}
-            />
-            <Text style={[styles.tabText, activeTab === tab.key && styles.tabTextActive]}>
-              {tab.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabStripScroll}>
+        <View style={styles.tabStrip}>
+          {[
+            { key: 'watched', label: 'Watch List',    icon: 'eye-outline'        },
+            { key: 'logs',    label: 'Conv. Logs',    icon: 'chatbubbles-outline' },
+            { key: 'saved',   label: 'Saved Convos',  icon: 'bookmark-outline'   },
+            { key: 'usage',   label: 'Usage',         icon: 'bar-chart-outline'  },
+          ].map(tab => (
+            <TouchableOpacity
+              key={tab.key}
+              style={[styles.tab, activeTab === tab.key && styles.tabActive]}
+              onPress={() => setActiveTab(tab.key as any)}
+            >
+              <Ionicons name={tab.icon as any} size={14} color={activeTab === tab.key ? HUD_ACCENT : HUD_DIM} />
+              <Text style={[styles.tabText, activeTab === tab.key && styles.tabTextActive]}>
+                {tab.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </ScrollView>
 
       <ScrollView
         style={styles.scroll}
@@ -340,9 +388,7 @@ export default function WatchScreen() {
         {activeTab === 'watched' && (
           <>
             {loadingWatch ? (
-              <View style={styles.loadingWrap}>
-                <ActivityIndicator size="large" color={HUD_ACCENT} />
-              </View>
+              <View style={styles.loadingWrap}><ActivityIndicator size="large" color={HUD_ACCENT} /></View>
             ) : activeWatched.length === 0 ? (
               <View style={styles.emptyState}>
                 <Ionicons name="eye-off-outline" size={48} color={HUD_DIM} />
@@ -356,17 +402,10 @@ export default function WatchScreen() {
                   <WatchEntryCard
                     key={entry.id}
                     entry={entry}
-                    onViewLogs={() => {
-                      setSelectedEntry(entry);
-                      setActiveTab('logs');
-                    }}
-                    onUnflag={() => {
-                      setSelectedEntry(entry);
-                      setUnflagModal(true);
-                    }}
+                    onViewLogs={() => { setSelectedEntry(entry); setActiveTab('logs'); }}
+                    onUnflag={() => { setSelectedEntry(entry); setUnflagModal(true); }}
                   />
                 ))}
-
                 {inactiveWatched.length > 0 && (
                   <>
                     <Text style={[styles.sectionLabel, { marginTop: 16 }]}>INACTIVE HISTORY ({inactiveWatched.length})</Text>
@@ -374,10 +413,7 @@ export default function WatchScreen() {
                       <WatchEntryCard
                         key={entry.id}
                         entry={entry}
-                        onViewLogs={() => {
-                          setSelectedEntry(entry);
-                          setActiveTab('logs');
-                        }}
+                        onViewLogs={() => { setSelectedEntry(entry); setActiveTab('logs'); }}
                         onUnflag={() => {}}
                         inactive
                       />
@@ -403,11 +439,8 @@ export default function WatchScreen() {
                 </TouchableOpacity>
               </View>
             )}
-
             {loadingLogs ? (
-              <View style={styles.loadingWrap}>
-                <ActivityIndicator size="large" color={HUD_ACCENT} />
-              </View>
+              <View style={styles.loadingWrap}><ActivityIndicator size="large" color={HUD_ACCENT} /></View>
             ) : watchLogs.length === 0 ? (
               <View style={styles.emptyState}>
                 <Ionicons name="chatbubbles-outline" size={48} color={HUD_DIM} />
@@ -425,10 +458,7 @@ export default function WatchScreen() {
                   <WatchLogCard
                     key={log.id}
                     log={log}
-                    onReview={() => {
-                      setSelectedLog(log);
-                      setLogDetailModal(true);
-                    }}
+                    onReview={() => { setSelectedLog(log); setLogDetailModal(true); }}
                     onEmail={() => handleEmailLog(log)}
                   />
                 ))}
@@ -441,9 +471,7 @@ export default function WatchScreen() {
         {activeTab === 'saved' && (
           <>
             {loadingSaved ? (
-              <View style={styles.loadingWrap}>
-                <ActivityIndicator size="large" color={HUD_ACCENT} />
-              </View>
+              <View style={styles.loadingWrap}><ActivityIndicator size="large" color={HUD_ACCENT} /></View>
             ) : savedConvos.length === 0 ? (
               <View style={styles.emptyState}>
                 <Ionicons name="bookmark-outline" size={48} color={HUD_DIM} />
@@ -461,6 +489,181 @@ export default function WatchScreen() {
           </>
         )}
 
+        {/* ── USAGE TAB ── */}
+        {activeTab === 'usage' && (
+          <>
+            {/* Date Range Selector */}
+            <View style={styles.usageDateRow}>
+              {(['today', 'this_week', 'this_month'] as const).map(range => (
+                <TouchableOpacity
+                  key={range}
+                  style={[
+                    styles.usageDateChip,
+                    usageDateRange === range && { backgroundColor: HUD_ACCENT, borderColor: HUD_ACCENT },
+                  ]}
+                  onPress={() => setUsageDateRange(range)}
+                >
+                  <Text style={[styles.usageDateChipText, usageDateRange === range && { color: HUD_BG }]}>
+                    {range === 'today' ? 'Today' : range === 'this_week' ? 'This Week' : 'This Month'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* KPI Cards */}
+            <View style={styles.usageKpiRow}>
+              {[
+                { label: 'TOTAL CALLS',  value: usageStats?.totalCalls  || 0, color: HUD_ACCENT, format: 'number' },
+                { label: 'TOTAL TOKENS', value: usageStats?.totalTokens || 0, color: HUD_PURPLE, format: 'tokens' },
+                { label: 'EST. COST',    value: usageStats?.totalCost   || 0, color: HUD_GREEN,  format: 'cost'   },
+              ].map(k => (
+                <View key={k.label} style={[styles.usageKpiCard, { borderTopColor: k.color }]}>
+                  <Text style={[styles.usageKpiValue, { color: k.color }]}>
+                    {k.format === 'cost'
+                      ? `$${(k.value as number).toFixed(4)}`
+                      : k.format === 'tokens'
+                        ? (k.value as number) > 1000 ? `${((k.value as number) / 1000).toFixed(1)}K` : String(k.value)
+                        : String(k.value)}
+                  </Text>
+                  <Text style={styles.usageKpiLabel}>{k.label}</Text>
+                </View>
+              ))}
+            </View>
+
+            {/* Token Breakdown */}
+            <View style={styles.usageTokenBreakdown}>
+              <View style={styles.usageTokenRow}>
+                <Text style={styles.usageTokenLabel}>Input Tokens</Text>
+                <Text style={[styles.usageTokenValue, { color: HUD_ACCENT }]}>
+                  {((usageStats?.totalInput || 0) / 1000).toFixed(1)}K
+                </Text>
+                <Text style={styles.usageTokenCost}>
+                  ${(((usageStats?.totalInput || 0) / 1_000_000) * 3).toFixed(4)}
+                </Text>
+              </View>
+              <View style={styles.usageTokenRow}>
+                <Text style={styles.usageTokenLabel}>Output Tokens</Text>
+                <Text style={[styles.usageTokenValue, { color: HUD_YELLOW }]}>
+                  {((usageStats?.totalOutput || 0) / 1000).toFixed(1)}K
+                </Text>
+                <Text style={styles.usageTokenCost}>
+                  ${(((usageStats?.totalOutput || 0) / 1_000_000) * 15).toFixed(4)}
+                </Text>
+              </View>
+              <View style={[styles.usageTokenRow, { borderTopWidth: 1, borderTopColor: HUD_BORDER, marginTop: 4, paddingTop: 8 }]}>
+                <Text style={[styles.usageTokenLabel, { color: HUD_BRIGHT, fontWeight: '700' }]}>Total Cost</Text>
+                <Text style={[styles.usageTokenValue, { color: HUD_GREEN, fontWeight: '800' }]}>
+                  ${(usageStats?.totalCost || 0).toFixed(4)}
+                </Text>
+                <Text style={[styles.usageTokenCost, { color: HUD_GREEN }]}>USD</Text>
+              </View>
+            </View>
+
+            {/* Top Tools */}
+            {usageStats?.topTools && usageStats.topTools.length > 0 && (
+              <>
+                <Text style={[styles.sectionLabel, { marginTop: 16 }]}>TOP TOOLS USED</Text>
+                <View style={styles.usageToolsCard}>
+                  {usageStats.topTools.map((t: any) => {
+                    const maxCount = usageStats.topTools[0].count;
+                    const pct = maxCount > 0 ? (t.count / maxCount) * 100 : 0;
+                    return (
+                      <View key={t.tool} style={styles.usageToolRow}>
+                        <Text style={styles.usageToolName} numberOfLines={1}>
+                          {t.tool.replace(/_/g, ' ').replace('create task feed post ', '')}
+                        </Text>
+                        <View style={styles.usageToolBarWrap}>
+                          <View style={[styles.usageToolBar, { width: `${pct}%` as any, backgroundColor: HUD_ACCENT }]} />
+                        </View>
+                        <Text style={styles.usageToolCount}>{t.count}</Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              </>
+            )}
+
+            {/* Per Employee */}
+            {usageStats?.employeeList && usageStats.employeeList.length > 0 && (
+              <>
+                <Text style={[styles.sectionLabel, { marginTop: 16 }]}>USAGE BY EMPLOYEE</Text>
+                <View style={styles.usageEmployeeCard}>
+                  <View style={[styles.usageEmployeeHeader, { borderBottomColor: HUD_BORDER }]}>
+                    <Text style={[styles.usageEmployeeCell, { flex: 3, color: HUD_DIM }]}>EMPLOYEE</Text>
+                    <Text style={[styles.usageEmployeeCell, { flex: 1, textAlign: 'center', color: HUD_DIM }]}>CALLS</Text>
+                    <Text style={[styles.usageEmployeeCell, { flex: 1, textAlign: 'center', color: HUD_DIM }]}>TOKENS</Text>
+                    <Text style={[styles.usageEmployeeCell, { flex: 1.5, textAlign: 'right', color: HUD_DIM }]}>COST</Text>
+                  </View>
+                  {usageStats.employeeList.map((emp: any, i: number) => (
+                    <View
+                      key={emp.employee_id || i}
+                      style={[
+                        styles.usageEmployeeRow,
+                        { borderBottomColor: HUD_BORDER },
+                        i === usageStats.employeeList.length - 1 && { borderBottomWidth: 0 },
+                      ]}
+                    >
+                      <View style={{ flex: 3 }}>
+                        <Text style={styles.usageEmployeeName} numberOfLines={1}>{emp.employee_name}</Text>
+                        <Text style={styles.usageEmployeeRole}>{emp.employee_role}</Text>
+                      </View>
+                      <Text style={[styles.usageEmployeeCell, { flex: 1, textAlign: 'center', color: HUD_ACCENT }]}>
+                        {emp.calls}
+                      </Text>
+                      <Text style={[styles.usageEmployeeCell, { flex: 1, textAlign: 'center', color: HUD_PURPLE }]}>
+                        {emp.tokens > 1000 ? `${(emp.tokens / 1000).toFixed(1)}K` : emp.tokens}
+                      </Text>
+                      <Text style={[styles.usageEmployeeCell, { flex: 1.5, textAlign: 'right', color: HUD_GREEN }]}>
+                        ${emp.cost.toFixed(4)}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              </>
+            )}
+
+            {/* Recent Calls */}
+            {usageStats?.recentLogs && usageStats.recentLogs.length > 0 && (
+              <>
+                <Text style={[styles.sectionLabel, { marginTop: 16 }]}>RECENT CALLS</Text>
+                {usageStats.recentLogs.map((log: any, i: number) => (
+                  <View key={log.id || i} style={styles.usageLogCard}>
+                    <View style={styles.usageLogHeader}>
+                      <Text style={styles.usageLogEmployee}>{log.employee_name || 'Unknown'}</Text>
+                      <Text style={styles.usageLogTime}>
+                        {new Date(log.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                      </Text>
+                    </View>
+                    <Text style={styles.usageLogTool} numberOfLines={1}>
+                      {log.tool_used ? log.tool_used.replace(/_/g, ' ') : 'general response'}
+                    </Text>
+                    {log.command_preview && (
+                      <Text style={styles.usageLogCommand} numberOfLines={1}>"{log.command_preview}"</Text>
+                    )}
+                    <View style={styles.usageLogFooter}>
+                      <Text style={styles.usageLogTokens}>{log.total_tokens || 0} tokens</Text>
+                      <Text style={styles.usageLogCost}>${(log.estimated_cost_usd || 0).toFixed(5)}</Text>
+                      {log.had_image && <Text style={styles.usageLogBadge}>📷</Text>}
+                      {log.had_web_search && <Text style={styles.usageLogBadge}>🌐</Text>}
+                      {log.response_ms && (
+                        <Text style={styles.usageLogTokens}>{log.response_ms}ms</Text>
+                      )}
+                    </View>
+                  </View>
+                ))}
+              </>
+            )}
+
+            {(!usageStats || usageStats.totalCalls === 0) && (
+              <View style={styles.emptyState}>
+                <Ionicons name="bar-chart-outline" size={48} color={HUD_DIM} />
+                <Text style={styles.emptyTitle}>No Usage Data Yet</Text>
+                <Text style={styles.emptySub}>Usage data will appear here after AI assistant calls are made.</Text>
+              </View>
+            )}
+          </>
+        )}
+
         <View style={{ height: 40 }} />
       </ScrollView>
 
@@ -471,9 +674,7 @@ export default function WatchScreen() {
             <View style={styles.modalHandle} />
             <Text style={styles.modalTitle}>Flag Employee for Monitoring</Text>
             <Text style={styles.modalSub}>Silent — employee will not be notified</Text>
-
             <ScrollView showsVerticalScrollIndicator={false}>
-              {/* Employee Search */}
               <View style={styles.fieldWrap}>
                 <Text style={styles.fieldLabel}>Employee <Text style={{ color: HUD_RED }}>*</Text></Text>
                 {flagEmployeeId ? (
@@ -514,8 +715,6 @@ export default function WatchScreen() {
                   </>
                 )}
               </View>
-
-              {/* Reason */}
               <View style={styles.fieldWrap}>
                 <Text style={styles.fieldLabel}>Reason <Text style={{ color: HUD_RED }}>*</Text></Text>
                 <TextInput
@@ -528,18 +727,13 @@ export default function WatchScreen() {
                   numberOfLines={3}
                 />
               </View>
-
-              {/* Severity */}
               <View style={styles.fieldWrap}>
                 <Text style={styles.fieldLabel}>Severity</Text>
                 <View style={styles.severityRow}>
                   {(['low','medium','high','critical'] as const).map(s => (
                     <TouchableOpacity
                       key={s}
-                      style={[
-                        styles.severityChip,
-                        flagSeverity === s && { backgroundColor: SEVERITY_COLORS[s] + '33', borderColor: SEVERITY_COLORS[s] },
-                      ]}
+                      style={[styles.severityChip, flagSeverity === s && { backgroundColor: SEVERITY_COLORS[s] + '33', borderColor: SEVERITY_COLORS[s] }]}
                       onPress={() => setFlagSeverity(s)}
                     >
                       <Text style={[styles.severityChipText, flagSeverity === s && { color: SEVERITY_COLORS[s] }]}>
@@ -549,8 +743,6 @@ export default function WatchScreen() {
                   ))}
                 </View>
               </View>
-
-              {/* Email Alerts */}
               <View style={styles.toggleRow}>
                 <View style={styles.toggleLabelWrap}>
                   <Text style={styles.toggleLabel}>Email Alerts</Text>
@@ -563,7 +755,6 @@ export default function WatchScreen() {
                   <View style={[styles.toggleThumb, flagEmailAlerts && styles.toggleThumbActive]} />
                 </TouchableOpacity>
               </View>
-
               {flagEmailAlerts && (
                 <View style={styles.fieldWrap}>
                   <Text style={styles.fieldLabel}>Alert Email</Text>
@@ -578,8 +769,6 @@ export default function WatchScreen() {
                   />
                 </View>
               )}
-
-              {/* Notes */}
               <View style={styles.fieldWrap}>
                 <Text style={styles.fieldLabel}>Admin Notes</Text>
                 <TextInput
@@ -592,7 +781,6 @@ export default function WatchScreen() {
                   numberOfLines={2}
                 />
               </View>
-
               <View style={styles.modalButtons}>
                 <TouchableOpacity style={styles.modalCancel} onPress={() => { setFlagModal(false); resetFlagForm(); }}>
                   <Text style={styles.modalCancelText}>Cancel</Text>
@@ -619,7 +807,6 @@ export default function WatchScreen() {
             <View style={styles.modalHandle} />
             <Text style={styles.modalTitle}>Remove Watch</Text>
             <Text style={styles.modalSub}>{selectedEntry?.employee_name}</Text>
-
             <View style={styles.fieldWrap}>
               <Text style={styles.fieldLabel}>Reason for Removing <Text style={{ color: HUD_RED }}>*</Text></Text>
               <TextInput
@@ -632,7 +819,6 @@ export default function WatchScreen() {
                 numberOfLines={3}
               />
             </View>
-
             <View style={styles.modalButtons}>
               <TouchableOpacity style={styles.modalCancel} onPress={() => { setUnflagModal(false); setUnflagReason(''); }}>
                 <Text style={styles.modalCancelText}>Cancel</Text>
@@ -661,8 +847,7 @@ export default function WatchScreen() {
                 <Text style={styles.modalTitle}>{selectedLog?.employee_name}</Text>
                 <Text style={styles.modalSub}>
                   {selectedLog ? new Date(selectedLog.created_at).toLocaleString('en-US', {
-                    month: 'short', day: 'numeric', year: 'numeric',
-                    hour: 'numeric', minute: '2-digit',
+                    month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit',
                   }) : ''}
                 </Text>
               </View>
@@ -672,31 +857,23 @@ export default function WatchScreen() {
                 </View>
               )}
             </View>
-
             <ScrollView showsVerticalScrollIndicator={false}>
-              {/* Summary */}
               {selectedLog?.summary && (
                 <View style={styles.logSection}>
                   <Text style={styles.logSectionTitle}>SUMMARY</Text>
                   <Text style={styles.logSectionText}>{selectedLog.summary}</Text>
                 </View>
               )}
-
-              {/* Topics */}
               {selectedLog?.topics && selectedLog.topics.length > 0 && (
                 <View style={styles.logSection}>
                   <Text style={styles.logSectionTitle}>TOPICS</Text>
                   <View style={styles.tagRow}>
                     {selectedLog.topics.map((t, i) => (
-                      <View key={i} style={styles.tag}>
-                        <Text style={styles.tagText}>{t}</Text>
-                      </View>
+                      <View key={i} style={styles.tag}><Text style={styles.tagText}>{t}</Text></View>
                     ))}
                   </View>
                 </View>
               )}
-
-              {/* Actions Taken */}
               {selectedLog?.actions_taken && selectedLog.actions_taken.length > 0 && (
                 <View style={styles.logSection}>
                   <Text style={styles.logSectionTitle}>ACTIONS TAKEN</Text>
@@ -708,22 +885,16 @@ export default function WatchScreen() {
                   ))}
                 </View>
               )}
-
-              {/* Unresolved */}
               {selectedLog?.unresolved && (
                 <View style={styles.logSection}>
                   <Text style={styles.logSectionTitle}>UNRESOLVED</Text>
                   <Text style={[styles.logSectionText, { color: HUD_YELLOW }]}>{selectedLog.unresolved}</Text>
                 </View>
               )}
-
-              {/* Message Count */}
               <View style={styles.logMetaRow}>
                 <Ionicons name="chatbubble-outline" size={12} color={HUD_DIM} />
                 <Text style={styles.logMetaText}>{selectedLog?.message_count || 0} messages in conversation</Text>
               </View>
-
-              {/* Review Notes */}
               {!selectedLog?.reviewed && (
                 <View style={styles.fieldWrap}>
                   <Text style={styles.fieldLabel}>Review Notes (optional)</Text>
@@ -738,7 +909,6 @@ export default function WatchScreen() {
                   />
                 </View>
               )}
-
               {selectedLog?.reviewed && (
                 <View style={[styles.logSection, { backgroundColor: HUD_GREEN + '11', borderColor: HUD_GREEN + '33' }]}>
                   <Text style={[styles.logSectionTitle, { color: HUD_GREEN }]}>REVIEWED</Text>
@@ -746,7 +916,6 @@ export default function WatchScreen() {
                   {selectedLog.review_notes && <Text style={styles.logSectionText}>{selectedLog.review_notes}</Text>}
                 </View>
               )}
-
               <View style={styles.modalButtons}>
                 <TouchableOpacity style={styles.modalCancel} onPress={() => setLogDetailModal(false)}>
                   <Text style={styles.modalCancelText}>Close</Text>
@@ -780,16 +949,11 @@ export default function WatchScreen() {
 }
 
 // ══════════════════════════════════════════════════════════════════
-// WATCH ENTRY CARD
+// SUB-COMPONENTS
 // ══════════════════════════════════════════════════════════════════
 
-function WatchEntryCard({
-  entry, onViewLogs, onUnflag, inactive = false,
-}: {
-  entry: AIWatchEntry;
-  onViewLogs: () => void;
-  onUnflag: () => void;
-  inactive?: boolean;
+function WatchEntryCard({ entry, onViewLogs, onUnflag, inactive = false }: {
+  entry: AIWatchEntry; onViewLogs: () => void; onUnflag: () => void; inactive?: boolean;
 }) {
   const severityColor = SEVERITY_COLORS[entry.severity] || HUD_DIM;
   return (
@@ -812,10 +976,8 @@ function WatchEntryCard({
             </View>
           )}
         </View>
-
         <Text style={styles.watchCardName}>{entry.employee_name}</Text>
         <Text style={styles.watchCardReason}>{entry.reason}</Text>
-
         <View style={styles.watchCardMeta}>
           <View style={styles.metaChip}>
             <Ionicons name="chatbubbles-outline" size={10} color={HUD_DIM} />
@@ -830,11 +992,7 @@ function WatchEntryCard({
             <Text style={styles.metaChipText}>{new Date(entry.created_at).toLocaleDateString()}</Text>
           </View>
         </View>
-
-        {entry.notes && (
-          <Text style={styles.watchCardNotes}>📝 {entry.notes}</Text>
-        )}
-
+        {entry.notes && <Text style={styles.watchCardNotes}>📝 {entry.notes}</Text>}
         {!inactive && (
           <View style={styles.watchCardActions}>
             <TouchableOpacity style={styles.watchActionBtn} onPress={onViewLogs}>
@@ -852,16 +1010,8 @@ function WatchEntryCard({
   );
 }
 
-// ══════════════════════════════════════════════════════════════════
-// WATCH LOG CARD
-// ══════════════════════════════════════════════════════════════════
-
-function WatchLogCard({
-  log, onReview, onEmail,
-}: {
-  log: AIWatchLog;
-  onReview: () => void;
-  onEmail: () => void;
+function WatchLogCard({ log, onReview, onEmail }: {
+  log: AIWatchLog; onReview: () => void; onEmail: () => void;
 }) {
   return (
     <View style={[styles.logCard, !log.reviewed && styles.logCardUnreviewed]}>
@@ -869,9 +1019,7 @@ function WatchLogCard({
         <View>
           <Text style={styles.logCardName}>{log.employee_name}</Text>
           <Text style={styles.logCardDate}>
-            {new Date(log.created_at).toLocaleString('en-US', {
-              month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
-            })}
+            {new Date(log.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
           </Text>
         </View>
         <View style={styles.logCardBadges}>
@@ -887,24 +1035,15 @@ function WatchLogCard({
           )}
         </View>
       </View>
-
-      {log.summary && (
-        <Text style={styles.logCardSummary} numberOfLines={2}>{log.summary}</Text>
-      )}
-
+      {log.summary && <Text style={styles.logCardSummary} numberOfLines={2}>{log.summary}</Text>}
       {log.topics && log.topics.length > 0 && (
         <View style={styles.tagRow}>
           {log.topics.slice(0, 3).map((t, i) => (
-            <View key={i} style={styles.tag}>
-              <Text style={styles.tagText}>{t}</Text>
-            </View>
+            <View key={i} style={styles.tag}><Text style={styles.tagText}>{t}</Text></View>
           ))}
-          {log.topics.length > 3 && (
-            <Text style={styles.tagMoreText}>+{log.topics.length - 3}</Text>
-          )}
+          {log.topics.length > 3 && <Text style={styles.tagMoreText}>+{log.topics.length - 3}</Text>}
         </View>
       )}
-
       <View style={styles.logCardFooter}>
         <Text style={styles.logCardMsgCount}>{log.message_count} messages</Text>
         <View style={styles.logCardActions}>
@@ -922,10 +1061,6 @@ function WatchLogCard({
   );
 }
 
-// ══════════════════════════════════════════════════════════════════
-// SAVED CONVO CARD
-// ══════════════════════════════════════════════════════════════════
-
 function SavedConvoCard({ convo }: { convo: any }) {
   return (
     <View style={styles.savedCard}>
@@ -938,17 +1073,12 @@ function SavedConvoCard({ convo }: { convo: any }) {
           <Text style={styles.savedByText}>{convo.saved_by === 'watch_flag' ? '👁 WATCH' : '💾 SAVED'}</Text>
         </View>
       </View>
-
-      {convo.summary && (
-        <Text style={styles.savedCardSummary} numberOfLines={2}>{convo.summary}</Text>
-      )}
-
+      {convo.summary && <Text style={styles.savedCardSummary} numberOfLines={2}>{convo.summary}</Text>}
       {convo.actions_taken && convo.actions_taken.length > 0 && (
         <Text style={styles.savedCardActions}>
           Actions: {convo.actions_taken.slice(0, 2).join(', ')}{convo.actions_taken.length > 2 ? '...' : ''}
         </Text>
       )}
-
       <View style={styles.savedCardFooter}>
         <Text style={styles.savedCardDate}>
           {new Date(convo.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
@@ -984,8 +1114,9 @@ const styles = StyleSheet.create({
   kpiCard: { flex: 1, alignItems: 'center', paddingVertical: 12, borderTopWidth: 3 },
   kpiValue: { fontSize: 20, fontWeight: '800' },
   kpiLabel: { fontSize: 8, color: HUD_DIM, letterSpacing: 0.5, marginTop: 2 },
-  tabStrip: { flexDirection: 'row', backgroundColor: HUD_CARD, borderBottomWidth: 1, borderBottomColor: HUD_BORDER },
-  tab: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 10 },
+  tabStripScroll: { backgroundColor: HUD_CARD, borderBottomWidth: 1, borderBottomColor: HUD_BORDER, maxHeight: 44 },
+  tabStrip: { flexDirection: 'row', paddingHorizontal: 4 },
+  tab: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 10, paddingHorizontal: 14 },
   tabActive: { borderBottomWidth: 2, borderBottomColor: HUD_ACCENT },
   tabText: { fontSize: 10, color: HUD_DIM, fontWeight: '600' },
   tabTextActive: { color: HUD_ACCENT },
@@ -998,7 +1129,6 @@ const styles = StyleSheet.create({
   sectionLabel: { fontSize: 10, fontWeight: '700', color: HUD_DIM, letterSpacing: 1.5, marginBottom: 8 },
   filterBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: HUD_ACCENT + '11', borderWidth: 1, borderColor: HUD_ACCENT + '33', borderRadius: 8, padding: 10, marginBottom: 12 },
   filterBannerText: { flex: 1, fontSize: 12, color: HUD_DIM },
-  // Watch Card
   watchCard: { flexDirection: 'row', backgroundColor: HUD_CARD, borderWidth: 1, borderColor: HUD_BORDER, borderRadius: 10, marginBottom: 10, overflow: 'hidden' },
   watchCardAccent: { width: 4 },
   watchCardBody: { flex: 1, padding: 12 },
@@ -1017,7 +1147,6 @@ const styles = StyleSheet.create({
   watchActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6, backgroundColor: HUD_ACCENT + '15', borderWidth: 1, borderColor: HUD_ACCENT + '33' },
   watchActionRemove: { backgroundColor: HUD_RED + '11', borderColor: HUD_RED + '33' },
   watchActionText: { fontSize: 11, color: HUD_ACCENT, fontWeight: '600' },
-  // Log Card
   logCard: { backgroundColor: HUD_CARD, borderWidth: 1, borderColor: HUD_BORDER, borderRadius: 10, padding: 12, marginBottom: 10 },
   logCardUnreviewed: { borderColor: HUD_YELLOW + '55', backgroundColor: HUD_YELLOW + '08' },
   logCardHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 6 },
@@ -1036,7 +1165,6 @@ const styles = StyleSheet.create({
   logCardActions: { flexDirection: 'row', gap: 6 },
   logActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6, backgroundColor: HUD_ACCENT + '15', borderWidth: 1, borderColor: HUD_ACCENT + '33' },
   logActionText: { fontSize: 11, color: HUD_ACCENT, fontWeight: '600' },
-  // Saved Card
   savedCard: { backgroundColor: HUD_CARD, borderWidth: 1, borderColor: HUD_BORDER, borderRadius: 10, padding: 12, marginBottom: 10 },
   savedCardHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 6 },
   savedCardName: { fontSize: 14, fontWeight: '700', color: HUD_BRIGHT },
@@ -1048,7 +1176,6 @@ const styles = StyleSheet.create({
   savedCardFooter: { flexDirection: 'row', justifyContent: 'space-between', paddingTop: 6, borderTopWidth: 1, borderTopColor: HUD_BORDER },
   savedCardDate: { fontSize: 11, color: HUD_DIM },
   savedCardMsgs: { fontSize: 11, color: HUD_DIM },
-  // Log Detail
   logDetailHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16 },
   logSection: { backgroundColor: HUD_BG, borderWidth: 1, borderColor: HUD_BORDER, borderRadius: 8, padding: 12, marginBottom: 10 },
   logSectionTitle: { fontSize: 10, fontWeight: '700', color: HUD_DIM, letterSpacing: 1, marginBottom: 6 },
@@ -1057,7 +1184,6 @@ const styles = StyleSheet.create({
   logMetaText: { fontSize: 11, color: HUD_DIM },
   actionRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
   actionText: { fontSize: 12, color: HUD_TEXT },
-  // Modal
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', justifyContent: 'flex-end' },
   modalSheet: { backgroundColor: HUD_CARD, borderTopLeftRadius: 16, borderTopRightRadius: 16, borderTopWidth: 1, borderColor: HUD_BORDER, padding: 20, paddingBottom: 36, maxHeight: '90%' },
   modalHandle: { width: 36, height: 4, backgroundColor: HUD_BORDER, borderRadius: 2, alignSelf: 'center', marginBottom: 16 },
@@ -1089,4 +1215,39 @@ const styles = StyleSheet.create({
   modalCancelText: { fontSize: 14, color: HUD_TEXT, fontWeight: '600' },
   modalSave: { flex: 2, paddingVertical: 12, borderRadius: 8, backgroundColor: HUD_ACCENT, alignItems: 'center' },
   modalSaveText: { fontSize: 14, color: HUD_BG, fontWeight: '700' },
+  // Usage Tab
+  usageDateRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
+  usageDateChip: { flex: 1, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: HUD_BORDER, alignItems: 'center', backgroundColor: HUD_CARD },
+  usageDateChipText: { fontSize: 11, fontWeight: '600', color: HUD_DIM },
+  usageKpiRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
+  usageKpiCard: { flex: 1, backgroundColor: HUD_CARD, borderWidth: 1, borderColor: HUD_BORDER, borderRadius: 10, borderTopWidth: 3, padding: 12, alignItems: 'center' },
+  usageKpiValue: { fontSize: 18, fontWeight: '800' },
+  usageKpiLabel: { fontSize: 8, color: HUD_DIM, letterSpacing: 0.5, marginTop: 2 },
+  usageTokenBreakdown: { backgroundColor: HUD_CARD, borderWidth: 1, borderColor: HUD_BORDER, borderRadius: 10, padding: 12, marginBottom: 4 },
+  usageTokenRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 6 },
+  usageTokenLabel: { flex: 2, fontSize: 12, color: HUD_DIM },
+  usageTokenValue: { flex: 1, fontSize: 13, fontWeight: '700', textAlign: 'center' },
+  usageTokenCost: { flex: 1, fontSize: 11, color: HUD_DIM, textAlign: 'right' },
+  usageToolsCard: { backgroundColor: HUD_CARD, borderWidth: 1, borderColor: HUD_BORDER, borderRadius: 10, padding: 12, gap: 8 },
+  usageToolRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  usageToolName: { fontSize: 11, color: HUD_TEXT, width: 120 },
+  usageToolBarWrap: { flex: 1, height: 6, backgroundColor: HUD_BG, borderRadius: 3, overflow: 'hidden' },
+  usageToolBar: { height: 6, borderRadius: 3 },
+  usageToolCount: { fontSize: 11, color: HUD_ACCENT, fontWeight: '700', width: 30, textAlign: 'right' },
+  usageEmployeeCard: { backgroundColor: HUD_CARD, borderWidth: 1, borderColor: HUD_BORDER, borderRadius: 10, overflow: 'hidden' },
+  usageEmployeeHeader: { flexDirection: 'row', paddingHorizontal: 12, paddingVertical: 6, borderBottomWidth: 1, backgroundColor: 'rgba(0,0,0,0.2)' },
+  usageEmployeeRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1 },
+  usageEmployeeCell: { fontSize: 10, fontWeight: '700', letterSpacing: 0.5 },
+  usageEmployeeName: { fontSize: 12, fontWeight: '600', color: HUD_TEXT },
+  usageEmployeeRole: { fontSize: 10, color: HUD_DIM, marginTop: 1 },
+  usageLogCard: { backgroundColor: HUD_CARD, borderWidth: 1, borderColor: HUD_BORDER, borderRadius: 8, padding: 10, marginBottom: 6 },
+  usageLogHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 3 },
+  usageLogEmployee: { fontSize: 12, fontWeight: '700', color: HUD_BRIGHT },
+  usageLogTime: { fontSize: 10, color: HUD_DIM },
+  usageLogTool: { fontSize: 11, color: HUD_ACCENT, marginBottom: 2 },
+  usageLogCommand: { fontSize: 10, color: HUD_DIM, fontStyle: 'italic', marginBottom: 4 },
+  usageLogFooter: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  usageLogTokens: { fontSize: 10, color: HUD_DIM },
+  usageLogCost: { fontSize: 10, color: HUD_GREEN, fontWeight: '600' },
+  usageLogBadge: { fontSize: 12 },
 });
