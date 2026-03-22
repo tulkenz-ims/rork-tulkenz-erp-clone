@@ -25,6 +25,7 @@ import { useAIActions } from '@/hooks/useAIActions';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as Speech from 'expo-speech';
+import { usePermissions } from '@/contexts/PermissionsContext';
 import * as FileSystem from 'expo-file-system';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -79,6 +80,7 @@ interface AIResponse {
 // ══════════════════════════════════════════════════════════════════
 
 const AI_ASSIST_URL = '/api/ai-assist';
+const { currentUserRole, isSuperAdmin } = usePermissions();
 
 const TOOL_ICONS: Record<string, { icon: any; color: string; label: string }> = {
   create_task_feed_post_broken_glove:         { icon: AlertTriangle, color: '#F97316', label: 'Broken Glove' },
@@ -598,6 +600,8 @@ export default function AIAssistButton() {
           userName: user?.name || `${user?.first_name || ''} ${user?.last_name || ''}`.trim() || 'Operator',
           userRole: user?.role || 'operator',
           userDepartment: user?.department || 'unknown',
+          userModules: currentUserRole?.permissions?.map(p => p.module) || null,
+          isSuperAdmin: isSuperAdmin || false,
           currentRoom: null,
           activeRecordId: null,
           language: language,
