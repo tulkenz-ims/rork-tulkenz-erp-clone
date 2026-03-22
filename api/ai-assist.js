@@ -1046,6 +1046,45 @@ function detectLanguage(text) {
   return matches >= 2 ? 'es' : 'en';
 }
 
+// ── Usage Logging ─────────────────────────────────────────────────────────────
+
+async function logUsage(sb, {
+  orgId, userId, userName, userRole, deptCode, screen,
+  toolUsed, commandPreview, usage, model, language,
+  hadImage, hadWebSearch, loopCount, responseMs,
+}) {
+  if (!sb || !orgId) return;
+  try {
+    // Sonnet 4 pricing: $3/M input, $15/M output
+    const inputCost  = ((usage?.input_tokens  || 0) / 1_000_000) * 3;
+    const outputCost = ((usage?.output_tokens || 0) / 1_000_000) * 15;
+    const totalCost  = inputCost + outputCost;
+
+    await sb.from('ai_usage_log').insert({
+      organization_id:    orgId,
+      employee_id:        userId    || null,
+      employee_name:      userName  || null,
+      employee_role:      userRole  || null,
+      department_code:    deptCode  || null,
+      screen:             screen    || null,
+      tool_used:          toolUsed  || null,
+      command_preview:    commandPreview ? commandPreview.substring(0, 100) : null,
+      input_tokens:       usage?.input_tokens  || 0,
+      output_tokens:      usage?.output_tokens || 0,
+      total_tokens:       (usage?.input_tokens || 0) + (usage?.output_tokens || 0),
+      estimated_cost_usd: totalCost,
+      model:              model    || 'claude-sonnet-4-20250514',
+      language:           language || 'en',
+      had_image:          hadImage      || false,
+      had_web_search:     hadWebSearch  || false,
+      loop_count:         loopCount     || 1,
+      response_ms:        responseMs    || null,
+    });
+  } catch (e) {
+    console.warn('[ai-assist] logUsage failed:', e.message);
+  }
+}
+
 // ── Watch System ─────────────────────────────────────────────────────────────
 
 async function checkWatchList(sb, orgId, userId) {
@@ -1254,6 +1293,7 @@ module.exports = async (req, res) => {
     const userLanguage = detectedLang === 'es' ? 'es' : contextLang;
 
     const sb = getSupabaseAdmin();
+    const requestStart = Date.now();
 
     const [memoryResult, schemaBlock] = await Promise.all([
       (orgId && userId) ? loadMemory(orgId, userId) : Promise.resolve({ memories: [], summaries: [] }),
@@ -1470,9 +1510,33 @@ module.exports = async (req, res) => {
         : (isDrill ? `Starting ${labelEN} drill. Navigating to roll call now.` : `⚠️ Initiating ${labelEN} emergency protocol. Roll call starting immediately.`));
     }
 
-    // ── Background tasks — watch capture + memory ─────────────────────────────
+   // ── Background tasks — usage log + watch capture + memory ────────────────
     setImmediate(async () => {
       try {
+        const responseMs = Date.now() - requestStart;
+        const hadWebSearch = response.content.some(b =>
+          b.type === 'server_tool_use' || b.type === 'tool_result'
+        );
+
+        // Log usage — free data from Anthropic response
+        await logUsage(sb, {
+          orgId,
+          userId,
+          userName,
+          userRole:      context?.userRole     || null,
+          deptCode:      context?.userDepartment || null,
+          screen:        context?.screen        || null,
+          toolUsed:      result.tool_name       || null,
+          commandPreview: command               || null,
+          usage:         response.usage,
+          model:         'claude-sonnet-4-20250514',
+          language:      userLanguage,
+          hadImage:      !!image,
+          hadWebSearch,
+          loopCount,
+          responseMs,
+        });
+
         if (orgId && userId && sb) {
           // Check watch list and capture if monitored
           const watchEntry = await checkWatchList(sb, orgId, userId);
