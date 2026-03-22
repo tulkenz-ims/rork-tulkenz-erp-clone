@@ -63,12 +63,13 @@ const SEVERITY_COLORS: Record<string, string> = {
 
 export default function WatchScreen() {
   const router = useRouter();
-  const { user } = useUser();
+  const { userProfile } = useUser();
 
   // ── Role guard ──
   const isAuthorized =
-    user?.role === 'platform_admin' ||
-    user?.role === 'super_admin';
+    userProfile?.is_platform_admin === true ||
+    userProfile?.role === 'super_admin' ||
+    userProfile?.role === 'platform_admin';
 
   const [activeTab, setActiveTab] = useState<'watched' | 'logs' | 'saved'>('watched');
   const [refreshing, setRefreshing] = useState(false);
