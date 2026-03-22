@@ -18,6 +18,7 @@ import {
   UserCog,
   DollarSign,
   Factory,
+  Eye,
 } from 'lucide-react-native';
 
 export interface NavigationModule {
@@ -48,6 +49,7 @@ export const NAVIGATION_MODULES: NavigationModule[] = [
   { key: 'recycling', label: 'Recycling', icon: Recycle, route: 'recycling' },
   { key: 'hr', label: 'HR', icon: UserCog, route: 'hr', superAdminOnly: true },
   { key: 'finance', label: 'Finance', icon: DollarSign, route: 'finance', superAdminOnly: true },
+  { key: 'watchscreen', label: 'Watch Screen', icon: Eye, route: 'watchscreen', superAdminOnly: true },
   { key: 'settings', label: 'Settings', icon: Settings, route: 'settings' },
 ];
 
