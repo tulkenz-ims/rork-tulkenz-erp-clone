@@ -189,6 +189,7 @@ export default function TabLayout() {
           <Tabs.Screen name="hr" />
           <Tabs.Screen name="finance" />
           <Tabs.Screen name="settings" />
+          <Tabs.Screen name="watchscreen" />
         </Tabs>
       </View>
       
