@@ -80,7 +80,6 @@ interface AIResponse {
 // ══════════════════════════════════════════════════════════════════
 
 const AI_ASSIST_URL = '/api/ai-assist';
-const { currentUserRole, isSuperAdmin } = usePermissions();
 
 const TOOL_ICONS: Record<string, { icon: any; color: string; label: string }> = {
   create_task_feed_post_broken_glove:         { icon: AlertTriangle, color: '#F97316', label: 'Broken Glove' },
@@ -389,6 +388,9 @@ export default function AIAssistButton() {
   const { colors } = useTheme();
   const { user } = useUser();
   const { executeAction: executeAIAction } = useAIActions();
+  const permissionsContext = usePermissions();
+  const currentUserRole = permissionsContext?.currentUserRole || null;
+  const isSuperAdmin = permissionsContext?.isSuperAdmin || false;
 
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
