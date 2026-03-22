@@ -155,8 +155,8 @@ export default function WatchScreen() {
         employee_name: flagEmployeeName,
         reason: flagReason,
         severity: flagSeverity,
-        flagged_by: `${user?.first_name || ''} ${user?.last_name || ''}`.trim() || 'Platform Admin',
-        flagged_by_id: user?.id || undefined,
+        flagged_by: `${userProfile?.first_name || ''} ${userProfile?.last_name || ''}`.trim() || 'Platform Admin',
+        flagged_by_id: userProfile?.id || undefined,
         email_alerts: flagEmailAlerts,
         alert_email: flagAlertEmail || undefined,
         notes: flagNotes || undefined,
@@ -181,7 +181,7 @@ export default function WatchScreen() {
       await unflagEmployee.mutateAsync({
         id: selectedEntry.id,
         employee_id: selectedEntry.employee_id,
-        unflagged_by: `${user?.first_name || ''} ${user?.last_name || ''}`.trim() || 'Platform Admin',
+        unflagged_by: `${userProfile?.first_name || ''} ${userProfile?.last_name || ''}`.trim() || 'Platform Admin',
         unflag_reason: unflagReason,
       });
       setUnflagModal(false);
@@ -201,7 +201,7 @@ export default function WatchScreen() {
       await markReviewed.mutateAsync({
         id: selectedLog.id,
         watch_id: selectedLog.watch_id,
-        reviewed_by: `${user?.first_name || ''} ${user?.last_name || ''}`.trim() || 'Platform Admin',
+        reviewed_by: `${userProfile?.first_name || ''} ${userProfile?.last_name || ''}`.trim() || 'Platform Admin',
         review_notes: reviewNotes || undefined,
       });
       setReviewModal(false);
