@@ -5,35 +5,15 @@
     }
   },
   "crons": [
-    {
-      "path": "/api/cron/pm-due",
-      "schedule": "0 12 * * *"
-    },
-    {
-      "path": "/api/cron/sanitation-due",
-      "schedule": "0 * * * *"
-    },
-    {
-      "path": "/api/cron/hygiene-signoff-reminder",
-      "schedule": "0 4 * * *"
-    },
-    {
-      "path": "/api/cron/timeclock-cleanup",
-      "schedule": "0 8 * * *"
-    },
-    {
-      "path": "/api/cron/training-due",
-      "schedule": "0 9 * * *"
-    }
+    {"path": "/api/cron/pm-due", "schedule": "0 12 * * *"},
+    {"path": "/api/cron/sanitation-due", "schedule": "0 * * * *"},
+    {"path": "/api/cron/hygiene-signoff-reminder", "schedule": "0 4 * * *"},
+    {"path": "/api/cron/timeclock-cleanup", "schedule": "0 8 * * *"},
+    {"path": "/api/cron/training-due", "schedule": "0 9 * * *"},
+    {"path": "/api/cron/ai-reminders", "schedule": "*/5 * * * *"}
   ],
   "rewrites": [
-    {
-      "source": "/api/(.*)",
-      "destination": "/api/$1"
-    },
-    {
-      "source": "/(.*)",
-      "destination": "/"
-    }
+    {"source": "/api/(.*)", "destination": "/api/$1"},
+    {"source": "/(.*)", "destination": "/"}
   ]
 }
