@@ -866,6 +866,93 @@ function detectLanguage(text) {
   return matches >= 2 ? 'es' : 'en';
 }
 
+// ── Rate Limiting ─────────────────────────────────────────────────────────────
+
+const DEFAULT_CAPS = {
+  platform_admin: 0,
+  superadmin:     0,
+  super_admin:    0,
+  administrator:  0,
+  admin:          0,
+  manager:        200,
+  supervisor:     100,
+  default:        50,
+};
+
+async function checkRateLimit(sb, orgId, userId, userRole) {
+  if (!sb || !orgId || !userId) return { allowed: true, warn: false };
+
+  try {
+    // ── 1. Check for employee-specific override ──
+    const { data: empLimit } = await sb
+      .from('ai_rate_limits')
+      .select('daily_limit, is_unlimited')
+      .eq('organization_id', orgId)
+      .eq('employee_id', userId)
+      .maybeSingle();
+
+    let limit = null;
+    let unlimited = false;
+
+    if (empLimit) {
+      if (empLimit.is_unlimited) return { allowed: true, warn: false, unlimited: true };
+      limit = empLimit.daily_limit;
+    }
+
+    // ── 2. If no employee override, check role default ──
+    if (limit === null) {
+      const { data: roleLimit } = await sb
+        .from('ai_rate_limits')
+        .select('daily_limit, is_unlimited')
+        .eq('organization_id', orgId)
+        .eq('role_name', userRole || 'default')
+        .is('employee_id', null)
+        .maybeSingle();
+
+      if (roleLimit) {
+        if (roleLimit.is_unlimited) return { allowed: true, warn: false, unlimited: true };
+        limit = roleLimit.daily_limit;
+      }
+    }
+
+    // ── 3. Fall back to hardcoded defaults ──
+    if (limit === null) {
+      const cap = DEFAULT_CAPS[userRole?.toLowerCase()] ?? DEFAULT_CAPS.default;
+      if (cap === 0) return { allowed: true, warn: false, unlimited: true };
+      limit = cap;
+    }
+
+    // ── 4. Count today's calls from ai_usage_log ──
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const { count } = await sb
+      .from('ai_usage_log')
+      .select('id', { count: 'exact', head: true })
+      .eq('organization_id', orgId)
+      .eq('employee_id', userId)
+      .gte('created_at', todayStart.toISOString());
+
+    const used = count || 0;
+    const pct  = used / limit;
+
+    if (used >= limit) {
+      return { allowed: false, warn: false, used, limit, pct };
+    }
+
+    if (pct >= 0.8) {
+      return { allowed: true, warn: true, used, limit, pct,
+        remaining: limit - used };
+    }
+
+    return { allowed: true, warn: false, used, limit, pct, remaining: limit - used };
+
+  } catch (e) {
+    console.warn('[ai-assist] checkRateLimit failed:', e.message);
+    return { allowed: true, warn: false }; // fail open
+  }
+}
+
 // ── Usage Logging ─────────────────────────────────────────────────────────────
 
 async function logUsage(sb, {
@@ -1096,6 +1183,25 @@ module.exports = async (req, res) => {
     const sb = getSupabaseAdmin();
     const requestStart = Date.now();
 
+    // ── Rate limit check ──────────────────────────────────────────
+    const rateCheck = await checkRateLimit(sb, orgId, userId, context?.userRole);
+    if (!rateCheck.allowed) {
+      const es = detectLanguage(command || '') === 'es';
+      return res.status(200).json({
+        success: false,
+        action: 'rate_limited',
+        tool_name: null,
+        params: null,
+        speech: es
+          ? `Has alcanzado tu límite diario de ${rateCheck.limit} mensajes. El límite se reinicia a medianoche CST.`
+          : `You've reached your daily limit of ${rateCheck.limit} AI messages. Your limit resets at midnight CST.`,
+        needs_photo: false,
+        conversation_continue: false,
+        assistant_message: null,
+        rate_limit: { used: rateCheck.used, limit: rateCheck.limit, blocked: true },
+      });
+    }
+
     const [memoryResult, schemaBlock] = await Promise.all([
       (orgId && userId) ? loadMemory(orgId, userId) : Promise.resolve({ memories: [], summaries: [] }),
       buildSchemaBlock(command),
@@ -1157,6 +1263,12 @@ module.exports = async (req, res) => {
       success: true, action: null, tool_name: null, params: null,
       speech: null, needs_photo: false, conversation_continue: false,
       assistant_message: { role: 'assistant', content: response.content },
+      rate_limit: rateCheck.warn ? {
+        used: rateCheck.used,
+        limit: rateCheck.limit,
+        remaining: rateCheck.remaining,
+        warn: true,
+      } : null,
     };
 
     for (const block of response.content) {
