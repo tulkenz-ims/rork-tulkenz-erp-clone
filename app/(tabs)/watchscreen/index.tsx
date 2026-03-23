@@ -55,7 +55,7 @@ export default function WatchScreen() {
   const router = useRouter();
   const { userProfile } = useUser();
   const queryClient = useQueryClient();
-  const orgId = userProfile?.organization_id || null;
+  const orgId = userProfile?.organization_id || '74ce281d-5630-422d-8326-e5d36cfc1d5e';
 
   const isAuthorized =
     userProfile?.is_platform_admin === true ||
