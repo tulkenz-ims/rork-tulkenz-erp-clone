@@ -475,16 +475,6 @@ export default function AIAssistButton() {
       list[0] || null;
     return pick(natural) || pick(esVoices);
   }, [isWeb]);
-
-  <Pressable
-    onPress={() => {
-      const lang = language === 'es' ? 'es-MX' : 'en-US';
-      Speech.speak(msg.text, { language: lang, pitch: 1.0, rate: 0.95 });
-    }}
-    style={[styles.speakBtn, { backgroundColor: '#8B5CF620' }]}
-  >
-    <Volume2 size={14} color="#8B5CF6" />
-  </Pressable>
   
   const [pendingImage, setPendingImage] = useState<{ uri: string; base64: string; mediaType: string; } | null>(null);
   const [showImageChoice, setShowImageChoice] = useState(false);
@@ -1055,7 +1045,10 @@ export default function AIAssistButton() {
                   <View style={styles.assistantFooter}>
                     {renderActionBadge(msg.toolName)}
                     <Pressable
-                      onPress={() => speakResponse(msg.text)}
+                      onPress={() => {
+                        const lang = language === 'es' ? 'es-MX' : 'en-US';
+                        Speech.speak(msg.text, { language: lang, pitch: 1.0, rate: 0.95 });
+                      }}
                       style={[styles.speakBtn, { backgroundColor: '#8B5CF620' }]}
                     >
                       <Volume2 size={14} color="#8B5CF6" />
