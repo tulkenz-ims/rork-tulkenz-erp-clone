@@ -177,6 +177,7 @@ export default function WatchScreen() {
       } else {
         fromDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
       }
+      console.log('[WatchScreen] orgId for usage query:', orgId);
       const { data, error } = await supabase.from('ai_usage_log')
         .select('*').eq('organization_id', orgId)
         .gte('created_at', fromDate).order('created_at', { ascending: false }).limit(500);
