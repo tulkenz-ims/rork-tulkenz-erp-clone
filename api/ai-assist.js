@@ -953,11 +953,6 @@ async function checkRateLimit(sb, orgId, userId, userRole, isPlatformAdmin) {
 
 // ── Usage Logging ─────────────────────────────────────────────────────────────
 
-async function logUsage(sb, { ... }) {
-  if (!sb || !orgId) return;
-  console.log('[ai-assist] logUsage called for:', userName, 'org:', orgId); // ← ADD THIS
-  try {
-
 async function logUsage(sb, {
   orgId, userId, userName, userRole, deptCode, screen,
   toolUsed, commandPreview, usage, model, language,
