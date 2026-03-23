@@ -604,6 +604,7 @@ export default function AIAssistButton() {
           userDepartment: user?.department || 'unknown',
           userModules: currentUserRole?.permissions?.map(p => p.module) || null,
           isSuperAdmin: isSuperAdmin || false,
+          is_platform_admin: user?.is_platform_admin || false,
           currentRoom: null,
           activeRecordId: null,
           language: language,
