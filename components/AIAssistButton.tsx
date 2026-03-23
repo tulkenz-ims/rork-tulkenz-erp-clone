@@ -536,7 +536,7 @@ export default function AIAssistButton() {
     else Speech.stop();
   }, [isWeb]);
 
-  const speakResponse = useCallback((text: string, onDone?: () => void) => {
+ const speakResponse = useCallback(async (text: string, onDone?: () => void) => {
     if (!isSpeechEnabled || !text) { onDone?.(); return; }
     try {
       if (isWeb) {
@@ -556,11 +556,23 @@ export default function AIAssistButton() {
         window.speechSynthesis.speak(utter);
       } else {
         Speech.stop();
+        if (Platform.OS === 'ios') {
+          try {
+            const { Audio } = require('expo-av');
+            await Audio.setAudioModeAsync({
+              playsInSilentModeIOS: true,
+              allowsRecordingIOS: false,
+            });
+          } catch (audioErr) {
+            console.warn('[AIAssist] Audio session setup failed:', audioErr);
+          }
+        }
         const nativeVoiceId = availableVoices[selectedVoiceIndex]?.voice || undefined;
         Speech.speak(text, {
           language: speechLang, pitch: 1.0, rate: 1.0,
           ...(nativeVoiceId ? { voice: nativeVoiceId } : {}),
-          onDone: () => onDone?.(), onError: () => onDone?.(),
+          onDone: () => onDone?.(),
+          onError: (err) => { console.error('[AIAssist] Speech.speak error:', err); onDone?.(); },
         });
       }
     } catch (err) { console.error('[AIAssist] Speech error:', err); onDone?.(); }
