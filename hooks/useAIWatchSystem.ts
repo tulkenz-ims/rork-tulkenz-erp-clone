@@ -3,13 +3,9 @@
 // Platform Admin / Super Admin only for watch features
 // All employees can use notes & reminders
 
-import { useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
-import { useOrganization } from '@/contexts/OrganizationContext';
 import { useUser } from '@/contexts/UserContext';
-
-const ORG_ID = '74ce281d-5630-422d-8326-e5d36cfc1d5e';
 
 // ── TYPES ────────────────────────────────────────────────────────
 
@@ -112,36 +108,47 @@ export interface AIConsentRecord {
   consent_text: string | null;
 }
 
+// ── Helper to get orgId dynamically ──────────────────────────────
+// Falls back to known org ID if userProfile not yet loaded
+const FALLBACK_ORG_ID = '74ce281d-5630-422d-8326-e5d36cfc1d5e';
+
+function useOrgId(): string {
+  const { userProfile } = useUser();
+  return userProfile?.organization_id || FALLBACK_ORG_ID;
+}
+
 // ══════════════════════════════════════════════════════════════════
 // NOTES & REMINDERS (all employees)
 // ══════════════════════════════════════════════════════════════════
 
 export function useMyNotes(employeeId: string) {
+  const orgId = useOrgId();
   return useQuery({
-    queryKey: ['ai_user_notes', employeeId],
+    queryKey: ['ai_user_notes', employeeId, orgId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('ai_user_notes')
         .select('*')
-        .eq('organization_id', ORG_ID)
+        .eq('organization_id', orgId)
         .eq('employee_id', employeeId)
         .is('deleted_at', null)
         .order('created_at', { ascending: false });
       if (error) throw error;
       return (data || []) as AIUserNote[];
     },
-    enabled: !!employeeId,
+    enabled: !!employeeId && !!orgId,
   });
 }
 
 export function useMyReminders(employeeId: string) {
+  const orgId = useOrgId();
   return useQuery({
-    queryKey: ['ai_user_notes_reminders', employeeId],
+    queryKey: ['ai_user_notes_reminders', employeeId, orgId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('ai_user_notes')
         .select('*')
-        .eq('organization_id', ORG_ID)
+        .eq('organization_id', orgId)
         .eq('employee_id', employeeId)
         .eq('note_type', 'reminder')
         .eq('reminder_sent', false)
@@ -150,12 +157,13 @@ export function useMyReminders(employeeId: string) {
       if (error) throw error;
       return (data || []) as AIUserNote[];
     },
-    enabled: !!employeeId,
+    enabled: !!employeeId && !!orgId,
   });
 }
 
 export function useCreateNote() {
   const qc = useQueryClient();
+  const orgId = useOrgId();
   return useMutation({
     mutationFn: async (input: {
       employee_id: string;
@@ -169,11 +177,7 @@ export function useCreateNote() {
     }) => {
       const { data, error } = await supabase
         .from('ai_user_notes')
-        .insert({
-          organization_id: ORG_ID,
-          ...input,
-          source: input.source || 'ai_assistant',
-        })
+        .insert({ organization_id: orgId, ...input, source: input.source || 'ai_assistant' })
         .select()
         .single();
       if (error) throw error;
@@ -225,24 +229,26 @@ export function useMarkNoteRead() {
 // ══════════════════════════════════════════════════════════════════
 
 export function useMySavedConversations(employeeId: string) {
+  const orgId = useOrgId();
   return useQuery({
-    queryKey: ['ai_saved_conversations', employeeId],
+    queryKey: ['ai_saved_conversations', employeeId, orgId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('ai_saved_conversations')
         .select('*')
-        .eq('organization_id', ORG_ID)
+        .eq('organization_id', orgId)
         .eq('employee_id', employeeId)
         .order('created_at', { ascending: false });
       if (error) throw error;
       return (data || []) as AISavedConversation[];
     },
-    enabled: !!employeeId,
+    enabled: !!employeeId && !!orgId,
   });
 }
 
 export function useSaveConversation() {
   const qc = useQueryClient();
+  const orgId = useOrgId();
   return useMutation({
     mutationFn: async (input: {
       employee_id: string;
@@ -260,7 +266,7 @@ export function useSaveConversation() {
       const { data, error } = await supabase
         .from('ai_saved_conversations')
         .insert({
-          organization_id: ORG_ID,
+          organization_id: orgId,
           conversation_id: `conv-${Date.now()}-${Math.random().toString(36).slice(2)}`,
           saved_by: 'user',
           ...input,
@@ -281,13 +287,14 @@ export function useSaveConversation() {
 // ══════════════════════════════════════════════════════════════════
 
 export function useWatchList() {
+  const orgId = useOrgId();
   return useQuery({
-    queryKey: ['ai_watch_list'],
+    queryKey: ['ai_watch_list', orgId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('ai_watch_list')
         .select('*')
-        .eq('organization_id', ORG_ID)
+        .eq('organization_id', orgId)
         .order('created_at', { ascending: false });
       if (error) throw error;
       return (data || []) as AIWatchEntry[];
@@ -296,13 +303,14 @@ export function useWatchList() {
 }
 
 export function useActiveWatchList() {
+  const orgId = useOrgId();
   return useQuery({
-    queryKey: ['ai_watch_list_active'],
+    queryKey: ['ai_watch_list_active', orgId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('ai_watch_list')
         .select('*')
-        .eq('organization_id', ORG_ID)
+        .eq('organization_id', orgId)
         .eq('is_active', true)
         .order('created_at', { ascending: false });
       if (error) throw error;
@@ -312,26 +320,28 @@ export function useActiveWatchList() {
 }
 
 export function useIsEmployeeWatched(employeeId: string) {
+  const orgId = useOrgId();
   return useQuery({
-    queryKey: ['ai_watch_check', employeeId],
+    queryKey: ['ai_watch_check', employeeId, orgId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('ai_watch_list')
         .select('id, is_active, email_alerts, alert_email')
-        .eq('organization_id', ORG_ID)
+        .eq('organization_id', orgId)
         .eq('employee_id', employeeId)
         .eq('is_active', true)
         .maybeSingle();
       if (error) throw error;
       return data as { id: string; is_active: boolean; email_alerts: boolean; alert_email: string | null } | null;
     },
-    enabled: !!employeeId,
-    staleTime: 5 * 60 * 1000, // cache 5 min — checked on every AI call
+    enabled: !!employeeId && !!orgId,
+    staleTime: 5 * 60 * 1000,
   });
 }
 
 export function useFlagEmployee() {
   const qc = useQueryClient();
+  const orgId = useOrgId();
   return useMutation({
     mutationFn: async (input: {
       employee_id: string;
@@ -348,11 +358,7 @@ export function useFlagEmployee() {
     }) => {
       const { data, error } = await supabase
         .from('ai_watch_list')
-        .insert({
-          organization_id: ORG_ID,
-          is_active: true,
-          ...input,
-        })
+        .insert({ organization_id: orgId, is_active: true, ...input })
         .select()
         .single();
       if (error) throw error;
@@ -424,13 +430,14 @@ export function useUpdateWatchEntry() {
 // ══════════════════════════════════════════════════════════════════
 
 export function useWatchLogs(watchId?: string) {
+  const orgId = useOrgId();
   return useQuery({
-    queryKey: ['ai_watch_logs', watchId],
+    queryKey: ['ai_watch_logs', watchId, orgId],
     queryFn: async () => {
       let q = supabase
         .from('ai_watch_logs')
         .select('*')
-        .eq('organization_id', ORG_ID)
+        .eq('organization_id', orgId)
         .order('created_at', { ascending: false });
       if (watchId) q = q.eq('watch_id', watchId);
       const { data, error } = await q;
@@ -442,13 +449,14 @@ export function useWatchLogs(watchId?: string) {
 }
 
 export function useUnreviewedWatchLogs() {
+  const orgId = useOrgId();
   return useQuery({
-    queryKey: ['ai_watch_logs_unreviewed'],
+    queryKey: ['ai_watch_logs_unreviewed', orgId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('ai_watch_logs')
         .select('*')
-        .eq('organization_id', ORG_ID)
+        .eq('organization_id', orgId)
         .eq('reviewed', false)
         .order('created_at', { ascending: false });
       if (error) throw error;
@@ -459,6 +467,7 @@ export function useUnreviewedWatchLogs() {
 
 export function useCreateWatchLog() {
   const qc = useQueryClient();
+  const orgId = useOrgId();
   return useMutation({
     mutationFn: async (input: {
       watch_id: string;
@@ -475,26 +484,18 @@ export function useCreateWatchLog() {
     }) => {
       const { data, error } = await supabase
         .from('ai_watch_logs')
-        .insert({ organization_id: ORG_ID, ...input })
+        .insert({ organization_id: orgId, ...input })
         .select()
         .single();
       if (error) throw error;
 
-      // Increment conversation count on watch entry
-      await supabase.rpc('increment', {
-        table_name: 'ai_watch_list',
-        field_name: 'conversation_count',
-        row_id: input.watch_id,
-      }).catch(() => {
-        // Fallback if rpc not available
-        supabase
-          .from('ai_watch_list')
-          .update({
-            last_activity_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', input.watch_id);
-      });
+      await supabase
+        .from('ai_watch_list')
+        .update({
+          last_activity_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', input.watch_id);
 
       return data as AIWatchLog;
     },
@@ -564,13 +565,14 @@ export function useMarkLogEmailed() {
 // ══════════════════════════════════════════════════════════════════
 
 export function useCheckConsent(employeeId: string) {
+  const orgId = useOrgId();
   return useQuery({
-    queryKey: ['ai_consent', employeeId],
+    queryKey: ['ai_consent', employeeId, orgId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('ai_consent_records')
         .select('id, consent_version, consented_at')
-        .eq('organization_id', ORG_ID)
+        .eq('organization_id', orgId)
         .eq('employee_id', employeeId)
         .order('consented_at', { ascending: false })
         .limit(1)
@@ -578,12 +580,13 @@ export function useCheckConsent(employeeId: string) {
       if (error) throw error;
       return data as { id: string; consent_version: string; consented_at: string } | null;
     },
-    enabled: !!employeeId,
+    enabled: !!employeeId && !!orgId,
   });
 }
 
 export function useRecordConsent() {
   const qc = useQueryClient();
+  const orgId = useOrgId();
   return useMutation({
     mutationFn: async (input: {
       employee_id: string;
@@ -595,11 +598,7 @@ export function useRecordConsent() {
     }) => {
       const { data, error } = await supabase
         .from('ai_consent_records')
-        .insert({
-          organization_id: ORG_ID,
-          consent_version: '1.0',
-          ...input,
-        })
+        .insert({ organization_id: orgId, consent_version: '1.0', ...input })
         .select()
         .single();
       if (error) throw error;
@@ -612,32 +611,32 @@ export function useRecordConsent() {
 }
 
 // ══════════════════════════════════════════════════════════════════
-// WATCH STATS (for Watch Screen dashboard)
+// WATCH STATS
 // ══════════════════════════════════════════════════════════════════
 
 export function useWatchStats() {
+  const orgId = useOrgId();
   return useQuery({
-    queryKey: ['ai_watch_stats'],
+    queryKey: ['ai_watch_stats', orgId],
     queryFn: async () => {
       const [activeRes, unreviewedRes, totalLogsRes, emailAlertsRes] = await Promise.all([
-        supabase.from('ai_watch_list').select('id', { count: 'exact', head: true }).eq('organization_id', ORG_ID).eq('is_active', true),
-        supabase.from('ai_watch_logs').select('id', { count: 'exact', head: true }).eq('organization_id', ORG_ID).eq('reviewed', false),
-        supabase.from('ai_watch_logs').select('id', { count: 'exact', head: true }).eq('organization_id', ORG_ID),
-        supabase.from('ai_watch_list').select('id', { count: 'exact', head: true }).eq('organization_id', ORG_ID).eq('is_active', true).eq('email_alerts', true),
+        supabase.from('ai_watch_list').select('id', { count: 'exact', head: true }).eq('organization_id', orgId).eq('is_active', true),
+        supabase.from('ai_watch_logs').select('id', { count: 'exact', head: true }).eq('organization_id', orgId).eq('reviewed', false),
+        supabase.from('ai_watch_logs').select('id', { count: 'exact', head: true }).eq('organization_id', orgId),
+        supabase.from('ai_watch_list').select('id', { count: 'exact', head: true }).eq('organization_id', orgId).eq('is_active', true).eq('email_alerts', true),
       ]);
-
       return {
-        activeWatched: activeRes.count || 0,
-        unreviewedLogs: unreviewedRes.count || 0,
-        totalLogs: totalLogsRes.count || 0,
-        emailAlerts: emailAlertsRes.count || 0,
+        activeWatched:  activeRes.count      || 0,
+        unreviewedLogs: unreviewedRes.count  || 0,
+        totalLogs:      totalLogsRes.count   || 0,
+        emailAlerts:    emailAlertsRes.count || 0,
       };
     },
   });
 }
 
 // ══════════════════════════════════════════════════════════════════
-// ALL SAVED CONVERSATIONS (platform admin view — all employees)
+// ALL SAVED CONVERSATIONS (platform admin view)
 // ══════════════════════════════════════════════════════════════════
 
 export function useAllSavedConversations(filters?: {
@@ -646,19 +645,20 @@ export function useAllSavedConversations(filters?: {
   is_flagged?: boolean;
   date_range?: 'today' | 'this_week' | 'this_month' | 'all';
 }) {
+  const orgId = useOrgId();
   return useQuery({
-    queryKey: ['ai_saved_conversations_all', filters],
+    queryKey: ['ai_saved_conversations_all', filters, orgId],
     queryFn: async () => {
       let q = supabase
         .from('ai_saved_conversations')
         .select('*')
-        .eq('organization_id', ORG_ID)
+        .eq('organization_id', orgId)
         .order('created_at', { ascending: false })
         .limit(50);
 
-      if (filters?.employee_id) q = q.eq('employee_id', filters.employee_id);
-      if (filters?.saved_by) q = q.eq('saved_by', filters.saved_by);
-      if (filters?.is_flagged !== undefined) q = q.eq('is_flagged', filters.is_flagged);
+      if (filters?.employee_id)              q = q.eq('employee_id', filters.employee_id);
+      if (filters?.saved_by)                 q = q.eq('saved_by', filters.saved_by);
+      if (filters?.is_flagged !== undefined)  q = q.eq('is_flagged', filters.is_flagged);
       if (filters?.date_range === 'today') {
         const t = new Date().toISOString().split('T')[0];
         q = q.gte('created_at', `${t}T00:00:00`);
