@@ -868,6 +868,8 @@ function detectLanguage(text) {
 
 // ── Rate Limiting ─────────────────────────────────────────────────────────────
 
+// Hardcoded defaults — used when no db entry exists for a role
+// 0 = unlimited
 const DEFAULT_CAPS = {
   platform_admin: 0,
   superadmin:     0,
@@ -875,15 +877,17 @@ const DEFAULT_CAPS = {
   administrator:  0,
   admin:          0,
   manager:        200,
-  supervisor:     100,
+  employee:       50,
   default:        50,
 };
 
-async function checkRateLimit(sb, orgId, userId, userRole) {
+async function checkRateLimit(sb, orgId, userId, userRole, isPlatformAdmin) {
+  // Platform admins are always unlimited
+  if (isPlatformAdmin) return { allowed: true, warn: false, unlimited: true };
   if (!sb || !orgId || !userId) return { allowed: true, warn: false };
 
   try {
-    // ── 1. Check for employee-specific override ──
+    // 1. Check employee-specific override first
     const { data: empLimit } = await sb
       .from('ai_rate_limits')
       .select('daily_limit, is_unlimited')
@@ -892,14 +896,13 @@ async function checkRateLimit(sb, orgId, userId, userRole) {
       .maybeSingle();
 
     let limit = null;
-    let unlimited = false;
 
     if (empLimit) {
       if (empLimit.is_unlimited) return { allowed: true, warn: false, unlimited: true };
       limit = empLimit.daily_limit;
     }
 
-    // ── 2. If no employee override, check role default ──
+    // 2. Check role default in db
     if (limit === null) {
       const { data: roleLimit } = await sb
         .from('ai_rate_limits')
@@ -915,14 +918,14 @@ async function checkRateLimit(sb, orgId, userId, userRole) {
       }
     }
 
-    // ── 3. Fall back to hardcoded defaults ──
+    // 3. Fall back to hardcoded defaults
     if (limit === null) {
       const cap = DEFAULT_CAPS[userRole?.toLowerCase()] ?? DEFAULT_CAPS.default;
       if (cap === 0) return { allowed: true, warn: false, unlimited: true };
       limit = cap;
     }
 
-    // ── 4. Count today's calls from ai_usage_log ──
+    // 4. Count today's calls from ai_usage_log
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
 
@@ -931,19 +934,14 @@ async function checkRateLimit(sb, orgId, userId, userRole) {
       .select('id', { count: 'exact', head: true })
       .eq('organization_id', orgId)
       .eq('employee_id', userId)
+      .eq('is_platform_admin', false)
       .gte('created_at', todayStart.toISOString());
 
     const used = count || 0;
     const pct  = used / limit;
 
-    if (used >= limit) {
-      return { allowed: false, warn: false, used, limit, pct };
-    }
-
-    if (pct >= 0.8) {
-      return { allowed: true, warn: true, used, limit, pct,
-        remaining: limit - used };
-    }
+    if (used >= limit) return { allowed: false, warn: false, used, limit, pct };
+    if (pct >= 0.8)    return { allowed: true, warn: true, used, limit, pct, remaining: limit - used };
 
     return { allowed: true, warn: false, used, limit, pct, remaining: limit - used };
 
@@ -958,7 +956,7 @@ async function checkRateLimit(sb, orgId, userId, userRole) {
 async function logUsage(sb, {
   orgId, userId, userName, userRole, deptCode, screen,
   toolUsed, commandPreview, usage, model, language,
-  hadImage, hadWebSearch, loopCount, responseMs,
+  hadImage, hadWebSearch, loopCount, responseMs, isPlatformAdmin,
 }) {
   if (!sb || !orgId) return;
   try {
@@ -977,12 +975,13 @@ async function logUsage(sb, {
       output_tokens:      usage?.output_tokens || 0,
       total_tokens:       (usage?.input_tokens || 0) + (usage?.output_tokens || 0),
       estimated_cost_usd: inputCost + outputCost,
-      model:              model    || 'claude-sonnet-4-20250514',
-      language:           language || 'en',
-      had_image:          hadImage      || false,
-      had_web_search:     hadWebSearch  || false,
-      loop_count:         loopCount     || 1,
-      response_ms:        responseMs    || null,
+      model:              model      || 'claude-sonnet-4-20250514',
+      language:           language   || 'en',
+      had_image:          hadImage   || false,
+      had_web_search:     hadWebSearch || false,
+      loop_count:         loopCount  || 1,
+      response_ms:        responseMs || null,
+      is_platform_admin:  isPlatformAdmin || false,
     });
   } catch (e) {
     console.warn('[ai-assist] logUsage failed:', e.message);
@@ -1172,9 +1171,12 @@ module.exports = async (req, res) => {
 
     const client = new Anthropic({ apiKey });
 
-    const orgId    = context?.organizationId || null;
-    const userId   = context?.userId || null;
-    const userName = context?.userName || 'Operator';
+    const orgId          = context?.organizationId   || null;
+    const userId         = context?.userId           || null;
+    const userName       = context?.userName         || 'Operator';
+    const userRole       = context?.userRole         || null;
+    const isPlatformAdmin = context?.is_platform_admin === true ||
+                            context?.userRole === 'platform_admin';
 
     const detectedLang = detectLanguage(command || '');
     const contextLang  = context?.language || 'en';
@@ -1183,10 +1185,10 @@ module.exports = async (req, res) => {
     const sb = getSupabaseAdmin();
     const requestStart = Date.now();
 
-    // ── Rate limit check ──────────────────────────────────────────
-    const rateCheck = await checkRateLimit(sb, orgId, userId, context?.userRole);
+    // ── Rate limit check — skipped for platform admin ─────────────
+    const rateCheck = await checkRateLimit(sb, orgId, userId, userRole, isPlatformAdmin);
     if (!rateCheck.allowed) {
-      const es = detectLanguage(command || '') === 'es';
+      const es = userLanguage === 'es';
       return res.status(200).json({
         success: false,
         action: 'rate_limited',
@@ -1221,7 +1223,7 @@ module.exports = async (req, res) => {
     }
 
     const contextStr = context
-      ? `\n\n[Context: Screen="${context.screen||'unknown'}", User=${context.userName||'unknown'} (${context.userRole||'unknown'}), Dept=${context.userDepartment||'unknown'}, Room=${context.currentRoom||'none'}, Language=${userLanguage}]`
+      ? `\n\n[Context: Screen="${context.screen||'unknown'}", User=${context.userName||'unknown'} (${userRole||'unknown'}), Dept=${context.userDepartment||'unknown'}, Room=${context.currentRoom||'none'}, Language=${userLanguage}]`
       : '';
 
     userContent.push({ type: 'text', text: (command || 'What do you see in this image?') + contextStr });
@@ -1357,12 +1359,12 @@ module.exports = async (req, res) => {
       const names = (result.params?.employee_names || []).join(', ');
       result.speech = result.speech || (es ? `Marcando como seguros: ${names}.` : `Marking ${names} safe.`);
     }
-    if (result.tool_name === 'get_roll_call_status') { result.action = 'get_roll_call_status'; result.speech = result.speech || (es ? 'Verificando el estado del pase de lista.' : 'Checking roll call status.'); }
-    if (result.tool_name === 'initiate_roll_call') { result.action = 'initiate_roll_call'; result.speech = result.speech || (es ? 'Iniciando el pase de lista ahora.' : 'Initiating roll call now.'); }
+    if (result.tool_name === 'get_roll_call_status')   { result.action = 'get_roll_call_status';   result.speech = result.speech || (es ? 'Verificando el estado del pase de lista.' : 'Checking roll call status.'); }
+    if (result.tool_name === 'initiate_roll_call')     { result.action = 'initiate_roll_call';     result.speech = result.speech || (es ? 'Iniciando el pase de lista ahora.' : 'Initiating roll call now.'); }
     if (result.tool_name === 'end_emergency_protocol') { result.action = 'end_emergency_protocol'; result.speech = result.speech || (es ? 'Protocolo finalizado.' : 'Ending protocol and resolving event.'); }
     if (result.tool_name === 'cancel_emergency_event') { result.action = 'cancel_emergency_event'; result.speech = result.speech || (es ? 'Evento cancelado.' : 'Cancelling event.'); }
     if (result.tool_name === 'save_emergency_details') { result.action = 'save_emergency_details'; result.speech = result.speech || (es ? 'Detalles guardados.' : 'Saving event details.'); }
-    if (result.tool_name === 'view_emergency_log') { result.action = 'view_emergency_log'; result.speech = result.speech || (es ? 'Abriendo el registro de eventos.' : 'Opening event log.'); }
+    if (result.tool_name === 'view_emergency_log')     { result.action = 'view_emergency_log';     result.speech = result.speech || (es ? 'Abriendo el registro de eventos.' : 'Opening event log.'); }
     if (result.tool_name === 'close_emergency_screen') { result.action = 'close_emergency_screen'; result.speech = result.speech || (es ? 'Cerrando pantalla.' : 'Closing protocol screen.'); }
     if (result.tool_name === 'start_emergency_protocol') {
       result.action = 'emergency_protocol';
@@ -1383,9 +1385,12 @@ module.exports = async (req, res) => {
           b.type === 'server_tool_use' || b.type === 'tool_result'
         );
 
+        // Log usage with platform admin flag
         await logUsage(sb, {
-          orgId, userId, userName,
-          userRole:      context?.userRole       || null,
+          orgId,
+          userId,
+          userName,
+          userRole,
           deptCode:      context?.userDepartment || null,
           screen:        context?.screen         || null,
           toolUsed:      result.tool_name        || null,
@@ -1397,9 +1402,11 @@ module.exports = async (req, res) => {
           hadWebSearch,
           loopCount,
           responseMs,
+          isPlatformAdmin,
         });
 
-        if (orgId && userId && sb) {
+        // Watch capture and memory — skip for platform admin
+        if (!isPlatformAdmin && orgId && userId && sb) {
           const watchEntry = await checkWatchList(sb, orgId, userId);
           if (watchEntry && conversation && conversation.length >= 2) {
             const shouldCapture = conversation.length % 4 === 0 || conversation.length >= 10;
