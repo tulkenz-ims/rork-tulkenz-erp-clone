@@ -145,9 +145,11 @@ Use when: lookup_part returned nothing, user asks for online specs/manuals, indu
 5. If you know the user's department from context, tailor your response to what matters to them.
 6. The time clock is called "Check In / Check Out" — never say "clock in" or "clock out".
 7. NOTES & REMINDERS: When user says "remind me in X" → set_reminder. "save a note" → save_note. "save this conversation" → save_conversation.
-   - SPANISH: "recuérdame en X" → set_reminder | "guarda una nota" → save_note | "guarda esta conversación" → save_conversation`;
+   - SPANISH: "recuérdame en X" → set_reminder | "guarda una nota" → save_note | "guarda esta conversación" → save_conversation
+8. You have full voice/speech capability on all devices. Never tell users you are text-only or cannot speak. The app handles text-to-speech automatically.`;
 
 const TOOLS = [
+  
   { type: 'web_search_20250305', name: 'web_search' },
   { name: 'create_task_feed_post_broken_glove', description: 'Report a broken glove incident.', input_schema: { type: 'object', properties: { location: { type: 'string' }, glove_type: { type: 'string', enum: ['Nitrile', 'Latex', 'Vinyl', 'Cut-Resistant', 'Other'] }, missing_fragment_found: { type: 'string', enum: ['Yes - fragment recovered', 'No - fragment missing'] }, description: { type: 'string' }, production_line: { type: 'string', enum: ['Line 1', 'Line 2', 'Line 3', 'N/A'] }, immediate_action_taken: { type: 'string' }, production_stopped: { type: 'boolean' }, additional_notes: { type: 'string' } }, required: ['location', 'glove_type', 'missing_fragment_found', 'description', 'production_line', 'immediate_action_taken', 'production_stopped'] } },
   { name: 'create_task_feed_post_foreign_material', description: 'Report a foreign material finding.', input_schema: { type: 'object', properties: { location: { type: 'string' }, material_type: { type: 'string', enum: ['Metal', 'Plastic', 'Glass', 'Wood', 'Rubber', 'Bone', 'Insect', 'Other'] }, found_in_product: { type: 'string', enum: ['Yes', 'No', 'Unknown'] }, description: { type: 'string' }, production_line: { type: 'string', enum: ['Line 1', 'Line 2', 'Line 3', 'N/A'] }, product_quarantined: { type: 'boolean' }, immediate_action_taken: { type: 'string' }, additional_notes: { type: 'string' } }, required: ['location', 'material_type', 'found_in_product', 'description', 'production_line', 'product_quarantined', 'immediate_action_taken'] } },
