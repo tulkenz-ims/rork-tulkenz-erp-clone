@@ -596,7 +596,7 @@ export default function AIAssistButton() {
         command: text,
         context: {
           screen: 'unknown',
-          organizationId: user?.organization_id || userProfile?.organization_id || null,
+          organizationId: user?.company_id || null,
           userId: user?.id || userProfile?.id || null,
           userEmail: user?.email || null,
           userName: user?.name || `${user?.first_name || ''} ${user?.last_name || ''}`.trim() || 'Operator',
