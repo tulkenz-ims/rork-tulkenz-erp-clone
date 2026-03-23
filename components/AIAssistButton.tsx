@@ -541,7 +541,8 @@ export default function AIAssistButton() {
     if (!isSpeechEnabled || !text) { onDone?.(); return; }
     try {
       if (isWeb) {
-        window.speechSynthesis.cancel();
+       window.speechSynthesis.cancel();
+        window.speechSynthesis.resume();
         const utter = new (window as any).SpeechSynthesisUtterance(text);
         utter.lang  = speechLang;
         utter.pitch = 1.0;
