@@ -1043,7 +1043,17 @@ export default function AIAssistButton() {
 
                 {renderDiffCard(msg)}
 
-                {msg.role === 'assistant' && renderActionBadge(msg.toolName)}
+                {msg.role === 'assistant' && (
+                  <View style={styles.assistantFooter}>
+                    {renderActionBadge(msg.toolName)}
+                    <Pressable
+                      onPress={() => speakResponse(msg.text)}
+                      style={[styles.speakBtn, { backgroundColor: '#8B5CF620' }]}
+                    >
+                      <Volume2 size={14} color="#8B5CF6" />
+                    </Pressable>
+                  </View>
+                )}
               </View>
             ))}
 
@@ -1207,4 +1217,15 @@ const styles = StyleSheet.create({
   diffBtnDeployText: { fontSize: 13, fontWeight: '700' as const, color: '#0a0e1a' },
   diffBtnCancel: { borderWidth: 1 },
   diffBtnCancelText: { fontSize: 13, fontWeight: '600' as const },
+  assistantFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 4,
+  },
+  speakBtn: {
+    padding: 6,
+    borderRadius: 20,
+    marginLeft: 8,
+  },
 });
