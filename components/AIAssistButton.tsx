@@ -477,7 +477,11 @@ export default function AIAssistButton() {
     return pick(natural) || pick(esVoices);
   }, [isWeb]);
 
-  const speechLang = language === 'es' ? 'es-MX' : 'en-US';
+  <Pressable
+                      onPress={() => {
+                        const lang = language === 'es' ? 'es-MX' : 'en-US';
+                        Speech.speak(msg.text, { language: lang, pitch: 1.0, rate: 0.95 });
+                      }}
   const [pendingImage, setPendingImage] = useState<{ uri: string; base64: string; mediaType: string; } | null>(null);
   const [showImageChoice, setShowImageChoice] = useState(false);
 
