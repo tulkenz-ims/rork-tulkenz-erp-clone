@@ -475,6 +475,8 @@ export default function AIAssistButton() {
       list[0] || null;
     return pick(natural) || pick(esVoices);
   }, [isWeb]);
+
+  const speechLang = language === 'es' ? 'es-MX' : 'en-US';
   
   const [pendingImage, setPendingImage] = useState<{ uri: string; base64: string; mediaType: string; } | null>(null);
   const [showImageChoice, setShowImageChoice] = useState(false);
