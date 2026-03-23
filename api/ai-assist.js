@@ -1377,35 +1377,33 @@ module.exports = async (req, res) => {
         : (isDrill ? `Starting ${labelEN} drill. Navigating to roll call now.` : `⚠️ Initiating ${labelEN} emergency protocol. Roll call starting immediately.`));
     }
 
-    // ── Background tasks — usage log + watch capture + memory ─────────────────
+    // ── Usage log — called directly before response ───────────────────────────
+    const responseMs = Date.now() - requestStart;
+    const hadWebSearch = response.content.some(b =>
+      b.type === 'server_tool_use' || b.type === 'tool_result'
+    );
+    await logUsage(sb, {
+      orgId,
+      userId,
+      userName,
+      userRole,
+      deptCode:       context?.userDepartment || null,
+      screen:         context?.screen         || null,
+      toolUsed:       result.tool_name        || null,
+      commandPreview: command                 || null,
+      usage:          response.usage,
+      model:          'claude-sonnet-4-20250514',
+      language:       userLanguage,
+      hadImage:       !!image,
+      hadWebSearch,
+      loopCount,
+      responseMs,
+      isPlatformAdmin,
+    });
+
+    // ── Background tasks — watch capture + memory ─────────────────────────────
     setImmediate(async () => {
       try {
-        const responseMs = Date.now() - requestStart;
-        const hadWebSearch = response.content.some(b =>
-          b.type === 'server_tool_use' || b.type === 'tool_result'
-        );
-
-        // Log usage with platform admin flag
-        await logUsage(sb, {
-          orgId,
-          userId,
-          userName,
-          userRole,
-          deptCode:      context?.userDepartment || null,
-          screen:        context?.screen         || null,
-          toolUsed:      result.tool_name        || null,
-          commandPreview: command                || null,
-          usage:         response.usage,
-          model:         'claude-sonnet-4-20250514',
-          language:      userLanguage,
-          hadImage:      !!image,
-          hadWebSearch,
-          loopCount,
-          responseMs,
-          isPlatformAdmin,
-        });
-
-        // Watch capture and memory — skip for platform admin
         if (!isPlatformAdmin && orgId && userId && sb) {
           const watchEntry = await checkWatchList(sb, orgId, userId);
           if (watchEntry && conversation && conversation.length >= 2) {
@@ -1417,7 +1415,6 @@ module.exports = async (req, res) => {
               );
             }
           }
-
           if (conversation && conversation.length >= 4) {
             const fullConvo = [
               ...(conversation || []),
