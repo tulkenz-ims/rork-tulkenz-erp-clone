@@ -953,16 +953,7 @@ async function checkRateLimit(sb, orgId, userId, userRole, isPlatformAdmin) {
 
 // ── Usage Logging ─────────────────────────────────────────────────────────────
 
-async function logUsage(sb, {
-  orgId, userId, userName, userRole, deptCode, screen,
-  toolUsed, commandPreview, usage, model, language,
-  hadImage, hadWebSearch, loopCount, responseMs, isPlatformAdmin,
-}) {
-  if (!sb || !orgId) return;
-  try {
-    const inputCost  = ((usage?.input_tokens  || 0) / 1_000_000) * 3;
-    const outputCost = ((usage?.output_tokens || 0) / 1_000_000) * 15;
-    await sb.from('ai_usage_log').insert({
+const { data: insertData, error: insertError } = await sb.from('ai_usage_log').insert({
       organization_id:    orgId,
       employee_id:        userId    || null,
       employee_name:      userName  || null,
@@ -983,10 +974,7 @@ async function logUsage(sb, {
       response_ms:        responseMs || null,
       is_platform_admin:  isPlatformAdmin || false,
     });
-  } catch (e) {
-    console.warn('[ai-assist] logUsage failed:', e.message);
-  }
-}
+    console.log('[ai-assist] logUsage result:', JSON.stringify(insertError), 'orgId:', orgId, 'userId:', userId);
 
 // ── Watch System ─────────────────────────────────────────────────────────────
 
