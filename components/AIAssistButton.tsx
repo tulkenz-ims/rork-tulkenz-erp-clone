@@ -25,6 +25,7 @@ import { useAIActions } from '@/hooks/useAIActions';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as Speech from 'expo-speech';
+import * as ExpoSpeech from 'expo-speech';
 import { usePermissions } from '@/contexts/PermissionsContext';
 import * as FileSystem from 'expo-file-system';
 import AsyncStorage from '@react-native-async-storage/async-storage';
