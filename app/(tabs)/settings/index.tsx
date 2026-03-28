@@ -18,8 +18,6 @@ import {
   LogOut,
   ChevronRight,
   AlertTriangle,
-  Sun,
-  Moon,
   Globe,
   Star,
   Zap,
@@ -34,10 +32,12 @@ import {
   ClipboardList,
   Calculator,
   Rocket,
+  Palette,
+  Check,
 } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useUser } from '@/contexts/UserContext';
-import { useTheme, type ThemeType } from '@/contexts/ThemeContext';
+import { useTheme, type ThemeType, THEME_LABELS, THEME_PREVIEW_COLORS } from '@/contexts/ThemeContext';
 import { usePermissions } from '@/contexts/PermissionsContext';
 import { useLicense, type LicenseType } from '@/contexts/LicenseContext';
 import { isSuperAdminRole, getRoleDisplayName } from '@/constants/roles';
@@ -76,11 +76,6 @@ function SettingItem({ icon: Icon, label, value, onPress, danger, colors }: Sett
   );
 }
 
-const themeOptions: { value: ThemeType; label: string; icon: typeof Sun; iconColor: string }[] = [
-  { value: 'light', label: 'Light', icon: Sun, iconColor: '#F59E0B' },
-  { value: 'dark', label: 'Dark', icon: Moon, iconColor: '#6366F1' },
-];
-
 const getTierIcon = (tier: string) => {
   switch (tier) {
     case 'starter': return Star;
@@ -91,6 +86,29 @@ const getTierIcon = (tier: string) => {
   }
 };
 
+// All available themes in display order
+const ALL_THEMES: ThemeType[] = [
+  'dark',
+  'light',
+  'hud_cyan',
+  'hud_green',
+  'hud_silver',
+  'hud_gold',
+  'hud_purple',
+];
+
+// Group themes for display
+const THEME_GROUPS = [
+  {
+    label: 'STANDARD',
+    themes: ['dark', 'light'] as ThemeType[],
+  },
+  {
+    label: 'HUD THEMES',
+    themes: ['hud_cyan', 'hud_green', 'hud_silver', 'hud_gold', 'hud_purple'] as ThemeType[],
+  },
+];
+
 export default function SettingsScreen() {
   const router = useRouter();
   const { userProfile, company, tierInfo, signOut, isPlatformAdmin } = useUser();
@@ -100,11 +118,10 @@ export default function SettingsScreen() {
   const [showThemeModal, setShowThemeModal] = useState(false);
   const [showLicenseModal, setShowLicenseModal] = useState(false);
 
-  const openThemeModal = useCallback(() => {
-    setShowThemeModal(true);
-  }, []);
-
-  const isSuperAdmin = isSuperAdminRole(userProfile?.role) || currentUserRole?.isSystem || currentUserRole?.name === 'Super Admin' || currentUserRole?.name === 'Administrator';
+  const isSuperAdmin = isSuperAdminRole(userProfile?.role) ||
+    currentUserRole?.isSystem ||
+    currentUserRole?.name === 'Super Admin' ||
+    currentUserRole?.name === 'Administrator';
 
   const handleSignOut = () => {
     Alert.alert(
@@ -125,7 +142,6 @@ export default function SettingsScreen() {
   };
 
   const TierIcon = getTierIcon(company?.subscription_tier || 'starter');
-  const currentTheme = themeOptions.find((t) => t.value === theme);
 
   if (!isSuperAdmin) {
     return (
@@ -158,6 +174,7 @@ export default function SettingsScreen() {
       >
         <Text style={[styles.title, { color: colors.text }]}>Settings</Text>
 
+        {/* Profile Card */}
         <View style={[styles.profileCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <View style={[styles.profileAvatar, { backgroundColor: colors.primary }]}>
             <Text style={styles.profileInitials}>
@@ -184,6 +201,7 @@ export default function SettingsScreen() {
           </View>
         </View>
 
+        {/* Getting Started (Platform Admin only) */}
         {isPlatformAdmin && (
           <View style={styles.section}>
             <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Getting Started</Text>
@@ -199,6 +217,7 @@ export default function SettingsScreen() {
           </View>
         )}
 
+        {/* Account */}
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Account</Text>
           <View style={[styles.sectionContent, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -241,6 +260,7 @@ export default function SettingsScreen() {
           </View>
         </View>
 
+        {/* Preferences */}
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Preferences</Text>
           <View style={[styles.sectionContent, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -258,10 +278,10 @@ export default function SettingsScreen() {
               colors={colors}
             />
             <SettingItem
-              icon={currentTheme?.icon || Moon}
+              icon={Palette}
               label="Appearance"
-              value={currentTheme?.label || 'Dark'}
-              onPress={() => openThemeModal()}
+              value={THEME_LABELS[theme]}
+              onPress={() => setShowThemeModal(true)}
               colors={colors}
             />
             <SettingItem
@@ -274,6 +294,7 @@ export default function SettingsScreen() {
           </View>
         </View>
 
+        {/* Administration */}
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Administration</Text>
           <View style={[styles.sectionContent, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -315,6 +336,7 @@ export default function SettingsScreen() {
           </View>
         </View>
 
+        {/* Support */}
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Support</Text>
           <View style={[styles.sectionContent, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -342,6 +364,7 @@ export default function SettingsScreen() {
           </View>
         </View>
 
+        {/* Sign Out */}
         <View style={styles.section}>
           <View style={[styles.sectionContent, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <SettingItem
@@ -357,47 +380,82 @@ export default function SettingsScreen() {
         <Text style={[styles.version, { color: colors.textTertiary }]}>TulKenz OPS v1.0.0</Text>
       </ScrollView>
 
+      {/* ── THEME PICKER MODAL ───────────────────────────────── */}
       <Modal
         visible={showThemeModal}
         transparent
-        animationType="fade"
+        animationType="slide"
         onRequestClose={() => setShowThemeModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: colors.surface, maxWidth: 340 }]}>
-            <View style={styles.modalHeader}>
+          <View style={[styles.themeModalContent, { backgroundColor: colors.surface }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
               <Text style={[styles.modalTitle, { color: colors.text }]}>Appearance</Text>
               <Pressable onPress={() => setShowThemeModal(false)} style={styles.closeButton}>
-                <X size={24} color={colors.textSecondary} />
+                <X size={22} color={colors.textSecondary} />
               </Pressable>
             </View>
-            <View style={styles.themeGrid}>
-              {themeOptions.map((option) => {
-                const ThemeIcon = option.icon;
-                const isSelected = theme === option.value;
-                return (
-                  <Pressable
-                    key={option.value}
-                    style={[
-                      styles.themeOption,
-                      { backgroundColor: colors.backgroundSecondary, borderColor: isSelected ? colors.primary : colors.border },
-                      isSelected && { borderWidth: 2 },
-                    ]}
-                    onPress={() => setTheme(option.value)}
-                  >
-                    <ThemeIcon size={28} color={option.iconColor} />
-                    <Text style={[styles.themeLabel, { color: colors.text }]}>{option.label}</Text>
-                    {isSelected && (
-                      <View style={[styles.selectedIndicator, { backgroundColor: colors.primary }]} />
-                    )}
-                  </Pressable>
-                );
-              })}
-            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.themeScrollContent}>
+              {THEME_GROUPS.map(group => (
+                <View key={group.label} style={styles.themeGroup}>
+                  <Text style={[styles.themeGroupLabel, { color: colors.textTertiary }]}>
+                    {group.label}
+                  </Text>
+                  <View style={styles.themeGrid}>
+                    {group.themes.map(t => {
+                      const preview = THEME_PREVIEW_COLORS[t];
+                      const isSelected = theme === t;
+                      return (
+                        <Pressable
+                          key={t}
+                          style={[
+                            styles.themeCard,
+                            { borderColor: isSelected ? preview.accent : colors.border },
+                            isSelected && { borderWidth: 2 },
+                          ]}
+                          onPress={() => {
+                            setTheme(t);
+                            setShowThemeModal(false);
+                          }}
+                        >
+                          {/* Preview swatch */}
+                          <View style={[styles.themeSwatch, { backgroundColor: preview.bg }]}>
+                            {/* Mini grid lines */}
+                            <View style={[styles.swatchLine, { backgroundColor: preview.accent + '30' }]} />
+                            <View style={[styles.swatchLineV, { backgroundColor: preview.accent + '30' }]} />
+                            {/* Accent dot */}
+                            <View style={[styles.swatchDot, { backgroundColor: preview.accent }]} />
+                            {/* Mini ring */}
+                            <View style={[styles.swatchRing, { borderColor: preview.accent + '60' }]} />
+                          </View>
+                          {/* Label row */}
+                          <View style={[styles.themeCardLabel, { backgroundColor: colors.backgroundSecondary }]}>
+                            <Text
+                              style={[
+                                styles.themeCardText,
+                                { color: isSelected ? preview.accent : colors.text },
+                              ]}
+                              numberOfLines={1}
+                            >
+                              {THEME_LABELS[t]}
+                            </Text>
+                            {isSelected && (
+                              <Check size={12} color={preview.accent} />
+                            )}
+                          </View>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+              ))}
+            </ScrollView>
           </View>
         </View>
       </Modal>
 
+      {/* ── LICENSE MODAL ────────────────────────────────────── */}
       <Modal
         visible={showLicenseModal}
         transparent
@@ -406,10 +464,10 @@ export default function SettingsScreen() {
       >
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
-            <View style={styles.modalHeader}>
+            <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
               <Text style={[styles.modalTitle, { color: colors.text }]}>License Type</Text>
               <Pressable onPress={() => setShowLicenseModal(false)} style={styles.closeButton}>
-                <X size={24} color={colors.textSecondary} />
+                <X size={22} color={colors.textSecondary} />
               </Pressable>
             </View>
             <Text style={[styles.licenseDescription, { color: colors.textSecondary }]}>
@@ -453,247 +511,65 @@ export default function SettingsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingHorizontal: 16,
-    paddingBottom: 100,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: '700' as const,
-    marginBottom: 24,
-    marginTop: 8,
-  },
-  profileCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 24,
-    borderWidth: 1,
-  },
-  profileAvatar: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 16,
-  },
-  profileInitials: {
-    fontSize: 22,
-    fontWeight: '700' as const,
-    color: '#FFFFFF',
-  },
-  profileInfo: {
-    flex: 1,
-  },
-  profileName: {
-    fontSize: 18,
-    fontWeight: '600' as const,
-  },
-  profileEmail: {
-    fontSize: 14,
-    marginTop: 2,
-  },
-  badgeRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 8,
-  },
-  roleBadge: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  roleText: {
-    fontSize: 12,
-    fontWeight: '600' as const,
-    textTransform: 'capitalize' as const,
-  },
-  tierBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  tierText: {
-    fontSize: 12,
-    fontWeight: '600' as const,
-  },
-  section: {
-    marginBottom: 24,
-  },
-  sectionTitle: {
-    fontSize: 14,
-    fontWeight: '600' as const,
-    marginBottom: 10,
-    paddingLeft: 4,
-    textTransform: 'uppercase' as const,
-    letterSpacing: 0.5,
-  },
-  sectionContent: {
-    borderRadius: 14,
-    borderWidth: 1,
-    overflow: 'hidden',
-  },
-  settingItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 14,
-    borderBottomWidth: 1,
-  },
-  settingIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  settingContent: {
-    flex: 1,
-  },
-  settingLabel: {
-    fontSize: 15,
-    fontWeight: '500' as const,
-  },
-  settingValue: {
-    fontSize: 13,
-    marginTop: 2,
-  },
-  version: {
-    textAlign: 'center' as const,
-    fontSize: 12,
-    marginTop: 16,
-    marginBottom: 20,
-  },
-  accessDeniedContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 32,
-  },
-  accessDeniedIcon: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  accessDeniedTitle: {
-    fontSize: 22,
-    fontWeight: '700' as const,
-    marginBottom: 12,
-  },
-  accessDeniedMessage: {
-    fontSize: 15,
-    textAlign: 'center' as const,
-    lineHeight: 22,
-    marginBottom: 32,
-  },
-  backButton: {
-    paddingHorizontal: 32,
-    paddingVertical: 14,
-    borderRadius: 12,
-  },
-  backButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600' as const,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  modalContent: {
-    width: '100%',
-    maxWidth: 340,
-    maxHeight: '80%',
-    borderRadius: 20,
-    padding: 20,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: '600' as const,
-  },
-  closeButton: {
-    padding: 4,
-  },
-  themeGrid: {
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 4,
-  },
-  themeOption: {
-    flex: 1,
-    padding: 14,
-    borderRadius: 12,
-    borderWidth: 1,
-    alignItems: 'center',
-    gap: 8,
-  },
-  themeLabel: {
-    fontSize: 13,
-    fontWeight: '500' as const,
-  },
-  selectedIndicator: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  licenseDescription: {
-    fontSize: 14,
-    marginBottom: 16,
-    lineHeight: 20,
-  },
-  licenseOptions: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  licenseOption: {
-    flex: 1,
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    alignItems: 'center',
-    gap: 8,
-  },
-  licenseIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  licenseLabel: {
-    fontSize: 16,
-    fontWeight: '600' as const,
-  },
-  licenseSublabel: {
-    fontSize: 12,
-    textAlign: 'center' as const,
-  },
+  container: { flex: 1 },
+  scrollView: { flex: 1 },
+  scrollContent: { paddingHorizontal: 16, paddingBottom: 100 },
+  title: { fontSize: 28, fontWeight: '700' as const, marginBottom: 24, marginTop: 8 },
+  profileCard: { flexDirection: 'row', alignItems: 'center', borderRadius: 16, padding: 16, marginBottom: 24, borderWidth: 1 },
+  profileAvatar: { width: 60, height: 60, borderRadius: 30, justifyContent: 'center', alignItems: 'center', marginRight: 16 },
+  profileInitials: { fontSize: 22, fontWeight: '700' as const, color: '#FFFFFF' },
+  profileInfo: { flex: 1 },
+  profileName: { fontSize: 18, fontWeight: '600' as const },
+  profileEmail: { fontSize: 14, marginTop: 2 },
+  badgeRow: { flexDirection: 'row', gap: 8, marginTop: 8 },
+  roleBadge: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
+  roleText: { fontSize: 12, fontWeight: '600' as const, textTransform: 'capitalize' as const },
+  tierBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
+  tierText: { fontSize: 12, fontWeight: '600' as const },
+  section: { marginBottom: 24 },
+  sectionTitle: { fontSize: 14, fontWeight: '600' as const, marginBottom: 10, paddingLeft: 4, textTransform: 'uppercase' as const, letterSpacing: 0.5 },
+  sectionContent: { borderRadius: 14, borderWidth: 1, overflow: 'hidden' },
+  settingItem: { flexDirection: 'row', alignItems: 'center', padding: 14, borderBottomWidth: 1 },
+  settingIcon: { width: 38, height: 38, borderRadius: 10, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+  settingContent: { flex: 1 },
+  settingLabel: { fontSize: 15, fontWeight: '500' as const },
+  settingValue: { fontSize: 13, marginTop: 2 },
+  version: { textAlign: 'center' as const, fontSize: 12, marginTop: 16, marginBottom: 20 },
+  accessDeniedContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32 },
+  accessDeniedIcon: { width: 96, height: 96, borderRadius: 48, justifyContent: 'center', alignItems: 'center', marginBottom: 24 },
+  accessDeniedTitle: { fontSize: 22, fontWeight: '700' as const, marginBottom: 12 },
+  accessDeniedMessage: { fontSize: 15, textAlign: 'center' as const, lineHeight: 22, marginBottom: 32 },
+  backButton: { paddingHorizontal: 32, paddingVertical: 14, borderRadius: 12 },
+  backButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600' as const },
+
+  // Modal shared
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1 },
+  modalTitle: { fontSize: 18, fontWeight: '600' as const },
+  closeButton: { padding: 4 },
+
+  // Theme modal
+  themeModalContent: { borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '85%' },
+  themeScrollContent: { padding: 20, paddingBottom: 40 },
+  themeGroup: { marginBottom: 24 },
+  themeGroupLabel: { fontSize: 11, fontWeight: '600' as const, letterSpacing: 1.5, textTransform: 'uppercase' as const, marginBottom: 12 },
+  themeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  themeCard: { width: '47%', borderRadius: 12, borderWidth: 1, overflow: 'hidden' },
+  themeSwatch: { height: 80, position: 'relative', justifyContent: 'center', alignItems: 'center' },
+  swatchLine: { position: 'absolute', left: 0, right: 0, height: 1, top: '40%' },
+  swatchLineV: { position: 'absolute', top: 0, bottom: 0, width: 1, left: '30%' },
+  swatchDot: { width: 20, height: 20, borderRadius: 10 },
+  swatchRing: { position: 'absolute', width: 50, height: 50, borderRadius: 25, borderWidth: 1 },
+  themeCardLabel: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 10, paddingVertical: 8 },
+  themeCardText: { fontSize: 12, fontWeight: '600' as const, flex: 1 },
+
+  // License modal
+  modalContent: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20 },
+  licenseDescription: { fontSize: 14, marginBottom: 16, lineHeight: 20 },
+  licenseOptions: { flexDirection: 'row', gap: 12, paddingBottom: 20 },
+  licenseOption: { flex: 1, padding: 16, borderRadius: 12, borderWidth: 1, alignItems: 'center', gap: 8 },
+  licenseIconContainer: { width: 48, height: 48, borderRadius: 24, justifyContent: 'center', alignItems: 'center', marginBottom: 4 },
+  licenseLabel: { fontSize: 16, fontWeight: '600' as const },
+  licenseSublabel: { fontSize: 12, textAlign: 'center' as const },
+  selectedIndicator: { position: 'absolute', top: 8, right: 8, width: 8, height: 8, borderRadius: 4 },
 });
