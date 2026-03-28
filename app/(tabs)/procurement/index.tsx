@@ -1,145 +1,105 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
-  Pressable,
-  Modal,
-  TextInput,
-  Alert,
-  ActivityIndicator,
+  TouchableOpacity,
   RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
-import { Stack } from 'expo-router';
+import { useRouter } from 'expo-router';
+
 import {
-  TrendingUp,
-  X,
-  Check,
-  ChevronDown,
-  ChevronRight,
-  DollarSign,
-  BarChart3,
-  Building2,
-  Edit3,
-  Users,
+  ShoppingCart,
+  ClipboardList,
   Package,
+  CheckCircle,
+  FileText,
+  TrendingUp,
+  Clock,
+  Plus,
+  ChevronRight,
+  Users,
+  Send,
+  Wrench,
+  Building2,
+  HardHat,
+  Receipt,
+  BarChart3,
+  BookOpen,
 } from 'lucide-react-native';
+import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/contexts/ThemeContext';
-import { useOrganization } from '@/contexts/OrganizationContext';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/lib/supabase';
+import { useUser } from '@/contexts/UserContext';
+import {
+  useProcurementStats,
+  useProcurementPurchaseOrdersQuery,
+  usePurchaseRequestsQuery,
+  usePurchaseRequisitionsQuery,
+  useProcurementVendorsQuery,
+} from '@/hooks/useSupabaseProcurement';
+import { useServiceRequisitionsQuery } from '@/hooks/useSupabaseProcurementExtended';
+import {
+  POType,
+  PO_TYPE_LABELS,
+  PO_STATUS_LABELS,
+  PO_STATUS_COLORS,
+} from '@/types/procurement';
+import { Tables } from '@/lib/supabase';
 
-interface Department {
-  id: string;
-  department_code: string;
-  name: string;
-  short_name: string;
-  annual_budget: number;
-  ytd_spend: number;
-  labor_budget: number;
-  materials_budget: number;
-  budgeted_headcount: number;
-  actual_headcount: number;
-  color: string;
-  status: string;
-}
+type ProcurementPurchaseOrder = Tables['procurement_purchase_orders'];
 
-interface Actual {
-  department_id: string;
-  department_code: string;
-  department_name: string;
-  annual_budget: number;
-  fiscal_year: number;
-  month_num: number;
-  actual_spend: number;
-}
+type TabFilter = 'all' | 'material' | 'service' | 'capex';
 
-const MONTHS = [
-  { key: 1, label: 'Jan' }, { key: 2, label: 'Feb' }, { key: 3, label: 'Mar' },
-  { key: 4, label: 'Apr' }, { key: 5, label: 'May' }, { key: 6, label: 'Jun' },
-  { key: 7, label: 'Jul' }, { key: 8, label: 'Aug' }, { key: 9, label: 'Sep' },
-  { key: 10, label: 'Oct' }, { key: 11, label: 'Nov' }, { key: 12, label: 'Dec' },
-];
+const PO_TYPE_COLORS: Record<POType, string> = {
+  material: '#3B82F6',
+  service: '#10B981',
+  capex: '#F59E0B',
+};
 
-export default function BudgetsScreen() {
+export default function ProcurementDashboardScreen() {
   const { colors } = useTheme();
-  const { organizationId } = useOrganization();
-  const queryClient = useQueryClient();
-  const currentYear = new Date().getFullYear();
-  const currentMonth = new Date().getMonth() + 1;
+  const { company } = useUser();
+  const router = useRouter();
+  const [refreshing, setRefreshing] = useState(false);
+  const [activeTab, setActiveTab] = useState<TabFilter>('all');
 
-  const [expandedDept, setExpandedDept] = useState<string | null>(null);
-  const [modalVisible, setModalVisible] = useState(false);
-  const [editingDept, setEditingDept] = useState<Department | null>(null);
+  const { isLoading: statsLoading, refetch: refetchStats } = useProcurementStats();
 
-  const [annualBudget, setAnnualBudget] = useState('');
-  const [laborBudget, setLaborBudget] = useState('');
-  const [materialsBudget, setMaterialsBudget] = useState('');
-  const [budgetedHeadcount, setBudgetedHeadcount] = useState('');
-
-  const { data: departments = [], isLoading, refetch, isRefetching } = useQuery({
-    queryKey: ['departments_budget', organizationId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('departments')
-        .select('id, department_code, name, short_name, annual_budget, ytd_spend, labor_budget, materials_budget, budgeted_headcount, actual_headcount, color, status')
-        .eq('organization_id', organizationId)
-        .is('deleted_at', null)
-        .eq('status', 'active')
-        .order('name');
-      if (error) throw error;
-      return (data || []) as Department[];
-    },
-    enabled: !!organizationId,
+  const { data: purchaseOrders = [], isLoading: posLoading, refetch: refetchPOs } = useProcurementPurchaseOrdersQuery({
+    limit: 50,
   });
 
-  const { data: actuals = [] } = useQuery({
-    queryKey: ['procurement_budget_actuals', organizationId, currentYear],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('procurement_budget_actuals')
-        .select('*')
-        .eq('organization_id', organizationId)
-        .eq('fiscal_year', currentYear);
-      if (error) throw error;
-      return (data || []) as Actual[];
-    },
-    enabled: !!organizationId,
+  const { data: purchaseRequests = [], refetch: refetchRequests } = usePurchaseRequestsQuery();
+
+  const { data: requisitions = [], refetch: refetchRequisitions } = usePurchaseRequisitionsQuery();
+
+  const { data: vendors = [], refetch: refetchVendors } = useProcurementVendorsQuery({
+    activeOnly: true,
   });
 
-  const updateMutation = useMutation({
-    mutationFn: async (payload: {
-      id: string;
-      annual_budget: number;
-      labor_budget: number;
-      materials_budget: number;
-      budgeted_headcount: number;
-    }) => {
-      const { error } = await supabase
-        .from('departments')
-        .update({
-          annual_budget: payload.annual_budget,
-          labor_budget: payload.labor_budget,
-          materials_budget: payload.materials_budget,
-          budgeted_headcount: payload.budgeted_headcount,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', payload.id);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['departments_budget'] });
-      closeModal();
-      Alert.alert('Success', 'Budget updated successfully');
-    },
-    onError: (error: any) => {
-      Alert.alert('Error', error.message || 'Failed to update budget');
-    },
-  });
+  const { data: serviceRequisitions = [], refetch: refetchServiceReqs } = useServiceRequisitionsQuery({});
 
-  const formatCurrency = (amount: number | null) => {
-    if (!amount) return '$0';
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        refetchStats(),
+        refetchPOs(),
+        refetchRequests(),
+        refetchRequisitions(),
+        refetchVendors(),
+        refetchServiceReqs(),
+      ]);
+    } catch (error) {
+      console.error('[ProcurementDashboard] Refresh error:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refetchStats, refetchPOs, refetchRequests, refetchRequisitions, refetchVendors, refetchServiceReqs]);
+
+  const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD',
@@ -148,487 +108,595 @@ export default function BudgetsScreen() {
     }).format(amount);
   };
 
-  const getDeptActuals = useCallback((deptName: string) => {
-    const deptActuals = actuals.filter(a => a.department_name === deptName);
-    const byMonth: Record<number, number> = {};
-    deptActuals.forEach(a => { byMonth[a.month_num] = a.actual_spend; });
-    const ytdActual = deptActuals
-      .filter(a => a.month_num <= currentMonth)
-      .reduce((sum, a) => sum + a.actual_spend, 0);
-    return { byMonth, ytdActual };
-  }, [actuals, currentMonth]);
-
-  const getStatusColor = (pct: number) => {
-    if (pct >= 100) return '#EF4444';
-    if (pct >= 85) return '#F59E0B';
-    return '#10B981';
-  };
-
-  const openEdit = (dept: Department) => {
-    setEditingDept(dept);
-    setAnnualBudget(dept.annual_budget?.toString() || '');
-    setLaborBudget(dept.labor_budget?.toString() || '');
-    setMaterialsBudget(dept.materials_budget?.toString() || '');
-    setBudgetedHeadcount(dept.budgeted_headcount?.toString() || '');
-    setModalVisible(true);
-  };
-
-  const closeModal = () => {
-    setModalVisible(false);
-    setEditingDept(null);
-  };
-
-  const handleSave = () => {
-    if (!editingDept) return;
-    const annual = parseFloat(annualBudget) || 0;
-    if (annual <= 0) {
-      Alert.alert('Validation', 'Please enter a valid annual budget');
-      return;
-    }
-    updateMutation.mutate({
-      id: editingDept.id,
-      annual_budget: annual,
-      labor_budget: parseFloat(laborBudget) || 0,
-      materials_budget: parseFloat(materialsBudget) || 0,
-      budgeted_headcount: parseInt(budgetedHeadcount) || 0,
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
     });
   };
 
-  const totalAnnualBudget = useMemo(() =>
-    departments.reduce((sum, d) => sum + (d.annual_budget || 0), 0),
-    [departments]
+  const metrics = useMemo(() => {
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const pendingRequests = purchaseRequests.filter(
+      r => r.status === 'submitted' || r.status === 'under_review'
+    );
+    const approvedRequests = purchaseRequests.filter(
+      r => r.status === 'approved'
+    );
+    const pendingRequisitions = requisitions.filter(
+      r => r.status === 'pending_approval'
+    ).length;
+    const approvedRequisitions = requisitions.filter(
+      r => r.status === 'approved'
+    ).length;
+
+    const pendingApprovals = purchaseOrders.filter(
+      po => po.status === 'pending_approval'
+    );
+    const approvedPOs = purchaseOrders.filter(
+      po => po.status === 'approved'
+    );
+    const pendingReceiving = purchaseOrders.filter(
+      po => po.status === 'ordered' || po.status === 'partial_received'
+    );
+
+    const activePOs = purchaseOrders.filter(
+      po => !['closed', 'cancelled', 'draft'].includes(po.status)
+    );
+
+    const thisMonthSpend = purchaseOrders
+      .filter(po => {
+        const poDate = new Date(po.created_at);
+        return poDate >= startOfMonth && ['received', 'closed'].includes(po.status);
+      })
+      .reduce((sum, po) => sum + (po.total || 0), 0);
+
+    const totalPendingValue = pendingApprovals.reduce((sum, po) => sum + (po.total || 0), 0);
+
+    return {
+      pendingRequests: pendingRequests.length,
+      approvedRequests: approvedRequests.length,
+      pendingRequisitions,
+      approvedRequisitions,
+      pendingApprovals: pendingApprovals.length,
+      pendingPOCreation: approvedPOs.length,
+      pendingReceiving: pendingReceiving.length,
+      pendingServicePOs: purchaseOrders.filter(
+        po => po.po_type === 'service' && po.status === 'ordered'
+      ).length,
+      pendingServiceReqs: serviceRequisitions.filter(
+        r => r.status === 'pending_tier2_approval' || r.status === 'pending_tier3_approval'
+      ).length,
+      approvedServiceReqs: serviceRequisitions.filter(
+        r => r.status === 'approved'
+      ).length,
+      activePOs: activePOs.length,
+      thisMonthSpend,
+      totalPendingValue,
+      activeVendors: vendors.length,
+    };
+  }, [purchaseOrders, purchaseRequests, requisitions, vendors, serviceRequisitions]);
+
+  const filteredPOs = useMemo(() => {
+    let pos = [...purchaseOrders];
+
+    if (activeTab !== 'all') {
+      pos = pos.filter(po => po.po_type === activeTab);
+    }
+
+    return pos
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .slice(0, 10);
+  }, [activeTab, purchaseOrders]);
+
+  const isLoading = statsLoading || posLoading;
+
+  const handleTabPress = (tab: TabFilter) => {
+    Haptics.selectionAsync();
+    setActiveTab(tab);
+  };
+
+  const handleNavigate = (route: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    router.push(route as any);
+  };
+
+  const renderSummaryCard = (
+    title: string,
+    value: string | number,
+    color: string,
+    icon: React.ReactNode,
+    onPress?: () => void
+  ) => (
+    <TouchableOpacity
+      style={[styles.summaryCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
+      onPress={onPress}
+      activeOpacity={onPress ? 0.7 : 1}
+      disabled={!onPress}
+    >
+      <View style={[styles.summaryIconContainer, { backgroundColor: `${color}15` }]}>
+        {icon}
+      </View>
+      <Text style={[styles.summaryValue, { color }]}>{value}</Text>
+      <Text style={[styles.summaryTitle, { color: colors.textSecondary }]} numberOfLines={1}>
+        {title}
+      </Text>
+    </TouchableOpacity>
   );
 
-  const totalYTDActual = useMemo(() =>
-    actuals
-      .filter(a => a.month_num <= currentMonth && a.fiscal_year === currentYear)
-      .reduce((sum, a) => sum + a.actual_spend, 0),
-    [actuals, currentMonth, currentYear]
+  const renderPendingItem = (
+    label: string,
+    count: number,
+    color: string,
+    icon: React.ReactNode,
+    route?: string
+  ) => (
+    <TouchableOpacity
+      key={label}
+      style={[styles.pendingItem, { backgroundColor: colors.surface, borderColor: colors.border }]}
+      onPress={() => route && handleNavigate(route)}
+      activeOpacity={route ? 0.7 : 1}
+      disabled={!route}
+    >
+      <View style={[styles.pendingIconContainer, { backgroundColor: `${color}15` }]}>
+        {icon}
+      </View>
+      <View style={styles.pendingContent}>
+        <Text style={[styles.pendingLabel, { color: colors.text }]}>{label}</Text>
+        <View style={styles.pendingCountRow}>
+          <View style={[styles.pendingCountBadge, { backgroundColor: count > 0 ? `${color}20` : colors.backgroundTertiary }]}>
+            <Text style={[styles.pendingCountText, { color: count > 0 ? color : colors.textTertiary }]}>
+              {count}
+            </Text>
+          </View>
+          {count > 0 && (
+            <Text style={[styles.pendingAction, { color }]}>Action needed</Text>
+          )}
+        </View>
+      </View>
+      <ChevronRight size={18} color={colors.textTertiary} />
+    </TouchableOpacity>
   );
+
+  const renderTab = (tab: TabFilter, label: string, color?: string) => {
+    const isActive = activeTab === tab;
+    const tabColor = color || colors.primary;
+
+    return (
+      <TouchableOpacity
+        key={tab}
+        style={[
+          styles.tab,
+          {
+            backgroundColor: isActive ? `${tabColor}15` : 'transparent',
+            borderColor: isActive ? tabColor : colors.border,
+          },
+        ]}
+        onPress={() => handleTabPress(tab)}
+        activeOpacity={0.7}
+      >
+        <Text
+          style={[
+            styles.tabText,
+            { color: isActive ? tabColor : colors.textSecondary },
+          ]}
+        >
+          {label}
+        </Text>
+      </TouchableOpacity>
+    );
+  };
+
+  const renderPOCard = (po: ProcurementPurchaseOrder) => {
+    const poType = (po.po_type || 'material') as POType;
+    const poStatus = po.status as keyof typeof PO_STATUS_LABELS;
+    const typeColor = PO_TYPE_COLORS[poType] || '#3B82F6';
+    const statusColor = PO_STATUS_COLORS[poStatus] || '#6B7280';
+
+    return (
+      <TouchableOpacity
+        key={po.id}
+        style={[styles.poCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
+        onPress={() => handleNavigate('/procurement/polist')}
+        activeOpacity={0.7}
+      >
+        <View style={styles.poHeader}>
+          <View style={styles.poTitleRow}>
+            <Text style={[styles.poNumber, { color: colors.text }]}>{po.po_number}</Text>
+            <View style={[styles.typeBadge, { backgroundColor: `${typeColor}20` }]}>
+              <Text style={[styles.typeBadgeText, { color: typeColor }]}>
+                {PO_TYPE_LABELS[poType] || poType}
+              </Text>
+            </View>
+          </View>
+          <View style={[styles.statusBadge, { backgroundColor: `${statusColor}20` }]}>
+            <Text style={[styles.statusBadgeText, { color: statusColor }]}>
+              {PO_STATUS_LABELS[poStatus] || poStatus}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.poDetails}>
+          <View style={styles.poDetailRow}>
+            <Building2 size={14} color={colors.textSecondary} />
+            <Text style={[styles.poDetailText, { color: colors.textSecondary }]} numberOfLines={1}>
+              {po.vendor_name || 'Unknown Vendor'}
+            </Text>
+          </View>
+          <View style={styles.poDetailRow}>
+            <Users size={14} color={colors.textSecondary} />
+            <Text style={[styles.poDetailText, { color: colors.textSecondary }]}>
+              {po.department_name || 'Unassigned'}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.poFooter}>
+          <Text style={[styles.poTotal, { color: colors.text }]}>{formatCurrency(po.total || 0)}</Text>
+          <Text style={[styles.poDate, { color: colors.textTertiary }]}>
+            {formatDate(po.created_at)}
+          </Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
 
   return (
-    <>
-      <Stack.Screen
-        options={{
-          title: 'Department Budgets',
-          headerStyle: { backgroundColor: colors.surface },
-          headerTintColor: colors.text,
-          headerBackTitle: 'Procurement',
-        }}
-      />
-      <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <ScrollView
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={colors.primary} />
-          }
-        >
-          {/* Year Badge */}
-          <View style={[styles.yearBadge, { backgroundColor: colors.primary + '15', borderColor: colors.primary }]}>
-            <Text style={[styles.yearBadgeText, { color: colors.primary }]}>
-              Fiscal Year {currentYear}
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+          />
+        }
+      >
+        <View style={[styles.headerCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={styles.headerContent}>
+            <View style={[styles.headerIconContainer, { backgroundColor: '#3B82F615' }]}>
+              <ShoppingCart size={28} color="#3B82F6" />
+            </View>
+            <View style={styles.headerText}>
+              <Text style={[styles.headerTitle, { color: colors.text }]}>
+                Procurement
+              </Text>
+              <Text style={[styles.headerSubtitle, { color: colors.textSecondary }]}>
+                {company?.name || 'Organization'} • Purchase Management
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.summaryGrid}>
+          {renderSummaryCard(
+            'Active POs',
+            metrics.activePOs,
+            '#3B82F6',
+            <FileText size={20} color="#3B82F6" />,
+            () => handleNavigate('/procurement/polist')
+          )}
+          {renderSummaryCard(
+            'Pending Approvals',
+            metrics.pendingApprovals,
+            '#F59E0B',
+            <Clock size={20} color="#F59E0B" />,
+            () => handleNavigate('/procurement/poapproval')
+          )}
+          {renderSummaryCard(
+            'This Month Spend',
+            formatCurrency(metrics.thisMonthSpend),
+            '#10B981',
+            <TrendingUp size={20} color="#10B981" />
+          )}
+          {renderSummaryCard(
+            'Active Vendors',
+            metrics.activeVendors,
+            '#8B5CF6',
+            <Users size={20} color="#8B5CF6" />,
+            () => handleNavigate('/procurement/vendors')
+          )}
+        </View>
+
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Procurement Pipeline</Text>
+            <Text style={[styles.sectionSubtitle, { color: colors.textSecondary }]}>
+              Items requiring action
             </Text>
           </View>
 
-          {/* Summary Cards */}
-          <View style={styles.summaryRow}>
-            <View style={[styles.summaryCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <View style={[styles.summaryIcon, { backgroundColor: colors.primary + '20' }]}>
-                <BarChart3 size={18} color={colors.primary} />
-              </View>
-              <Text style={[styles.summaryValue, { color: colors.text }]}>
-                {formatCurrency(totalAnnualBudget)}
-              </Text>
-              <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Total Budget</Text>
-            </View>
-            <View style={[styles.summaryCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <View style={[styles.summaryIcon, { backgroundColor: '#10B981' + '20' }]}>
-                <TrendingUp size={18} color="#10B981" />
-              </View>
-              <Text style={[styles.summaryValue, { color: colors.text }]}>
-                {formatCurrency(totalYTDActual)}
-              </Text>
-              <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>YTD from POs</Text>
-            </View>
-            <View style={[styles.summaryCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <View style={[styles.summaryIcon, { backgroundColor: '#F59E0B' + '20' }]}>
-                <DollarSign size={18} color="#F59E0B" />
-              </View>
-              <Text style={[styles.summaryValue, { color: colors.text }]}>
-                {formatCurrency(Math.max(0, totalAnnualBudget - totalYTDActual))}
-              </Text>
-              <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Remaining</Text>
-            </View>
+          <View style={styles.pendingList}>
+            {renderPendingItem(
+              'Incoming Requests',
+              metrics.pendingRequests,
+              '#3B82F6',
+              <ClipboardList size={18} color="#3B82F6" />,
+              '/procurement/requests'
+            )}
+            {renderPendingItem(
+              'Approved Requests',
+              metrics.approvedRequests,
+              '#10B981',
+              <CheckCircle size={18} color="#10B981" />,
+              '/procurement/requests'
+            )}
+            {renderPendingItem(
+              'Requisitions Pending Approval',
+              metrics.pendingRequisitions,
+              '#F59E0B',
+              <FileText size={18} color="#F59E0B" />,
+              '/procurement/requisitions'
+            )}
+            {renderPendingItem(
+              'Ready to Order',
+              metrics.pendingPOCreation,
+              '#8B5CF6',
+              <Send size={18} color="#8B5CF6" />,
+              '/procurement/polist?status=approved'
+            )}
+            {renderPendingItem(
+              'Pending Receiving',
+              metrics.pendingReceiving,
+              '#F97316',
+              <Package size={18} color="#F97316" />,
+              '/procurement/receive'
+            )}
+            {renderPendingItem(
+              'Service Reqs - Pending Approval',
+              metrics.pendingServiceReqs,
+              '#F97316',
+              <Receipt size={18} color="#F97316" />,
+              '/procurement/service-requisitions'
+            )}
+            {renderPendingItem(
+              'Service Reqs - Ready for SES',
+              metrics.approvedServiceReqs,
+              '#059669',
+              <Send size={18} color="#059669" />,
+              '/procurement/service-requisitions'
+            )}
+            {renderPendingItem(
+              'Service POs In Progress',
+              metrics.pendingServicePOs,
+              '#06B6D4',
+              <Wrench size={18} color="#06B6D4" />,
+              '/procurement/servicepo'
+            )}
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Quick Actions</Text>
           </View>
 
-          {/* Department List */}
-          <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>DEPARTMENTS</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.quickActionsScroll}
+          >
+            <TouchableOpacity
+              style={[styles.quickAction, { backgroundColor: '#3B82F6' }]}
+              onPress={() => handleNavigate('/procurement/requests')}
+            >
+              <ClipboardList size={18} color="#fff" />
+              <Text style={styles.quickActionText}>Requests</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.quickAction, { backgroundColor: '#8B5CF6' }]}
+              onPress={() => handleNavigate('/procurement/requisitions')}
+            >
+              <FileText size={18} color="#fff" />
+              <Text style={styles.quickActionText}>Requisitions</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.quickAction, { backgroundColor: '#10B981' }]}
+              onPress={() => handleNavigate('/procurement/pocreate-material')}
+            >
+              <ShoppingCart size={18} color="#fff" />
+              <Text style={styles.quickActionText}>Material PO</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.quickAction, { backgroundColor: '#F97316' }]}
+              onPress={() => handleNavigate('/procurement/pocreate-service')}
+            >
+              <HardHat size={18} color="#fff" />
+              <Text style={styles.quickActionText}>Service PO</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.quickAction, { backgroundColor: '#10B981' }]}
+              onPress={() => handleNavigate('/procurement/poapprovals')}
+            >
+              <CheckCircle size={18} color="#fff" />
+              <Text style={styles.quickActionText}>Approvals</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.quickAction, { backgroundColor: '#F97316' }]}
+              onPress={() => handleNavigate('/procurement/service-requisitions')}
+            >
+              <Receipt size={18} color="#fff" />
+              <Text style={styles.quickActionText}>Service Reqs</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.quickAction, { backgroundColor: '#F59E0B' }]}
+              onPress={() => handleNavigate('/procurement/poreceiving')}
+            >
+              <Package size={18} color="#fff" />
+              <Text style={styles.quickActionText}>Receiving</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.quickAction, { backgroundColor: '#06B6D4' }]}
+              onPress={() => handleNavigate('/procurement/vendors')}
+            >
+              <Building2 size={18} color="#fff" />
+              <Text style={styles.quickActionText}>Vendors</Text>
+            </TouchableOpacity>
+            {/* New: Budgets */}
+            <TouchableOpacity
+              style={[styles.quickAction, { backgroundColor: '#6366F1' }]}
+              onPress={() => handleNavigate('/procurement/budgets')}
+            >
+              <BarChart3 size={18} color="#fff" />
+              <Text style={styles.quickActionText}>Budgets</Text>
+            </TouchableOpacity>
+            {/* New: GL Accounts */}
+            <TouchableOpacity
+              style={[styles.quickAction, { backgroundColor: '#0D9488' }]}
+              onPress={() => handleNavigate('/procurement/glaccounts')}
+            >
+              <BookOpen size={18} color="#fff" />
+              <Text style={styles.quickActionText}>GL Accounts</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
 
-          {isLoading ? (
-            <ActivityIndicator color={colors.primary} style={{ marginTop: 32 }} />
-          ) : departments.length === 0 ? (
-            <View style={[styles.emptyState, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <Building2 size={40} color={colors.textTertiary} />
-              <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
-                No active departments found.
-              </Text>
-            </View>
-          ) : (
-            departments.map(dept => {
-              const { byMonth, ytdActual } = getDeptActuals(dept.name);
-              const annual = dept.annual_budget || 0;
-              const pct = annual > 0 ? (ytdActual / annual) * 100 : 0;
-              const statusColor = getStatusColor(pct);
-              const isExpanded = expandedDept === dept.id;
-              const deptColor = dept.color || colors.primary;
-
-              return (
-                <View
-                  key={dept.id}
-                  style={[styles.deptCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
-                >
-                  <View style={[styles.deptColorBar, { backgroundColor: deptColor }]} />
-
-                  <Pressable
-                    style={styles.deptHeader}
-                    onPress={() => setExpandedDept(isExpanded ? null : dept.id)}
-                  >
-                    <View style={styles.deptInfo}>
-                      <Text style={[styles.deptName, { color: colors.text }]}>{dept.name}</Text>
-                      <Text style={[styles.deptCode, { color: colors.textSecondary }]}>
-                        {dept.department_code}
-                      </Text>
-                    </View>
-                    <View style={styles.deptRight}>
-                      {annual > 0 ? (
-                        <>
-                          <Text style={[styles.deptBudget, { color: colors.text }]}>
-                            {formatCurrency(annual)}
-                          </Text>
-                          <View style={[styles.pctBadge, { backgroundColor: statusColor + '20' }]}>
-                            <Text style={[styles.pctText, { color: statusColor }]}>
-                              {Math.round(pct)}%
-                            </Text>
-                          </View>
-                        </>
-                      ) : (
-                        <Text style={[styles.noBudgetText, { color: colors.textTertiary }]}>
-                          No budget set
-                        </Text>
-                      )}
-                      <Pressable
-                        onPress={() => openEdit(dept)}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      >
-                        <Edit3 size={16} color={colors.primary} />
-                      </Pressable>
-                      {isExpanded
-                        ? <ChevronDown size={18} color={colors.textSecondary} />
-                        : <ChevronRight size={18} color={colors.textSecondary} />
-                      }
-                    </View>
-                  </Pressable>
-
-                  {annual > 0 && (
-                    <View style={styles.progressContainer}>
-                      <View style={[styles.progressTrack, { backgroundColor: colors.border }]}>
-                        <View
-                          style={[
-                            styles.progressFill,
-                            {
-                              backgroundColor: statusColor,
-                              width: `${Math.min(100, pct)}%` as any,
-                            },
-                          ]}
-                        />
-                      </View>
-                      <Text style={[styles.progressLabel, { color: colors.textSecondary }]}>
-                        {formatCurrency(ytdActual)} spent of {formatCurrency(annual)} annual budget
-                      </Text>
-                    </View>
-                  )}
-
-                  {isExpanded && (
-                    <View style={[styles.expandedSection, { borderTopColor: colors.border }]}>
-                      <View style={styles.budgetBreakdown}>
-                        <View style={[styles.breakdownItem, { backgroundColor: colors.backgroundSecondary }]}>
-                          <View style={[styles.breakdownIcon, { backgroundColor: '#3B82F6' + '20' }]}>
-                            <Users size={14} color="#3B82F6" />
-                          </View>
-                          <Text style={[styles.breakdownLabel, { color: colors.textSecondary }]}>Labor</Text>
-                          <Text style={[styles.breakdownValue, { color: colors.text }]}>
-                            {formatCurrency(dept.labor_budget)}
-                          </Text>
-                        </View>
-                        <View style={[styles.breakdownItem, { backgroundColor: colors.backgroundSecondary }]}>
-                          <View style={[styles.breakdownIcon, { backgroundColor: '#10B981' + '20' }]}>
-                            <Package size={14} color="#10B981" />
-                          </View>
-                          <Text style={[styles.breakdownLabel, { color: colors.textSecondary }]}>Materials</Text>
-                          <Text style={[styles.breakdownValue, { color: colors.text }]}>
-                            {formatCurrency(dept.materials_budget)}
-                          </Text>
-                        </View>
-                        <View style={[styles.breakdownItem, { backgroundColor: colors.backgroundSecondary }]}>
-                          <View style={[styles.breakdownIcon, { backgroundColor: '#8B5CF6' + '20' }]}>
-                            <Users size={14} color="#8B5CF6" />
-                          </View>
-                          <Text style={[styles.breakdownLabel, { color: colors.textSecondary }]}>Headcount</Text>
-                          <Text style={[styles.breakdownValue, { color: colors.text }]}>
-                            {dept.actual_headcount || 0} / {dept.budgeted_headcount || 0}
-                          </Text>
-                        </View>
-                      </View>
-
-                      <Text style={[styles.monthlyTitle, { color: colors.text }]}>
-                        Monthly Spend from POs
-                      </Text>
-                      <View style={styles.monthlyGrid}>
-                        {MONTHS.map(m => {
-                          const actual = byMonth[m.key] || 0;
-                          const isPast = m.key < currentMonth;
-                          const isCurrent = m.key === currentMonth;
-                          const monthlyBudget = annual / 12;
-                          const mPct = monthlyBudget > 0 ? (actual / monthlyBudget) * 100 : 0;
-                          const mColor = getStatusColor(mPct);
-
-                          return (
-                            <View
-                              key={m.key}
-                              style={[
-                                styles.monthCell,
-                                { backgroundColor: colors.backgroundSecondary },
-                                isCurrent && { borderColor: colors.primary, borderWidth: 1 },
-                              ]}
-                            >
-                              <Text style={[
-                                styles.monthLabel,
-                                { color: isCurrent ? colors.primary : colors.textSecondary },
-                              ]}>
-                                {m.label}
-                              </Text>
-                              {isPast || isCurrent ? (
-                                <>
-                                  <Text style={[styles.monthActual, { color: mColor }]}>
-                                    {formatCurrency(actual)}
-                                  </Text>
-                                  <View style={[styles.monthProgressTrack, { backgroundColor: colors.border }]}>
-                                    <View
-                                      style={[
-                                        styles.monthProgressFill,
-                                        {
-                                          backgroundColor: mColor,
-                                          width: `${Math.min(100, mPct)}%` as any,
-                                        },
-                                      ]}
-                                    />
-                                  </View>
-                                </>
-                              ) : (
-                                <Text style={[styles.monthFuture, { color: colors.textTertiary }]}>—</Text>
-                              )}
-                            </View>
-                          );
-                        })}
-                      </View>
-
-                      <View style={[styles.annualSummary, { backgroundColor: colors.backgroundSecondary }]}>
-                        <View style={styles.annualRow}>
-                          <Text style={[styles.annualLabel, { color: colors.textSecondary }]}>Annual Budget</Text>
-                          <Text style={[styles.annualValue, { color: colors.text }]}>{formatCurrency(annual)}</Text>
-                        </View>
-                        <View style={styles.annualRow}>
-                          <Text style={[styles.annualLabel, { color: colors.textSecondary }]}>YTD Actual (POs)</Text>
-                          <Text style={[styles.annualValue, { color: '#10B981' }]}>{formatCurrency(ytdActual)}</Text>
-                        </View>
-                        <View style={[styles.annualRow, styles.annualRowLast, { borderTopColor: colors.border }]}>
-                          <Text style={[styles.annualLabel, { color: colors.textSecondary }]}>Remaining</Text>
-                          <Text style={[
-                            styles.annualValue,
-                            { color: annual - ytdActual >= 0 ? '#10B981' : '#EF4444' },
-                          ]}>
-                            {formatCurrency(annual - ytdActual)}
-                          </Text>
-                        </View>
-                      </View>
-                    </View>
-                  )}
-                </View>
-              );
-            })
-          )}
-
-          <View style={{ height: 60 }} />
-        </ScrollView>
-
-        <Modal
-          visible={modalVisible}
-          animationType="slide"
-          presentationStyle="pageSheet"
-          onRequestClose={closeModal}
-        >
-          <View style={[styles.modalContainer, { backgroundColor: colors.background }]}>
-            <View style={[styles.modalHeader, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
-              <Pressable onPress={closeModal}>
-                <X size={24} color={colors.text} />
-              </Pressable>
-              <Text style={[styles.modalTitle, { color: colors.text }]}>
-                {editingDept?.name} — Budget
-              </Text>
-              <Pressable onPress={handleSave} disabled={updateMutation.isPending}>
-                {updateMutation.isPending
-                  ? <ActivityIndicator size="small" color={colors.primary} />
-                  : <Check size={24} color={colors.primary} />
-                }
-              </Pressable>
-            </View>
-
-            <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
-              <View style={styles.formSection}>
-                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>BUDGET AMOUNTS</Text>
-                <View style={[styles.formCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                  <View style={styles.inputGroup}>
-                    <Text style={[styles.inputLabel, { color: colors.text }]}>Annual Budget Total</Text>
-                    <View style={[styles.currencyInput, { backgroundColor: colors.backgroundSecondary, borderColor: colors.border }]}>
-                      <DollarSign size={18} color={colors.textTertiary} />
-                      <TextInput
-                        style={[styles.currencyInputText, { color: colors.text }]}
-                        value={annualBudget}
-                        onChangeText={setAnnualBudget}
-                        placeholder="0"
-                        placeholderTextColor={colors.textTertiary}
-                        keyboardType="numeric"
-                      />
-                    </View>
-                  </View>
-                  <View style={styles.inputGroup}>
-                    <Text style={[styles.inputLabel, { color: colors.text }]}>Labor Budget</Text>
-                    <View style={[styles.currencyInput, { backgroundColor: colors.backgroundSecondary, borderColor: colors.border }]}>
-                      <DollarSign size={18} color={colors.textTertiary} />
-                      <TextInput
-                        style={[styles.currencyInputText, { color: colors.text }]}
-                        value={laborBudget}
-                        onChangeText={setLaborBudget}
-                        placeholder="0"
-                        placeholderTextColor={colors.textTertiary}
-                        keyboardType="numeric"
-                      />
-                    </View>
-                  </View>
-                  <View style={styles.inputGroup}>
-                    <Text style={[styles.inputLabel, { color: colors.text }]}>Materials Budget</Text>
-                    <View style={[styles.currencyInput, { backgroundColor: colors.backgroundSecondary, borderColor: colors.border }]}>
-                      <DollarSign size={18} color={colors.textTertiary} />
-                      <TextInput
-                        style={[styles.currencyInputText, { color: colors.text }]}
-                        value={materialsBudget}
-                        onChangeText={setMaterialsBudget}
-                        placeholder="0"
-                        placeholderTextColor={colors.textTertiary}
-                        keyboardType="numeric"
-                      />
-                    </View>
-                  </View>
-                  <View style={[styles.inputGroup, { marginBottom: 0 }]}>
-                    <Text style={[styles.inputLabel, { color: colors.text }]}>Budgeted Headcount</Text>
-                    <TextInput
-                      style={[styles.input, { backgroundColor: colors.backgroundSecondary, color: colors.text, borderColor: colors.border }]}
-                      value={budgetedHeadcount}
-                      onChangeText={setBudgetedHeadcount}
-                      placeholder="0"
-                      placeholderTextColor={colors.textTertiary}
-                      keyboardType="numeric"
-                    />
-                  </View>
-                </View>
-              </View>
-              <View style={{ height: 40 }} />
-            </ScrollView>
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Recent Purchase Orders</Text>
+            <TouchableOpacity onPress={() => handleNavigate('/procurement/polist')}>
+              <Text style={[styles.viewAllText, { color: colors.primary }]}>View All</Text>
+            </TouchableOpacity>
           </View>
-        </Modal>
-      </View>
-    </>
+
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.tabsContainer}
+          >
+            {renderTab('all', 'All')}
+            {renderTab('material', 'Materials', '#3B82F6')}
+            {renderTab('service', 'Services', '#10B981')}
+            {renderTab('capex', 'CapEx', '#F59E0B')}
+          </ScrollView>
+
+          <View style={styles.poList}>
+            {isLoading ? (
+              <View style={[styles.emptyState, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <ActivityIndicator size="large" color={colors.primary} />
+                <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+                  Loading purchase orders...
+                </Text>
+              </View>
+            ) : filteredPOs.length === 0 ? (
+              <View style={[styles.emptyState, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <ShoppingCart size={32} color={colors.textTertiary} />
+                <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+                  No purchase orders found
+                </Text>
+              </View>
+            ) : (
+              filteredPOs.map(renderPOCard)
+            )}
+          </View>
+        </View>
+
+        <View style={styles.bottomPadding} />
+      </ScrollView>
+
+      <TouchableOpacity
+        style={[styles.fab, { backgroundColor: colors.primary }]}
+        onPress={() => handleNavigate('/procurement/requests')}
+        activeOpacity={0.8}
+      >
+        <Plus size={24} color="#fff" />
+      </TouchableOpacity>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  scrollView: { flex: 1 },
   scrollContent: { padding: 16 },
-  yearBadge: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 20,
-    borderWidth: 1,
-    marginBottom: 16,
+  headerCard: {
+    borderRadius: 16, padding: 16, borderWidth: 1, marginBottom: 16,
   },
-  yearBadgeText: { fontSize: 13, fontWeight: '600' as const },
-  summaryRow: { flexDirection: 'row', gap: 10, marginBottom: 20 },
+  headerContent: { flexDirection: 'row', alignItems: 'center' },
+  headerIconContainer: {
+    width: 56, height: 56, borderRadius: 14, justifyContent: 'center',
+    alignItems: 'center', marginRight: 14,
+  },
+  headerText: { flex: 1 },
+  headerTitle: { fontSize: 20, fontWeight: '700', marginBottom: 4 },
+  headerSubtitle: { fontSize: 13 },
+  summaryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 20 },
   summaryCard: {
-    flex: 1, padding: 12, borderRadius: 12, borderWidth: 1, alignItems: 'center', gap: 4,
+    width: '48%', padding: 14, borderRadius: 12, borderWidth: 1, flexGrow: 1, minWidth: 150,
   },
-  summaryIcon: {
-    width: 34, height: 34, borderRadius: 9, justifyContent: 'center', alignItems: 'center', marginBottom: 4,
+  summaryIconContainer: {
+    width: 36, height: 36, borderRadius: 10, justifyContent: 'center',
+    alignItems: 'center', marginBottom: 10,
   },
-  summaryValue: { fontSize: 12, fontWeight: '700' as const },
-  summaryLabel: { fontSize: 10, fontWeight: '500' as const, textAlign: 'center' as const },
-  sectionTitle: { fontSize: 12, fontWeight: '600' as const, letterSpacing: 0.5, marginBottom: 12 },
-  emptyState: { alignItems: 'center', padding: 32, borderRadius: 12, borderWidth: 1, gap: 12 },
-  emptyText: { fontSize: 14, textAlign: 'center' as const },
-  deptCard: { borderRadius: 14, borderWidth: 1, marginBottom: 12, overflow: 'hidden' },
-  deptColorBar: { height: 4, width: '100%' },
-  deptHeader: { flexDirection: 'row', alignItems: 'center', padding: 14, gap: 12 },
-  deptInfo: { flex: 1 },
-  deptName: { fontSize: 15, fontWeight: '600' as const },
-  deptCode: { fontSize: 12, marginTop: 2 },
-  deptRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  deptBudget: { fontSize: 14, fontWeight: '700' as const },
-  noBudgetText: { fontSize: 12 },
-  pctBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
-  pctText: { fontSize: 12, fontWeight: '600' as const },
-  progressContainer: { paddingHorizontal: 14, paddingBottom: 12, gap: 6 },
-  progressTrack: { height: 6, borderRadius: 3, overflow: 'hidden' },
-  progressFill: { height: '100%', borderRadius: 3 },
-  progressLabel: { fontSize: 11 },
-  expandedSection: { borderTopWidth: 1, padding: 14, gap: 14 },
-  budgetBreakdown: { flexDirection: 'row', gap: 8 },
-  breakdownItem: { flex: 1, padding: 10, borderRadius: 10, alignItems: 'center', gap: 4 },
-  breakdownIcon: { width: 28, height: 28, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
-  breakdownLabel: { fontSize: 10, fontWeight: '500' as const },
-  breakdownValue: { fontSize: 12, fontWeight: '700' as const },
-  monthlyTitle: { fontSize: 13, fontWeight: '600' as const },
-  monthlyGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  monthCell: {
-    width: '22%', padding: 8, borderRadius: 8, alignItems: 'center', gap: 3,
-    borderWidth: 1, borderColor: 'transparent',
+  summaryValue: { fontSize: 20, fontWeight: '700', marginBottom: 4 },
+  summaryTitle: { fontSize: 12 },
+  section: { marginBottom: 20 },
+  sectionHeader: {
+    flexDirection: 'row', justifyContent: 'space-between',
+    alignItems: 'center', marginBottom: 12,
   },
-  monthLabel: { fontSize: 11, fontWeight: '600' as const },
-  monthActual: { fontSize: 10, fontWeight: '600' as const },
-  monthFuture: { fontSize: 10 },
-  monthProgressTrack: { width: '100%', height: 3, borderRadius: 2, overflow: 'hidden' },
-  monthProgressFill: { height: '100%', borderRadius: 2 },
-  annualSummary: { borderRadius: 10, padding: 12, gap: 8 },
-  annualRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  annualRowLast: { paddingTop: 8, borderTopWidth: 1, marginTop: 4 },
-  annualLabel: { fontSize: 13 },
-  annualValue: { fontSize: 14, fontWeight: '600' as const },
-  modalContainer: { flex: 1 },
-  modalHeader: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    padding: 16, borderBottomWidth: 1,
+  sectionTitle: { fontSize: 16, fontWeight: '600' },
+  sectionSubtitle: { fontSize: 12, marginTop: 2 },
+  viewAllText: { fontSize: 13, fontWeight: '600' },
+  pendingList: { gap: 8 },
+  pendingItem: {
+    flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: 12, borderWidth: 1,
   },
-  modalTitle: { fontSize: 17, fontWeight: '600' as const },
-  modalContent: { flex: 1, padding: 16 },
-  formSection: { marginBottom: 24 },
-  formLabel: { fontSize: 12, fontWeight: '600' as const, letterSpacing: 0.5, marginBottom: 10 },
-  formCard: { borderRadius: 14, borderWidth: 1, padding: 16 },
-  inputGroup: { marginBottom: 16 },
-  inputLabel: { fontSize: 14, fontWeight: '500' as const, marginBottom: 8 },
-  currencyInput: {
-    flexDirection: 'row', alignItems: 'center', borderRadius: 10, borderWidth: 1,
-    paddingHorizontal: 12, gap: 8,
+  pendingIconContainer: {
+    width: 36, height: 36, borderRadius: 10, justifyContent: 'center',
+    alignItems: 'center', marginRight: 12,
   },
-  currencyInputText: { flex: 1, paddingVertical: 12, fontSize: 16 },
-  input: { borderRadius: 10, borderWidth: 1, padding: 12, fontSize: 15 },
+  pendingContent: { flex: 1 },
+  pendingLabel: { fontSize: 14, fontWeight: '500', marginBottom: 4 },
+  pendingCountRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  pendingCountBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 },
+  pendingCountText: { fontSize: 13, fontWeight: '700' },
+  pendingAction: { fontSize: 11, fontWeight: '500' },
+  quickActionsScroll: { gap: 10, paddingRight: 16 },
+  quickAction: {
+    flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14,
+    paddingVertical: 10, borderRadius: 10, gap: 6,
+  },
+  quickActionText: { color: '#fff', fontSize: 13, fontWeight: '600' },
+  tabsContainer: { gap: 8, marginBottom: 12 },
+  tab: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, borderWidth: 1 },
+  tabText: { fontSize: 13, fontWeight: '500' },
+  poList: { gap: 10 },
+  poCard: { borderRadius: 12, borderWidth: 1, padding: 14 },
+  poHeader: {
+    flexDirection: 'row', justifyContent: 'space-between',
+    alignItems: 'flex-start', marginBottom: 10,
+  },
+  poTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
+  poNumber: { fontSize: 15, fontWeight: '600' },
+  typeBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  typeBadgeText: { fontSize: 11, fontWeight: '600' },
+  statusBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  statusBadgeText: { fontSize: 11, fontWeight: '600' },
+  poDetails: { gap: 6, marginBottom: 10 },
+  poDetailRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  poDetailText: { fontSize: 13, flex: 1 },
+  poFooter: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingTop: 10, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.05)',
+  },
+  poTotal: { fontSize: 16, fontWeight: '700' },
+  poDate: { fontSize: 12 },
+  emptyState: {
+    alignItems: 'center', justifyContent: 'center', paddingVertical: 32,
+    borderRadius: 12, borderWidth: 1, gap: 8,
+  },
+  emptyText: { fontSize: 14 },
+  bottomPadding: { height: 80 },
+  fab: {
+    position: 'absolute', right: 20, bottom: 20, width: 56, height: 56,
+    borderRadius: 28, justifyContent: 'center', alignItems: 'center',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3, shadowRadius: 8, elevation: 8,
+  },
 });
