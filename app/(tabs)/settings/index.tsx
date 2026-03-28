@@ -25,10 +25,8 @@ import {
   Zap,
   Crown,
   X,
-  Users,
   ShieldOff,
   Key,
-  UserCog,
   Layers,
   MapPin,
   BookOpen,
@@ -280,20 +278,6 @@ export default function SettingsScreen() {
           <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Administration</Text>
           <View style={[styles.sectionContent, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <SettingItem
-              icon={UserCog}
-              label="User Permissions"
-              value="Configure module access"
-              onPress={() => router.push('/settings/users')}
-              colors={colors}
-            />
-            <SettingItem
-              icon={Users}
-              label="Roles & Permissions"
-              value="Manage user roles"
-              onPress={() => router.push('/settings/roles')}
-              colors={colors}
-            />
-            <SettingItem
               icon={Layers}
               label="Departments"
               value="Configure department codes"
@@ -342,12 +326,12 @@ export default function SettingsScreen() {
               colors={colors}
             />
             <SettingItem
-  icon={Rocket}
-  label="Tech Platform Presentation"
-  value="12-slide deck for stakeholder meetings"
-  onPress={() => router.push('/settings/tech-presentation')}
-  colors={colors}
-/>
+              icon={Rocket}
+              label="Tech Platform Presentation"
+              value="12-slide deck for stakeholder meetings"
+              onPress={() => router.push('/settings/tech-presentation')}
+              colors={colors}
+            />
             <SettingItem
               icon={Rocket}
               label="Feature Roadmap"
@@ -678,12 +662,6 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-  },
-  colorPickerSection: {
-    marginTop: 16,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(128,128,128,0.2)',
   },
   licenseDescription: {
     fontSize: 14,
