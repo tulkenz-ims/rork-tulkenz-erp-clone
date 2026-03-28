@@ -1,19 +1,8 @@
 import React from 'react';
-import { View, Text, StyleSheet, Platform } from 'react-native';
+import { View, Text, Platform } from 'react-native';
+import { useTheme } from '@/contexts/ThemeContext';
 
-const HUD = {
-  bgCard:       '#050f1e',
-  bgCardAlt:    '#071525',
-  cyan:         '#00e5ff',
-  green:        '#00ff88',
-  amber:        '#ffb800',
-  red:          '#ff2d55',
-  text:         '#e0f4ff',
-  textSec:      '#7aa8c8',
-  textDim:      '#3a6080',
-  border:       '#0d2840',
-  borderBright: '#1a4060',
-};
+const MONO = Platform.OS === 'ios' ? 'Menlo' : 'monospace';
 
 export interface ScoreCardGauge {
   label: string;
@@ -30,31 +19,50 @@ interface ScoreCardSectionProps {
   cardStyle?: any;
 }
 
-function CircularGauge({ gauge, size }: { gauge: ScoreCardGauge; size: number }) {
+// Corner brackets
+function Brackets({ color, size = 8 }: { color: string; size?: number }) {
+  return (
+    <>
+      <View style={{ position: 'absolute', top: 0, left: 0, width: size, height: size, borderTopWidth: 1, borderLeftWidth: 1, borderColor: color }} />
+      <View style={{ position: 'absolute', top: 0, right: 0, width: size, height: size, borderTopWidth: 1, borderRightWidth: 1, borderColor: color }} />
+      <View style={{ position: 'absolute', bottom: 0, left: 0, width: size, height: size, borderBottomWidth: 1, borderLeftWidth: 1, borderColor: color }} />
+      <View style={{ position: 'absolute', bottom: 0, right: 0, width: size, height: size, borderBottomWidth: 1, borderRightWidth: 1, borderColor: color }} />
+    </>
+  );
+}
+
+function CircularGauge({ gauge, size, surf, bdr }: {
+  gauge: ScoreCardGauge;
+  size: number;
+  surf: string;
+  bdr: string;
+}) {
   const strokeWidth = 5;
   const clamped = Math.min(100, Math.max(0, gauge.value));
 
   const col = gauge.color || (
-    clamped >= 80 ? HUD.green :
-    clamped >= 60 ? HUD.amber :
-    HUD.red
+    clamped >= 80 ? '#00FF88' :
+    clamped >= 60 ? '#FFB800' :
+    '#FF3344'
   );
 
-  const trackColor = HUD.border;
-
   const webStyle = Platform.OS === 'web' ? {
-    width: size, height: size, borderRadius: size / 2,
-    background: `conic-gradient(from -90deg, ${col} ${clamped * 3.6}deg, ${trackColor} ${clamped * 3.6}deg)`,
+    width: size,
+    height: size,
+    borderRadius: size / 2,
+    background: `conic-gradient(from -90deg, ${col} ${clamped * 3.6}deg, ${bdr} ${clamped * 3.6}deg)`,
   } : null;
 
   const nativeStyle = Platform.OS !== 'web' ? {
-    width: size, height: size, borderRadius: size / 2,
+    width: size,
+    height: size,
+    borderRadius: size / 2,
     borderWidth: strokeWidth,
-    borderColor: trackColor,
-    borderTopColor:    clamped > 0  ? col : trackColor,
-    borderRightColor:  clamped > 25 ? col : trackColor,
-    borderBottomColor: clamped > 50 ? col : trackColor,
-    borderLeftColor:   clamped > 75 ? col : trackColor,
+    borderColor: bdr,
+    borderTopColor:    clamped > 0  ? col : bdr,
+    borderRightColor:  clamped > 25 ? col : bdr,
+    borderBottomColor: clamped > 50 ? col : bdr,
+    borderLeftColor:   clamped > 75 ? col : bdr,
     transform: [{ rotate: '-90deg' }],
   } : null;
 
@@ -62,66 +70,113 @@ function CircularGauge({ gauge, size }: { gauge: ScoreCardGauge; size: number })
 
   return (
     <View style={{ alignItems: 'center', width: size + 10 }}>
-      <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
+      <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center', position: 'relative' }}>
         <View style={(webStyle || nativeStyle) as any} />
-        {/* Inner punch-out */}
+
+        {/* Inner — sharp square punch-out instead of circle */}
         <View style={{
           position: 'absolute',
-          width: innerSize, height: innerSize,
+          width: innerSize,
+          height: innerSize,
+          backgroundColor: surf,
+          justifyContent: 'center',
+          alignItems: 'center',
           borderRadius: innerSize / 2,
-          backgroundColor: HUD.bgCardAlt,
-          justifyContent: 'center', alignItems: 'center',
-          shadowColor: col, shadowOffset: { width: 0, height: 0 },
-          shadowOpacity: 0.25, shadowRadius: 4,
         }}>
-          <Text style={{ fontSize: size > 60 ? 13 : 10, fontWeight: '900', color: col, letterSpacing: -0.3 }}>
+          <Brackets color={col + '60'} size={5} />
+          <Text style={{
+            fontSize: size > 60 ? 12 : 10,
+            fontWeight: '900',
+            color: col,
+            fontFamily: MONO,
+            letterSpacing: -0.5,
+          }}>
             {gauge.displayValue}
           </Text>
         </View>
       </View>
-      <Text style={S.gaugeLabel} numberOfLines={2}>{gauge.label}</Text>
+
+      {/* Label */}
+      <Text style={{
+        fontSize: 7,
+        fontWeight: '700',
+        color: '#446688',
+        textAlign: 'center',
+        marginTop: 5,
+        lineHeight: 10,
+        letterSpacing: 1,
+        fontFamily: MONO,
+        textTransform: 'uppercase',
+      }} numberOfLines={2}>
+        {gauge.label}
+      </Text>
     </View>
   );
 }
 
 export default function ScoreCardSection({ title, subtitle, gauges, icon, cardStyle }: ScoreCardSectionProps) {
+  const { colors } = useTheme();
+
+  const C = {
+    surf:  colors.hudSurface,
+    bdr:   colors.hudBorder,
+    bdrB:  colors.hudBorderBright,
+    p:     colors.hudPrimary,
+    textD: colors.textTertiary,
+  };
+
   if (!gauges || gauges.length === 0) return null;
 
   const count = gauges.length;
   const gaugeSize = count <= 3 ? 68 : count <= 4 ? 60 : 52;
-
-  // Hide header if both title and icon are empty/null
   const showHeader = !!title || !!icon;
 
   return (
-    <View style={S.container}>
+    <View style={{ marginBottom: 4 }}>
       {showHeader && (
-        <View style={S.header}>
-          <View style={S.headerLeft}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             {icon}
-            {title ? <Text style={S.title}>{title}</Text> : null}
+            {title ? (
+              <Text style={{ fontSize: 10, fontWeight: '800', color: C.p, letterSpacing: 2.5, fontFamily: MONO }}>
+                {title.toUpperCase()}
+              </Text>
+            ) : null}
           </View>
-          {subtitle ? <Text style={S.subtitle}>{subtitle}</Text> : null}
+          {subtitle ? (
+            <Text style={{ fontSize: 8, color: C.textD, letterSpacing: 1, fontFamily: MONO }}>{subtitle}</Text>
+          ) : null}
         </View>
       )}
-      <View style={[S.card, cardStyle]}>
-        <View style={S.gaugesRow}>
+
+      {/* Card — sharp corners, corner brackets */}
+      <View style={[{
+        backgroundColor: C.surf,
+        borderWidth: 1,
+        borderColor: C.bdrB,
+        padding: 14,
+        justifyContent: 'center',
+        position: 'relative',
+      }, cardStyle]}>
+        <Brackets color={C.p + '50'} size={10} />
+        <View style={{
+          flexDirection: 'row',
+          justifyContent: 'space-around',
+          alignItems: 'flex-start',
+          flexWrap: 'wrap',
+          gap: 8,
+        }}>
           {gauges.map((gauge, i) => (
-            <CircularGauge key={i} gauge={gauge} size={gaugeSize} />
+            <CircularGauge
+              key={i}
+              gauge={gauge}
+              size={gaugeSize}
+              surf={C.surf}
+              bdr={C.bdr}
+            />
           ))}
         </View>
       </View>
     </View>
   );
 }
-
-const S = StyleSheet.create({
-  container:   { marginBottom: 4 },
-  header:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
-  headerLeft:  { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  title:       { fontSize: 11, fontWeight: '900', color: HUD.cyan, letterSpacing: 2, textTransform: 'uppercase' },
-  subtitle:    { fontSize: 9, color: HUD.textDim, fontWeight: '600', letterSpacing: 0.8 },
-  card:        { backgroundColor: HUD.bgCardAlt, borderRadius: 14, padding: 16, borderWidth: 1, borderColor: HUD.borderBright, justifyContent: 'center' },
-  gaugesRow:   { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 },
-  gaugeLabel:  { fontSize: 8, fontWeight: '700', color: HUD.textSec, textAlign: 'center', marginTop: 6, lineHeight: 11, letterSpacing: 0.3, textTransform: 'uppercase' },
-});
