@@ -74,7 +74,7 @@ export const MODULE_PERMISSION_DEFINITIONS: ModulePermissionDef[] = [
   {
     module: 'procurement',
     name: 'Procurement',
-    description: 'Purchase orders and vendor management',
+    description: 'Purchase orders, vendor management, budgets, and GL accounts',
     actions: [
       { action: 'view', label: 'View Purchase Orders', description: 'View PO list and details' },
       { action: 'create', label: 'Create Purchase Orders', description: 'Create new purchase orders' },
@@ -83,6 +83,7 @@ export const MODULE_PERMISSION_DEFINITIONS: ModulePermissionDef[] = [
       { action: 'approve', label: 'Approve Purchase Orders', description: 'Approve POs for processing' },
       { action: 'reject', label: 'Reject Purchase Orders', description: 'Reject POs' },
       { action: 'export', label: 'Export PO Data', description: 'Export procurement reports' },
+      { action: 'manage_settings', label: 'Manage Budgets & GL Accounts', description: 'Create and edit department budgets and chart of accounts' },
     ],
   },
   {
@@ -156,20 +157,6 @@ export const MODULE_PERMISSION_DEFINITIONS: ModulePermissionDef[] = [
       { action: 'approve', label: 'Approve Vendors', description: 'Approve new vendors' },
       { action: 'manage_vendors', label: 'Manage Price Agreements', description: 'Create and manage pricing' },
       { action: 'export', label: 'Export Vendor Data', description: 'Export vendor reports' },
-    ],
-  },
-  {
-    module: 'accounts',
-    name: 'Accounts',
-    description: 'Budgets and general ledger accounts',
-    actions: [
-      { action: 'view', label: 'View Accounts', description: 'View budgets and GL accounts' },
-      { action: 'create', label: 'Create Records', description: 'Create budget entries and GL accounts' },
-      { action: 'edit', label: 'Edit Records', description: 'Modify budgets and account details' },
-      { action: 'delete', label: 'Delete Records', description: 'Remove budget entries and accounts' },
-      { action: 'approve', label: 'Approve Budgets', description: 'Approve budget submissions' },
-      { action: 'post_entries', label: 'Post Journal Entries', description: 'Create and post journal entries' },
-      { action: 'export', label: 'Export Financial Data', description: 'Export financial reports and statements' },
     ],
   },
   {
