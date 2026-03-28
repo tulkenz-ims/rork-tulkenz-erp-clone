@@ -1,18 +1,18 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
-  StyleSheet,
   ScrollView,
   RefreshControl,
   ActivityIndicator,
   Pressable,
   TouchableOpacity,
-  Dimensions,
   useWindowDimensions,
   Alert,
   Modal,
   Animated,
+  Platform,
+  StyleSheet,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -51,8 +51,7 @@ import ScoreCardSection from '@/components/ScoreCardSection';
 import BudgetCardsRow from '@/components/BudgetCardsRow';
 import { useMaterialsQuery } from '@/hooks/useSupabaseMaterials';
 import { useWorkOrdersQuery } from '@/hooks/useSupabaseWorkOrders';
-import { useEmployees } from '@/hooks/useSupabaseEmployees';
-import { useFacilities } from '@/hooks/useSupabaseEmployees';
+import { useEmployees, useFacilities } from '@/hooks/useSupabaseEmployees';
 import { useAllAggregatedApprovals } from '@/hooks/useAggregatedApprovals';
 import { usePurchaseRequestsQuery, usePurchaseRequisitionsQuery, useProcurementPurchaseOrdersQuery } from '@/hooks/useSupabaseProcurement';
 import { useTaskFeedPostsQuery } from '@/hooks/useTaskFeedTemplates';
@@ -60,89 +59,272 @@ import { useBudgetsQuery } from '@/hooks/useSupabaseFinance';
 import { supabase } from '@/lib/supabase';
 import * as Haptics from 'expo-haptics';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const MONO = Platform.OS === 'ios' ? 'Menlo' : 'monospace';
 
-// ── HUD THEME ──────────────────────────────────────────────────────────────────
-const HUD = {
-  bg:           '#020912',
-  bgCard:       '#050f1e',
-  bgCardAlt:    '#071525',
-  cyan:         '#00e5ff',
-  cyanDim:      '#00e5ff22',
-  green:        '#00ff88',
-  greenDim:     '#00ff8822',
-  amber:        '#ffb800',
-  amberDim:     '#ffb80022',
-  red:          '#ff2d55',
-  redDim:       '#ff2d5522',
-  purple:       '#7b61ff',
-  purpleDim:    '#7b61ff22',
-  text:         '#e0f4ff',
-  textSec:      '#7aa8c8',
-  textDim:      '#3a6080',
-  border:       '#0d2840',
-  borderBright: '#1a4060',
-};
+// ── Corner brackets ────────────────────────────────────────────
+function Brackets({ color, size = 12 }: { color: string; size?: number }) {
+  return (
+    <>
+      <View style={{ position: 'absolute', top: 0, left: 0, width: size, height: size, borderTopWidth: 1.5, borderLeftWidth: 1.5, borderColor: color }} />
+      <View style={{ position: 'absolute', top: 0, right: 0, width: size, height: size, borderTopWidth: 1.5, borderRightWidth: 1.5, borderColor: color }} />
+      <View style={{ position: 'absolute', bottom: 0, left: 0, width: size, height: size, borderBottomWidth: 1.5, borderLeftWidth: 1.5, borderColor: color }} />
+      <View style={{ position: 'absolute', bottom: 0, right: 0, width: size, height: size, borderBottomWidth: 1.5, borderRightWidth: 1.5, borderColor: color }} />
+    </>
+  );
+}
 
-// ── PULSING DOT ────────────────────────────────────────────────────────────────
+// ── Pulsing dot ────────────────────────────────────────────────
 function PulsingDot({ color }: { color: string }) {
-  const anim = React.useRef(new Animated.Value(0.4)).current;
+  const anim = useRef(new Animated.Value(0.4)).current;
   useEffect(() => {
     Animated.loop(Animated.sequence([
-      Animated.timing(anim, { toValue: 1,   duration: 900, useNativeDriver: true }),
+      Animated.timing(anim, { toValue: 1, duration: 900, useNativeDriver: true }),
       Animated.timing(anim, { toValue: 0.4, duration: 900, useNativeDriver: true }),
     ])).start();
   }, []);
+  return <Animated.View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: color, opacity: anim }} />;
+}
+
+// ── HUD Card ───────────────────────────────────────────────────
+function HudCard({ children, style, accent, title, titleColor, sub }: {
+  children: React.ReactNode;
+  style?: any;
+  accent?: string;
+  title?: string;
+  titleColor?: string;
+  sub?: string;
+}) {
+  const { colors } = useTheme();
+  const c = accent || colors.hudBorderBright;
+  const tc = titleColor || colors.hudPrimary;
+
   return (
-    <Animated.View style={{
-      width: 7, height: 7, borderRadius: 4,
-      backgroundColor: color, opacity: anim,
-      shadowColor: color, shadowOffset: { width: 0, height: 0 },
-      shadowOpacity: 1, shadowRadius: 5,
-    }} />
+    <View style={[{
+      backgroundColor: colors.hudSurface,
+      borderWidth: 1,
+      borderColor: colors.hudBorder,
+      marginBottom: 10,
+      position: 'relative',
+    }, style]}>
+      <Brackets color={c} size={10} />
+      {title && (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingTop: 10, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: colors.hudBorder }}>
+          <View style={{ width: 2, height: 12, backgroundColor: tc }} />
+          <Text style={{ fontSize: 9, fontWeight: '800', color: tc, letterSpacing: 2.5, fontFamily: MONO, flex: 1 }}>
+            {title.toUpperCase()}
+          </Text>
+          {sub && <Text style={{ fontSize: 8, color: tc, opacity: 0.6, letterSpacing: 1.5, fontFamily: MONO }}>{sub}</Text>}
+        </View>
+      )}
+      <View style={{ padding: 12 }}>
+        {children}
+      </View>
+    </View>
   );
 }
 
-// ── QUICK ACTION BUTTON ────────────────────────────────────────────────────────
-function QuickBtn({
-  icon, stat, label, desc, color, onPress,
-}: { icon: React.ReactNode; stat: string; label: string; desc: string; color: string; onPress: () => void }) {
+// ── Quick action button ────────────────────────────────────────
+function QuickBtn({ icon, stat, label, desc, color, onPress }: {
+  icon: React.ReactNode; stat: string; label: string; desc: string; color: string; onPress: () => void;
+}) {
+  const { colors } = useTheme();
   return (
-    <TouchableOpacity activeOpacity={0.7} onPress={onPress}
-      style={[qS.btn, { borderColor: color + '40' }]}>
-      <View style={[qS.iconBox, { backgroundColor: color + '18' }]}>{icon}</View>
-      <Text style={[qS.stat, { color }]}>{stat}</Text>
-      <Text style={qS.label}>{label}</Text>
-      <Text style={qS.desc}>{desc}</Text>
+    <TouchableOpacity
+      activeOpacity={0.75}
+      onPress={onPress}
+      style={{
+        flex: 1,
+        alignItems: 'center',
+        paddingVertical: 14,
+        paddingHorizontal: 4,
+        backgroundColor: colors.hudSurface,
+        borderWidth: 1,
+        borderColor: color + '45',
+        gap: 5,
+        minHeight: 115,
+        position: 'relative',
+      }}
+    >
+      <Brackets color={color + '60'} size={7} />
+      <View style={{ width: 30, height: 30, backgroundColor: color + '18', alignItems: 'center', justifyContent: 'center' }}>
+        {icon}
+      </View>
+      <Text style={{ fontSize: 18, fontWeight: '900', color, fontFamily: MONO, letterSpacing: -0.5 }}>{stat}</Text>
+      <Text style={{ fontSize: 7, fontWeight: '800', color, letterSpacing: 2, fontFamily: MONO, textAlign: 'center', opacity: 0.85 }}>
+        {label.toUpperCase()}
+      </Text>
+      <Text style={{ fontSize: 6.5, color: colors.textTertiary, textAlign: 'center', letterSpacing: 0.5, fontFamily: MONO }}>
+        {desc.toUpperCase()}
+      </Text>
     </TouchableOpacity>
   );
 }
-const qS = StyleSheet.create({
-  btn:     { flex: 1, alignItems: 'center', paddingVertical: 14, paddingHorizontal: 4, borderRadius: 12, backgroundColor: HUD.bgCard, borderWidth: 1, gap: 4, minHeight: 130 },
-  iconBox: { width: 34, height: 34, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
-  stat:    { fontSize: 17, fontWeight: '900', letterSpacing: -0.3, textAlign: 'center' },
-  label:   { fontSize: 9,  fontWeight: '800', color: HUD.textSec, textAlign: 'center', letterSpacing: 0.5, textTransform: 'uppercase' },
-  desc:    { fontSize: 8,  fontWeight: '600', color: HUD.textDim, textAlign: 'center' },
-});
 
-// ── SECTION CARD WRAPPER ───────────────────────────────────────────────────────
-function HudCard({ children, style }: { children: React.ReactNode; style?: any }) {
-  return <View style={[hcS.card, style]}>{children}</View>;
-}
-const hcS = StyleSheet.create({
-  card: { backgroundColor: HUD.bgCard, borderRadius: 14, borderWidth: 1, borderColor: HUD.borderBright, padding: 14, marginBottom: 14 },
-});
-
-// ── SECTION HEADER ─────────────────────────────────────────────────────────────
-function SectionHead({ icon, title, sub, color = HUD.cyan }: { icon: React.ReactNode; title: string; sub?: string; color?: string }) {
+// ── Status item ────────────────────────────────────────────────
+function StatusItem({ label, value, color, last }: { label: string; value: string; color: string; last?: boolean }) {
+  const { colors } = useTheme();
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-      <View style={{ width: 26, height: 26, borderRadius: 7, backgroundColor: color + '18', alignItems: 'center', justifyContent: 'center' }}>
-        {icon}
-      </View>
-      <Text style={{ fontSize: 11, fontWeight: '900', letterSpacing: 2, color, flex: 1, textTransform: 'uppercase' }}>{title}</Text>
-      {sub ? <Text style={{ fontSize: 9, color: HUD.textDim, fontWeight: '600', letterSpacing: 0.8 }}>{sub}</Text> : null}
+    <View style={{
+      flex: 1,
+      alignItems: 'center',
+      gap: 3,
+      borderRightWidth: last ? 0 : 1,
+      borderRightColor: colors.hudBorder,
+    }}>
+      <Text style={{ fontSize: 12, fontWeight: '900', color, fontFamily: MONO }}>{value}</Text>
+      <Text style={{ fontSize: 6, fontWeight: '700', color: colors.textTertiary, letterSpacing: 1, textAlign: 'center', fontFamily: MONO }}>
+        {label.toUpperCase()}
+      </Text>
     </View>
+  );
+}
+
+// ── Radar eye (JARVIS center) ──────────────────────────────────
+function RadarEye({ overallStatus, alertCount, checkedIn, total, primary, secondary }: {
+  overallStatus: string;
+  alertCount: number;
+  checkedIn: number;
+  total: number;
+  primary: string;
+  secondary: string;
+}) {
+  const ring1 = useRef(new Animated.Value(0)).current;
+  const ring2 = useRef(new Animated.Value(0)).current;
+  const ring3 = useRef(new Animated.Value(0)).current;
+  const pulse = useRef(new Animated.Value(0.6)).current;
+
+  useEffect(() => {
+    Animated.loop(Animated.timing(ring1, { toValue: 1, duration: 8000, useNativeDriver: true })).start();
+    Animated.loop(Animated.timing(ring2, { toValue: 1, duration: 5000, useNativeDriver: true })).start();
+    Animated.loop(Animated.timing(ring3, { toValue: 1, duration: 12000, useNativeDriver: true })).start();
+    Animated.loop(Animated.sequence([
+      Animated.timing(pulse, { toValue: 1, duration: 1500, useNativeDriver: true }),
+      Animated.timing(pulse, { toValue: 0.6, duration: 1500, useNativeDriver: true }),
+    ])).start();
+  }, []);
+
+  const rot1 = ring1.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
+  const rot2 = ring2.interpolate({ inputRange: [0, 1], outputRange: ['360deg', '0deg'] });
+  const rot3 = ring3.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
+
+  const SIZE = 180;
+  const cx = SIZE / 2;
+
+  return (
+    <View style={{ width: SIZE, height: SIZE, alignItems: 'center', justifyContent: 'center', alignSelf: 'center', position: 'relative' }}>
+      {/* Outer ring */}
+      <Animated.View style={{
+        position: 'absolute',
+        width: SIZE, height: SIZE,
+        borderRadius: SIZE / 2,
+        borderWidth: 1,
+        borderColor: primary + '25',
+        borderStyle: 'dashed',
+        transform: [{ rotate: rot1 }],
+      }} />
+      {/* Middle ring */}
+      <Animated.View style={{
+        position: 'absolute',
+        width: SIZE * 0.75, height: SIZE * 0.75,
+        borderRadius: SIZE * 0.75 / 2,
+        borderWidth: 1,
+        borderColor: primary + '35',
+        transform: [{ rotate: rot2 }],
+      }} />
+      {/* Arc ring */}
+      <Animated.View style={{
+        position: 'absolute',
+        width: SIZE * 0.75, height: SIZE * 0.75,
+        borderRadius: SIZE * 0.75 / 2,
+        borderWidth: 2,
+        borderColor: 'transparent',
+        borderTopColor: primary,
+        borderRightColor: primary + '40',
+        transform: [{ rotate: rot2 }],
+      }} />
+      {/* Inner ring */}
+      <Animated.View style={{
+        position: 'absolute',
+        width: SIZE * 0.52, height: SIZE * 0.52,
+        borderRadius: SIZE * 0.52 / 2,
+        borderWidth: 1,
+        borderColor: secondary + '45',
+        transform: [{ rotate: rot3 }],
+      }} />
+      {/* Arc inner */}
+      <Animated.View style={{
+        position: 'absolute',
+        width: SIZE * 0.52, height: SIZE * 0.52,
+        borderRadius: SIZE * 0.52 / 2,
+        borderWidth: 1.5,
+        borderColor: 'transparent',
+        borderBottomColor: secondary,
+        borderLeftColor: secondary + '40',
+        transform: [{ rotate: rot3 }],
+      }} />
+      {/* Crosshair lines */}
+      <View style={{ position: 'absolute', width: SIZE * 0.8, height: 1, backgroundColor: primary + '18' }} />
+      <View style={{ position: 'absolute', width: 1, height: SIZE * 0.8, backgroundColor: primary + '18' }} />
+      {/* Core */}
+      <Animated.View style={{
+        width: SIZE * 0.32, height: SIZE * 0.32,
+        borderRadius: SIZE * 0.32 / 2,
+        backgroundColor: overallStatus + '15',
+        borderWidth: 2,
+        borderColor: overallStatus,
+        alignItems: 'center',
+        justifyContent: 'center',
+        opacity: pulse,
+      }}>
+        <Text style={{ fontSize: alertCount > 0 ? 18 : 14, fontWeight: '900', color: overallStatus, fontFamily: MONO, lineHeight: alertCount > 0 ? 20 : 16 }}>
+          {alertCount > 0 ? alertCount.toString() : '✓'}
+        </Text>
+        <Text style={{ fontSize: 6, color: overallStatus, letterSpacing: 1, fontFamily: MONO, opacity: 0.8 }}>
+          {alertCount > 0 ? 'ALERTS' : 'OK'}
+        </Text>
+      </Animated.View>
+      {/* Checked-in label */}
+      <View style={{ position: 'absolute', bottom: 8 }}>
+        <Text style={{ fontSize: 7, color: primary + '80', fontFamily: MONO, letterSpacing: 1, textAlign: 'center' }}>
+          {checkedIn}/{total} ON SITE
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+// ── Modal row ──────────────────────────────────────────────────
+function ModalRow({ Icon, color, title, sub, onPress }: {
+  Icon: any; color: string; title: string; sub: string; onPress: () => void;
+}) {
+  const { colors } = useTheme();
+  return (
+    <TouchableOpacity
+      activeOpacity={0.8}
+      onPress={onPress}
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: colors.hudBg,
+        borderWidth: 1,
+        borderColor: colors.hudBorder,
+        borderLeftWidth: 3,
+        borderLeftColor: color,
+        padding: 12,
+        marginBottom: 6,
+        gap: 12,
+        position: 'relative',
+      }}
+    >
+      <View style={{ width: 36, height: 36, backgroundColor: color + '20', alignItems: 'center', justifyContent: 'center' }}>
+        <Icon size={18} color={color} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={{ fontSize: 13, fontWeight: '700', color: colors.hudTextStrong, fontFamily: MONO, marginBottom: 2 }}>{title}</Text>
+        <Text style={{ fontSize: 10, color: colors.textSecondary, fontFamily: MONO }}>{sub}</Text>
+      </View>
+      <ChevronRight size={14} color={colors.textTertiary} />
+    </TouchableOpacity>
   );
 }
 
@@ -151,11 +333,27 @@ export default function ExecutiveDashboard() {
   const { company, loading: authLoading, isAuthenticated, isEmployee } = useUser();
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { colors: Colors } = useTheme();
+  const { colors } = useTheme();
   const { width: windowWidth } = useWindowDimensions();
   const isWide = windowWidth >= 768;
 
-  // ── ALL ORIGINAL DATA HOOKS — UNCHANGED ──────────────────────────────────
+  const C = {
+    p:      colors.hudPrimary,
+    s:      colors.hudSecondary,
+    text:   colors.hudTextStrong,
+    textS:  colors.textSecondary,
+    textD:  colors.textTertiary,
+    bdr:    colors.hudBorder,
+    bdrB:   colors.hudBorderBright,
+    surf:   colors.hudSurface,
+    bg:     colors.hudBg,
+    green:  '#00FF88',
+    amber:  '#FFB800',
+    red:    '#FF3344',
+    purple: '#CC44FF',
+  };
+
+  // ── ALL DATA HOOKS — UNCHANGED ────────────────────────────────
   const { data: materials = [], isLoading: materialsLoading } = useMaterialsQuery();
   const { data: workOrders = [], isLoading: workOrdersLoading } = useWorkOrdersQuery();
   const { data: employees = [], isLoading: employeesLoading } = useEmployees();
@@ -178,7 +376,7 @@ export default function ExecutiveDashboard() {
         .select('*', { count: 'exact', head: true })
         .eq('organization_id', company.id)
         .is('clock_out', null);
-      if (error) { console.error('[Dashboard] Error fetching checked-in count:', error); return 0; }
+      if (error) return 0;
       return count || 0;
     },
     enabled: !!company?.id,
@@ -188,13 +386,11 @@ export default function ExecutiveDashboard() {
 
   const erpLoading = materialsLoading || workOrdersLoading || employeesLoading || approvalsLoading;
 
-  const approvals = useMemo(() => {
-    return [
-      ...purchaseApprovals.map(a => ({ ...a, type: 'purchase' as const, status: a.status === 'pending' || a.status === 'in_progress' ? 'pending' as const : a.status as 'approved' | 'rejected', amount: a.amount || 0 })),
-      ...timeApprovals.map(a => ({ ...a, type: a.type as 'time_off' | 'overtime' | 'schedule_change', status: a.status === 'pending' || a.status === 'in_progress' ? 'pending' as const : a.status as 'approved' | 'rejected' })),
-      ...permitApprovals.map(a => ({ ...a, type: 'permit' as const, status: a.status === 'pending' || a.status === 'in_progress' ? 'pending' as const : a.status as 'approved' | 'rejected' })),
-    ];
-  }, [purchaseApprovals, timeApprovals, permitApprovals]);
+  const approvals = useMemo(() => ([
+    ...purchaseApprovals.map(a => ({ ...a, type: 'purchase' as const, status: a.status === 'pending' || a.status === 'in_progress' ? 'pending' as const : a.status as 'approved' | 'rejected', amount: a.amount || 0 })),
+    ...timeApprovals.map(a => ({ ...a, type: a.type as 'time_off' | 'overtime' | 'schedule_change', status: a.status === 'pending' || a.status === 'in_progress' ? 'pending' as const : a.status as 'approved' | 'rejected' })),
+    ...permitApprovals.map(a => ({ ...a, type: 'permit' as const, status: a.status === 'pending' || a.status === 'in_progress' ? 'pending' as const : a.status as 'approved' | 'rejected' })),
+  ]), [purchaseApprovals, timeApprovals, permitApprovals]);
 
   const stats = useMemo(() => {
     const totalMaterials = materials.length;
@@ -221,13 +417,16 @@ export default function ExecutiveDashboard() {
   const [selectedFacility, setSelectedFacility] = useState<string>('all');
 
   const handleMaterialPress = useCallback((materialId: string) => {
-    console.log('[Dashboard] handleMaterialPress called with materialId:', materialId);
     Haptics.selectionAsync();
     setShowLowStockAlerts(false);
     router.push({ pathname: '/inventory/itemrecords', params: { materialId, fromAlert: 'true' } });
   }, [router]);
 
-  const materialsList = useMemo(() => materials.map(m => ({ ...m, facility_name: m.facility_name || 'Unassigned', vendor: m.vendor || 'Unknown Vendor' })), [materials]);
+  const materialsList = useMemo(() => materials.map(m => ({
+    ...m,
+    facility_name: m.facility_name || 'Unassigned',
+    vendor: m.vendor || 'Unknown Vendor',
+  })), [materials]);
 
   const handleCreatePurchaseRequest = useCallback((materialId: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -249,23 +448,10 @@ export default function ExecutiveDashboard() {
     return { stockHealth, woCompletion, laborUtilization };
   }, [stats, workOrders, checkedInCount]);
 
-  const facilityBreakdown = useMemo(() => {
-    const facilityMap: Record<string, { value: number; items: number; lowStock: number }> = {};
-    materialsList.forEach(m => {
-      const facility = m.facility_name || 'Unassigned';
-      if (!facilityMap[facility]) facilityMap[facility] = { value: 0, items: 0, lowStock: 0 };
-      facilityMap[facility].value += m.on_hand * m.unit_price;
-      facilityMap[facility].items++;
-      if (m.on_hand <= m.min_level) facilityMap[facility].lowStock++;
-    });
-    return Object.entries(facilityMap).map(([name, data]) => ({ name, ...data })).sort((a, b) => b.value - a.value);
-  }, [materialsList]);
-
   const facilityNames = useMemo(() => ['All Facilities', ...facilities.map(f => f.name).sort()], [facilities]);
 
   useEffect(() => {
-    console.log('Auth state:', { authLoading, isAuthenticated });
-    if (!authLoading && !isAuthenticated) { console.log('Not authenticated, redirecting to login'); router.replace('/login'); }
+    if (!authLoading && !isAuthenticated) router.replace('/login');
   }, [authLoading, isAuthenticated, router]);
 
   const onRefresh = useCallback(async () => {
@@ -281,194 +467,234 @@ export default function ExecutiveDashboard() {
         queryClient.invalidateQueries({ queryKey: ['dashboard-checked-in-count'] }),
         queryClient.invalidateQueries({ queryKey: ['facilities'] }),
       ]);
-      console.log('[Dashboard] Refresh completed');
-    } catch (error) { console.error('[Dashboard] Refresh error:', error); }
+    } catch (e) { console.error('[Dashboard] Refresh error:', e); }
     finally { setRefreshing(false); }
   }, [queryClient]);
 
-  // ── LOADING / AUTH GUARDS ────────────────────────────────────────────────
+  // ── GUARDS ────────────────────────────────────────────────────
   if (authLoading || erpLoading) {
     return (
-      <SafeAreaView style={S.loadingContainer}>
-        <ActivityIndicator size="large" color={HUD.cyan} />
-        <Text style={S.loadingText}>{authLoading ? 'AUTHENTICATING...' : 'LOADING SYSTEMS...'}</Text>
-      </SafeAreaView>
+      <View style={{ flex: 1, backgroundColor: C.bg, justifyContent: 'center', alignItems: 'center', gap: 16 }}>
+        <ActivityIndicator size="large" color={C.p} />
+        <Text style={{ color: C.p, fontSize: 11, fontWeight: '800', letterSpacing: 3, fontFamily: MONO }}>
+          {authLoading ? 'AUTHENTICATING...' : 'LOADING SYSTEMS...'}
+        </Text>
+      </View>
     );
   }
   if (!isAuthenticated) return null;
   if (isEmployee) return <EmployeeHome />;
 
-  // Derived status
   const alertCount = stats.lowStockCount + stats.outOfStockCount + stats.overdueWorkOrders;
-  const overallStatus = alertCount === 0 ? HUD.green : alertCount <= 3 ? HUD.amber : HUD.red;
+  const overallStatus = alertCount === 0 ? C.green : alertCount <= 3 ? C.amber : C.red;
 
-  // Shared scorecard gauge builder helpers (kept identical to original)
   const pendingRequestsCount = purchaseRequests.filter(r => r.status === 'pending' || r.status === 'submitted').length;
   const pendingApprovalsCount = purchaseOrders.filter(po => po.status === 'pending_approval').length;
   const pendingReqsCount = purchaseRequisitions.filter(r => r.status === 'pending' || r.status === 'pending_approval').length;
-  const pendingReceiptCount = purchaseOrders.filter(po => po.status === 'approved' || po.status === 'ordered' || po.status === 'shipped').length;
-  const activePOsCount = purchaseOrders.filter(po => po.status !== 'cancelled' && po.status !== 'closed').length;
+  const pendingReceiptCount = purchaseOrders.filter(po => ['approved','ordered','shipped'].includes(po.status)).length;
+  const activePOsCount = purchaseOrders.filter(po => !['cancelled','closed'].includes(po.status)).length;
 
   return (
-    <View style={S.container}>
+    <View style={{ flex: 1, backgroundColor: C.bg }}>
       <ScrollView
-        style={S.scrollView}
-        contentContainerStyle={S.scrollContent}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={HUD.cyan} />}
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingHorizontal: 12, paddingTop: 52, paddingBottom: 40 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.p} />}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── HEADER ────────────────────────────────────────────────────── */}
-        <View style={S.header}>
-          <View style={S.headerTop}>
-            <View style={S.headerLeft}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 4 }}>
-                <PulsingDot color={overallStatus} />
-                <Text style={S.eyebrow}>EXECUTIVE OVERVIEW</Text>
-              </View>
-              <Text style={S.companyName}>{company?.name || 'TulKenz OPS'}</Text>
-            </View>
-            <View style={S.headerActions}>
-              <TouchableOpacity activeOpacity={0.7} style={S.facilityButton} onPress={() => setShowFacilityPicker(true)}>
-                <MapPin size={13} color={HUD.cyan} />
-                <Text style={S.facilityButtonText} numberOfLines={1}>
-                  {selectedFacility === 'all' ? 'ALL FACILITIES' : selectedFacility.toUpperCase().slice(0, 12)}
-                </Text>
-                <ChevronDown size={11} color={HUD.textDim} />
-              </TouchableOpacity>
-              <TouchableOpacity activeOpacity={0.7} style={S.iconBtn} onPress={onRefresh}>
-                <RefreshCw size={16} color={HUD.textSec} />
-              </TouchableOpacity>
-              <UserProfileMenu />
-            </View>
-          </View>
 
-          <View style={S.dateRow}>
-            <Clock size={11} color={HUD.textDim} />
-            <Text style={S.dateText}>
-              {currentTime.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-            </Text>
+        {/* ── SYSTEM TOP BAR ──────────────────────────────────── */}
+        <View style={{
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          borderWidth: 1,
+          borderColor: C.bdr,
+          backgroundColor: C.surf + '80',
+          padding: 8,
+          marginBottom: 10,
+          position: 'relative',
+        }}>
+          <Brackets color={C.bdrB} size={8} />
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <PulsingDot color={overallStatus} />
+            <Text style={{ fontSize: 9, color: C.textD, fontFamily: MONO, letterSpacing: 2 }}>EXECUTIVE OVERVIEW</Text>
           </View>
-
-          {/* Status strip */}
-          <View style={S.statusStrip}>
-            {[
-              { label: 'INVENTORY',   value: `${stats.totalMaterials} SKUs`, color: stats.lowStockCount > 0 ? HUD.amber : HUD.green },
-              { label: 'LOW STOCK',   value: `${stats.lowStockCount}`,        color: stats.lowStockCount > 0 ? HUD.amber : HUD.green },
-              { label: 'OUT OF STOCK',value: `${stats.outOfStockCount}`,       color: stats.outOfStockCount > 0 ? HUD.red : HUD.green },
-              { label: 'OPEN WOs',    value: `${stats.openWorkOrders}`,        color: stats.overdueWorkOrders > 0 ? HUD.amber : HUD.green },
-              { label: 'OVERDUE',     value: `${stats.overdueWorkOrders}`,     color: stats.overdueWorkOrders > 0 ? HUD.red : HUD.green },
-              { label: 'CHECKED IN',  value: `${checkedInCount}/${stats.activeEmployees}`, color: checkedInCount > 0 ? HUD.cyan : HUD.textDim },
-              { label: 'TASK FEED',   value: `${taskFeedPendingCount}`,        color: taskFeedPendingCount > 0 ? HUD.amber : HUD.green },
-            ].map((item, i, arr) => (
-              <View key={item.label} style={[S.statusItem, i < arr.length - 1 && { borderRightWidth: 1, borderRightColor: HUD.border }]}>
-                <Text style={[S.statusValue, { color: item.color }]}>{item.value}</Text>
-                <Text style={S.statusLabel}>{item.label}</Text>
-              </View>
-            ))}
+          <Text style={{ fontSize: 8, color: C.textD, fontFamily: MONO, letterSpacing: 1 }}>
+            {currentTime.toLocaleTimeString('en-US', { hour12: false })} CST
+          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <TouchableOpacity
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 4, borderWidth: 1, borderColor: C.bdrB, paddingHorizontal: 8, paddingVertical: 4 }}
+              onPress={() => setShowFacilityPicker(true)}
+            >
+              <MapPin size={10} color={C.p} />
+              <Text style={{ fontSize: 8, color: C.p, fontFamily: MONO, letterSpacing: 1 }}>
+                {selectedFacility === 'all' ? 'ALL FACILITIES' : selectedFacility.toUpperCase().slice(0, 12)}
+              </Text>
+              <ChevronDown size={9} color={C.textD} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={onRefresh} style={{ padding: 4, borderWidth: 1, borderColor: C.bdrB }}>
+              <RefreshCw size={13} color={C.textS} />
+            </TouchableOpacity>
+            <UserProfileMenu />
           </View>
         </View>
 
-        {/* ── ROW 1: QUICK ACTIONS + COMPLIANCE ─────────────────────────── */}
-        <View style={isWide ? S.wideRow : undefined}>
-          <View style={isWide ? S.wideHalf : undefined}>
-            <HudCard>
-              <SectionHead icon={<Zap size={13} color={HUD.amber} />} title="Quick Actions" color={HUD.amber} />
-              <View style={S.quickActionBar}>
+        {/* ── RADAR EYE HEADER ────────────────────────────────── */}
+        <View style={{
+          borderWidth: 1,
+          borderColor: C.bdrB,
+          backgroundColor: C.surf,
+          marginBottom: 10,
+          padding: 16,
+          position: 'relative',
+          alignItems: 'center',
+        }}>
+          <Brackets color={C.p} size={14} />
+          {/* Company name */}
+          <Text style={{ fontSize: 10, color: C.textD, fontFamily: MONO, letterSpacing: 3, marginBottom: 4 }}>
+            {company?.name?.toUpperCase() || 'TULKENZ OPS'}
+          </Text>
+          {/* Radar */}
+          <RadarEye
+            overallStatus={overallStatus}
+            alertCount={alertCount}
+            checkedIn={checkedInCount}
+            total={stats.activeEmployees}
+            primary={C.p}
+            secondary={C.s}
+          />
+          {/* Date */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 8 }}>
+            <Clock size={10} color={C.textD} />
+            <Text style={{ fontSize: 9, color: C.textD, fontFamily: MONO, letterSpacing: 1 }}>
+              {currentTime.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }).toUpperCase()}
+            </Text>
+          </View>
+        </View>
+
+        {/* ── TELEMETRY STATUS STRIP ──────────────────────────── */}
+        <View style={{
+          flexDirection: 'row',
+          borderWidth: 1,
+          borderColor: C.bdrB,
+          backgroundColor: C.surf,
+          marginBottom: 10,
+          paddingVertical: 10,
+          position: 'relative',
+        }}>
+          <Brackets color={C.bdrB} size={8} />
+          {[
+            { label: 'INVENTORY',    value: `${stats.totalMaterials}`, color: C.p },
+            { label: 'LOW STOCK',    value: `${stats.lowStockCount}`, color: stats.lowStockCount > 0 ? C.amber : C.green },
+            { label: 'OUT OF STOCK', value: `${stats.outOfStockCount}`, color: stats.outOfStockCount > 0 ? C.red : C.green },
+            { label: 'OPEN WOs',     value: `${stats.openWorkOrders}`, color: stats.overdueWorkOrders > 0 ? C.amber : C.green },
+            { label: 'OVERDUE',      value: `${stats.overdueWorkOrders}`, color: stats.overdueWorkOrders > 0 ? C.red : C.green },
+            { label: 'ON SITE',      value: `${checkedInCount}/${stats.activeEmployees}`, color: checkedInCount > 0 ? C.p : C.textD },
+            { label: 'TASK FEED',    value: `${taskFeedPendingCount}`, color: taskFeedPendingCount > 0 ? C.amber : C.green },
+          ].map((item, i, arr) => (
+            <StatusItem key={item.label} label={item.label} value={item.value} color={item.color} last={i === arr.length - 1} />
+          ))}
+        </View>
+
+        {/* ── ROW 1: QUICK ACTIONS + COMPLIANCE ───────────────── */}
+        <View style={isWide ? { flexDirection: 'row', gap: 10, marginBottom: 0 } : undefined}>
+          <View style={isWide ? { flex: 1 } : undefined}>
+            <HudCard title="Quick Actions" titleColor={C.amber} accent={C.amber}>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
                 <QuickBtn
-                  icon={<ClipboardList size={16} color={taskFeedPendingCount > 0 ? HUD.amber : HUD.green} />}
+                  icon={<ClipboardList size={15} color={taskFeedPendingCount > 0 ? C.amber : C.green} />}
                   stat={taskFeedPendingCount.toString()}
                   label="Task Feed"
                   desc="Pending items"
-                  color={taskFeedPendingCount > 0 ? HUD.amber : HUD.green}
+                  color={taskFeedPendingCount > 0 ? C.amber : C.green}
                   onPress={() => router.push('/taskfeed')}
                 />
                 <QuickBtn
-                  icon={<Users size={16} color={HUD.cyan} />}
+                  icon={<Users size={15} color={C.p} />}
                   stat={`${checkedInCount}/${stats.activeEmployees}`}
                   label="Headcount"
                   desc="Checked in now"
-                  color={HUD.cyan}
+                  color={C.p}
                   onPress={() => router.push('/timeclock')}
                 />
                 <QuickBtn
-                  icon={<Siren size={16} color={HUD.red} />}
+                  icon={<Siren size={15} color={C.red} />}
                   stat="SOS"
                   label="Emergency"
                   desc="Initiate protocol"
-                  color={HUD.red}
-                  onPress={() => { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning); setShowEmergencyModal(true); }}
+                  color={C.red}
+                  onPress={() => {
+                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+                    setShowEmergencyModal(true);
+                  }}
                 />
               </View>
             </HudCard>
           </View>
-          <View style={isWide ? S.wideHalf : undefined}>
-            <HudCard>
-              <SectionHead icon={<Package size={13} color={HUD.amber} />} title="Compliance" color={HUD.amber} />
+          <View style={isWide ? { flex: 1 } : undefined}>
+            <HudCard title="Compliance" titleColor={C.amber} accent={C.amber}>
               <ComplianceCountdown />
             </HudCard>
           </View>
         </View>
 
-        {/* ── LINE STATUS ────────────────────────────────────────────────── */}
-        <HudCard>
-          <SectionHead icon={<Zap size={13} color={HUD.green} />} title="Line Status" sub="LIVE" color={HUD.green} />
+        {/* ── LINE STATUS ──────────────────────────────────────── */}
+        <HudCard title="Line Status" titleColor={C.green} accent={C.green} sub="LIVE">
           <LineStatusWidget />
         </HudCard>
 
-        {/* ── PROCUREMENT + INVENTORY SCORECARDS ─────────────────────────── */}
-        <View style={isWide ? S.wideRow : undefined}>
-          <View style={isWide ? S.wideHalf : undefined}>
-            <HudCard>
-              <SectionHead icon={<ShoppingCart size={13} color={HUD.green} />} title="Procurement Scorecard" sub="THIS MONTH" color={HUD.green} />
+        {/* ── SCORECARDS ───────────────────────────────────────── */}
+        <View style={isWide ? { flexDirection: 'row', gap: 10 } : undefined}>
+          <View style={isWide ? { flex: 1 } : undefined}>
+            <HudCard title="Procurement Scorecard" titleColor={C.green} accent={C.green} sub="THIS MONTH">
               <ScoreCardSection
                 title="" subtitle="" icon={null}
-                cardStyle={{ minHeight: 150 }}
+                cardStyle={{ minHeight: 140 }}
                 gauges={[
-                  { label: 'Pending Requests',  value: Math.max(0, 100 - (pendingRequestsCount * 20)),  displayValue: `${pendingRequestsCount}`,  color: pendingRequestsCount > 0  ? HUD.amber : HUD.green },
-                  { label: 'Pending Approvals', value: Math.max(0, 100 - (pendingApprovalsCount * 25)), displayValue: `${pendingApprovalsCount}`, color: pendingApprovalsCount > 0 ? HUD.amber : HUD.green },
-                  { label: 'Pending Reqs',      value: Math.max(0, 100 - (pendingReqsCount * 20)),      displayValue: `${pendingReqsCount}`,      color: pendingReqsCount > 0      ? HUD.amber : HUD.green },
-                  { label: 'Pending Receipt',   value: Math.max(0, 100 - (pendingReceiptCount * 15)),   displayValue: `${pendingReceiptCount}`,   color: pendingReceiptCount > 0   ? HUD.cyan  : HUD.green },
-                  { label: 'Active POs',        value: purchaseOrders.length > 0 ? 65 : 0,             displayValue: `${activePOsCount}`,        color: HUD.cyan },
+                  { label: 'Pending Requests',  value: Math.max(0, 100 - (pendingRequestsCount * 20)),  displayValue: `${pendingRequestsCount}`,  color: pendingRequestsCount > 0  ? C.amber : C.green },
+                  { label: 'Pending Approvals', value: Math.max(0, 100 - (pendingApprovalsCount * 25)), displayValue: `${pendingApprovalsCount}`, color: pendingApprovalsCount > 0 ? C.amber : C.green },
+                  { label: 'Pending Reqs',      value: Math.max(0, 100 - (pendingReqsCount * 20)),      displayValue: `${pendingReqsCount}`,      color: pendingReqsCount > 0      ? C.amber : C.green },
+                  { label: 'Pending Receipt',   value: Math.max(0, 100 - (pendingReceiptCount * 15)),   displayValue: `${pendingReceiptCount}`,   color: pendingReceiptCount > 0   ? C.p : C.green },
+                  { label: 'Active POs',        value: purchaseOrders.length > 0 ? 65 : 0,             displayValue: `${activePOsCount}`,        color: C.p },
                   {
                     label: 'Avg Days',
                     value: (() => { const c = purchaseOrders.filter(po => po.status === 'received' && po.created_at); if (!c.length) return 100; const avg = c.reduce((s, po) => s + Math.max(1, Math.round((new Date(po.updated_at || po.created_at).getTime() - new Date(po.created_at).getTime()) / 86400000)), 0) / c.length; return Math.max(0, 100 - avg * 5); })(),
                     displayValue: (() => { const c = purchaseOrders.filter(po => po.status === 'received' && po.created_at); if (!c.length) return 'N/A'; const avg = c.reduce((s, po) => s + Math.max(1, Math.round((new Date(po.updated_at || po.created_at).getTime() - new Date(po.created_at).getTime()) / 86400000)), 0) / c.length; return `${Math.round(avg)}d`; })(),
-                    color: HUD.purple,
+                    color: C.purple,
                   },
                 ]}
               />
             </HudCard>
           </View>
-          <View style={isWide ? S.wideHalf : undefined}>
-            <HudCard>
-              <SectionHead icon={<Package size={13} color={HUD.cyan} />} title="Inventory Scorecard" color={HUD.cyan} />
+          <View style={isWide ? { flex: 1 } : undefined}>
+            <HudCard title="Inventory Scorecard" titleColor={C.p} accent={C.p}>
               <ScoreCardSection
                 title="" subtitle="" icon={null}
-                cardStyle={{ minHeight: 150 }}
+                cardStyle={{ minHeight: 140 }}
                 gauges={[
-                  { label: 'Stock Health',  value: performanceMetrics.stockHealth, displayValue: `${performanceMetrics.stockHealth}%` },
-                  { label: 'Fill Rate',     value: stats.totalMaterials > 0 ? Math.round(((stats.totalMaterials - stats.outOfStockCount) / stats.totalMaterials) * 100) : 100, displayValue: `${stats.totalMaterials > 0 ? Math.round(((stats.totalMaterials - stats.outOfStockCount) / stats.totalMaterials) * 100) : 100}%` },
-                  { label: 'Low Stock',     value: Math.max(0, 100 - (stats.lowStockCount / Math.max(stats.totalMaterials, 1)) * 100), displayValue: `${stats.lowStockCount}`,     color: stats.lowStockCount  > 0 ? HUD.amber : HUD.green },
-                  { label: 'Out of Stock',  value: Math.max(0, 100 - (stats.outOfStockCount / Math.max(stats.totalMaterials, 1)) * 100), displayValue: `${stats.outOfStockCount}`, color: stats.outOfStockCount > 0 ? HUD.red   : HUD.green },
-                  { label: 'Total SKUs',    value: Math.min(100, stats.totalMaterials * 10), displayValue: `${stats.totalMaterials}`, color: HUD.cyan },
-                  { label: 'Value',         value: 75, displayValue: `$${(inventoryValue / 1000).toFixed(0)}K`, color: HUD.green },
+                  { label: 'Stock Health', value: performanceMetrics.stockHealth, displayValue: `${performanceMetrics.stockHealth}%` },
+                  { label: 'Fill Rate', value: stats.totalMaterials > 0 ? Math.round(((stats.totalMaterials - stats.outOfStockCount) / stats.totalMaterials) * 100) : 100, displayValue: `${stats.totalMaterials > 0 ? Math.round(((stats.totalMaterials - stats.outOfStockCount) / stats.totalMaterials) * 100) : 100}%` },
+                  { label: 'Low Stock', value: Math.max(0, 100 - (stats.lowStockCount / Math.max(stats.totalMaterials, 1)) * 100), displayValue: `${stats.lowStockCount}`, color: stats.lowStockCount > 0 ? C.amber : C.green },
+                  { label: 'Out of Stock', value: Math.max(0, 100 - (stats.outOfStockCount / Math.max(stats.totalMaterials, 1)) * 100), displayValue: `${stats.outOfStockCount}`, color: stats.outOfStockCount > 0 ? C.red : C.green },
+                  { label: 'Total SKUs', value: Math.min(100, stats.totalMaterials * 10), displayValue: `${stats.totalMaterials}`, color: C.p },
+                  { label: 'Value', value: 75, displayValue: `$${(inventoryValue / 1000).toFixed(0)}K`, color: C.green },
                 ]}
               />
             </HudCard>
           </View>
         </View>
 
-        {/* ── DEPARTMENT BUDGETS ──────────────────────────────────────────── */}
+        {/* ── DEPARTMENT BUDGETS ───────────────────────────────── */}
         {budgets.length > 0 && (
-          <HudCard>
-            <SectionHead icon={<Package size={13} color={HUD.purple} />} title="Department Budgets" color={HUD.purple} />
+          <HudCard title="Department Budgets" titleColor={C.purple} accent={C.purple}>
             <BudgetCardsRow budgets={budgets} />
           </HudCard>
         )}
 
-        {/* ── CMMS PERFORMANCE ───────────────────────────────────────────── */}
-        <HudCard>
-          <SectionHead icon={<Wrench size={13} color={HUD.amber} />} title="CMMS Performance" sub="30-DAY" color={HUD.amber} />
+        {/* ── CMMS PERFORMANCE ────────────────────────────────── */}
+        <HudCard title="CMMS Performance" titleColor={C.amber} accent={C.amber} sub="30-DAY">
           <MetricCardsSection
             title="" subtitle="" icon={null}
             cards={(() => {
@@ -483,140 +709,137 @@ export default function ExecutiveDashboard() {
               return [
                 { label: 'MTTR',          value: '0', unit: 'hrs', trend: 0, trendLabel: 'Avg Repair' },
                 { label: 'MTBF',          value: '0', unit: 'hrs', trend: 0, trendLabel: 'Avg Between' },
-                { label: 'PM Compliance', value: pmCompliance.toString(), unit: '%', trend: 0, trendLabel: `${pmCompleted}/${pmWOs.length} PMs`, color: pmCompliance >= 90 ? HUD.green : pmCompliance >= 70 ? HUD.amber : HUD.red },
-                { label: 'Backlog',       value: open.toString(), unit: 'WOs', trend: 0, trendLabel: `${stats.overdueWorkOrders} overdue`, color: open > 5 ? HUD.amber : HUD.green },
-                { label: 'In Progress',   value: inProg.toString(), unit: 'WOs', trend: 0, trendLabel: 'Active now', color: HUD.cyan },
-                { label: 'Completed',     value: completed.toString(), unit: 'WOs', trend: 0, trendLabel: 'This period', color: HUD.green },
-                { label: 'Planned',       value: planned.toString(), unit: 'WOs', trend: 0, trendLabel: 'Scheduled', color: HUD.cyan },
-                { label: 'Unplanned',     value: unplanned.toString(), unit: 'WOs', trend: 0, trendLabel: 'Reactive', color: unplanned > 0 ? HUD.red : HUD.green },
+                { label: 'PM Compliance', value: pmCompliance.toString(), unit: '%', trend: 0, trendLabel: `${pmCompleted}/${pmWOs.length} PMs`, color: pmCompliance >= 90 ? C.green : pmCompliance >= 70 ? C.amber : C.red },
+                { label: 'Backlog',       value: open.toString(), unit: 'WOs', trend: 0, trendLabel: `${stats.overdueWorkOrders} overdue`, color: open > 5 ? C.amber : C.green },
+                { label: 'In Progress',   value: inProg.toString(), unit: 'WOs', trend: 0, trendLabel: 'Active now', color: C.p },
+                { label: 'Completed',     value: completed.toString(), unit: 'WOs', trend: 0, trendLabel: 'This period', color: C.green },
+                { label: 'Planned',       value: planned.toString(), unit: 'WOs', trend: 0, trendLabel: 'Scheduled', color: C.p },
+                { label: 'Unplanned',     value: unplanned.toString(), unit: 'WOs', trend: 0, trendLabel: 'Reactive', color: unplanned > 0 ? C.red : C.green },
               ];
             })()}
           />
         </HudCard>
 
-        {/* ── SANITATION ─────────────────────────────────────────────────── */}
-        <HudCard>
-          <SectionHead icon={<Droplets size={13} color={HUD.cyan} />} title="Sanitation" sub="THIS WEEK" color={HUD.cyan} />
+        {/* ── SANITATION ───────────────────────────────────────── */}
+        <HudCard title="Sanitation" titleColor={C.p} accent={C.p} sub="THIS WEEK">
           <MetricCardsSection title="" subtitle="" icon={null} cards={[
-            { label: 'Pre-Op Inspections', value: '0', unit: '/ 5',  trend: 0, trendLabel: 'Completed',          color: HUD.cyan },
-            { label: 'CIP Cycles',         value: '0', unit: '/ 3',  trend: 0, trendLabel: 'Completed',          color: HUD.cyan },
-            { label: 'Swab Tests',         value: '0', unit: 'pass', trend: 0, trendLabel: 'All passed',         color: HUD.green },
-            { label: 'Open CARs',          value: '0',               trend: 0, trendLabel: 'Corrective actions', color: HUD.green },
-            { label: 'Zone 1 Clean',       value: '100', unit: '%',  trend: 0, trendLabel: 'Product contact',    color: HUD.green },
-            { label: 'Zone 2 Clean',       value: '100', unit: '%',  trend: 0, trendLabel: 'Non-contact',        color: HUD.green },
-            { label: 'Chemical Logs',      value: '0', unit: '/ 5',  trend: 0, trendLabel: 'Verified',           color: HUD.cyan },
-            { label: 'Overdue Tasks',      value: '0',               trend: 0, trendLabel: 'Past due',           color: HUD.green },
+            { label: 'Pre-Op Inspections', value: '0', unit: '/ 5',  trend: 0, trendLabel: 'Completed', color: C.p },
+            { label: 'CIP Cycles',         value: '0', unit: '/ 3',  trend: 0, trendLabel: 'Completed', color: C.p },
+            { label: 'Swab Tests',         value: '0', unit: 'pass', trend: 0, trendLabel: 'All passed', color: C.green },
+            { label: 'Open CARs',          value: '0',               trend: 0, trendLabel: 'Corrective', color: C.green },
+            { label: 'Zone 1 Clean',       value: '100', unit: '%',  trend: 0, trendLabel: 'Product contact', color: C.green },
+            { label: 'Zone 2 Clean',       value: '100', unit: '%',  trend: 0, trendLabel: 'Non-contact', color: C.green },
+            { label: 'Chemical Logs',      value: '0', unit: '/ 5',  trend: 0, trendLabel: 'Verified', color: C.p },
+            { label: 'Overdue Tasks',      value: '0',               trend: 0, trendLabel: 'Past due', color: C.green },
           ]} />
         </HudCard>
 
-        {/* ── QUALITY ────────────────────────────────────────────────────── */}
-        <HudCard>
-          <SectionHead icon={<Microscope size={13} color={HUD.purple} />} title="Quality" sub="THIS MONTH" color={HUD.purple} />
+        {/* ── QUALITY ──────────────────────────────────────────── */}
+        <HudCard title="Quality" titleColor={C.purple} accent={C.purple} sub="THIS MONTH">
           <MetricCardsSection title="" subtitle="" icon={null} cards={[
-            { label: 'Hold Lots',           value: '0',         trend: 0, trendLabel: 'On hold',            color: HUD.green },
-            { label: 'Rejections',          value: '0',         trend: 0, trendLabel: 'This period',        color: HUD.green },
-            { label: 'NCRs Open',           value: '0',         trend: 0, trendLabel: 'Non-conformance',    color: HUD.green },
-            { label: 'CCP Deviations',      value: '0',         trend: 0, trendLabel: 'Critical control',   color: HUD.green },
-            { label: 'COA Pending',         value: '0',         trend: 0, trendLabel: 'Certificates',       color: HUD.green },
-            { label: 'Spec Compliance',     value: '100', unit: '%', trend: 0, trendLabel: 'In spec',        color: HUD.green },
-            { label: 'Foreign Material',    value: '0',         trend: 0, trendLabel: 'Incidents',          color: HUD.green },
-            { label: 'Customer Complaints', value: '0',         trend: 0, trendLabel: 'Open items',         color: HUD.green },
+            { label: 'Hold Lots',           value: '0', trend: 0, trendLabel: 'On hold', color: C.green },
+            { label: 'Rejections',          value: '0', trend: 0, trendLabel: 'This period', color: C.green },
+            { label: 'NCRs Open',           value: '0', trend: 0, trendLabel: 'Non-conformance', color: C.green },
+            { label: 'CCP Deviations',      value: '0', trend: 0, trendLabel: 'Critical control', color: C.green },
+            { label: 'COA Pending',         value: '0', trend: 0, trendLabel: 'Certificates', color: C.green },
+            { label: 'Spec Compliance',     value: '100', unit: '%', trend: 0, trendLabel: 'In spec', color: C.green },
+            { label: 'Foreign Material',    value: '0', trend: 0, trendLabel: 'Incidents', color: C.green },
+            { label: 'Customer Complaints', value: '0', trend: 0, trendLabel: 'Open items', color: C.green },
           ]} />
         </HudCard>
 
-        {/* ── SAFETY ─────────────────────────────────────────────────────── */}
-        <HudCard>
-          <SectionHead icon={<HardHat size={13} color={HUD.amber} />} title="Safety" sub="YTD" color={HUD.amber} />
+        {/* ── SAFETY ───────────────────────────────────────────── */}
+        <HudCard title="Safety" titleColor={C.amber} accent={C.amber} sub="YTD">
           <MetricCardsSection title="" subtitle="" icon={null} cards={[
-            { label: 'Days No Incident',  value: '0',          trend: 0, trendLabel: 'Recordable',          color: HUD.green },
-            { label: 'Near Misses',       value: '0',          trend: 0, trendLabel: 'Reported',            color: HUD.green },
-            { label: 'Open Actions',      value: '0',          trend: 0, trendLabel: 'Corrective',          color: HUD.green },
-            { label: 'Training Due',      value: '0',          trend: 0, trendLabel: 'Employees',           color: HUD.green },
-            { label: 'PPE Compliance',    value: '100', unit: '%', trend: 0, trendLabel: 'Audited',          color: HUD.green },
-            { label: 'Permits Active',    value: '0',          trend: 0, trendLabel: 'Hot work / confined',  color: HUD.cyan },
-            { label: 'OSHA Recordable',   value: '0',          trend: 0, trendLabel: 'YTD injuries',        color: HUD.green },
-            { label: 'JSA Reviews',       value: '0',          trend: 0, trendLabel: 'Job safety analysis', color: HUD.green },
+            { label: 'Days No Incident', value: '0',          trend: 0, trendLabel: 'Recordable', color: C.green },
+            { label: 'Near Misses',      value: '0',          trend: 0, trendLabel: 'Reported', color: C.green },
+            { label: 'Open Actions',     value: '0',          trend: 0, trendLabel: 'Corrective', color: C.green },
+            { label: 'Training Due',     value: '0',          trend: 0, trendLabel: 'Employees', color: C.green },
+            { label: 'PPE Compliance',   value: '100', unit: '%', trend: 0, trendLabel: 'Audited', color: C.green },
+            { label: 'Permits Active',   value: '0',          trend: 0, trendLabel: 'Hot work / confined', color: C.p },
+            { label: 'OSHA Recordable',  value: '0',          trend: 0, trendLabel: 'YTD injuries', color: C.green },
+            { label: 'JSA Reviews',      value: '0',          trend: 0, trendLabel: 'Job safety analysis', color: C.green },
           ]} />
         </HudCard>
 
         <View style={{ height: 40 }} />
       </ScrollView>
 
-      {/* ── EMERGENCY MODAL ─────────────────────────────────────────────── */}
+      {/* ── EMERGENCY MODAL ────────────────────────────────────── */}
       <Modal visible={showEmergencyModal} animationType="slide" transparent onRequestClose={() => setShowEmergencyModal(false)}>
-        <View style={M.overlay}>
-          <View style={M.sheet}>
-            <View style={M.sheetHead}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.82)', justifyContent: 'flex-end' }}>
+          <View style={{ backgroundColor: C.surf, borderTopWidth: 2, borderColor: C.red, padding: 20, paddingBottom: 36, maxHeight: '85%', position: 'relative' }}>
+            <Brackets color={C.red} size={12} />
+            {/* Header */}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <Siren size={16} color={HUD.red} />
-                <Text style={M.sheetTitle}>EMERGENCY PROTOCOL</Text>
+                <View style={{ width: 2, height: 14, backgroundColor: C.red }} />
+                <Siren size={15} color={C.red} />
+                <Text style={{ fontSize: 11, fontWeight: '900', color: C.text, letterSpacing: 3, fontFamily: MONO }}>
+                  EMERGENCY PROTOCOL
+                </Text>
               </View>
               <Pressable onPress={() => setShowEmergencyModal(false)} hitSlop={12}>
-                <X size={20} color={HUD.textSec} />
+                <X size={18} color={C.textS} />
               </Pressable>
             </View>
-            <Text style={M.sheetDesc}>Select type — roll call starts immediately. Details can be added after.</Text>
+            <Text style={{ fontSize: 11, color: C.textS, marginBottom: 16, fontFamily: MONO, letterSpacing: 0.5 }}>
+              SELECT TYPE — ROLL CALL STARTS IMMEDIATELY
+            </Text>
 
-            <Text style={M.sectionLbl}>LIVE EMERGENCY</Text>
+            <Text style={{ fontSize: 8, color: C.textD, letterSpacing: 2, marginBottom: 8, fontFamily: MONO }}>LIVE EMERGENCY</Text>
             {[
-              { type: 'fire',          label: 'Fire',          Icon: Flame,       color: HUD.red },
-              { type: 'tornado',       label: 'Tornado',       Icon: Tornado,     color: HUD.purple },
-              { type: 'active_shooter',label: 'Active Shooter',Icon: ShieldAlert, color: HUD.red },
+              { type: 'fire', label: 'Fire Emergency', Icon: Flame, color: C.red },
+              { type: 'tornado', label: 'Tornado Emergency', Icon: Tornado, color: C.purple },
+              { type: 'active_shooter', label: 'Active Shooter', Icon: ShieldAlert, color: C.red },
             ].map(({ type, label, Icon, color }) => (
-              <TouchableOpacity key={type} activeOpacity={0.8}
-                style={[M.row, { borderLeftColor: color }]}
-                onPress={() => { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning); setShowEmergencyModal(false); router.push({ pathname: '/headcount/emergencyprotocol', params: { type, drill: 'false' } }); }}>
-                <View style={[M.rowIcon, { backgroundColor: color + '20' }]}><Icon size={20} color={color} /></View>
-                <View style={{ flex: 1 }}>
-                  <Text style={M.rowTitle}>{label} Emergency</Text>
-                  <Text style={M.rowSub}>Live — starts roll call now</Text>
-                </View>
-                <ChevronRight size={16} color={HUD.textDim} />
-              </TouchableOpacity>
+              <ModalRow key={type} Icon={Icon} color={color} title={label} sub="LIVE — STARTS ROLL CALL NOW"
+                onPress={() => { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning); setShowEmergencyModal(false); router.push({ pathname: '/headcount/emergencyprotocol', params: { type, drill: 'false' } }); }}
+              />
             ))}
 
-            <Text style={[M.sectionLbl, { marginTop: 14 }]}>DRILL MODE</Text>
+            <Text style={{ fontSize: 8, color: C.textD, letterSpacing: 2, marginBottom: 8, marginTop: 12, fontFamily: MONO }}>DRILL MODE</Text>
             {[
-              { type: 'fire',          label: 'Fire Drill',          Icon: Flame,       color: HUD.amber },
-              { type: 'tornado',       label: 'Tornado Drill',       Icon: Tornado,     color: HUD.purple },
-              { type: 'active_shooter',label: 'Active Shooter Drill',Icon: ShieldAlert, color: HUD.textSec },
+              { type: 'fire', label: 'Fire Drill', Icon: Flame, color: C.amber },
+              { type: 'tornado', label: 'Tornado Drill', Icon: Tornado, color: C.purple },
+              { type: 'active_shooter', label: 'Active Shooter Drill', Icon: ShieldAlert, color: C.textS },
             ].map(({ type, label, Icon, color }) => (
-              <TouchableOpacity key={`drill-${type}`} activeOpacity={0.8}
-                style={[M.row, { borderLeftColor: HUD.cyan }]}
-                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setShowEmergencyModal(false); router.push({ pathname: '/headcount/emergencyprotocol', params: { type, drill: 'true' } }); }}>
-                <View style={[M.rowIcon, { backgroundColor: HUD.cyan + '15' }]}><Icon size={20} color={HUD.cyan} /></View>
-                <View style={{ flex: 1 }}>
-                  <Text style={M.rowTitle}>{label}</Text>
-                  <Text style={M.rowSub}>Training exercise — starts roll call</Text>
-                </View>
-                <ChevronRight size={16} color={HUD.textDim} />
-              </TouchableOpacity>
+              <ModalRow key={`drill-${type}`} Icon={Icon} color={C.p} title={label} sub="TRAINING EXERCISE — STARTS ROLL CALL"
+                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setShowEmergencyModal(false); router.push({ pathname: '/headcount/emergencyprotocol', params: { type, drill: 'true' } }); }}
+              />
             ))}
 
-            <TouchableOpacity activeOpacity={0.7} style={M.moreBtn}
+            <TouchableOpacity activeOpacity={0.7} style={{ marginTop: 14, alignItems: 'center', paddingVertical: 10, borderWidth: 1, borderColor: C.bdrB }}
               onPress={() => { setShowEmergencyModal(false); router.push('/safety/emergencyinitiation' as any); }}>
-              <Text style={M.moreTxt}>More Emergency Types & Options →</Text>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: C.p, fontFamily: MONO, letterSpacing: 1 }}>
+                MORE EMERGENCY TYPES →
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
 
-      {/* ── FACILITY PICKER ─────────────────────────────────────────────── */}
+      {/* ── FACILITY PICKER ─────────────────────────────────────── */}
       <Modal visible={showFacilityPicker} transparent animationType="fade" onRequestClose={() => setShowFacilityPicker(false)}>
-        <Pressable style={M.fpOverlay} onPress={() => setShowFacilityPicker(false)}>
-          <View style={M.fpCard}>
-            <View style={M.fpHead}>
-              <MapPin size={13} color={HUD.cyan} />
-              <Text style={M.fpTitle}>SELECT FACILITY</Text>
+        <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'center', alignItems: 'center', padding: 40 }} onPress={() => setShowFacilityPicker(false)}>
+          <View style={{ backgroundColor: C.surf, borderWidth: 1, borderColor: C.bdrB, width: '100%', maxWidth: 320, position: 'relative' }}>
+            <Brackets color={C.p} size={10} />
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: C.bdr }}>
+              <View style={{ width: 2, height: 12, backgroundColor: C.p }} />
+              <MapPin size={11} color={C.p} />
+              <Text style={{ fontSize: 9, fontWeight: '900', color: C.p, letterSpacing: 2, fontFamily: MONO }}>SELECT FACILITY</Text>
             </View>
             {facilityNames.map(name => {
               const key = name === 'All Facilities' ? 'all' : name;
               const active = selectedFacility === key;
               return (
-                <Pressable key={name} style={[M.fpItem, active && { backgroundColor: HUD.cyan + '15' }]}
-                  onPress={() => { setSelectedFacility(key); setShowFacilityPicker(false); }}>
-                  <Text style={[M.fpItemTxt, active && { color: HUD.cyan, fontWeight: '700' }]}>{name}</Text>
-                  {active && <CheckCircle size={14} color={HUD.cyan} />}
+                <Pressable
+                  key={name}
+                  style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: C.bdr, backgroundColor: active ? C.p + '12' : 'transparent' }}
+                  onPress={() => { setSelectedFacility(key); setShowFacilityPicker(false); }}
+                >
+                  <Text style={{ fontSize: 13, color: active ? C.p : C.text, fontFamily: MONO, fontWeight: active ? '700' : '400' }}>{name}</Text>
+                  {active && <CheckCircle size={13} color={C.p} />}
                 </Pressable>
               );
             })}
@@ -633,59 +856,3 @@ export default function ExecutiveDashboard() {
     </View>
   );
 }
-
-// ── MAIN STYLES ────────────────────────────────────────────────────────────────
-const S = StyleSheet.create({
-  container:        { flex: 1, backgroundColor: HUD.bg },
-  loadingContainer: { flex: 1, backgroundColor: HUD.bg, justifyContent: 'center', alignItems: 'center', gap: 16 },
-  loadingText:      { color: HUD.cyan, fontSize: 12, fontWeight: '800', letterSpacing: 2 },
-  scrollView:       { flex: 1 },
-  scrollContent:    { paddingHorizontal: 16, paddingTop: 56, paddingBottom: 40 },
-
-  // Header
-  header:           { marginBottom: 14 },
-  headerTop:        { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 },
-  headerLeft:       { flex: 1 },
-  eyebrow:          { fontSize: 10, fontWeight: '800', color: HUD.textDim, letterSpacing: 2 },
-  companyName:      { fontSize: 26, fontWeight: '900', color: HUD.text, letterSpacing: -0.5 },
-  headerActions:    { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  facilityButton:   { flexDirection: 'row', alignItems: 'center', height: 36, paddingHorizontal: 10, borderRadius: 10, backgroundColor: HUD.bgCard, borderWidth: 1, borderColor: HUD.borderBright, gap: 5 },
-  facilityButtonText: { fontSize: 9, fontWeight: '800', color: HUD.cyan, letterSpacing: 0.8, maxWidth: 100 },
-  iconBtn:          { width: 36, height: 36, borderRadius: 10, backgroundColor: HUD.bgCard, borderWidth: 1, borderColor: HUD.borderBright, alignItems: 'center', justifyContent: 'center' },
-  dateRow:          { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 10 },
-  dateText:         { fontSize: 11, color: HUD.textDim, fontWeight: '600', letterSpacing: 0.3 },
-
-  // Status strip
-  statusStrip:  { flexDirection: 'row', backgroundColor: HUD.bgCard, borderRadius: 12, borderWidth: 1, borderColor: HUD.borderBright, padding: 10 },
-  statusItem:   { flex: 1, alignItems: 'center', gap: 3 },
-  statusValue:  { fontSize: 12, fontWeight: '900', letterSpacing: -0.3 },
-  statusLabel:  { fontSize: 6, fontWeight: '800', color: HUD.textDim, letterSpacing: 0.6, textAlign: 'center', textTransform: 'uppercase' },
-
-  // Layout
-  wideRow:      { flexDirection: 'row', gap: 12 },
-  wideHalf:     { flex: 1 },
-  quickActionBar: { flexDirection: 'row', gap: 8 },
-});
-
-// ── MODAL STYLES ───────────────────────────────────────────────────────────────
-const M = StyleSheet.create({
-  overlay:   { flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', justifyContent: 'flex-end' },
-  sheet:     { backgroundColor: HUD.bgCard, borderTopLeftRadius: 20, borderTopRightRadius: 20, borderTopWidth: 1, borderColor: HUD.borderBright, padding: 20, paddingBottom: 36, maxHeight: '85%' },
-  sheetHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
-  sheetTitle:{ fontSize: 13, fontWeight: '900', color: HUD.text, letterSpacing: 2 },
-  sheetDesc: { fontSize: 12, color: HUD.textSec, marginBottom: 16, lineHeight: 17 },
-  sectionLbl:{ fontSize: 9, fontWeight: '800', color: HUD.textDim, letterSpacing: 2, marginBottom: 8, textTransform: 'uppercase' },
-  row:       { flexDirection: 'row', alignItems: 'center', backgroundColor: HUD.bg, borderRadius: 12, padding: 12, marginBottom: 8, borderLeftWidth: 3, borderWidth: 1, borderColor: HUD.border, gap: 12 },
-  rowIcon:   { width: 38, height: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  rowTitle:  { fontSize: 14, fontWeight: '700', color: HUD.text, marginBottom: 2 },
-  rowSub:    { fontSize: 11, color: HUD.textSec },
-  moreBtn:   { marginTop: 14, alignItems: 'center', paddingVertical: 10 },
-  moreTxt:   { fontSize: 13, fontWeight: '700', color: HUD.cyan },
-
-  fpOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: 40 },
-  fpCard:    { backgroundColor: HUD.bgCard, borderRadius: 16, padding: 8, width: '100%', maxWidth: 320, borderWidth: 1, borderColor: HUD.borderBright },
-  fpHead:    { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: HUD.border, marginBottom: 4 },
-  fpTitle:   { fontSize: 10, fontWeight: '900', color: HUD.cyan, letterSpacing: 2 },
-  fpItem:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, paddingVertical: 10, borderRadius: 8 },
-  fpItemTxt: { fontSize: 13, color: HUD.text },
-});
