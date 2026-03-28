@@ -148,7 +148,7 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
     id: 'admin',
     name: 'Admin',
     description: 'Full access to all modules including Users and Accounts',
-    modules: ['dashboard', 'cmms', 'taskfeed', 'timeclock', 'inventory', 'documents', 'employees', 'procurement', 'approvals', 'quality', 'safety', 'sanitation', 'production', 'compliance', 'recycling', 'accounts', 'users', 'watchscreen', 'settings'],
+    modules: ['dashboard', 'cmms', 'taskfeed', 'timeclock', 'inventory', 'documents', 'employees', 'procurement', 'approvals', 'quality', 'safety', 'sanitation', 'production', 'compliance', 'recycling', 'users', 'watchscreen', 'settings'],
     color: '#EF4444',
   },
 ];
