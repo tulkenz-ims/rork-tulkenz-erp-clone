@@ -22,44 +22,40 @@ import {
   BarChart3,
   Building2,
   Edit3,
-  Users,
-  Package,
+  Plus,
+  Calendar,
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 
-interface Department {
+interface DepartmentBudget {
   id: string;
-  department_code: string;
+  organization_id: string;
   name: string;
-  short_name: string;
-  annual_budget: number;
-  ytd_spend: number;
-  labor_budget: number;
-  materials_budget: number;
-  budgeted_headcount: number;
-  actual_headcount: number;
-  color: string;
-  status: string;
-}
-
-interface Actual {
-  department_id: string;
   department_code: string;
   department_name: string;
-  annual_budget: number;
+  gl_account_prefix: string;
   fiscal_year: number;
-  month_num: number;
-  actual_spend: number;
+  period: string;
+  amount: number;
+  spent: number;
+  remaining: number;
+  status: string;
+  notes: string;
 }
 
-const MONTHS = [
-  { key: 1, label: 'Jan' }, { key: 2, label: 'Feb' }, { key: 3, label: 'Mar' },
-  { key: 4, label: 'Apr' }, { key: 5, label: 'May' }, { key: 6, label: 'Jun' },
-  { key: 7, label: 'Jul' }, { key: 8, label: 'Aug' }, { key: 9, label: 'Sep' },
-  { key: 10, label: 'Oct' }, { key: 11, label: 'Nov' }, { key: 12, label: 'Dec' },
+const PERIODS = [
+  'Q1', 'Q2', 'Q3', 'Q4', 'Annual',
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
+const STATUS_OPTIONS = [
+  { value: 'active', label: 'Active', color: '#10B981' },
+  { value: 'draft', label: 'Draft', color: '#6B7280' },
+  { value: 'closed', label: 'Closed', color: '#EF4444' },
 ];
 
 export default function BudgetsScreen() {
@@ -67,74 +63,71 @@ export default function BudgetsScreen() {
   const { organizationId } = useOrganization();
   const queryClient = useQueryClient();
   const currentYear = new Date().getFullYear();
-  const currentMonth = new Date().getMonth() + 1;
 
-  const [expandedDept, setExpandedDept] = useState<string | null>(null);
+  const [selectedYear, setSelectedYear] = useState(currentYear);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
-  const [editingDept, setEditingDept] = useState<Department | null>(null);
+  const [editingBudget, setEditingBudget] = useState<DepartmentBudget | null>(null);
 
-  const [annualBudget, setAnnualBudget] = useState('');
-  const [laborBudget, setLaborBudget] = useState('');
-  const [materialsBudget, setMaterialsBudget] = useState('');
-  const [budgetedHeadcount, setBudgetedHeadcount] = useState('');
+  // Form state
+  const [name, setName] = useState('');
+  const [departmentName, setDepartmentName] = useState('');
+  const [departmentCode, setDepartmentCode] = useState('');
+  const [glAccountPrefix, setGlAccountPrefix] = useState('');
+  const [period, setPeriod] = useState('Annual');
+  const [amount, setAmount] = useState('');
+  const [spent, setSpent] = useState('');
+  const [notes, setNotes] = useState('');
+  const [status, setStatus] = useState('active');
 
-  const { data: departments = [], isLoading, refetch, isRefetching } = useQuery({
-    queryKey: ['departments_budget', organizationId],
+  const { data: budgets = [], isLoading, refetch, isRefetching } = useQuery({
+    queryKey: ['department_budgets', organizationId, selectedYear],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('departments')
-        .select('id, department_code, name, short_name, annual_budget, ytd_spend, labor_budget, materials_budget, budgeted_headcount, actual_headcount, color, status')
-        .eq('organization_id', organizationId)
-        .is('deleted_at', null)
-        .eq('status', 'active')
-        .order('name');
-      if (error) throw error;
-      return (data || []) as Department[];
-    },
-    enabled: !!organizationId,
-  });
-
-  const { data: actuals = [] } = useQuery({
-    queryKey: ['procurement_budget_actuals', organizationId, currentYear],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('procurement_budget_actuals')
+        .from('department_budgets')
         .select('*')
         .eq('organization_id', organizationId)
-        .eq('fiscal_year', currentYear);
+        .eq('fiscal_year', selectedYear)
+        .order('department_name');
       if (error) throw error;
-      return (data || []) as Actual[];
+      return (data || []) as DepartmentBudget[];
     },
     enabled: !!organizationId,
   });
 
-  const updateMutation = useMutation({
-    mutationFn: async (payload: {
-      id: string;
-      annual_budget: number;
-      labor_budget: number;
-      materials_budget: number;
-      budgeted_headcount: number;
-    }) => {
-      const { error } = await supabase
-        .from('departments')
-        .update({
-          annual_budget: payload.annual_budget,
-          labor_budget: payload.labor_budget,
-          materials_budget: payload.materials_budget,
-          budgeted_headcount: payload.budgeted_headcount,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', payload.id);
-      if (error) throw error;
+  const saveMutation = useMutation({
+    mutationFn: async (payload: Partial<DepartmentBudget>) => {
+      if (editingBudget) {
+        const { error } = await supabase
+          .from('department_budgets')
+          .update({
+            ...payload,
+            remaining: (parseFloat(payload.amount as any) || 0) - (parseFloat(payload.spent as any) || 0),
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', editingBudget.id);
+        if (error) throw error;
+      } else {
+        const amt = parseFloat(payload.amount as any) || 0;
+        const spentAmt = parseFloat(payload.spent as any) || 0;
+        const { error } = await supabase
+          .from('department_budgets')
+          .insert({
+            ...payload,
+            organization_id: organizationId,
+            fiscal_year: selectedYear,
+            remaining: amt - spentAmt,
+          });
+        if (error) throw error;
+      }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['departments_budget'] });
+      queryClient.invalidateQueries({ queryKey: ['department_budgets'] });
       closeModal();
-      Alert.alert('Success', 'Budget updated successfully');
+      Alert.alert('Success', editingBudget ? 'Budget updated' : 'Budget created');
     },
     onError: (error: any) => {
-      Alert.alert('Error', error.message || 'Failed to update budget');
+      Alert.alert('Error', error.message || 'Failed to save budget');
     },
   });
 
@@ -148,63 +141,88 @@ export default function BudgetsScreen() {
     }).format(amount);
   };
 
-  const getDeptActuals = useCallback((deptName: string) => {
-    const deptActuals = actuals.filter(a => a.department_name === deptName);
-    const byMonth: Record<number, number> = {};
-    deptActuals.forEach(a => { byMonth[a.month_num] = a.actual_spend; });
-    const ytdActual = deptActuals
-      .filter(a => a.month_num <= currentMonth)
-      .reduce((sum, a) => sum + a.actual_spend, 0);
-    return { byMonth, ytdActual };
-  }, [actuals, currentMonth]);
-
   const getStatusColor = (pct: number) => {
     if (pct >= 100) return '#EF4444';
     if (pct >= 85) return '#F59E0B';
     return '#10B981';
   };
 
-  const openEdit = (dept: Department) => {
-    setEditingDept(dept);
-    setAnnualBudget(dept.annual_budget?.toString() || '');
-    setLaborBudget(dept.labor_budget?.toString() || '');
-    setMaterialsBudget(dept.materials_budget?.toString() || '');
-    setBudgetedHeadcount(dept.budgeted_headcount?.toString() || '');
+  const openCreate = () => {
+    setEditingBudget(null);
+    setName('');
+    setDepartmentName('');
+    setDepartmentCode('');
+    setGlAccountPrefix('');
+    setPeriod('Annual');
+    setAmount('');
+    setSpent('0');
+    setNotes('');
+    setStatus('active');
+    setModalVisible(true);
+  };
+
+  const openEdit = (budget: DepartmentBudget) => {
+    setEditingBudget(budget);
+    setName(budget.name || '');
+    setDepartmentName(budget.department_name || '');
+    setDepartmentCode(budget.department_code || '');
+    setGlAccountPrefix(budget.gl_account_prefix || '');
+    setPeriod(budget.period || 'Annual');
+    setAmount(budget.amount?.toString() || '');
+    setSpent(budget.spent?.toString() || '0');
+    setNotes(budget.notes || '');
+    setStatus(budget.status || 'active');
     setModalVisible(true);
   };
 
   const closeModal = () => {
     setModalVisible(false);
-    setEditingDept(null);
+    setEditingBudget(null);
   };
 
   const handleSave = () => {
-    if (!editingDept) return;
-    const annual = parseFloat(annualBudget) || 0;
-    if (annual <= 0) {
-      Alert.alert('Validation', 'Please enter a valid annual budget');
+    if (!name.trim()) {
+      Alert.alert('Validation', 'Budget name is required');
       return;
     }
-    updateMutation.mutate({
-      id: editingDept.id,
-      annual_budget: annual,
-      labor_budget: parseFloat(laborBudget) || 0,
-      materials_budget: parseFloat(materialsBudget) || 0,
-      budgeted_headcount: parseInt(budgetedHeadcount) || 0,
+    if (!amount || parseFloat(amount) <= 0) {
+      Alert.alert('Validation', 'Please enter a valid budget amount');
+      return;
+    }
+    saveMutation.mutate({
+      name: name.trim(),
+      department_name: departmentName.trim(),
+      department_code: departmentCode.trim(),
+      gl_account_prefix: glAccountPrefix.trim(),
+      period,
+      amount: parseFloat(amount),
+      spent: parseFloat(spent) || 0,
+      notes: notes.trim(),
+      status,
     });
   };
 
-  const totalAnnualBudget = useMemo(() =>
-    departments.reduce((sum, d) => sum + (d.annual_budget || 0), 0),
-    [departments]
-  );
+  const totalBudget = useMemo(() =>
+    budgets.reduce((sum, b) => sum + (b.amount || 0), 0), [budgets]);
 
-  const totalYTDActual = useMemo(() =>
-    actuals
-      .filter(a => a.month_num <= currentMonth && a.fiscal_year === currentYear)
-      .reduce((sum, a) => sum + a.actual_spend, 0),
-    [actuals, currentMonth, currentYear]
-  );
+  const totalSpent = useMemo(() =>
+    budgets.reduce((sum, b) => sum + (b.spent || 0), 0), [budgets]);
+
+  const totalRemaining = useMemo(() =>
+    budgets.reduce((sum, b) => sum + (b.remaining || 0), 0), [budgets]);
+
+  const years = [currentYear - 1, currentYear, currentYear + 1];
+
+  // Group by department
+  const groupedByDept = useMemo(() => {
+    const groups: Record<string, DepartmentBudget[]> = {};
+    budgets.forEach(b => {
+      const key = b.department_name || b.department_code || 'Unassigned';
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(b);
+    });
+    return groups;
+  }, [budgets]);
 
   return (
     <>
@@ -214,6 +232,11 @@ export default function BudgetsScreen() {
           headerStyle: { backgroundColor: colors.surface },
           headerTintColor: colors.text,
           headerBackTitle: 'Procurement',
+          headerRight: () => (
+            <Pressable onPress={openCreate} style={{ marginRight: 16 }}>
+              <Plus size={24} color={colors.primary} />
+            </Pressable>
+          ),
         }}
       />
       <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -224,11 +247,26 @@ export default function BudgetsScreen() {
             <RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={colors.primary} />
           }
         >
-          {/* Year Badge */}
-          <View style={[styles.yearBadge, { backgroundColor: colors.primary + '15', borderColor: colors.primary }]}>
-            <Text style={[styles.yearBadgeText, { color: colors.primary }]}>
-              Fiscal Year {currentYear}
-            </Text>
+          {/* Year Selector */}
+          <View style={styles.yearRow}>
+            {years.map(year => (
+              <Pressable
+                key={year}
+                style={[
+                  styles.yearChip,
+                  { borderColor: selectedYear === year ? colors.primary : colors.border },
+                  selectedYear === year && { backgroundColor: colors.primary + '15' },
+                ]}
+                onPress={() => setSelectedYear(year)}
+              >
+                <Text style={[
+                  styles.yearChipText,
+                  { color: selectedYear === year ? colors.primary : colors.textSecondary },
+                ]}>
+                  {year}
+                </Text>
+              </Pressable>
+            ))}
           </View>
 
           {/* Summary Cards */}
@@ -237,92 +275,76 @@ export default function BudgetsScreen() {
               <View style={[styles.summaryIcon, { backgroundColor: colors.primary + '20' }]}>
                 <BarChart3 size={18} color={colors.primary} />
               </View>
-              <Text style={[styles.summaryValue, { color: colors.text }]}>
-                {formatCurrency(totalAnnualBudget)}
-              </Text>
+              <Text style={[styles.summaryValue, { color: colors.text }]}>{formatCurrency(totalBudget)}</Text>
               <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Total Budget</Text>
             </View>
             <View style={[styles.summaryCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <View style={[styles.summaryIcon, { backgroundColor: '#10B981' + '20' }]}>
                 <TrendingUp size={18} color="#10B981" />
               </View>
-              <Text style={[styles.summaryValue, { color: colors.text }]}>
-                {formatCurrency(totalYTDActual)}
-              </Text>
-              <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>YTD from POs</Text>
+              <Text style={[styles.summaryValue, { color: colors.text }]}>{formatCurrency(totalSpent)}</Text>
+              <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Total Spent</Text>
             </View>
             <View style={[styles.summaryCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <View style={[styles.summaryIcon, { backgroundColor: '#F59E0B' + '20' }]}>
                 <DollarSign size={18} color="#F59E0B" />
               </View>
-              <Text style={[styles.summaryValue, { color: colors.text }]}>
-                {formatCurrency(Math.max(0, totalAnnualBudget - totalYTDActual))}
-              </Text>
+              <Text style={[styles.summaryValue, { color: colors.text }]}>{formatCurrency(totalRemaining)}</Text>
               <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Remaining</Text>
             </View>
           </View>
 
-          {/* Department List */}
-          <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>DEPARTMENTS</Text>
+          {/* Budget List grouped by department */}
+          <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
+            BUDGETS — {selectedYear}
+          </Text>
 
           {isLoading ? (
             <ActivityIndicator color={colors.primary} style={{ marginTop: 32 }} />
-          ) : departments.length === 0 ? (
+          ) : budgets.length === 0 ? (
             <View style={[styles.emptyState, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <Building2 size={40} color={colors.textTertiary} />
+              <Text style={[styles.emptyTitle, { color: colors.text }]}>No Budgets for {selectedYear}</Text>
               <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
-                No active departments found.
+                Tap + to create your first budget entry
               </Text>
             </View>
           ) : (
-            departments.map(dept => {
-              const { byMonth, ytdActual } = getDeptActuals(dept.name);
-              const annual = dept.annual_budget || 0;
-              const pct = annual > 0 ? (ytdActual / annual) * 100 : 0;
+            Object.entries(groupedByDept).map(([deptName, deptBudgets]) => {
+              const deptTotal = deptBudgets.reduce((s, b) => s + (b.amount || 0), 0);
+              const deptSpent = deptBudgets.reduce((s, b) => s + (b.spent || 0), 0);
+              const pct = deptTotal > 0 ? (deptSpent / deptTotal) * 100 : 0;
               const statusColor = getStatusColor(pct);
-              const isExpanded = expandedDept === dept.id;
-              const deptColor = dept.color || colors.primary;
+              const isExpanded = expandedId === deptName;
 
               return (
                 <View
-                  key={dept.id}
+                  key={deptName}
                   style={[styles.deptCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
                 >
-                  <View style={[styles.deptColorBar, { backgroundColor: deptColor }]} />
-
+                  {/* Dept Header */}
                   <Pressable
                     style={styles.deptHeader}
-                    onPress={() => setExpandedDept(isExpanded ? null : dept.id)}
+                    onPress={() => setExpandedId(isExpanded ? null : deptName)}
                   >
+                    <View style={[styles.deptIcon, { backgroundColor: colors.primary + '15' }]}>
+                      <Building2 size={18} color={colors.primary} />
+                    </View>
                     <View style={styles.deptInfo}>
-                      <Text style={[styles.deptName, { color: colors.text }]}>{dept.name}</Text>
-                      <Text style={[styles.deptCode, { color: colors.textSecondary }]}>
-                        {dept.department_code}
+                      <Text style={[styles.deptName, { color: colors.text }]}>{deptName}</Text>
+                      <Text style={[styles.deptMeta, { color: colors.textSecondary }]}>
+                        {deptBudgets.length} budget{deptBudgets.length !== 1 ? 's' : ''}
                       </Text>
                     </View>
                     <View style={styles.deptRight}>
-                      {annual > 0 ? (
-                        <>
-                          <Text style={[styles.deptBudget, { color: colors.text }]}>
-                            {formatCurrency(annual)}
-                          </Text>
-                          <View style={[styles.pctBadge, { backgroundColor: statusColor + '20' }]}>
-                            <Text style={[styles.pctText, { color: statusColor }]}>
-                              {Math.round(pct)}%
-                            </Text>
-                          </View>
-                        </>
-                      ) : (
-                        <Text style={[styles.noBudgetText, { color: colors.textTertiary }]}>
-                          No budget set
+                      <Text style={[styles.deptTotal, { color: colors.text }]}>
+                        {formatCurrency(deptTotal)}
+                      </Text>
+                      <View style={[styles.pctBadge, { backgroundColor: statusColor + '20' }]}>
+                        <Text style={[styles.pctText, { color: statusColor }]}>
+                          {Math.round(pct)}%
                         </Text>
-                      )}
-                      <Pressable
-                        onPress={() => openEdit(dept)}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      >
-                        <Edit3 size={16} color={colors.primary} />
-                      </Pressable>
+                      </View>
                       {isExpanded
                         ? <ChevronDown size={18} color={colors.textSecondary} />
                         : <ChevronRight size={18} color={colors.textSecondary} />
@@ -330,128 +352,82 @@ export default function BudgetsScreen() {
                     </View>
                   </Pressable>
 
-                  {annual > 0 && (
-                    <View style={styles.progressContainer}>
-                      <View style={[styles.progressTrack, { backgroundColor: colors.border }]}>
-                        <View
-                          style={[
-                            styles.progressFill,
-                            {
-                              backgroundColor: statusColor,
-                              width: `${Math.min(100, pct)}%` as any,
-                            },
-                          ]}
-                        />
-                      </View>
-                      <Text style={[styles.progressLabel, { color: colors.textSecondary }]}>
-                        {formatCurrency(ytdActual)} spent of {formatCurrency(annual)} annual budget
-                      </Text>
+                  {/* Dept Progress Bar */}
+                  <View style={styles.progressContainer}>
+                    <View style={[styles.progressTrack, { backgroundColor: colors.border }]}>
+                      <View
+                        style={[
+                          styles.progressFill,
+                          { backgroundColor: statusColor, width: `${Math.min(100, pct)}%` as any },
+                        ]}
+                      />
                     </View>
-                  )}
+                    <Text style={[styles.progressLabel, { color: colors.textSecondary }]}>
+                      {formatCurrency(deptSpent)} spent of {formatCurrency(deptTotal)}
+                    </Text>
+                  </View>
 
+                  {/* Expanded budget line items */}
                   {isExpanded && (
-                    <View style={[styles.expandedSection, { borderTopColor: colors.border }]}>
-                      <View style={styles.budgetBreakdown}>
-                        <View style={[styles.breakdownItem, { backgroundColor: colors.backgroundSecondary }]}>
-                          <View style={[styles.breakdownIcon, { backgroundColor: '#3B82F6' + '20' }]}>
-                            <Users size={14} color="#3B82F6" />
-                          </View>
-                          <Text style={[styles.breakdownLabel, { color: colors.textSecondary }]}>Labor</Text>
-                          <Text style={[styles.breakdownValue, { color: colors.text }]}>
-                            {formatCurrency(dept.labor_budget)}
-                          </Text>
-                        </View>
-                        <View style={[styles.breakdownItem, { backgroundColor: colors.backgroundSecondary }]}>
-                          <View style={[styles.breakdownIcon, { backgroundColor: '#10B981' + '20' }]}>
-                            <Package size={14} color="#10B981" />
-                          </View>
-                          <Text style={[styles.breakdownLabel, { color: colors.textSecondary }]}>Materials</Text>
-                          <Text style={[styles.breakdownValue, { color: colors.text }]}>
-                            {formatCurrency(dept.materials_budget)}
-                          </Text>
-                        </View>
-                        <View style={[styles.breakdownItem, { backgroundColor: colors.backgroundSecondary }]}>
-                          <View style={[styles.breakdownIcon, { backgroundColor: '#8B5CF6' + '20' }]}>
-                            <Users size={14} color="#8B5CF6" />
-                          </View>
-                          <Text style={[styles.breakdownLabel, { color: colors.textSecondary }]}>Headcount</Text>
-                          <Text style={[styles.breakdownValue, { color: colors.text }]}>
-                            {dept.actual_headcount || 0} / {dept.budgeted_headcount || 0}
-                          </Text>
-                        </View>
-                      </View>
+                    <View style={[styles.lineItems, { borderTopColor: colors.border }]}>
+                      {deptBudgets.map(budget => {
+                        const bPct = budget.amount > 0 ? (budget.spent / budget.amount) * 100 : 0;
+                        const bColor = getStatusColor(bPct);
+                        const statusInfo = STATUS_OPTIONS.find(s => s.value === budget.status);
 
-                      <Text style={[styles.monthlyTitle, { color: colors.text }]}>
-                        Monthly Spend from POs
-                      </Text>
-                      <View style={styles.monthlyGrid}>
-                        {MONTHS.map(m => {
-                          const actual = byMonth[m.key] || 0;
-                          const isPast = m.key < currentMonth;
-                          const isCurrent = m.key === currentMonth;
-                          const monthlyBudget = annual / 12;
-                          const mPct = monthlyBudget > 0 ? (actual / monthlyBudget) * 100 : 0;
-                          const mColor = getStatusColor(mPct);
-
-                          return (
-                            <View
-                              key={m.key}
-                              style={[
-                                styles.monthCell,
-                                { backgroundColor: colors.backgroundSecondary },
-                                isCurrent && { borderColor: colors.primary, borderWidth: 1 },
-                              ]}
-                            >
-                              <Text style={[
-                                styles.monthLabel,
-                                { color: isCurrent ? colors.primary : colors.textSecondary },
-                              ]}>
-                                {m.label}
-                              </Text>
-                              {isPast || isCurrent ? (
-                                <>
-                                  <Text style={[styles.monthActual, { color: mColor }]}>
-                                    {formatCurrency(actual)}
-                                  </Text>
-                                  <View style={[styles.monthProgressTrack, { backgroundColor: colors.border }]}>
-                                    <View
-                                      style={[
-                                        styles.monthProgressFill,
-                                        {
-                                          backgroundColor: mColor,
-                                          width: `${Math.min(100, mPct)}%` as any,
-                                        },
-                                      ]}
-                                    />
+                        return (
+                          <Pressable
+                            key={budget.id}
+                            style={[styles.lineItem, { borderBottomColor: colors.border }]}
+                            onPress={() => openEdit(budget)}
+                          >
+                            <View style={styles.lineItemTop}>
+                              <View style={styles.lineItemLeft}>
+                                <Text style={[styles.lineItemName, { color: colors.text }]}>
+                                  {budget.name}
+                                </Text>
+                                <View style={styles.lineItemMeta}>
+                                  <View style={[styles.periodBadge, { backgroundColor: colors.primary + '15' }]}>
+                                    <Calendar size={10} color={colors.primary} />
+                                    <Text style={[styles.periodText, { color: colors.primary }]}>
+                                      {budget.period}
+                                    </Text>
                                   </View>
-                                </>
-                              ) : (
-                                <Text style={[styles.monthFuture, { color: colors.textTertiary }]}>—</Text>
-                              )}
+                                  {statusInfo && (
+                                    <View style={[styles.statusBadge, { backgroundColor: statusInfo.color + '15' }]}>
+                                      <Text style={[styles.statusText, { color: statusInfo.color }]}>
+                                        {statusInfo.label}
+                                      </Text>
+                                    </View>
+                                  )}
+                                  {budget.gl_account_prefix && (
+                                    <Text style={[styles.glPrefix, { color: colors.textTertiary }]}>
+                                      GL: {budget.gl_account_prefix}
+                                    </Text>
+                                  )}
+                                </View>
+                              </View>
+                              <View style={styles.lineItemAmounts}>
+                                <Text style={[styles.lineItemBudget, { color: colors.text }]}>
+                                  {formatCurrency(budget.amount)}
+                                </Text>
+                                <Text style={[styles.lineItemSpent, { color: bColor }]}>
+                                  {formatCurrency(budget.spent)} spent
+                                </Text>
+                              </View>
+                              <Edit3 size={14} color={colors.textTertiary} />
                             </View>
-                          );
-                        })}
-                      </View>
-
-                      <View style={[styles.annualSummary, { backgroundColor: colors.backgroundSecondary }]}>
-                        <View style={styles.annualRow}>
-                          <Text style={[styles.annualLabel, { color: colors.textSecondary }]}>Annual Budget</Text>
-                          <Text style={[styles.annualValue, { color: colors.text }]}>{formatCurrency(annual)}</Text>
-                        </View>
-                        <View style={styles.annualRow}>
-                          <Text style={[styles.annualLabel, { color: colors.textSecondary }]}>YTD Actual (POs)</Text>
-                          <Text style={[styles.annualValue, { color: '#10B981' }]}>{formatCurrency(ytdActual)}</Text>
-                        </View>
-                        <View style={[styles.annualRow, styles.annualRowLast, { borderTopColor: colors.border }]}>
-                          <Text style={[styles.annualLabel, { color: colors.textSecondary }]}>Remaining</Text>
-                          <Text style={[
-                            styles.annualValue,
-                            { color: annual - ytdActual >= 0 ? '#10B981' : '#EF4444' },
-                          ]}>
-                            {formatCurrency(annual - ytdActual)}
-                          </Text>
-                        </View>
-                      </View>
+                            <View style={[styles.lineProgressTrack, { backgroundColor: colors.border }]}>
+                              <View
+                                style={[
+                                  styles.lineProgressFill,
+                                  { backgroundColor: bColor, width: `${Math.min(100, bPct)}%` as any },
+                                ]}
+                              />
+                            </View>
+                          </Pressable>
+                        );
+                      })}
                     </View>
                   )}
                 </View>
@@ -462,6 +438,7 @@ export default function BudgetsScreen() {
           <View style={{ height: 60 }} />
         </ScrollView>
 
+        {/* Create / Edit Modal */}
         <Modal
           visible={modalVisible}
           animationType="slide"
@@ -474,10 +451,10 @@ export default function BudgetsScreen() {
                 <X size={24} color={colors.text} />
               </Pressable>
               <Text style={[styles.modalTitle, { color: colors.text }]}>
-                {editingDept?.name} — Budget
+                {editingBudget ? 'Edit Budget' : 'New Budget'}
               </Text>
-              <Pressable onPress={handleSave} disabled={updateMutation.isPending}>
-                {updateMutation.isPending
+              <Pressable onPress={handleSave} disabled={saveMutation.isPending}>
+                {saveMutation.isPending
                   ? <ActivityIndicator size="small" color={colors.primary} />
                   : <Check size={24} color={colors.primary} />
                 }
@@ -486,63 +463,160 @@ export default function BudgetsScreen() {
 
             <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
               <View style={styles.formSection}>
-                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>BUDGET AMOUNTS</Text>
+                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>BUDGET DETAILS</Text>
                 <View style={[styles.formCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+
                   <View style={styles.inputGroup}>
-                    <Text style={[styles.inputLabel, { color: colors.text }]}>Annual Budget Total</Text>
-                    <View style={[styles.currencyInput, { backgroundColor: colors.backgroundSecondary, borderColor: colors.border }]}>
-                      <DollarSign size={18} color={colors.textTertiary} />
-                      <TextInput
-                        style={[styles.currencyInputText, { color: colors.text }]}
-                        value={annualBudget}
-                        onChangeText={setAnnualBudget}
-                        placeholder="0"
-                        placeholderTextColor={colors.textTertiary}
-                        keyboardType="numeric"
-                      />
-                    </View>
-                  </View>
-                  <View style={styles.inputGroup}>
-                    <Text style={[styles.inputLabel, { color: colors.text }]}>Labor Budget</Text>
-                    <View style={[styles.currencyInput, { backgroundColor: colors.backgroundSecondary, borderColor: colors.border }]}>
-                      <DollarSign size={18} color={colors.textTertiary} />
-                      <TextInput
-                        style={[styles.currencyInputText, { color: colors.text }]}
-                        value={laborBudget}
-                        onChangeText={setLaborBudget}
-                        placeholder="0"
-                        placeholderTextColor={colors.textTertiary}
-                        keyboardType="numeric"
-                      />
-                    </View>
-                  </View>
-                  <View style={styles.inputGroup}>
-                    <Text style={[styles.inputLabel, { color: colors.text }]}>Materials Budget</Text>
-                    <View style={[styles.currencyInput, { backgroundColor: colors.backgroundSecondary, borderColor: colors.border }]}>
-                      <DollarSign size={18} color={colors.textTertiary} />
-                      <TextInput
-                        style={[styles.currencyInputText, { color: colors.text }]}
-                        value={materialsBudget}
-                        onChangeText={setMaterialsBudget}
-                        placeholder="0"
-                        placeholderTextColor={colors.textTertiary}
-                        keyboardType="numeric"
-                      />
-                    </View>
-                  </View>
-                  <View style={[styles.inputGroup, { marginBottom: 0 }]}>
-                    <Text style={[styles.inputLabel, { color: colors.text }]}>Budgeted Headcount</Text>
+                    <Text style={[styles.inputLabel, { color: colors.text }]}>Budget Name *</Text>
                     <TextInput
                       style={[styles.input, { backgroundColor: colors.backgroundSecondary, color: colors.text, borderColor: colors.border }]}
-                      value={budgetedHeadcount}
-                      onChangeText={setBudgetedHeadcount}
-                      placeholder="0"
+                      value={name}
+                      onChangeText={setName}
+                      placeholder="e.g. Maintenance Materials Q1"
                       placeholderTextColor={colors.textTertiary}
-                      keyboardType="numeric"
                     />
+                  </View>
+
+                  <View style={styles.inputRow}>
+                    <View style={[styles.inputGroup, { flex: 1 }]}>
+                      <Text style={[styles.inputLabel, { color: colors.text }]}>Department Name</Text>
+                      <TextInput
+                        style={[styles.input, { backgroundColor: colors.backgroundSecondary, color: colors.text, borderColor: colors.border }]}
+                        value={departmentName}
+                        onChangeText={setDepartmentName}
+                        placeholder="e.g. Maintenance"
+                        placeholderTextColor={colors.textTertiary}
+                      />
+                    </View>
+                    <View style={[styles.inputGroup, { flex: 1 }]}>
+                      <Text style={[styles.inputLabel, { color: colors.text }]}>Dept Code</Text>
+                      <TextInput
+                        style={[styles.input, { backgroundColor: colors.backgroundSecondary, color: colors.text, borderColor: colors.border }]}
+                        value={departmentCode}
+                        onChangeText={setDepartmentCode}
+                        placeholder="e.g. 1001"
+                        placeholderTextColor={colors.textTertiary}
+                      />
+                    </View>
+                  </View>
+
+                  <View style={styles.inputGroup}>
+                    <Text style={[styles.inputLabel, { color: colors.text }]}>GL Account Prefix</Text>
+                    <TextInput
+                      style={[styles.input, { backgroundColor: colors.backgroundSecondary, color: colors.text, borderColor: colors.border }]}
+                      value={glAccountPrefix}
+                      onChangeText={setGlAccountPrefix}
+                      placeholder="e.g. 5001"
+                      placeholderTextColor={colors.textTertiary}
+                    />
+                  </View>
+
+                  <View style={styles.inputGroup}>
+                    <Text style={[styles.inputLabel, { color: colors.text }]}>Period</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                      <View style={styles.periodGrid}>
+                        {PERIODS.map(p => (
+                          <Pressable
+                            key={p}
+                            style={[
+                              styles.periodOption,
+                              { borderColor: period === p ? colors.primary : colors.border },
+                              period === p && { backgroundColor: colors.primary + '15' },
+                            ]}
+                            onPress={() => setPeriod(p)}
+                          >
+                            <Text style={[
+                              styles.periodOptionText,
+                              { color: period === p ? colors.primary : colors.textSecondary },
+                            ]}>
+                              {p}
+                            </Text>
+                          </Pressable>
+                        ))}
+                      </View>
+                    </ScrollView>
                   </View>
                 </View>
               </View>
+
+              <View style={styles.formSection}>
+                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>AMOUNTS</Text>
+                <View style={[styles.formCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                  <View style={styles.inputGroup}>
+                    <Text style={[styles.inputLabel, { color: colors.text }]}>Budget Amount *</Text>
+                    <View style={[styles.currencyInput, { backgroundColor: colors.backgroundSecondary, borderColor: colors.border }]}>
+                      <DollarSign size={18} color={colors.textTertiary} />
+                      <TextInput
+                        style={[styles.currencyInputText, { color: colors.text }]}
+                        value={amount}
+                        onChangeText={setAmount}
+                        placeholder="0"
+                        placeholderTextColor={colors.textTertiary}
+                        keyboardType="numeric"
+                      />
+                    </View>
+                  </View>
+
+                  <View style={[styles.inputGroup, { marginBottom: 0 }]}>
+                    <Text style={[styles.inputLabel, { color: colors.text }]}>Amount Spent</Text>
+                    <View style={[styles.currencyInput, { backgroundColor: colors.backgroundSecondary, borderColor: colors.border }]}>
+                      <DollarSign size={18} color={colors.textTertiary} />
+                      <TextInput
+                        style={[styles.currencyInputText, { color: colors.text }]}
+                        value={spent}
+                        onChangeText={setSpent}
+                        placeholder="0"
+                        placeholderTextColor={colors.textTertiary}
+                        keyboardType="numeric"
+                      />
+                    </View>
+                  </View>
+                </View>
+              </View>
+
+              <View style={styles.formSection}>
+                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>STATUS</Text>
+                <View style={[styles.formCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                  <View style={styles.statusGrid}>
+                    {STATUS_OPTIONS.map(opt => (
+                      <Pressable
+                        key={opt.value}
+                        style={[
+                          styles.statusOption,
+                          { borderColor: status === opt.value ? opt.color : colors.border },
+                          status === opt.value && { backgroundColor: opt.color + '15' },
+                        ]}
+                        onPress={() => setStatus(opt.value)}
+                      >
+                        <View style={[styles.statusDot, { backgroundColor: opt.color }]} />
+                        <Text style={[
+                          styles.statusOptionText,
+                          { color: status === opt.value ? opt.color : colors.textSecondary },
+                        ]}>
+                          {opt.label}
+                        </Text>
+                        {status === opt.value && <Check size={14} color={opt.color} />}
+                      </Pressable>
+                    ))}
+                  </View>
+                </View>
+              </View>
+
+              <View style={styles.formSection}>
+                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>NOTES</Text>
+                <View style={[styles.formCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                  <TextInput
+                    style={[styles.notesInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.backgroundSecondary }]}
+                    value={notes}
+                    onChangeText={setNotes}
+                    placeholder="Optional notes..."
+                    placeholderTextColor={colors.textTertiary}
+                    multiline
+                    numberOfLines={3}
+                  />
+                </View>
+              </View>
+
               <View style={{ height: 40 }} />
             </ScrollView>
           </View>
@@ -555,80 +629,67 @@ export default function BudgetsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   scrollContent: { padding: 16 },
-  yearBadge: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 20,
-    borderWidth: 1,
-    marginBottom: 16,
-  },
-  yearBadgeText: { fontSize: 13, fontWeight: '600' as const },
+  yearRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },
+  yearChip: { paddingHorizontal: 20, paddingVertical: 8, borderRadius: 20, borderWidth: 1 },
+  yearChipText: { fontSize: 14, fontWeight: '600' as const },
   summaryRow: { flexDirection: 'row', gap: 10, marginBottom: 20 },
-  summaryCard: {
-    flex: 1, padding: 12, borderRadius: 12, borderWidth: 1, alignItems: 'center', gap: 4,
-  },
-  summaryIcon: {
-    width: 34, height: 34, borderRadius: 9, justifyContent: 'center', alignItems: 'center', marginBottom: 4,
-  },
+  summaryCard: { flex: 1, padding: 12, borderRadius: 12, borderWidth: 1, alignItems: 'center', gap: 4 },
+  summaryIcon: { width: 34, height: 34, borderRadius: 9, justifyContent: 'center', alignItems: 'center', marginBottom: 4 },
   summaryValue: { fontSize: 12, fontWeight: '700' as const },
   summaryLabel: { fontSize: 10, fontWeight: '500' as const, textAlign: 'center' as const },
   sectionTitle: { fontSize: 12, fontWeight: '600' as const, letterSpacing: 0.5, marginBottom: 12 },
-  emptyState: { alignItems: 'center', padding: 32, borderRadius: 12, borderWidth: 1, gap: 12 },
+  emptyState: { alignItems: 'center', padding: 40, borderRadius: 14, borderWidth: 1, gap: 12 },
+  emptyTitle: { fontSize: 17, fontWeight: '600' as const },
   emptyText: { fontSize: 14, textAlign: 'center' as const },
   deptCard: { borderRadius: 14, borderWidth: 1, marginBottom: 12, overflow: 'hidden' },
-  deptColorBar: { height: 4, width: '100%' },
   deptHeader: { flexDirection: 'row', alignItems: 'center', padding: 14, gap: 12 },
+  deptIcon: { width: 38, height: 38, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
   deptInfo: { flex: 1 },
   deptName: { fontSize: 15, fontWeight: '600' as const },
-  deptCode: { fontSize: 12, marginTop: 2 },
+  deptMeta: { fontSize: 12, marginTop: 2 },
   deptRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  deptBudget: { fontSize: 14, fontWeight: '700' as const },
-  noBudgetText: { fontSize: 12 },
+  deptTotal: { fontSize: 14, fontWeight: '700' as const },
   pctBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
   pctText: { fontSize: 12, fontWeight: '600' as const },
   progressContainer: { paddingHorizontal: 14, paddingBottom: 12, gap: 6 },
   progressTrack: { height: 6, borderRadius: 3, overflow: 'hidden' },
   progressFill: { height: '100%', borderRadius: 3 },
   progressLabel: { fontSize: 11 },
-  expandedSection: { borderTopWidth: 1, padding: 14, gap: 14 },
-  budgetBreakdown: { flexDirection: 'row', gap: 8 },
-  breakdownItem: { flex: 1, padding: 10, borderRadius: 10, alignItems: 'center', gap: 4 },
-  breakdownIcon: { width: 28, height: 28, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
-  breakdownLabel: { fontSize: 10, fontWeight: '500' as const },
-  breakdownValue: { fontSize: 12, fontWeight: '700' as const },
-  monthlyTitle: { fontSize: 13, fontWeight: '600' as const },
-  monthlyGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  monthCell: {
-    width: '22%', padding: 8, borderRadius: 8, alignItems: 'center', gap: 3,
-    borderWidth: 1, borderColor: 'transparent',
-  },
-  monthLabel: { fontSize: 11, fontWeight: '600' as const },
-  monthActual: { fontSize: 10, fontWeight: '600' as const },
-  monthFuture: { fontSize: 10 },
-  monthProgressTrack: { width: '100%', height: 3, borderRadius: 2, overflow: 'hidden' },
-  monthProgressFill: { height: '100%', borderRadius: 2 },
-  annualSummary: { borderRadius: 10, padding: 12, gap: 8 },
-  annualRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  annualRowLast: { paddingTop: 8, borderTopWidth: 1, marginTop: 4 },
-  annualLabel: { fontSize: 13 },
-  annualValue: { fontSize: 14, fontWeight: '600' as const },
+  lineItems: { borderTopWidth: 1 },
+  lineItem: { padding: 14, borderBottomWidth: 1 },
+  lineItemTop: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
+  lineItemLeft: { flex: 1 },
+  lineItemName: { fontSize: 14, fontWeight: '600' as const, marginBottom: 4 },
+  lineItemMeta: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
+  periodBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
+  periodText: { fontSize: 10, fontWeight: '600' as const },
+  statusBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
+  statusText: { fontSize: 10, fontWeight: '600' as const },
+  glPrefix: { fontSize: 10 },
+  lineItemAmounts: { alignItems: 'flex-end' },
+  lineItemBudget: { fontSize: 14, fontWeight: '700' as const },
+  lineItemSpent: { fontSize: 11, fontWeight: '500' as const },
+  lineProgressTrack: { height: 4, borderRadius: 2, overflow: 'hidden' },
+  lineProgressFill: { height: '100%', borderRadius: 2 },
   modalContainer: { flex: 1 },
-  modalHeader: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    padding: 16, borderBottomWidth: 1,
-  },
+  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderBottomWidth: 1 },
   modalTitle: { fontSize: 17, fontWeight: '600' as const },
   modalContent: { flex: 1, padding: 16 },
   formSection: { marginBottom: 24 },
   formLabel: { fontSize: 12, fontWeight: '600' as const, letterSpacing: 0.5, marginBottom: 10 },
   formCard: { borderRadius: 14, borderWidth: 1, padding: 16 },
   inputGroup: { marginBottom: 16 },
+  inputRow: { flexDirection: 'row', gap: 12 },
   inputLabel: { fontSize: 14, fontWeight: '500' as const, marginBottom: 8 },
-  currencyInput: {
-    flexDirection: 'row', alignItems: 'center', borderRadius: 10, borderWidth: 1,
-    paddingHorizontal: 12, gap: 8,
-  },
-  currencyInputText: { flex: 1, paddingVertical: 12, fontSize: 16 },
   input: { borderRadius: 10, borderWidth: 1, padding: 12, fontSize: 15 },
+  currencyInput: { flexDirection: 'row', alignItems: 'center', borderRadius: 10, borderWidth: 1, paddingHorizontal: 12, gap: 8 },
+  currencyInputText: { flex: 1, paddingVertical: 12, fontSize: 16 },
+  periodGrid: { flexDirection: 'row', gap: 8 },
+  periodOption: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, borderWidth: 1 },
+  periodOptionText: { fontSize: 13, fontWeight: '500' as const },
+  statusGrid: { gap: 8 },
+  statusOption: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 10, borderWidth: 1 },
+  statusDot: { width: 10, height: 10, borderRadius: 5 },
+  statusOptionText: { flex: 1, fontSize: 14, fontWeight: '500' as const },
+  notesInput: { fontSize: 14, minHeight: 80, textAlignVertical: 'top' as const, borderRadius: 10, borderWidth: 1, padding: 12 },
 });
