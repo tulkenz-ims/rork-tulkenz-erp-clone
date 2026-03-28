@@ -99,15 +99,29 @@ export const MODULE_PERMISSION_DEFINITIONS: ModulePermissionDef[] = [
   },
   {
     module: 'employees',
-    name: 'Employees',
-    description: 'Employee management and roles',
+    name: 'Labor Tracking',
+    description: 'Employee labor tracking and room assignments',
     actions: [
-      { action: 'view', label: 'View Employees', description: 'View employee list and profiles' },
-      { action: 'create', label: 'Add Employees', description: 'Create new employee accounts' },
-      { action: 'edit', label: 'Edit Employees', description: 'Modify employee information' },
-      { action: 'delete', label: 'Remove Employees', description: 'Deactivate or remove employees' },
+      { action: 'view', label: 'View Labor', description: 'View labor tracking and room assignments' },
+      { action: 'create', label: 'Add Entries', description: 'Create labor tracking entries' },
+      { action: 'edit', label: 'Edit Entries', description: 'Modify labor tracking entries' },
+      { action: 'delete', label: 'Delete Entries', description: 'Remove labor tracking entries' },
+      { action: 'assign', label: 'Assign Rooms', description: 'Assign employees to rooms' },
+      { action: 'export', label: 'Export Labor Data', description: 'Export labor reports' },
+    ],
+  },
+  {
+    module: 'users',
+    name: 'Users',
+    description: 'People management, roles, and permissions',
+    actions: [
+      { action: 'view', label: 'View Users', description: 'View employee list and profiles' },
+      { action: 'create', label: 'Add Users', description: 'Create new employee accounts' },
+      { action: 'edit', label: 'Edit Users', description: 'Modify employee information' },
+      { action: 'delete', label: 'Remove Users', description: 'Deactivate or remove employees' },
       { action: 'assign', label: 'Assign Roles', description: 'Assign roles to employees' },
-      { action: 'export', label: 'Export Employee Data', description: 'Export employee reports' },
+      { action: 'manage_settings', label: 'Manage Roles & Permissions', description: 'Create and manage roles and permissions' },
+      { action: 'export', label: 'Export User Data', description: 'Export employee reports' },
     ],
   },
   {
@@ -127,7 +141,7 @@ export const MODULE_PERMISSION_DEFINITIONS: ModulePermissionDef[] = [
     actions: [
       { action: 'view', label: 'View Settings', description: 'View system configuration' },
       { action: 'edit', label: 'Modify Settings', description: 'Change system settings' },
-      { action: 'manage_settings', label: 'Manage Roles & Permissions', description: 'Create and manage user roles' },
+      { action: 'manage_settings', label: 'Manage System Config', description: 'Configure appearance and organization settings' },
     ],
   },
   {
@@ -145,80 +159,17 @@ export const MODULE_PERMISSION_DEFINITIONS: ModulePermissionDef[] = [
     ],
   },
   {
-    module: 'finance_ap',
-    name: 'Accounts Payable',
-    description: 'Manage vendor invoices and payments',
+    module: 'accounts',
+    name: 'Accounts',
+    description: 'Budgets and general ledger accounts',
     actions: [
-      { action: 'view', label: 'View AP', description: 'View invoices and payments' },
-      { action: 'create', label: 'Enter Invoices', description: 'Create new AP invoices' },
-      { action: 'edit', label: 'Edit Invoices', description: 'Modify invoice details' },
-      { action: 'delete', label: 'Void Invoices', description: 'Void or cancel invoices' },
-      { action: 'approve', label: 'Approve Invoices', description: 'Approve invoices for payment' },
-      { action: 'process_payment', label: 'Process Payments', description: 'Create and process payments' },
-      { action: 'export', label: 'Export AP Data', description: 'Export AP reports' },
-    ],
-  },
-  {
-    module: 'finance_ar',
-    name: 'Accounts Receivable',
-    description: 'Manage customer invoices and collections',
-    actions: [
-      { action: 'view', label: 'View AR', description: 'View customer invoices' },
-      { action: 'create', label: 'Create Invoices', description: 'Create customer invoices' },
-      { action: 'edit', label: 'Edit Invoices', description: 'Modify invoice details' },
-      { action: 'delete', label: 'Void Invoices', description: 'Void or cancel invoices' },
-      { action: 'process_payment', label: 'Apply Payments', description: 'Apply customer payments' },
-      { action: 'manage_customers', label: 'Manage Customers', description: 'Create and manage customers' },
-      { action: 'export', label: 'Export AR Data', description: 'Export AR reports' },
-    ],
-  },
-  {
-    module: 'finance_gl',
-    name: 'General Ledger',
-    description: 'Chart of accounts and journal entries',
-    actions: [
-      { action: 'view', label: 'View GL', description: 'View chart of accounts' },
-      { action: 'create', label: 'Create Accounts', description: 'Add new GL accounts' },
-      { action: 'edit', label: 'Edit Accounts', description: 'Modify account details' },
-      { action: 'post_entries', label: 'Post Journal Entries', description: 'Create and post journal entries' },
-      { action: 'approve', label: 'Approve Entries', description: 'Approve journal entries' },
-      { action: 'export', label: 'Export GL Data', description: 'Export financial statements' },
-    ],
-  },
-  {
-    module: 'payroll',
-    name: 'Payroll',
-    description: 'Employee payroll processing',
-    actions: [
-      { action: 'view', label: 'View Payroll', description: 'View payroll records' },
-      { action: 'create', label: 'Create Payroll', description: 'Create payroll batches' },
-      { action: 'edit', label: 'Edit Payroll', description: 'Modify payroll entries' },
-      { action: 'run_payroll', label: 'Process Payroll', description: 'Run and finalize payroll' },
-      { action: 'approve', label: 'Approve Payroll', description: 'Approve payroll for processing' },
-      { action: 'export', label: 'Export Payroll Data', description: 'Export payroll reports' },
-    ],
-  },
-  {
-    module: 'budgeting',
-    name: 'Budgeting',
-    description: 'Budget creation and tracking',
-    actions: [
-      { action: 'view', label: 'View Budgets', description: 'View budget vs actual' },
-      { action: 'create', label: 'Create Budgets', description: 'Create new budgets' },
-      { action: 'edit', label: 'Edit Budgets', description: 'Modify budget details' },
+      { action: 'view', label: 'View Accounts', description: 'View budgets and GL accounts' },
+      { action: 'create', label: 'Create Records', description: 'Create budget entries and GL accounts' },
+      { action: 'edit', label: 'Edit Records', description: 'Modify budgets and account details' },
+      { action: 'delete', label: 'Delete Records', description: 'Remove budget entries and accounts' },
       { action: 'approve', label: 'Approve Budgets', description: 'Approve budget submissions' },
-      { action: 'export', label: 'Export Budget Data', description: 'Export budget reports' },
-    ],
-  },
-  {
-    module: 'taxes',
-    name: 'Tax Management',
-    description: 'Tax filings and compliance',
-    actions: [
-      { action: 'view', label: 'View Tax Records', description: 'View tax filings' },
-      { action: 'create', label: 'Create Tax Records', description: 'Create tax entries' },
-      { action: 'file_taxes', label: 'File Taxes', description: 'Submit tax filings' },
-      { action: 'export', label: 'Export Tax Data', description: 'Export tax reports' },
+      { action: 'post_entries', label: 'Post Journal Entries', description: 'Create and post journal entries' },
+      { action: 'export', label: 'Export Financial Data', description: 'Export financial reports and statements' },
     ],
   },
   {
@@ -248,6 +199,19 @@ export const MODULE_PERMISSION_DEFINITIONS: ModulePermissionDef[] = [
     ],
   },
   {
+    module: 'documents',
+    name: 'Documents',
+    description: 'General document storage and management',
+    actions: [
+      { action: 'view', label: 'View Documents', description: 'View document library' },
+      { action: 'create', label: 'Upload Documents', description: 'Upload new documents' },
+      { action: 'edit', label: 'Edit Documents', description: 'Modify document details' },
+      { action: 'delete', label: 'Delete Documents', description: 'Remove documents' },
+      { action: 'approve', label: 'Approve Documents', description: 'Approve documents for publication' },
+      { action: 'export', label: 'Export Documents', description: 'Export and download documents' },
+    ],
+  },
+  {
     module: 'task_feed',
     name: 'Task Feed',
     description: 'Task verification and activity feed',
@@ -271,6 +235,34 @@ export const MODULE_PERMISSION_DEFINITIONS: ModulePermissionDef[] = [
       { action: 'edit', label: 'Edit Records', description: 'Modify recycling records' },
       { action: 'delete', label: 'Delete Records', description: 'Remove recycling records' },
       { action: 'export', label: 'Export Recycling Data', description: 'Export recycling reports' },
+    ],
+  },
+  {
+    module: 'sanitation',
+    name: 'Sanitation',
+    description: 'Sanitation schedules, EMP, and SSOP management',
+    actions: [
+      { action: 'view', label: 'View Sanitation', description: 'View sanitation records and schedules' },
+      { action: 'create', label: 'Create Records', description: 'Create sanitation entries' },
+      { action: 'edit', label: 'Edit Records', description: 'Modify sanitation records' },
+      { action: 'delete', label: 'Delete Records', description: 'Remove sanitation records' },
+      { action: 'approve', label: 'Approve Records', description: 'Approve sanitation completions' },
+      { action: 'manage_settings', label: 'Manage SSOPs', description: 'Create and manage SSOP library' },
+      { action: 'export', label: 'Export Data', description: 'Export sanitation reports' },
+    ],
+  },
+  {
+    module: 'production',
+    name: 'Production',
+    description: 'Production operations, inventory, and work orders',
+    actions: [
+      { action: 'view', label: 'View Production', description: 'View production records and schedules' },
+      { action: 'create', label: 'Create Records', description: 'Create production entries and work orders' },
+      { action: 'edit', label: 'Edit Records', description: 'Modify production records' },
+      { action: 'delete', label: 'Delete Records', description: 'Remove production records' },
+      { action: 'approve', label: 'Approve Records', description: 'Approve production records' },
+      { action: 'manage_settings', label: 'Manage Production Settings', description: 'Configure production lines and settings' },
+      { action: 'export', label: 'Export Data', description: 'Export production reports' },
     ],
   },
   {
@@ -323,34 +315,6 @@ export const MODULE_PERMISSION_DEFINITIONS: ModulePermissionDef[] = [
       { action: 'delete', label: 'Delete Records', description: 'Remove safety records' },
       { action: 'approve', label: 'Approve Records', description: 'Approve safety records' },
       { action: 'export', label: 'Export Data', description: 'Export safety reports' },
-    ],
-  },
-  {
-    module: 'hr',
-    name: 'Human Resources',
-    description: 'HR management, employees, schedules, and workforce administration',
-    actions: [
-      { action: 'view', label: 'Access HR Module', description: 'View HR dashboard and data' },
-      { action: 'create', label: 'Create HR Records', description: 'Create employees, schedules, and HR documents' },
-      { action: 'edit', label: 'Edit HR Records', description: 'Modify employee data and HR information' },
-      { action: 'delete', label: 'Delete HR Records', description: 'Remove HR records' },
-      { action: 'approve', label: 'Approve HR Requests', description: 'Approve time-off, schedules, and HR requests' },
-      { action: 'manage_settings', label: 'Manage HR Settings', description: 'Configure HR policies and settings' },
-      { action: 'export', label: 'Export HR Data', description: 'Export HR reports and employee data' },
-    ],
-  },
-  {
-    module: 'finance',
-    name: 'Finance',
-    description: 'Financial management, accounting, and reporting',
-    actions: [
-      { action: 'view', label: 'Access Finance Module', description: 'View finance dashboard and data' },
-      { action: 'create', label: 'Create Financial Records', description: 'Create invoices, transactions, and entries' },
-      { action: 'edit', label: 'Edit Financial Records', description: 'Modify financial data' },
-      { action: 'delete', label: 'Delete Financial Records', description: 'Remove financial records' },
-      { action: 'approve', label: 'Approve Financial Transactions', description: 'Approve payments, invoices, and budgets' },
-      { action: 'manage_settings', label: 'Manage Finance Settings', description: 'Configure chart of accounts and finance settings' },
-      { action: 'export', label: 'Export Financial Data', description: 'Export financial reports and statements' },
     ],
   },
 ];
@@ -431,7 +395,7 @@ export const [PermissionsProvider, usePermissions] = createContextHook(() => {
       console.warn('Cannot modify system role permissions without forceUpdate flag');
       return;
     }
-    
+
     updateRoleMutation.mutate({
       id,
       updates: {
@@ -454,7 +418,7 @@ export const [PermissionsProvider, usePermissions] = createContextHook(() => {
       console.warn('Cannot delete system role');
       return false;
     }
-    
+
     deleteRoleMutation.mutate(id);
     console.log('Role deletion initiated:', id);
     return true;
@@ -466,7 +430,7 @@ export const [PermissionsProvider, usePermissions] = createContextHook(() => {
       console.error('Role not found:', id);
       return null;
     }
-    
+
     duplicateRoleMutation.mutate({
       roleId: id,
       newName,
@@ -477,9 +441,9 @@ export const [PermissionsProvider, usePermissions] = createContextHook(() => {
   }, [roles, duplicateRoleMutation, userProfile]);
 
   const setRolePermission = useCallback((
-    roleId: string, 
-    module: PermissionModule, 
-    action: PermissionAction, 
+    roleId: string,
+    module: PermissionModule,
+    action: PermissionAction,
     enabled: boolean,
     canEditSystem = false
   ) => {
@@ -489,7 +453,7 @@ export const [PermissionsProvider, usePermissions] = createContextHook(() => {
 
     let updatedPermissions = [...role.permissions];
     const moduleIndex = updatedPermissions.findIndex(p => p.module === module);
-    
+
     if (moduleIndex === -1) {
       if (enabled) {
         updatedPermissions.push({ module, actions: [action] });
@@ -503,20 +467,20 @@ export const [PermissionsProvider, usePermissions] = createContextHook(() => {
       } else {
         modulePerms.actions = modulePerms.actions.filter(a => a !== action);
       }
-      
+
       if (modulePerms.actions.length === 0) {
         updatedPermissions = updatedPermissions.filter(p => p.module !== module);
       } else {
         updatedPermissions[moduleIndex] = modulePerms;
       }
     }
-    
+
     updateRole(roleId, { permissions: updatedPermissions }, canEditSystem);
   }, [roles, updateRole]);
 
   const setModulePermissions = useCallback((
-    roleId: string, 
-    module: PermissionModule, 
+    roleId: string,
+    module: PermissionModule,
     actions: PermissionAction[],
     canEditSystem = false
   ) => {
@@ -528,7 +492,7 @@ export const [PermissionsProvider, usePermissions] = createContextHook(() => {
     if (actions.length > 0) {
       updatedPermissions.push({ module, actions });
     }
-    
+
     updateRole(roleId, { permissions: updatedPermissions }, canEditSystem);
   }, [roles, updateRole]);
 
@@ -538,7 +502,7 @@ export const [PermissionsProvider, usePermissions] = createContextHook(() => {
       console.error('Role not found:', roleId);
       return;
     }
-    
+
     assignRoleMutation.mutate({
       employeeId,
       roleId,
@@ -560,60 +524,48 @@ export const [PermissionsProvider, usePermissions] = createContextHook(() => {
 
   const hasPermission = useCallback((module: PermissionModule, action: PermissionAction): boolean => {
     if (!userProfile) return false;
-    
-    // Platform admins have full access
+
     if (isPlatformAdmin) return true;
-    
-    // Check assigned role from employee_roles table
+
     const roleId = employeeRoleAssignments[userProfile.id];
     if (!roleId) {
-      // No assigned role - only grant access if user has super_admin in employees.role
-      // AND they are not logged in via employee login
       if (!isEmployee && isSuperAdminRole(userProfile.role)) return true;
       return false;
     }
-    
+
     const role = roles.find(r => r.id === roleId);
     if (!role) {
-      // Role not found - fallback to employees.role check for non-employee logins
       if (!isEmployee && isSuperAdminRole(userProfile.role)) return true;
       return false;
     }
-    
-    // Check if assigned role is Super Admin or Administrator
+
     if (role.name === 'Super Admin' || role.name === 'Administrator') return true;
-    
+
     const modulePerms = role.permissions.find(p => p.module === module);
     return modulePerms?.actions.includes(action) || false;
   }, [userProfile, isPlatformAdmin, isEmployee, roles, employeeRoleAssignments]);
 
   const hasAnyPermission = useCallback((module: PermissionModule): boolean => {
     if (!userProfile) return false;
-    
-    // Platform admins have full access
+
     if (isPlatformAdmin) return true;
-    
-    // Check assigned role from employee_roles table
+
     const roleId = employeeRoleAssignments[userProfile.id];
     if (!roleId) {
-      // No assigned role - only grant access if user has super_admin in employees.role
-      // AND they are not logged in via employee login
       if (!isEmployee && isSuperAdminRole(userProfile.role)) return true;
       console.log('[hasAnyPermission] No role assignment for user:', userProfile.id, 'module:', module);
       return false;
     }
-    
+
     const role = roles.find(r => r.id === roleId);
     if (!role) {
-      // Role not found - fallback to employees.role check for non-employee logins
       if (!isEmployee && isSuperAdminRole(userProfile.role)) return true;
       console.log('[hasAnyPermission] Role not found:', roleId, 'for user:', userProfile.id);
       return false;
     }
-    
-    // Check if assigned role is Super Admin or Administrator
+
     if (role.name === 'Super Admin' || role.name === 'Administrator') return true;
-    
+
     const hasAccess = role.permissions.some(p => p.module === module && p.actions.length > 0);
     console.log('[hasAnyPermission] User:', userProfile.id, 'Role:', role.name, 'Module:', module, 'Access:', hasAccess);
     return hasAccess;
@@ -625,8 +577,8 @@ export const [PermissionsProvider, usePermissions] = createContextHook(() => {
   }, [roles]);
 
   const roleHasPermission = useCallback((
-    roleId: string, 
-    module: PermissionModule, 
+    roleId: string,
+    module: PermissionModule,
     action: PermissionAction
   ): boolean => {
     const role = roles.find(r => r.id === roleId);
@@ -637,21 +589,17 @@ export const [PermissionsProvider, usePermissions] = createContextHook(() => {
 
   const currentUserRole = useMemo((): Role | null => {
     if (!userProfile) return null;
-    // All users (employee or not) should get their assigned role
     return getEmployeeRole(userProfile.id);
   }, [userProfile, getEmployeeRole]);
 
   const isSuperAdmin = useMemo(() => {
     if (!userProfile) return false;
-    // Platform admins are always super admins
     if (isPlatformAdmin) return true;
-    // Check assigned role first (new permission system)
     const role = currentUserRole;
     if (role) {
       if (role.name === 'Super Admin' || role.name === 'Administrator') return true;
       if (role.isSystem && role.name?.toLowerCase().includes('super')) return true;
     }
-    // Fallback: only for non-employee logins, check employees.role field
     if (!isEmployee && isSuperAdminRole(userProfile.role)) return true;
     return false;
   }, [userProfile, isPlatformAdmin, isEmployee, currentUserRole]);
