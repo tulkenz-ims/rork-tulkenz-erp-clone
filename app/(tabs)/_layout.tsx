@@ -137,11 +137,6 @@ export default function TabLayout() {
             if (!moduleKeys.includes('recycling')) moduleKeys.push('recycling');
             break;
 
-          // Accounts — budgets and GL
-          case 'accounts':
-            if (!moduleKeys.includes('accounts')) moduleKeys.push('accounts');
-            break;
-
           // Users — people, roles, permissions
           case 'users':
             if (!moduleKeys.includes('users')) moduleKeys.push('users');
@@ -230,7 +225,6 @@ export default function TabLayout() {
           <Tabs.Screen name="production" />
           <Tabs.Screen name="compliance" />
           <Tabs.Screen name="recycling" />
-          <Tabs.Screen name="accounts" />
           <Tabs.Screen name="users" />
           <Tabs.Screen name="watchscreen" />
           <Tabs.Screen name="settings" />
