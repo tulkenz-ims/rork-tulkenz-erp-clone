@@ -3,6 +3,7 @@ import { Stack, usePathname } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { View, StyleSheet } from "react-native";
 import { UserProvider } from "@/contexts/UserContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { PermissionsProvider } from "@/contexts/PermissionsContext";
@@ -14,6 +15,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { RealtimeProvider } from "@/contexts/RealtimeContext";
 import EmergencyAlertOverlay from "@/components/EmergencyAlertOverlay";
 import AIAssistButton from "@/components/AIAssistButton";
+import HUDBackground from "@/components/HUDBackground";
 import { EmergencyRollCallProvider } from '@/contexts/EmergencyRollCallContext';
 
 SplashScreen.preventAutoHideAsync();
@@ -21,22 +23,27 @@ const queryClient = new QueryClient();
 
 function RootLayoutNav() {
   return (
-    <Stack screenOptions={{ headerBackTitle: "Back" }}>
-      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      <Stack.Screen
-        name="login"
-        options={{
-          headerShown: false,
-          presentation: 'fullScreenModal',
-        }}
-      />
-      <Stack.Screen
-        name="sds"
-        options={{
-          headerShown: false,
-        }}
-      />
-    </Stack>
+    <View style={styles.root}>
+      {/* HUD animated background — sits behind everything */}
+      <HUDBackground />
+      {/* App navigation */}
+      <Stack screenOptions={{ headerBackTitle: "Back" }}>
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen
+          name="login"
+          options={{
+            headerShown: false,
+            presentation: 'fullScreenModal',
+          }}
+        />
+        <Stack.Screen
+          name="sds"
+          options={{
+            headerShown: false,
+          }}
+        />
+      </Stack>
+    </View>
   );
 }
 
@@ -50,6 +57,7 @@ export default function RootLayout() {
   useEffect(() => {
     SplashScreen.hideAsync();
   }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <GestureHandlerRootView style={{ flex: 1 }}>
@@ -80,3 +88,9 @@ export default function RootLayout() {
     </QueryClientProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+  },
+});
