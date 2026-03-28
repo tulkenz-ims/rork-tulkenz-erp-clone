@@ -28,7 +28,7 @@ export default function TabLayout() {
   const visibleModules = useMemo(() => {
     if (!isAuthenticated || !userProfile) return [];
 
-    // Check if user is Platform Admin first - they always get full access
+    // Platform Admins always get full access
     if (userProfile.is_platform_admin) {
       console.log('[TabLayout] User is Platform Admin - showing all modules');
       return NAVIGATION_MODULES.map(m => m.key);
@@ -36,7 +36,7 @@ export default function TabLayout() {
 
     // Get the user's assigned role from the permissions system
     const userRole = getEmployeeRole(userProfile.id);
-    
+
     console.log('[TabLayout] Permission check:', {
       userId: userProfile.id,
       employeesRole: userProfile.role,
@@ -53,7 +53,6 @@ export default function TabLayout() {
     );
 
     // For non-employee logins without an assigned role, check legacy employees.role
-    // But only allow 'super_admin' - NOT 'admin' which is a lower level
     const legacySuperAdmin = !isEmployee && !userRole && (
       userProfile.role === 'super_admin' ||
       userProfile.role === 'superadmin'
@@ -75,71 +74,116 @@ export default function TabLayout() {
 
     // Build module list from role permissions
     const moduleKeys: string[] = ['dashboard', 'taskfeed'];
-    
+
     userRole.permissions.forEach(perm => {
       if (perm.actions.includes('view')) {
         switch (perm.module) {
+
+          // CMMS — work orders and preventive maintenance
           case 'work_orders':
           case 'preventive_maintenance':
             if (!moduleKeys.includes('cmms')) moduleKeys.push('cmms');
             break;
+
+          // Inventory
           case 'inventory':
             if (!moduleKeys.includes('inventory')) moduleKeys.push('inventory');
             break;
+
+          // Documents
+          case 'documents':
+            if (!moduleKeys.includes('documents')) moduleKeys.push('documents');
+            break;
+
+          // Procurement and Vendors both surface the Procurement module
           case 'procurement':
-            if (!moduleKeys.includes('procurement')) moduleKeys.push('procurement');
-            break;
-          case 'approvals':
-            if (!moduleKeys.includes('approvals')) moduleKeys.push('approvals');
-            break;
-          case 'compliance':
-            if (!moduleKeys.includes('compliance')) moduleKeys.push('compliance');
-            break;
-          case 'task_feed':
-            break;
-          case 'recycling':
-            if (!moduleKeys.includes('recycling')) moduleKeys.push('recycling');
-            if (!moduleKeys.includes('sanitation')) moduleKeys.push('sanitation');
-            break;
-          case 'quality':
-            if (!moduleKeys.includes('quality')) moduleKeys.push('quality');
-            break;
-          case 'safety':
-            if (!moduleKeys.includes('safety')) moduleKeys.push('safety');
-            break;
-          case 'settings':
-            if (!moduleKeys.includes('settings')) moduleKeys.push('settings');
-            break;
-          case 'employees':
-            if (!moduleKeys.includes('employees')) moduleKeys.push('employees');
-            break;
-          case 'finance_ap':
-          case 'finance_ar':
-          case 'finance_gl':
-          case 'payroll':
-          case 'budgeting':
-          case 'taxes':
-            if (!moduleKeys.includes('finance')) moduleKeys.push('finance');
-            break;
           case 'vendors':
             if (!moduleKeys.includes('procurement')) moduleKeys.push('procurement');
             break;
+
+          // Approvals
+          case 'approvals':
+            if (!moduleKeys.includes('approvals')) moduleKeys.push('approvals');
+            break;
+
+          // Quality — inspections also surface the Quality module
+          case 'quality':
           case 'inspections':
             if (!moduleKeys.includes('quality')) moduleKeys.push('quality');
             break;
+
+          // Safety
+          case 'safety':
+            if (!moduleKeys.includes('safety')) moduleKeys.push('safety');
+            break;
+
+          // Sanitation — standalone, not tied to recycling
+          case 'sanitation':
+            if (!moduleKeys.includes('sanitation')) moduleKeys.push('sanitation');
+            break;
+
+          // Production
+          case 'production':
+            if (!moduleKeys.includes('production')) moduleKeys.push('production');
+            break;
+
+          // Compliance
+          case 'compliance':
+            if (!moduleKeys.includes('compliance')) moduleKeys.push('compliance');
+            break;
+
+          // Recycling — standalone, not tied to sanitation
+          case 'recycling':
+            if (!moduleKeys.includes('recycling')) moduleKeys.push('recycling');
+            break;
+
+          // Accounts — budgets and GL
+          case 'accounts':
+            if (!moduleKeys.includes('accounts')) moduleKeys.push('accounts');
+            break;
+
+          // Users — people, roles, permissions
+          case 'users':
+            if (!moduleKeys.includes('users')) moduleKeys.push('users');
+            break;
+
+          // Labor Tracking
+          case 'employees':
+            if (!moduleKeys.includes('employees')) moduleKeys.push('employees');
+            break;
+
+          // Settings
+          case 'settings':
+            if (!moduleKeys.includes('settings')) moduleKeys.push('settings');
+            break;
+
+          // Watch Screen — superAdminOnly, surfaced via users module permission
+          case 'watchscreen':
+            if (!moduleKeys.includes('watchscreen')) moduleKeys.push('watchscreen');
+            break;
+
+          // Reports — future module, not yet in nav
+          case 'reports':
+            break;
+
+          // Portal — employee self-service, not a nav tab
           case 'portal':
             break;
+
+          // LMS — future module, not yet in nav
           case 'lms':
             break;
-          case 'reports':
+
+          // Task feed is always visible, no need to add here
+          case 'task_feed':
             break;
         }
       }
     });
 
-    // Add timeclock for all users with roles
+    // Time Clock is available to all authenticated users with a role
     if (!moduleKeys.includes('timeclock')) moduleKeys.push('timeclock');
-    
+
     console.log('[TabLayout] Visible modules for user:', moduleKeys);
     return moduleKeys;
   }, [isAuthenticated, userProfile, isEmployee, getEmployeeRole]);
@@ -186,13 +230,13 @@ export default function TabLayout() {
           <Tabs.Screen name="production" />
           <Tabs.Screen name="compliance" />
           <Tabs.Screen name="recycling" />
-          <Tabs.Screen name="hr" />
-          <Tabs.Screen name="finance" />
-          <Tabs.Screen name="settings" />
+          <Tabs.Screen name="accounts" />
+          <Tabs.Screen name="users" />
           <Tabs.Screen name="watchscreen" />
+          <Tabs.Screen name="settings" />
         </Tabs>
       </View>
-      
+
       {!isEmployee && (
         <ScrollableNavBar
           activeRoute={activeRoute}
