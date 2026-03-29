@@ -20,26 +20,21 @@ export type ThemeType =
   | 'hud_blue_light';
 
 export interface ThemeColors {
-  // Core
   primary: string;
   primaryDark: string;
   primaryLight: string;
   accent: string;
   accentLight: string;
-  // Backgrounds
   background: string;
   backgroundSecondary: string;
   backgroundTertiary: string;
   surface: string;
   surfaceLight: string;
-  // Text
   text: string;
   textSecondary: string;
   textTertiary: string;
-  // Borders
   border: string;
   borderLight: string;
-  // Semantic
   success: string;
   successLight: string;
   successBg: string;
@@ -55,9 +50,7 @@ export interface ThemeColors {
   purple: string;
   purpleLight: string;
   purpleBg: string;
-  // Charts
   chartColors: string[];
-  // HUD-specific
   isHUD: boolean;
   isLight: boolean;
   hudPrimary: string;
@@ -89,59 +82,41 @@ export const THEME_LABELS: Record<ThemeType, string> = {
   hud_blue_light:   'Electric Blue — Light',
 };
 
-// ── THEME GROUPS for Settings display ─────────────────────────
+// ── THEME GROUPS ───────────────────────────────────────────────
 export const THEME_GROUPS: { label: string; themes: ThemeType[] }[] = [
-  {
-    label: 'Futuristic Cyan',
-    themes: ['hud_cyan_dark', 'hud_cyan_light'],
-  },
-  {
-    label: 'Neon Green',
-    themes: ['hud_green_dark', 'hud_green_light'],
-  },
-  {
-    label: 'Silver Surfer',
-    themes: ['hud_silver_dark', 'hud_silver_light'],
-  },
-  {
-    label: 'Silver & Gold',
-    themes: ['hud_gold_dark', 'hud_gold_light'],
-  },
-  {
-    label: 'Silver & Purple',
-    themes: ['hud_purple_dark', 'hud_purple_light'],
-  },
-  {
-    label: 'Electric Blue',
-    themes: ['hud_blue_dark', 'hud_blue_light'],
-  },
+  { label: 'Futuristic Cyan',  themes: ['hud_cyan_dark',   'hud_cyan_light']   },
+  { label: 'Neon Green',       themes: ['hud_green_dark',  'hud_green_light']  },
+  { label: 'Silver Surfer',    themes: ['hud_silver_dark', 'hud_silver_light'] },
+  { label: 'Silver & Gold',    themes: ['hud_gold_dark',   'hud_gold_light']   },
+  { label: 'Silver & Purple',  themes: ['hud_purple_dark', 'hud_purple_light'] },
+  { label: 'Electric Blue',    themes: ['hud_blue_dark',   'hud_blue_light']   },
 ];
 
 // ── THEME PREVIEW COLORS ───────────────────────────────────────
 export const THEME_PREVIEW_COLORS: Record<ThemeType, { bg: string; accent: string; label: string }> = {
-  hud_cyan_dark:    { bg: '#010B18', accent: '#00E5FF', label: 'Dark' },
-  hud_cyan_light:   { bg: '#1A2A35', accent: '#00E5FF', label: 'Light' },
-  hud_green_dark:   { bg: '#010F03', accent: '#00FF41', label: 'Dark' },
-  hud_green_light:  { bg: '#0F1F12', accent: '#00FF41', label: 'Light' },
-  hud_silver_dark:  { bg: '#0D0D12', accent: '#C0C8D8', label: 'Dark' },
-  hud_silver_light: { bg: '#222230', accent: '#C0C8D8', label: 'Light' },
-  hud_gold_dark:    { bg: '#0F0900', accent: '#FFD700', label: 'Dark' },
-  hud_gold_light:   { bg: '#1F1600', accent: '#FFD700', label: 'Light' },
-  hud_purple_dark:  { bg: '#080010', accent: '#CC44FF', label: 'Dark' },
-  hud_purple_light: { bg: '#180028', accent: '#CC44FF', label: 'Light' },
-  hud_blue_dark:    { bg: '#00001A', accent: '#88CCFF', label: 'Dark' },
-  hud_blue_light:   { bg: '#0A1428', accent: '#88CCFF', label: 'Light' },
+  hud_cyan_dark:    { bg: '#010B18', accent: '#00E5FF', label: 'Dark'  },
+  hud_cyan_light:   { bg: '#FFFFFF', accent: '#00B8CC', label: 'Light' },
+  hud_green_dark:   { bg: '#010F03', accent: '#00FF41', label: 'Dark'  },
+  hud_green_light:  { bg: '#FFFFFF', accent: '#00AA22', label: 'Light' },
+  hud_silver_dark:  { bg: '#0D0D12', accent: '#C0C8D8', label: 'Dark'  },
+  hud_silver_light: { bg: '#FFFFFF', accent: '#5566AA', label: 'Light' },
+  hud_gold_dark:    { bg: '#0F0900', accent: '#FFD700', label: 'Dark'  },
+  hud_gold_light:   { bg: '#FFFFFF', accent: '#AA7700', label: 'Light' },
+  hud_purple_dark:  { bg: '#080010', accent: '#CC44FF', label: 'Dark'  },
+  hud_purple_light: { bg: '#FFFFFF', accent: '#8800BB', label: 'Light' },
+  hud_blue_dark:    { bg: '#00001A', accent: '#88CCFF', label: 'Dark'  },
+  hud_blue_light:   { bg: '#FFFFFF', accent: '#0055BB', label: 'Light' },
 };
 
-// ── HUD THEME BUILDER ──────────────────────────────────────────
+// ── HUD BUILDER ────────────────────────────────────────────────
 function buildHUD(opts: {
   bg: string;
   bg2: string;
   bg3: string;
   surface: string;
-  c1: string;       // primary accent
-  c2: string;       // secondary accent
-  c3: string;       // dim accent
+  c1: string;
+  c2: string;
+  c3: string;
   textStrong: string;
   textMid: string;
   textDim: string;
@@ -156,39 +131,32 @@ function buildHUD(opts: {
     primaryLight: c2,
     accent: c2,
     accentLight: c2,
-
     background: bg,
     backgroundSecondary: bg2,
     backgroundTertiary: bg3,
-    surface: surface,
+    surface,
     surfaceLight: bg2,
-
     text: textStrong,
     textSecondary: textMid,
     textTertiary: textDim,
-
     border: `${c1}28`,
     borderLight: `${c1}14`,
-
-    // Semantic — universal, always readable on any HUD bg
-    success: '#00FF88',
-    successLight: '#66FFAA',
-    successBg: 'rgba(0,255,136,0.14)',
+    success: '#00CC66',
+    successLight: '#00FF88',
+    successBg: 'rgba(0,204,102,0.12)',
     warning: '#FFB800',
     warningLight: '#FFD044',
-    warningBg: 'rgba(255,184,0,0.14)',
+    warningBg: 'rgba(255,184,0,0.12)',
     error: '#FF3344',
     errorLight: '#FF6677',
-    errorBg: 'rgba(255,51,68,0.14)',
+    errorBg: 'rgba(255,51,68,0.12)',
     info: c1,
     infoLight: c2,
-    infoBg: `${c1}18`,
+    infoBg: `${c1}14`,
     purple: '#CC44FF',
     purpleLight: '#DD77FF',
-    purpleBg: 'rgba(204,68,255,0.14)',
-
+    purpleBg: 'rgba(204,68,255,0.12)',
     chartColors: [c1, c2, '#FFB800', '#FF3344', '#CC44FF'],
-
     isHUD: true,
     isLight,
     hudPrimary: c1,
@@ -197,8 +165,8 @@ function buildHUD(opts: {
     hudGlow: `${c1}0C`,
     hudBg: bg,
     hudSurface: surface,
-    hudBorder: `${c1}28`,
-    hudBorderBright: `${c1}6A`,
+    hudBorder: isLight ? `${c1}40` : `${c1}28`,
+    hudBorderBright: isLight ? `${c1}80` : `${c1}6A`,
     hudTextStrong: textStrong,
     hudScanColor: scanColor,
     hudCityColor: c1,
@@ -208,207 +176,111 @@ function buildHUD(opts: {
 // ── ALL 12 THEMES ──────────────────────────────────────────────
 const themes: Record<ThemeType, ThemeColors> = {
 
-  // ── FUTURISTIC CYAN — DARK ───────────────────────────────────
+  // FUTURISTIC CYAN — DARK
   hud_cyan_dark: buildHUD({
-    bg:         '#010B18',
-    bg2:        '#041428',
-    bg3:        '#071E3A',
-    surface:    '#051628',
-    c1:         '#00E5FF',
-    c2:         '#00FFD0',
-    c3:         '#0099CC',
-    textStrong: '#CCFEFF',
-    textMid:    '#7ADEEF',
-    textDim:    '#3D8899',
-    scanColor:  'rgba(0,229,255,0.65)',
-    isLight:    false,
+    bg: '#010B18', bg2: '#041428', bg3: '#071E3A', surface: '#051628',
+    c1: '#00E5FF', c2: '#00FFD0', c3: '#0099CC',
+    textStrong: '#CCFEFF', textMid: '#7ADEEF', textDim: '#3D8899',
+    scanColor: 'rgba(0,229,255,0.65)', isLight: false,
   }),
 
-  // ── FUTURISTIC CYAN — LIGHT ──────────────────────────────────
+  // FUTURISTIC CYAN — LIGHT
   hud_cyan_light: buildHUD({
-    bg:         '#1A2A35',
-    bg2:        '#223340',
-    bg3:        '#2A3D4A',
-    surface:    '#1E3040',
-    c1:         '#00E5FF',
-    c2:         '#00FFD0',
-    c3:         '#0099CC',
-    textStrong: '#EEFCFF',
-    textMid:    '#9EEEFF',
-    textDim:    '#5AADBB',
-    scanColor:  'rgba(0,229,255,0.5)',
-    isLight:    true,
+    bg: '#FFFFFF', bg2: '#F0FEFF', bg3: '#E0FAFF', surface: '#FFFFFF',
+    c1: '#00B8CC', c2: '#00998A', c3: '#007788',
+    textStrong: '#001A20', textMid: '#005566', textDim: '#668899',
+    scanColor: 'rgba(0,184,204,0.25)', isLight: true,
   }),
 
-  // ── NEON GREEN — DARK ────────────────────────────────────────
+  // NEON GREEN — DARK
   hud_green_dark: buildHUD({
-    bg:         '#010F03',
-    bg2:        '#021A06',
-    bg3:        '#042210',
-    surface:    '#031408',
-    c1:         '#00FF41',
-    c2:         '#AAFF00',
-    c3:         '#00CC33',
-    textStrong: '#CCFFCC',
-    textMid:    '#77EE77',
-    textDim:    '#338844',
-    scanColor:  'rgba(0,255,65,0.6)',
-    isLight:    false,
+    bg: '#010F03', bg2: '#021A06', bg3: '#042210', surface: '#031408',
+    c1: '#00FF41', c2: '#AAFF00', c3: '#00CC33',
+    textStrong: '#CCFFCC', textMid: '#77EE77', textDim: '#338844',
+    scanColor: 'rgba(0,255,65,0.6)', isLight: false,
   }),
 
-  // ── NEON GREEN — LIGHT ───────────────────────────────────────
+  // NEON GREEN — LIGHT
   hud_green_light: buildHUD({
-    bg:         '#0F1F12',
-    bg2:        '#162618',
-    bg3:        '#1C2E1E',
-    surface:    '#122015',
-    c1:         '#00FF41',
-    c2:         '#AAFF00',
-    c3:         '#00CC33',
-    textStrong: '#DDFFDD',
-    textMid:    '#99EE99',
-    textDim:    '#55AA66',
-    scanColor:  'rgba(0,255,65,0.45)',
-    isLight:    true,
+    bg: '#FFFFFF', bg2: '#F0FFF4', bg3: '#E0FFE8', surface: '#FFFFFF',
+    c1: '#00AA22', c2: '#558800', c3: '#007711',
+    textStrong: '#001A05', textMid: '#005511', textDim: '#447755',
+    scanColor: 'rgba(0,170,34,0.22)', isLight: true,
   }),
 
-  // ── SILVER SURFER — DARK ─────────────────────────────────────
+  // SILVER SURFER — DARK
   hud_silver_dark: buildHUD({
-    bg:         '#0D0D12',
-    bg2:        '#181820',
-    bg3:        '#202028',
-    surface:    '#141418',
-    c1:         '#C0C8D8',
-    c2:         '#E8EEFA',
-    c3:         '#7888A8',
-    textStrong: '#F0F4FF',
-    textMid:    '#A8B4CC',
-    textDim:    '#606880',
-    scanColor:  'rgba(192,200,216,0.55)',
-    isLight:    false,
+    bg: '#0D0D12', bg2: '#181820', bg3: '#202028', surface: '#141418',
+    c1: '#C0C8D8', c2: '#E8EEFA', c3: '#7888A8',
+    textStrong: '#F0F4FF', textMid: '#A8B4CC', textDim: '#606880',
+    scanColor: 'rgba(192,200,216,0.55)', isLight: false,
   }),
 
-  // ── SILVER SURFER — LIGHT ────────────────────────────────────
+  // SILVER SURFER — LIGHT
   hud_silver_light: buildHUD({
-    bg:         '#222230',
-    bg2:        '#2A2A3A',
-    bg3:        '#323244',
-    surface:    '#262636',
-    c1:         '#C0C8D8',
-    c2:         '#E8EEFA',
-    c3:         '#7888A8',
-    textStrong: '#FFFFFF',
-    textMid:    '#BCC8DC',
-    textDim:    '#788899',
-    scanColor:  'rgba(192,200,216,0.45)',
-    isLight:    true,
+    bg: '#FFFFFF', bg2: '#F5F6FA', bg3: '#ECEEF5', surface: '#FFFFFF',
+    c1: '#5566AA', c2: '#334488', c3: '#7888AA',
+    textStrong: '#0A0A18', textMid: '#334466', textDim: '#778899',
+    scanColor: 'rgba(85,102,170,0.22)', isLight: true,
   }),
 
-  // ── SILVER & GOLD — DARK ─────────────────────────────────────
+  // SILVER & GOLD — DARK
   hud_gold_dark: buildHUD({
-    bg:         '#0F0900',
-    bg2:        '#1A1200',
-    bg3:        '#221800',
-    surface:    '#140E00',
-    c1:         '#FFD700',
-    c2:         '#FFA500',
-    c3:         '#CC8800',
-    textStrong: '#FFF8CC',
-    textMid:    '#DDBB55',
-    textDim:    '#997722',
-    scanColor:  'rgba(255,215,0,0.6)',
-    isLight:    false,
+    bg: '#0F0900', bg2: '#1A1200', bg3: '#221800', surface: '#140E00',
+    c1: '#FFD700', c2: '#FFA500', c3: '#CC8800',
+    textStrong: '#FFF8CC', textMid: '#DDBB55', textDim: '#997722',
+    scanColor: 'rgba(255,215,0,0.6)', isLight: false,
   }),
 
-  // ── SILVER & GOLD — LIGHT ────────────────────────────────────
+  // SILVER & GOLD — LIGHT
   hud_gold_light: buildHUD({
-    bg:         '#1F1600',
-    bg2:        '#281C00',
-    bg3:        '#322200',
-    surface:    '#241A00',
-    c1:         '#FFD700',
-    c2:         '#FFA500',
-    c3:         '#CC8800',
-    textStrong: '#FFFADD',
-    textMid:    '#EEC833',
-    textDim:    '#AA8800',
-    scanColor:  'rgba(255,215,0,0.45)',
-    isLight:    true,
+    bg: '#FFFFFF', bg2: '#FFFDF0', bg3: '#FFF8D6', surface: '#FFFFFF',
+    c1: '#AA7700', c2: '#885500', c3: '#CC9900',
+    textStrong: '#1A0E00', textMid: '#664400', textDim: '#997733',
+    scanColor: 'rgba(170,119,0,0.22)', isLight: true,
   }),
 
-  // ── SILVER & PURPLE — DARK ───────────────────────────────────
+  // SILVER & PURPLE — DARK
   hud_purple_dark: buildHUD({
-    bg:         '#080010',
-    bg2:        '#100020',
-    bg3:        '#18002A',
-    surface:    '#0C0018',
-    c1:         '#CC44FF',
-    c2:         '#FF88FF',
-    c3:         '#8800CC',
-    textStrong: '#F8CCFF',
-    textMid:    '#CC77EE',
-    textDim:    '#7733AA',
-    scanColor:  'rgba(204,68,255,0.6)',
-    isLight:    false,
+    bg: '#080010', bg2: '#100020', bg3: '#18002A', surface: '#0C0018',
+    c1: '#CC44FF', c2: '#FF88FF', c3: '#8800CC',
+    textStrong: '#F8CCFF', textMid: '#CC77EE', textDim: '#7733AA',
+    scanColor: 'rgba(204,68,255,0.6)', isLight: false,
   }),
 
-  // ── SILVER & PURPLE — LIGHT ──────────────────────────────────
+  // SILVER & PURPLE — LIGHT
   hud_purple_light: buildHUD({
-    bg:         '#180028',
-    bg2:        '#200034',
-    bg3:        '#28003E',
-    surface:    '#1C002E',
-    c1:         '#CC44FF',
-    c2:         '#FF88FF',
-    c3:         '#8800CC',
-    textStrong: '#FFDDFF',
-    textMid:    '#DD99FF',
-    textDim:    '#9944BB',
-    scanColor:  'rgba(204,68,255,0.45)',
-    isLight:    true,
+    bg: '#FFFFFF', bg2: '#FDF0FF', bg3: '#F8E0FF', surface: '#FFFFFF',
+    c1: '#8800BB', c2: '#6600AA', c3: '#AA33CC',
+    textStrong: '#0A0015', textMid: '#550077', textDim: '#886699',
+    scanColor: 'rgba(136,0,187,0.22)', isLight: true,
   }),
 
-  // ── ELECTRIC BLUE — DARK ─────────────────────────────────────
+  // ELECTRIC BLUE — DARK
   hud_blue_dark: buildHUD({
-    bg:         '#00001A',
-    bg2:        '#000822',
-    bg3:        '#00102E',
-    surface:    '#00041E',
-    c1:         '#88CCFF',
-    c2:         '#AAEEFF',
-    c3:         '#3366CC',
-    textStrong: '#DDEEFF',
-    textMid:    '#88BBDD',
-    textDim:    '#335577',
-    scanColor:  'rgba(136,204,255,0.6)',
-    isLight:    false,
+    bg: '#00001A', bg2: '#000822', bg3: '#00102E', surface: '#00041E',
+    c1: '#88CCFF', c2: '#AAEEFF', c3: '#3366CC',
+    textStrong: '#DDEEFF', textMid: '#88BBDD', textDim: '#335577',
+    scanColor: 'rgba(136,204,255,0.6)', isLight: false,
   }),
 
-  // ── ELECTRIC BLUE — LIGHT ────────────────────────────────────
+  // ELECTRIC BLUE — LIGHT
   hud_blue_light: buildHUD({
-    bg:         '#0A1428',
-    bg2:        '#101C34',
-    bg3:        '#162240',
-    surface:    '#0E1830',
-    c1:         '#88CCFF',
-    c2:         '#AAEEFF',
-    c3:         '#3366CC',
-    textStrong: '#EEF8FF',
-    textMid:    '#99CCEE',
-    textDim:    '#446688',
-    scanColor:  'rgba(136,204,255,0.45)',
-    isLight:    true,
+    bg: '#FFFFFF', bg2: '#F0F6FF', bg3: '#E0EEFF', surface: '#FFFFFF',
+    c1: '#0055BB', c2: '#0033AA', c3: '#3377CC',
+    textStrong: '#000A1A', textMid: '#003377', textDim: '#446688',
+    scanColor: 'rgba(0,85,187,0.22)', isLight: true,
   }),
 };
 
-// ── VALID THEME LIST ───────────────────────────────────────────
+// ── VALID THEMES ───────────────────────────────────────────────
 const VALID_THEMES: ThemeType[] = [
-  'hud_cyan_dark', 'hud_cyan_light',
-  'hud_green_dark', 'hud_green_light',
+  'hud_cyan_dark',   'hud_cyan_light',
+  'hud_green_dark',  'hud_green_light',
   'hud_silver_dark', 'hud_silver_light',
-  'hud_gold_dark', 'hud_gold_light',
+  'hud_gold_dark',   'hud_gold_light',
   'hud_purple_dark', 'hud_purple_light',
-  'hud_blue_dark', 'hud_blue_light',
+  'hud_blue_dark',   'hud_blue_light',
 ];
 
 // ── BAR TEXT HELPER ────────────────────────────────────────────
@@ -435,15 +307,12 @@ export const [ThemeProvider, useTheme] = createContextHook(() => {
           AsyncStorage.getItem(THEME_STORAGE_KEY),
           AsyncStorage.getItem(COMPANY_COLORS_KEY),
         ]);
-
         if (saved && VALID_THEMES.includes(saved as ThemeType)) {
           setThemeName(saved as ThemeType);
         } else if (saved) {
-          // Migrate old theme names to default HUD
           setThemeName('hud_cyan_dark');
           await AsyncStorage.setItem(THEME_STORAGE_KEY, 'hud_cyan_dark');
         }
-
         if (savedColors) {
           try {
             const parsed = JSON.parse(savedColors);
@@ -478,19 +347,14 @@ export const [ThemeProvider, useTheme] = createContextHook(() => {
     }
   }, []);
 
-  const colors = useMemo<ThemeColors>(() => {
-    return themes[themeName] || themes.hud_cyan_dark;
-  }, [themeName]);
-
+  const colors = useMemo<ThemeColors>(() => themes[themeName] || themes.hud_cyan_dark, [themeName]);
   const barColors = useMemo<string[]>(() => {
     if (companyColors.length === 0) return [colors.surface, colors.surface];
     if (companyColors.length === 1) return [companyColors[0], companyColors[0]];
     return companyColors;
   }, [companyColors, colors.surface]);
-
   const barText = useMemo(() => barTextColor(companyColors), [companyColors]);
-
-  const isHUD = true; // always true — all themes are HUD
+  const isHUD = true;
   const isLight = useMemo(() => colors.isLight, [colors]);
 
   return {
