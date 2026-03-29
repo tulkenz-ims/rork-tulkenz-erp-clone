@@ -14,30 +14,26 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { NAVIGATION_MODULES, type NavigationModule } from '@/constants/navigationModules';
 import { useTabBadgeCounts, getBadgeSeverityColor, type TabBadgeCounts } from '@/hooks/useTabBadgeCounts';
 
-// On web, horizontal ScrollView ignores mouse wheel.
-// This wrapper makes a View act as a native scrollable container.
+const MONO = Platform.OS === 'ios' ? 'Menlo' : 'monospace';
+
+// ── Web horizontal scroll wrapper ─────────────────────────────
 function WebHorizontalScroll({ children, style }: { children: React.ReactNode; style?: any }) {
   const containerRef = useRef<View>(null);
 
   useEffect(() => {
     if (Platform.OS !== 'web') return;
-    // In react-native-web, View refs expose the underlying DOM node
     const node = containerRef.current as unknown as HTMLElement;
     if (!node) return;
-    // Make it horizontally scrollable via CSS
     node.style.overflowX = 'auto';
     node.style.overflowY = 'hidden';
-    node.style.scrollbarWidth = 'none'; // Firefox
-    node.style.msOverflowStyle = 'none'; // IE/Edge
+    node.style.scrollbarWidth = 'none';
+    node.style.msOverflowStyle = 'none';
     node.style.webkitOverflowScrolling = 'touch';
-    // Hide scrollbar for WebKit
     const styleSheet = document.createElement('style');
     const className = 'nav-scroll-' + Math.random().toString(36).slice(2, 8);
     node.classList.add(className);
     styleSheet.textContent = `.${className}::-webkit-scrollbar { display: none; }`;
     document.head.appendChild(styleSheet);
-
-    // Translate vertical wheel into horizontal scroll
     const handler = (e: WheelEvent) => {
       if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
         e.preventDefault();
@@ -69,21 +65,20 @@ export default function ScrollableNavBar({
   onNavigate,
   visibleModules,
 }: ScrollableNavBarProps) {
-  const { colors, barColors, barText, companyColors } = useTheme();
+  const { colors, barColors, barText, companyColors, isLight } = useTheme();
   const insets = useSafeAreaInsets();
   const scrollViewRef = useRef<ScrollView>(null);
   const badgeCounts = useTabBadgeCounts();
 
-  const filteredModules = NAVIGATION_MODULES.filter(
-    (m) => visibleModules.includes(m.key)
-  );
-
+  const filteredModules = NAVIGATION_MODULES.filter(m => visibleModules.includes(m.key));
   const hasCompanyColors = companyColors.length > 0;
-  // When company colors are set, use contrasting text; otherwise use theme colors
-  const iconColor = hasCompanyColors ? barText : colors.textSecondary;
-  const activeColor = hasCompanyColors ? barText : colors.primary;
-  const activeIconBg = hasCompanyColors ? (barText === '#FFFFFF' ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)') : colors.primary + '20';
-  const indicatorColor = hasCompanyColors ? barText : colors.primary;
+
+  // HUD color logic
+  const activeColor  = hasCompanyColors ? barText : colors.hudPrimary;
+  const inactiveColor = hasCompanyColors ? barText + 'AA' : colors.textTertiary;
+  const indicatorColor = hasCompanyColors ? barText : colors.hudPrimary;
+  const borderTopColor = hasCompanyColors ? 'transparent' : colors.hudBorderBright;
+  const bgColor = hasCompanyColors ? undefined : (isLight ? '#FFFFFF' : colors.hudSurface);
 
   const getIsActive = (module: NavigationModule) => {
     if (module.route === activeRoute) return true;
@@ -91,30 +86,18 @@ export default function ScrollableNavBar({
     return false;
   };
 
-  const containerStyle = [
-    styles.container,
-    {
-      borderTopColor: hasCompanyColors ? 'transparent' : colors.border,
-      paddingBottom: Platform.OS === 'web' ? 8 : insets.bottom,
-    },
-  ];
-
-  const navItems = filteredModules.map((module) => {
-    const isActive = getIsActive(module);
-    return (
-      <NavItem
-        key={module.key}
-        module={module}
-        isActive={isActive}
-        onPress={() => onNavigate(module.route)}
-        iconColor={iconColor}
-        activeColor={activeColor}
-        activeIconBg={activeIconBg}
-        indicatorColor={indicatorColor}
-        badgeCounts={badgeCounts}
-      />
-    );
-  });
+  const navItems = filteredModules.map(module => (
+    <NavItem
+      key={module.key}
+      module={module}
+      isActive={getIsActive(module)}
+      onPress={() => onNavigate(module.route)}
+      activeColor={activeColor}
+      inactiveColor={inactiveColor}
+      indicatorColor={indicatorColor}
+      badgeCounts={badgeCounts}
+    />
+  ));
 
   const innerContent = Platform.OS === 'web' ? (
     <WebHorizontalScroll style={styles.scrollContent}>
@@ -132,6 +115,15 @@ export default function ScrollableNavBar({
     </ScrollView>
   );
 
+  const containerStyle = [
+    styles.container,
+    {
+      borderTopColor,
+      borderTopWidth: 1,
+      paddingBottom: Platform.OS === 'web' ? 8 : insets.bottom,
+    },
+  ];
+
   if (hasCompanyColors) {
     return (
       <LinearGradient
@@ -146,60 +138,48 @@ export default function ScrollableNavBar({
   }
 
   return (
-    <View style={[containerStyle, { backgroundColor: colors.surface }]}>
+    <View style={[containerStyle, { backgroundColor: bgColor }]}>
       {innerContent}
     </View>
   );
 }
 
+// ── Nav item ───────────────────────────────────────────────────
 interface NavItemProps {
   module: NavigationModule;
   isActive: boolean;
   onPress: () => void;
-  iconColor: string;
   activeColor: string;
-  activeIconBg: string;
+  inactiveColor: string;
   indicatorColor: string;
   badgeCounts: TabBadgeCounts;
 }
 
-function NavItem({ module, isActive, onPress, iconColor, activeColor, activeIconBg, indicatorColor, badgeCounts }: NavItemProps) {
+function NavItem({
+  module, isActive, onPress,
+  activeColor, inactiveColor, indicatorColor, badgeCounts,
+}: NavItemProps) {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const ModuleIcon = module.icon;
 
   const getBadgeForModule = (moduleKey: string) => {
     switch (moduleKey) {
-      case 'inventory':
-        return badgeCounts.inventory;
-      case 'cmms':
-        return badgeCounts.cmms;
-      case 'procurement':
-        return badgeCounts.procurement;
-      case 'approvals':
-        return badgeCounts.approvals;
-      case 'dashboard':
-        return badgeCounts.dashboard;
-      default:
-        return null;
+      case 'inventory':   return badgeCounts.inventory;
+      case 'cmms':        return badgeCounts.cmms;
+      case 'procurement': return badgeCounts.procurement;
+      case 'approvals':   return badgeCounts.approvals;
+      case 'dashboard':   return badgeCounts.dashboard;
+      default:            return null;
     }
   };
 
   const badge = getBadgeForModule(module.key);
 
   const handlePressIn = () => {
-    Animated.spring(scaleAnim, {
-      toValue: 0.9,
-      useNativeDriver: true,
-    }).start();
+    Animated.spring(scaleAnim, { toValue: 0.88, useNativeDriver: true }).start();
   };
-
   const handlePressOut = () => {
-    Animated.spring(scaleAnim, {
-      toValue: 1,
-      friction: 3,
-      tension: 100,
-      useNativeDriver: true,
-    }).start();
+    Animated.spring(scaleAnim, { toValue: 1, friction: 3, tension: 100, useNativeDriver: true }).start();
   };
 
   return (
@@ -209,54 +189,52 @@ function NavItem({ module, isActive, onPress, iconColor, activeColor, activeIcon
       onPressOut={handlePressOut}
       style={styles.navItemContainer}
     >
-      <Animated.View
-        style={[
-          styles.navItem,
-          { transform: [{ scale: scaleAnim }] },
-        ]}
-      >
-        <View
-          style={[
-            styles.iconContainer,
-            {
-              backgroundColor: isActive ? activeIconBg : 'transparent',
-            },
-          ]}
-        >
+      <Animated.View style={[styles.navItem, { transform: [{ scale: scaleAnim }] }]}>
+
+        {/* Top accent line — active indicator */}
+        {isActive && (
+          <View style={[styles.topAccentLine, { backgroundColor: indicatorColor }]} />
+        )}
+
+        {/* Icon area — no rounded bubble, just the icon */}
+        <View style={styles.iconArea}>
           <ModuleIcon
-            size={22}
-            color={isActive ? activeColor : iconColor}
+            size={20}
+            color={isActive ? activeColor : inactiveColor}
           />
+          {/* Badge */}
           {badge && badge.count > 0 && (
-            <View
-              style={[
-                styles.badge,
-                {
-                  backgroundColor: getBadgeSeverityColor(badge.severity),
-                },
-              ]}
-            >
+            <View style={[styles.badge, { backgroundColor: getBadgeSeverityColor(badge.severity) }]}>
               <Text style={styles.badgeText}>
                 {badge.count > 99 ? '99+' : badge.count}
               </Text>
             </View>
           )}
         </View>
+
+        {/* Label */}
         <Text
           style={[
             styles.label,
             {
-              color: isActive ? activeColor : iconColor,
-              fontWeight: isActive ? '600' : '400',
+              color: isActive ? activeColor : inactiveColor,
+              fontWeight: isActive ? '700' : '400',
+              fontFamily: MONO,
             },
           ]}
           numberOfLines={1}
         >
-          {module.label}
+          {module.label.toUpperCase()}
         </Text>
+
+        {/* Left corner bracket on active */}
         {isActive && (
-          <View style={[styles.activeIndicator, { backgroundColor: indicatorColor }]} />
+          <>
+            <View style={[styles.bracketTL, { borderColor: indicatorColor }]} />
+            <View style={[styles.bracketTR, { borderColor: indicatorColor }]} />
+          </>
         )}
+
       </Animated.View>
     </Pressable>
   );
@@ -264,7 +242,6 @@ function NavItem({ module, isActive, onPress, iconColor, activeColor, activeIcon
 
 const styles = StyleSheet.create({
   container: {
-    borderTopWidth: 1,
     position: 'absolute',
     bottom: 0,
     left: 0,
@@ -274,10 +251,10 @@ const styles = StyleSheet.create({
     flexGrow: 0,
   },
   scrollContent: {
-    paddingHorizontal: 8,
-    paddingTop: 8,
+    paddingHorizontal: 4,
+    paddingTop: 6,
     paddingBottom: 4,
-    gap: 4,
+    gap: 0,
   },
   navItemContainer: {
     alignItems: 'center',
@@ -285,45 +262,68 @@ const styles = StyleSheet.create({
   navItem: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    minWidth: 64,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    minWidth: 60,
     position: 'relative',
   },
-  iconContainer: {
-    width: 40,
-    height: 32,
-    borderRadius: 16,
+  // Top accent line replaces rounded dot indicator
+  topAccentLine: {
+    position: 'absolute',
+    top: 0,
+    left: 8,
+    right: 8,
+    height: 2,
+  },
+  // Icon — no background bubble, no borderRadius
+  iconArea: {
+    width: 36,
+    height: 28,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 2,
+    marginBottom: 3,
+    position: 'relative',
   },
   label: {
-    fontSize: 10,
-    textAlign: 'center' as const,
-    maxWidth: 70,
+    fontSize: 8,
+    textAlign: 'center',
+    maxWidth: 68,
+    letterSpacing: 0.8,
   },
-  activeIndicator: {
+  // Corner brackets on active item
+  bracketTL: {
     position: 'absolute',
-    top: -4,
-    width: 4,
-    height: 4,
-    borderRadius: 2,
+    top: 2,
+    left: 2,
+    width: 6,
+    height: 6,
+    borderTopWidth: 1,
+    borderLeftWidth: 1,
   },
+  bracketTR: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    width: 6,
+    height: 6,
+    borderTopWidth: 1,
+    borderRightWidth: 1,
+  },
+  // Badge
   badge: {
     position: 'absolute',
     top: -2,
-    right: -4,
-    minWidth: 16,
-    height: 16,
-    borderRadius: 8,
+    right: -2,
+    minWidth: 15,
+    height: 15,
+    borderRadius: 7,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 4,
+    paddingHorizontal: 3,
   },
   badgeText: {
     color: '#FFFFFF',
-    fontSize: 9,
-    fontWeight: '700' as const,
+    fontSize: 8,
+    fontWeight: '700',
   },
 });
