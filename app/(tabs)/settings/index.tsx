@@ -300,7 +300,7 @@ export default function SettingsScreen() {
                     {group.themes.map(t => {
                       const preview = THEME_PREVIEW_COLORS[t];
                       const isSelected = theme === t;
-                      const isDark = t.endsWith('_dark');
+                      const isDark = !preview.bg.startsWith('#F') && !preview.bg.startsWith('#ff') && !preview.bg.startsWith('#EE');
 
                       return (
                         <Pressable
@@ -325,13 +325,10 @@ export default function SettingsScreen() {
                             <View style={[styles.swatchRingInner, { borderColor: preview.accent + '50' }]} />
                             {/* Center dot */}
                             <View style={[styles.swatchDot, { backgroundColor: preview.accent }]} />
-                            {/* Fire rivers — amber lines */}
-                            <View style={[styles.swatchFire1, { backgroundColor: '#FFB800' + '40' }]} />
-                            <View style={[styles.swatchFire2, { backgroundColor: '#FFB800' + '30' }]} />
                             {/* Selected check */}
                             {isSelected && (
                               <View style={[styles.swatchCheck, { backgroundColor: preview.accent }]}>
-                                <Check size={10} color="#000" />
+                                <Check size={10} color={isDark ? '#000' : '#fff'} />
                               </View>
                             )}
                           </View>
