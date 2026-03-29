@@ -17,6 +17,7 @@ import EmergencyAlertOverlay from "@/components/EmergencyAlertOverlay";
 import AIAssistButton from "@/components/AIAssistButton";
 import HUDBackground from "@/components/HUDBackground";
 import { EmergencyRollCallProvider } from '@/contexts/EmergencyRollCallContext';
+import { BrandKitProvider } from '@/contexts/BrandKitContext';
 
 SplashScreen.preventAutoHideAsync();
 const queryClient = new QueryClient();
@@ -71,9 +72,11 @@ export default function RootLayout() {
                       <PushNotificationsProvider>
                         <RealtimeProvider>
                           <EmergencyRollCallProvider>
-                            <RootLayoutNav />
-                            <EmergencyAlertOverlay />
-                            <ConditionalAIAssist />
+                            <BrandKitProvider>
+                              <RootLayoutNav />
+                              <EmergencyAlertOverlay />
+                              <ConditionalAIAssist />
+                            </BrandKitProvider>
                           </EmergencyRollCallProvider>
                         </RealtimeProvider>
                       </PushNotificationsProvider>
