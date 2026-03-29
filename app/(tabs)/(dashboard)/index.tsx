@@ -1,46 +1,22 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
-  View,
-  Text,
-  ScrollView,
-  RefreshControl,
-  ActivityIndicator,
-  Pressable,
-  TouchableOpacity,
-  useWindowDimensions,
-  Alert,
-  Modal,
-  Animated,
-  Platform,
-  StyleSheet,
+  View, Text, ScrollView, RefreshControl, ActivityIndicator,
+  Pressable, TouchableOpacity, useWindowDimensions,
+  Alert, Modal, Animated, Platform, StyleSheet,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
-  Package,
-  Wrench,
-  Users,
-  RefreshCw,
-  Clock,
-  CheckCircle,
-  ChevronRight,
-  Flame,
-  Siren,
-  Tornado,
-  ShieldAlert,
-  X,
-  ClipboardList,
-  MapPin,
-  ChevronDown,
-  ShoppingCart,
-  Droplets,
-  Microscope,
-  HardHat,
-  Zap,
+  Package, Wrench, Users, RefreshCw, Clock, CheckCircle,
+  ChevronRight, Flame, Siren, Tornado, ShieldAlert, X,
+  ClipboardList, MapPin, ChevronDown, ShoppingCart,
+  Droplets, Microscope, HardHat, Zap,
 } from 'lucide-react-native';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { useUser } from '@/contexts/UserContext';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useThemeStyle } from '@/hooks/useThemeStyle';
+import { ThemedCard, ThemedHeader, ThemedSectionLabel, ThemedBadge, ThemedDivider, ThemedMetric } from '@/components/Themed';
 import EmployeeHome from '@/components/EmployeeHome';
 import LowStockAlerts from '@/components/LowStockAlerts';
 import UserProfileMenu from '@/components/UserProfileMenu';
@@ -61,7 +37,7 @@ import * as Haptics from 'expo-haptics';
 
 const MONO = Platform.OS === 'ios' ? 'Menlo' : 'monospace';
 
-// ── Corner brackets ────────────────────────────────────────────
+// ── Corner brackets (HUD only) ─────────────────────────────────
 function Brackets({ color, size = 12 }: { color: string; size?: number }) {
   return (
     <>
@@ -85,37 +61,52 @@ function PulsingDot({ color }: { color: string }) {
   return <Animated.View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: color, opacity: anim }} />;
 }
 
-// ── HUD Card ───────────────────────────────────────────────────
-function HudCard({ children, style, accent, title, titleColor, sub }: {
-  children: React.ReactNode;
-  style?: any;
-  accent?: string;
-  title?: string;
-  titleColor?: string;
-  sub?: string;
+// ── Adaptive card — HUD brackets on HUD, rounded shadow on light ─
+function DashCard({ children, style, accentColor, title, titleColor, sub }: {
+  children: React.ReactNode; style?: any;
+  accentColor?: string; title?: string; titleColor?: string; sub?: string;
 }) {
   const { colors } = useTheme();
-  const c = accent || colors.hudBorderBright;
+  const ts = useThemeStyle();
+  const ac = accentColor || colors.hudPrimary;
   const tc = titleColor || colors.hudPrimary;
 
   return (
-    <View style={[{
-      backgroundColor: colors.hudSurface,
-      borderWidth: 1,
-      borderColor: colors.hudBorder,
-      marginBottom: 10,
-      position: 'relative',
-    }, style]}>
-      <Brackets color={c} size={10} />
+    <View style={[
+      ts.card.surface,
+      { marginBottom: 10, position: 'relative', overflow: 'hidden' },
+      style,
+    ]}>
+      {/* HUD corner brackets */}
+      {ts.isHUD && <Brackets color={ac} size={10} />}
+
+      {/* Classic top rule */}
+      {ts.isClassic && <View style={{ height: 3, backgroundColor: ac, opacity: 0.7 }} />}
+
+      {/* Ghost Protocol left border accent */}
+      {ts.isGhost && title && (
+        <View style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, backgroundColor: ac }} />
+      )}
+
+      {/* Card header */}
       {title && (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingTop: 10, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: colors.hudBorder }}>
-          <View style={{ width: 2, height: 12, backgroundColor: tc }} />
-          <Text style={{ fontSize: 9, fontWeight: '800', color: tc, letterSpacing: 2.5, fontFamily: MONO, flex: 1 }}>
-            {title.toUpperCase()}
+        <View style={{
+          flexDirection: 'row', alignItems: 'center', gap: 6,
+          paddingHorizontal: 12, paddingTop: 10, paddingBottom: 8,
+          borderBottomWidth: 1, borderBottomColor: colors.border,
+          paddingLeft: ts.isGhost ? 18 : 12,
+        }}>
+          {ts.isHUD && <View style={{ width: 2, height: 12, backgroundColor: tc }} />}
+          {ts.isClean && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: tc }} />}
+          <Text style={[ts.label.section, { color: tc, flex: 1 }]}>
+            {ts.isHUD ? title.toUpperCase() : title}
           </Text>
-          {sub && <Text style={{ fontSize: 8, color: tc, opacity: 0.6, letterSpacing: 1.5, fontFamily: MONO }}>{sub}</Text>}
+          {sub && <Text style={[ts.label.hint, { letterSpacing: ts.isHUD ? 1.5 : 0.5 }]}>
+            {ts.isHUD ? sub : sub.toLowerCase()}
+          </Text>}
         </View>
       )}
+
       <View style={{ padding: 12 }}>
         {children}
       </View>
@@ -128,34 +119,28 @@ function QuickBtn({ icon, stat, label, desc, color, onPress }: {
   icon: React.ReactNode; stat: string; label: string; desc: string; color: string; onPress: () => void;
 }) {
   const { colors } = useTheme();
+  const ts = useThemeStyle();
   return (
     <TouchableOpacity
       activeOpacity={0.75}
       onPress={onPress}
       style={{
-        flex: 1,
-        alignItems: 'center',
-        paddingVertical: 14,
-        paddingHorizontal: 4,
-        backgroundColor: colors.hudSurface,
+        flex: 1, alignItems: 'center', paddingVertical: 14, paddingHorizontal: 4,
+        backgroundColor: ts.isHUD ? colors.hudSurface : colors.backgroundSecondary,
         borderWidth: 1,
-        borderColor: color + '45',
-        gap: 5,
-        minHeight: 115,
-        position: 'relative',
+        borderColor: ts.isHUD ? color + '45' : colors.border,
+        borderRadius: ts.radius.md,
+        gap: 5, minHeight: 115, position: 'relative',
       }}
     >
-      <Brackets color={color + '60'} size={7} />
-      <View style={{ width: 30, height: 30, backgroundColor: color + '18', alignItems: 'center', justifyContent: 'center' }}>
+      {ts.isHUD && <Brackets color={color + '60'} size={7} />}
+      {ts.isClean && <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, backgroundColor: color, borderTopLeftRadius: ts.radius.md, borderTopRightRadius: ts.radius.md }} />}
+      <View style={{ width: 30, height: 30, backgroundColor: color + '18', alignItems: 'center', justifyContent: 'center', borderRadius: ts.radius.sm }}>
         {icon}
       </View>
-      <Text style={{ fontSize: 18, fontWeight: '900', color, fontFamily: MONO, letterSpacing: -0.5 }}>{stat}</Text>
-      <Text style={{ fontSize: 7, fontWeight: '800', color, letterSpacing: 2, fontFamily: MONO, textAlign: 'center', opacity: 0.85 }}>
-        {label.toUpperCase()}
-      </Text>
-      <Text style={{ fontSize: 6.5, color: colors.textTertiary, textAlign: 'center', letterSpacing: 0.5, fontFamily: MONO }}>
-        {desc.toUpperCase()}
-      </Text>
+      <Text style={{ fontSize: 18, fontWeight: '900', color, fontFamily: ts.isHUD ? MONO : ts.font.primary, letterSpacing: ts.isHUD ? -0.5 : 0 }}>{stat}</Text>
+      <Text style={[ts.label.section, { color, textAlign: 'center' }]}>{label}</Text>
+      <Text style={[ts.label.hint, { textAlign: 'center', letterSpacing: 0.5 }]}>{desc}</Text>
     </TouchableOpacity>
   );
 }
@@ -163,30 +148,21 @@ function QuickBtn({ icon, stat, label, desc, color, onPress }: {
 // ── Status item ────────────────────────────────────────────────
 function StatusItem({ label, value, color, last }: { label: string; value: string; color: string; last?: boolean }) {
   const { colors } = useTheme();
+  const ts = useThemeStyle();
   return (
-    <View style={{
-      flex: 1,
-      alignItems: 'center',
-      gap: 3,
-      borderRightWidth: last ? 0 : 1,
-      borderRightColor: colors.hudBorder,
-    }}>
-      <Text style={{ fontSize: 12, fontWeight: '900', color, fontFamily: MONO }}>{value}</Text>
-      <Text style={{ fontSize: 6, fontWeight: '700', color: colors.textTertiary, letterSpacing: 1, textAlign: 'center', fontFamily: MONO }}>
-        {label.toUpperCase()}
+    <View style={{ flex: 1, alignItems: 'center', gap: 3, borderRightWidth: last ? 0 : 1, borderRightColor: colors.border }}>
+      <Text style={{ fontSize: 12, fontWeight: '900', color, fontFamily: ts.isHUD ? MONO : ts.font.primary }}>{value}</Text>
+      <Text style={[ts.label.hint, { fontSize: 6, letterSpacing: ts.isHUD ? 1 : 0.5, textAlign: 'center' }]}>
+        {ts.isHUD ? label.toUpperCase() : label}
       </Text>
     </View>
   );
 }
 
-// ── Radar eye (JARVIS center) ──────────────────────────────────
+// ── Radar eye (HUD only) ───────────────────────────────────────
 function RadarEye({ overallStatus, alertCount, checkedIn, total, primary, secondary }: {
-  overallStatus: string;
-  alertCount: number;
-  checkedIn: number;
-  total: number;
-  primary: string;
-  secondary: string;
+  overallStatus: string; alertCount: number; checkedIn: number;
+  total: number; primary: string; secondary: string;
 }) {
   const ring1 = useRef(new Animated.Value(0)).current;
   const ring2 = useRef(new Animated.Value(0)).current;
@@ -206,70 +182,20 @@ function RadarEye({ overallStatus, alertCount, checkedIn, total, primary, second
   const rot1 = ring1.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
   const rot2 = ring2.interpolate({ inputRange: [0, 1], outputRange: ['360deg', '0deg'] });
   const rot3 = ring3.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
-
   const SIZE = 180;
 
   return (
     <View style={{ width: SIZE, height: SIZE, alignItems: 'center', justifyContent: 'center', alignSelf: 'center', position: 'relative' }}>
-      <Animated.View style={{
-        position: 'absolute',
-        width: SIZE, height: SIZE,
-        borderRadius: SIZE / 2,
-        borderWidth: 1,
-        borderColor: primary + '25',
-        borderStyle: 'dashed',
-        transform: [{ rotate: rot1 }],
-      }} />
-      <Animated.View style={{
-        position: 'absolute',
-        width: SIZE * 0.75, height: SIZE * 0.75,
-        borderRadius: SIZE * 0.75 / 2,
-        borderWidth: 1,
-        borderColor: primary + '35',
-        transform: [{ rotate: rot2 }],
-      }} />
-      <Animated.View style={{
-        position: 'absolute',
-        width: SIZE * 0.75, height: SIZE * 0.75,
-        borderRadius: SIZE * 0.75 / 2,
-        borderWidth: 2,
-        borderColor: 'transparent',
-        borderTopColor: primary,
-        borderRightColor: primary + '40',
-        transform: [{ rotate: rot2 }],
-      }} />
-      <Animated.View style={{
-        position: 'absolute',
-        width: SIZE * 0.52, height: SIZE * 0.52,
-        borderRadius: SIZE * 0.52 / 2,
-        borderWidth: 1,
-        borderColor: secondary + '45',
-        transform: [{ rotate: rot3 }],
-      }} />
-      <Animated.View style={{
-        position: 'absolute',
-        width: SIZE * 0.52, height: SIZE * 0.52,
-        borderRadius: SIZE * 0.52 / 2,
-        borderWidth: 1.5,
-        borderColor: 'transparent',
-        borderBottomColor: secondary,
-        borderLeftColor: secondary + '40',
-        transform: [{ rotate: rot3 }],
-      }} />
+      <Animated.View style={{ position: 'absolute', width: SIZE, height: SIZE, borderRadius: SIZE / 2, borderWidth: 1, borderColor: primary + '25', borderStyle: 'dashed', transform: [{ rotate: rot1 }] }} />
+      <Animated.View style={{ position: 'absolute', width: SIZE * 0.75, height: SIZE * 0.75, borderRadius: SIZE * 0.75 / 2, borderWidth: 1, borderColor: primary + '35', transform: [{ rotate: rot2 }] }} />
+      <Animated.View style={{ position: 'absolute', width: SIZE * 0.75, height: SIZE * 0.75, borderRadius: SIZE * 0.75 / 2, borderWidth: 2, borderColor: 'transparent', borderTopColor: primary, borderRightColor: primary + '40', transform: [{ rotate: rot2 }] }} />
+      <Animated.View style={{ position: 'absolute', width: SIZE * 0.52, height: SIZE * 0.52, borderRadius: SIZE * 0.52 / 2, borderWidth: 1, borderColor: secondary + '45', transform: [{ rotate: rot3 }] }} />
+      <Animated.View style={{ position: 'absolute', width: SIZE * 0.52, height: SIZE * 0.52, borderRadius: SIZE * 0.52 / 2, borderWidth: 1.5, borderColor: 'transparent', borderBottomColor: secondary, borderLeftColor: secondary + '40', transform: [{ rotate: rot3 }] }} />
       <View style={{ position: 'absolute', width: SIZE * 0.8, height: 1, backgroundColor: primary + '18' }} />
       <View style={{ position: 'absolute', width: 1, height: SIZE * 0.8, backgroundColor: primary + '18' }} />
-      <Animated.View style={{
-        width: SIZE * 0.32, height: SIZE * 0.32,
-        borderRadius: SIZE * 0.32 / 2,
-        backgroundColor: overallStatus + '15',
-        borderWidth: 2,
-        borderColor: overallStatus,
-        alignItems: 'center',
-        justifyContent: 'center',
-        opacity: pulse,
-      }}>
+      <Animated.View style={{ width: SIZE * 0.32, height: SIZE * 0.32, borderRadius: SIZE * 0.32 / 2, backgroundColor: overallStatus + '15', borderWidth: 2, borderColor: overallStatus, alignItems: 'center', justifyContent: 'center', opacity: pulse }}>
         <Text style={{ fontSize: alertCount > 0 ? 18 : 14, fontWeight: '900', color: overallStatus, fontFamily: MONO, lineHeight: alertCount > 0 ? 20 : 16 }}>
-          {alertCount > 0 ? alertCount.toString() : '\u2713'}
+          {alertCount > 0 ? alertCount.toString() : '✓'}
         </Text>
         <Text style={{ fontSize: 6, color: overallStatus, letterSpacing: 1, fontFamily: MONO, opacity: 0.8 }}>
           {alertCount > 0 ? 'ALERTS' : 'OK'}
@@ -284,35 +210,67 @@ function RadarEye({ overallStatus, alertCount, checkedIn, total, primary, second
   );
 }
 
+// ── Light theme status summary (replaces radar on light themes) ──
+function StatusSummary({ alertCount, checkedIn, total, overallStatus, companyName, currentTime }: {
+  alertCount: number; checkedIn: number; total: number;
+  overallStatus: string; companyName: string; currentTime: Date;
+}) {
+  const { colors } = useTheme();
+  const ts = useThemeStyle();
+  return (
+    <View style={{ alignItems: 'center', paddingVertical: 20 }}>
+      <Text style={[ts.label.hint, { marginBottom: 4 }]}>
+        {companyName.toUpperCase()}
+      </Text>
+      <View style={{
+        width: 100, height: 100, borderRadius: 50,
+        backgroundColor: overallStatus + '15',
+        borderWidth: 3, borderColor: overallStatus,
+        alignItems: 'center', justifyContent: 'center',
+        marginBottom: 12,
+      }}>
+        <Text style={{ fontSize: alertCount > 0 ? 28 : 22, fontWeight: '900', color: overallStatus }}>
+          {alertCount > 0 ? alertCount : '✓'}
+        </Text>
+        <Text style={[ts.label.hint, { color: overallStatus, fontSize: 10 }]}>
+          {alertCount > 0 ? 'Alerts' : 'All Clear'}
+        </Text>
+      </View>
+      <Text style={[ts.label.secondary, { marginBottom: 4 }]}>
+        {checkedIn} of {total} employees on site
+      </Text>
+      <Text style={[ts.label.hint]}>
+        {currentTime.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+      </Text>
+    </View>
+  );
+}
+
 // ── Modal row ──────────────────────────────────────────────────
 function ModalRow({ Icon, color, title, sub, onPress }: {
   Icon: any; color: string; title: string; sub: string; onPress: () => void;
 }) {
   const { colors } = useTheme();
+  const ts = useThemeStyle();
   return (
     <TouchableOpacity
       activeOpacity={0.8}
       onPress={onPress}
       style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: colors.hudBg,
-        borderWidth: 1,
-        borderColor: colors.hudBorder,
-        borderLeftWidth: 3,
-        borderLeftColor: color,
-        padding: 12,
-        marginBottom: 6,
-        gap: 12,
-        position: 'relative',
+        flexDirection: 'row', alignItems: 'center',
+        backgroundColor: colors.backgroundSecondary,
+        borderWidth: 1, borderColor: colors.border,
+        borderLeftWidth: 3, borderLeftColor: color,
+        borderRadius: ts.radius.md,
+        padding: 12, marginBottom: 6, gap: 12, position: 'relative',
       }}
     >
-      <View style={{ width: 36, height: 36, backgroundColor: color + '20', alignItems: 'center', justifyContent: 'center' }}>
+      <View style={{ width: 36, height: 36, backgroundColor: color + '20', alignItems: 'center', justifyContent: 'center', borderRadius: ts.radius.sm }}>
         <Icon size={18} color={color} />
       </View>
       <View style={{ flex: 1 }}>
-        <Text style={{ fontSize: 13, fontWeight: '700', color: colors.hudTextStrong, fontFamily: MONO, marginBottom: 2 }}>{title}</Text>
-        <Text style={{ fontSize: 10, color: colors.textSecondary, fontFamily: MONO }}>{sub}</Text>
+        <Text style={[ts.label.body, { fontWeight: '700', marginBottom: 2 }]}>{title}</Text>
+        <Text style={ts.label.hint}>{sub}</Text>
       </View>
       <ChevronRight size={14} color={colors.textTertiary} />
     </TouchableOpacity>
@@ -325,24 +283,15 @@ export default function ExecutiveDashboard() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { colors } = useTheme();
+  const ts = useThemeStyle();
   const { width: windowWidth } = useWindowDimensions();
   const isWide = windowWidth >= 768;
 
-  const C = {
-    p:      colors.hudPrimary,
-    s:      colors.hudSecondary,
-    text:   colors.hudTextStrong,
-    textS:  colors.textSecondary,
-    textD:  colors.textTertiary,
-    bdr:    colors.hudBorder,
-    bdrB:   colors.hudBorderBright,
-    surf:   colors.hudSurface,
-    bg:     colors.hudBg,
-    green:  '#00FF88',
-    amber:  '#FFB800',
-    red:    '#FF3344',
-    purple: '#CC44FF',
-  };
+  // Semantic colors — same across themes
+  const GREEN  = '#00CC66';
+  const AMBER  = '#CC9900';
+  const RED    = '#DD2233';
+  const PURPLE = '#8844BB';
 
   // ── ALL DATA HOOKS — UNCHANGED ────────────────────────────────
   const { data: materials = [], isLoading: materialsLoading } = useMaterialsQuery();
@@ -363,16 +312,12 @@ export default function ExecutiveDashboard() {
     queryFn: async () => {
       if (!company?.id) return 0;
       const { count, error } = await supabase
-        .from('time_entries')
-        .select('*', { count: 'exact', head: true })
-        .eq('organization_id', company.id)
-        .is('clock_out', null);
+        .from('time_entries').select('*', { count: 'exact', head: true })
+        .eq('organization_id', company.id).is('clock_out', null);
       if (error) return 0;
       return count || 0;
     },
-    enabled: !!company?.id,
-    refetchInterval: 30000,
-    staleTime: 15000,
+    enabled: !!company?.id, refetchInterval: 30000, staleTime: 15000,
   });
 
   const erpLoading = materialsLoading || workOrdersLoading || employeesLoading || approvalsLoading;
@@ -414,9 +359,7 @@ export default function ExecutiveDashboard() {
   }, [router]);
 
   const materialsList = useMemo(() => materials.map(m => ({
-    ...m,
-    facility_name: m.facility_name || 'Unassigned',
-    vendor: m.vendor || 'Unknown Vendor',
+    ...m, facility_name: m.facility_name || 'Unassigned', vendor: m.vendor || 'Unknown Vendor',
   })), [materials]);
 
   const handleCreatePurchaseRequest = useCallback((materialId: string) => {
@@ -465,9 +408,9 @@ export default function ExecutiveDashboard() {
   // ── GUARDS ────────────────────────────────────────────────────
   if (authLoading || erpLoading) {
     return (
-      <View style={{ flex: 1, backgroundColor: C.bg, justifyContent: 'center', alignItems: 'center', gap: 16 }}>
-        <ActivityIndicator size="large" color={C.p} />
-        <Text style={{ color: C.p, fontSize: 11, fontWeight: '800', letterSpacing: 3, fontFamily: MONO }}>
+      <View style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center', gap: 16 }}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={[ts.label.section, { color: colors.primary }]}>
           {authLoading ? 'AUTHENTICATING...' : 'LOADING SYSTEMS...'}
         </Text>
       </View>
@@ -477,110 +420,107 @@ export default function ExecutiveDashboard() {
   if (isEmployee) return <EmployeeHome />;
 
   const alertCount = stats.lowStockCount + stats.outOfStockCount + stats.overdueWorkOrders;
-  const overallStatus = alertCount === 0 ? C.green : alertCount <= 3 ? C.amber : C.red;
+  const overallStatus = alertCount === 0 ? GREEN : alertCount <= 3 ? AMBER : RED;
 
   const pendingRequestsCount = purchaseRequests.filter(r => r.status === 'pending' || r.status === 'submitted').length;
   const pendingApprovalsCount = purchaseOrders.filter(po => po.status === 'pending_approval').length;
   const pendingReqsCount = purchaseRequisitions.filter(r => r.status === 'pending' || r.status === 'pending_approval').length;
-  const pendingReceiptCount = purchaseOrders.filter(po => ['approved','ordered','shipped'].includes(po.status)).length;
-  const activePOsCount = purchaseOrders.filter(po => !['cancelled','closed'].includes(po.status)).length;
+  const pendingReceiptCount = purchaseOrders.filter(po => ['approved', 'ordered', 'shipped'].includes(po.status)).length;
+  const activePOsCount = purchaseOrders.filter(po => !['cancelled', 'closed'].includes(po.status)).length;
 
   return (
-    <View style={{ flex: 1, backgroundColor: C.bg }}>
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingHorizontal: 12, paddingTop: 52, paddingBottom: 40 }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.p} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
         showsVerticalScrollIndicator={false}
       >
 
-        {/* ── SYSTEM TOP BAR ──────────────────────────────────── */}
-        <View style={{
-          flexDirection: 'row',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          borderWidth: 1,
-          borderColor: C.bdr,
-          backgroundColor: C.surf + '80',
-          padding: 8,
-          marginBottom: 10,
-          position: 'relative',
-        }}>
-          <Brackets color={C.bdrB} size={8} />
+        {/* ── TOP STATUS BAR ──────────────────────────────────── */}
+        <View style={[ts.card.surface, {
+          flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+          padding: 8, marginBottom: 10, position: 'relative',
+          backgroundColor: ts.isHUD ? colors.hudSurface + '80' : colors.surface,
+        }]}>
+          {ts.isHUD && <Brackets color={colors.hudBorderBright} size={8} />}
+          {ts.isGhost && <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, backgroundColor: '#111111' }} />}
+
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             <PulsingDot color={overallStatus} />
-            <Text style={{ fontSize: 9, color: C.textD, fontFamily: MONO, letterSpacing: 2 }}>EXECUTIVE OVERVIEW</Text>
+            <Text style={[ts.label.section, { color: colors.textSecondary }]}>
+              {ts.isHUD ? 'EXECUTIVE OVERVIEW' : 'Executive Overview'}
+            </Text>
           </View>
-          <Text style={{ fontSize: 8, color: C.textD, fontFamily: MONO, letterSpacing: 1 }}>
+          <Text style={[ts.label.hint, { fontFamily: MONO }]}>
             {currentTime.toLocaleTimeString('en-US', { hour12: false })} CST
           </Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <TouchableOpacity
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 4, borderWidth: 1, borderColor: C.bdrB, paddingHorizontal: 8, paddingVertical: 4 }}
+              style={{
+                flexDirection: 'row', alignItems: 'center', gap: 4,
+                borderWidth: 1, borderColor: colors.hudBorderBright,
+                borderRadius: ts.radius.sm, paddingHorizontal: 8, paddingVertical: 4,
+              }}
               onPress={() => setShowFacilityPicker(true)}
             >
-              <MapPin size={10} color={C.p} />
-              <Text style={{ fontSize: 8, color: C.p, fontFamily: MONO, letterSpacing: 1 }}>
-                {selectedFacility === 'all' ? 'ALL FACILITIES' : selectedFacility.toUpperCase().slice(0, 12)}
+              <MapPin size={10} color={colors.primary} />
+              <Text style={[ts.label.hint, { color: colors.primary }]}>
+                {selectedFacility === 'all' ? 'All Facilities' : selectedFacility.slice(0, 12)}
               </Text>
-              <ChevronDown size={9} color={C.textD} />
+              <ChevronDown size={9} color={colors.textTertiary} />
             </TouchableOpacity>
-            <TouchableOpacity onPress={onRefresh} style={{ padding: 4, borderWidth: 1, borderColor: C.bdrB }}>
-              <RefreshCw size={13} color={C.textS} />
+            <TouchableOpacity onPress={onRefresh} style={{ padding: 4, borderWidth: 1, borderColor: colors.border, borderRadius: ts.radius.sm }}>
+              <RefreshCw size={13} color={colors.textSecondary} />
             </TouchableOpacity>
             <UserProfileMenu />
           </View>
         </View>
 
-        {/* ── RADAR EYE HEADER ────────────────────────────────── */}
-        <View style={{
-          borderWidth: 1,
-          borderColor: C.bdrB,
-          backgroundColor: C.surf,
-          marginBottom: 10,
-          padding: 16,
-          position: 'relative',
-          alignItems: 'center',
-        }}>
-          <Brackets color={C.p} size={14} />
-          <Text style={{ fontSize: 10, color: C.textD, fontFamily: MONO, letterSpacing: 3, marginBottom: 4 }}>
-            {company?.name?.toUpperCase() || 'TULKENZ OPS'}
+        {/* ── HEADER — Radar (HUD) or Summary card (light) ─────── */}
+        <View style={[ts.card.surface, {
+          marginBottom: 10, padding: 16, position: 'relative', alignItems: 'center',
+        }]}>
+          {ts.isHUD && <Brackets color={colors.hudPrimary} size={14} />}
+          <Text style={[ts.label.section, { marginBottom: 4 }]}>
+            {company?.name || 'TulKenz OPS'}
           </Text>
-          <RadarEye
-            overallStatus={overallStatus}
-            alertCount={alertCount}
-            checkedIn={checkedInCount}
-            total={stats.activeEmployees}
-            primary={C.p}
-            secondary={C.s}
-          />
+
+          {ts.isHUD ? (
+            <RadarEye
+              overallStatus={overallStatus} alertCount={alertCount}
+              checkedIn={checkedInCount} total={stats.activeEmployees}
+              primary={colors.hudPrimary} secondary={colors.hudSecondary}
+            />
+          ) : (
+            <StatusSummary
+              alertCount={alertCount} checkedIn={checkedInCount}
+              total={stats.activeEmployees} overallStatus={overallStatus}
+              companyName={company?.name || 'TulKenz OPS'} currentTime={currentTime}
+            />
+          )}
+
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 8 }}>
-            <Clock size={10} color={C.textD} />
-            <Text style={{ fontSize: 9, color: C.textD, fontFamily: MONO, letterSpacing: 1 }}>
-              {currentTime.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }).toUpperCase()}
+            <Clock size={10} color={colors.textTertiary} />
+            <Text style={[ts.label.hint]}>
+              {currentTime.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
             </Text>
           </View>
         </View>
 
         {/* ── TELEMETRY STATUS STRIP ──────────────────────────── */}
-        <View style={{
-          flexDirection: 'row',
-          borderWidth: 1,
-          borderColor: C.bdrB,
-          backgroundColor: C.surf,
-          marginBottom: 10,
-          paddingVertical: 10,
-          position: 'relative',
-        }}>
-          <Brackets color={C.bdrB} size={8} />
+        <View style={[ts.card.surface, {
+          flexDirection: 'row', marginBottom: 10, paddingVertical: 10, position: 'relative',
+        }]}>
+          {ts.isHUD && <Brackets color={colors.hudBorderBright} size={8} />}
           {[
-            { label: 'INVENTORY',    value: `${stats.totalMaterials}`, color: C.p },
-            { label: 'LOW STOCK',    value: `${stats.lowStockCount}`, color: stats.lowStockCount > 0 ? C.amber : C.green },
-            { label: 'OUT OF STOCK', value: `${stats.outOfStockCount}`, color: stats.outOfStockCount > 0 ? C.red : C.green },
-            { label: 'OPEN WOs',     value: `${stats.openWorkOrders}`, color: stats.overdueWorkOrders > 0 ? C.amber : C.green },
-            { label: 'OVERDUE',      value: `${stats.overdueWorkOrders}`, color: stats.overdueWorkOrders > 0 ? C.red : C.green },
-            { label: 'ON SITE',      value: `${checkedInCount}/${stats.activeEmployees}`, color: checkedInCount > 0 ? C.p : C.textD },
-            { label: 'TASK FEED',    value: `${taskFeedPendingCount}`, color: taskFeedPendingCount > 0 ? C.amber : C.green },
+            { label: ts.isHUD ? 'INVENTORY'    : 'Inventory',   value: `${stats.totalMaterials}`, color: colors.primary },
+            { label: ts.isHUD ? 'LOW STOCK'    : 'Low Stock',   value: `${stats.lowStockCount}`,  color: stats.lowStockCount > 0 ? AMBER : GREEN },
+            { label: ts.isHUD ? 'OUT OF STOCK' : 'Out of Stock',value: `${stats.outOfStockCount}`,color: stats.outOfStockCount > 0 ? RED : GREEN },
+            { label: ts.isHUD ? 'OPEN WOs'     : 'Open WOs',    value: `${stats.openWorkOrders}`, color: stats.overdueWorkOrders > 0 ? AMBER : GREEN },
+            { label: ts.isHUD ? 'OVERDUE'      : 'Overdue',     value: `${stats.overdueWorkOrders}`, color: stats.overdueWorkOrders > 0 ? RED : GREEN },
+            { label: ts.isHUD ? 'ON SITE'      : 'On Site',     value: `${checkedInCount}/${stats.activeEmployees}`, color: checkedInCount > 0 ? colors.primary : colors.textTertiary },
+            { label: ts.isHUD ? 'TASK FEED'    : 'Tasks',       value: `${taskFeedPendingCount}`, color: taskFeedPendingCount > 0 ? AMBER : GREEN },
           ].map((item, i, arr) => (
             <StatusItem key={item.label} label={item.label} value={item.value} color={item.color} last={i === arr.length - 1} />
           ))}
@@ -589,101 +529,88 @@ export default function ExecutiveDashboard() {
         {/* ── ROW 1: QUICK ACTIONS + COMPLIANCE ───────────────── */}
         <View style={isWide ? { flexDirection: 'row', gap: 10, marginBottom: 0 } : undefined}>
           <View style={isWide ? { flex: 1 } : undefined}>
-            <HudCard title="Quick Actions" titleColor={C.amber} accent={C.amber}>
+            <DashCard title={ts.isHUD ? 'Quick Actions' : 'Quick Actions'} accentColor={AMBER} titleColor={AMBER}>
               <View style={{ flexDirection: 'row', gap: 8 }}>
                 <QuickBtn
-                  icon={<ClipboardList size={15} color={taskFeedPendingCount > 0 ? C.amber : C.green} />}
-                  stat={taskFeedPendingCount.toString()}
-                  label="Task Feed"
-                  desc="Pending items"
-                  color={taskFeedPendingCount > 0 ? C.amber : C.green}
+                  icon={<ClipboardList size={15} color={taskFeedPendingCount > 0 ? AMBER : GREEN} />}
+                  stat={taskFeedPendingCount.toString()} label="Task Feed" desc="Pending items"
+                  color={taskFeedPendingCount > 0 ? AMBER : GREEN}
                   onPress={() => router.push('/taskfeed')}
                 />
                 <QuickBtn
-                  icon={<Users size={15} color={C.p} />}
-                  stat={`${checkedInCount}/${stats.activeEmployees}`}
-                  label="Headcount"
-                  desc="Checked in now"
-                  color={C.p}
-                  onPress={() => router.push('/timeclock')}
+                  icon={<Users size={15} color={colors.primary} />}
+                  stat={`${checkedInCount}/${stats.activeEmployees}`} label="Headcount" desc="Checked in now"
+                  color={colors.primary} onPress={() => router.push('/timeclock')}
                 />
                 <QuickBtn
-                  icon={<Siren size={15} color={C.red} />}
-                  stat="SOS"
-                  label="Emergency"
-                  desc="Initiate protocol"
-                  color={C.red}
-                  onPress={() => {
-                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-                    setShowEmergencyModal(true);
-                  }}
+                  icon={<Siren size={15} color={RED} />}
+                  stat="SOS" label="Emergency" desc="Initiate protocol"
+                  color={RED}
+                  onPress={() => { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning); setShowEmergencyModal(true); }}
                 />
               </View>
-            </HudCard>
+            </DashCard>
           </View>
-          {/* Compliance — no title prop so ComplianceCountdown owns its own header with Manage button */}
           <View style={isWide ? { flex: 1 } : undefined}>
-            <HudCard accent={C.amber}>
+            <DashCard accentColor={AMBER}>
               <ComplianceCountdown />
-            </HudCard>
+            </DashCard>
           </View>
         </View>
 
         {/* ── LINE STATUS ──────────────────────────────────────── */}
-        <HudCard title="Line Status" titleColor={C.green} accent={C.green} sub="LIVE">
+        <DashCard title="Line Status" accentColor={GREEN} titleColor={GREEN} sub={ts.isHUD ? 'LIVE' : 'Live'}>
           <LineStatusWidget />
-        </HudCard>
+        </DashCard>
 
         {/* ── SCORECARDS ───────────────────────────────────────── */}
         <View style={isWide ? { flexDirection: 'row', gap: 10 } : undefined}>
           <View style={isWide ? { flex: 1 } : undefined}>
-            <HudCard title="Procurement Scorecard" titleColor={C.green} accent={C.green} sub="THIS MONTH">
+            <DashCard title="Procurement Scorecard" accentColor={GREEN} titleColor={GREEN} sub={ts.isHUD ? 'THIS MONTH' : 'This Month'}>
               <ScoreCardSection
-                title="" subtitle="" icon={null}
-                cardStyle={{ minHeight: 140 }}
+                title="" subtitle="" icon={null} cardStyle={{ minHeight: 140 }}
                 gauges={[
-                  { label: 'Pending Requests',  value: Math.max(0, 100 - (pendingRequestsCount * 20)),  displayValue: `${pendingRequestsCount}`,  color: pendingRequestsCount > 0  ? C.amber : C.green },
-                  { label: 'Pending Approvals', value: Math.max(0, 100 - (pendingApprovalsCount * 25)), displayValue: `${pendingApprovalsCount}`, color: pendingApprovalsCount > 0 ? C.amber : C.green },
-                  { label: 'Pending Reqs',      value: Math.max(0, 100 - (pendingReqsCount * 20)),      displayValue: `${pendingReqsCount}`,      color: pendingReqsCount > 0      ? C.amber : C.green },
-                  { label: 'Pending Receipt',   value: Math.max(0, 100 - (pendingReceiptCount * 15)),   displayValue: `${pendingReceiptCount}`,   color: pendingReceiptCount > 0   ? C.p : C.green },
-                  { label: 'Active POs',        value: purchaseOrders.length > 0 ? 65 : 0,             displayValue: `${activePOsCount}`,        color: C.p },
+                  { label: 'Pending Requests',  value: Math.max(0, 100 - (pendingRequestsCount * 20)),  displayValue: `${pendingRequestsCount}`,  color: pendingRequestsCount > 0  ? AMBER : GREEN },
+                  { label: 'Pending Approvals', value: Math.max(0, 100 - (pendingApprovalsCount * 25)), displayValue: `${pendingApprovalsCount}`, color: pendingApprovalsCount > 0 ? AMBER : GREEN },
+                  { label: 'Pending Reqs',      value: Math.max(0, 100 - (pendingReqsCount * 20)),      displayValue: `${pendingReqsCount}`,      color: pendingReqsCount > 0      ? AMBER : GREEN },
+                  { label: 'Pending Receipt',   value: Math.max(0, 100 - (pendingReceiptCount * 15)),   displayValue: `${pendingReceiptCount}`,   color: pendingReceiptCount > 0   ? colors.primary : GREEN },
+                  { label: 'Active POs',        value: purchaseOrders.length > 0 ? 65 : 0,             displayValue: `${activePOsCount}`,        color: colors.primary },
                   {
                     label: 'Avg Days',
                     value: (() => { const c = purchaseOrders.filter(po => po.status === 'received' && po.created_at); if (!c.length) return 100; const avg = c.reduce((s, po) => s + Math.max(1, Math.round((new Date(po.updated_at || po.created_at).getTime() - new Date(po.created_at).getTime()) / 86400000)), 0) / c.length; return Math.max(0, 100 - avg * 5); })(),
                     displayValue: (() => { const c = purchaseOrders.filter(po => po.status === 'received' && po.created_at); if (!c.length) return 'N/A'; const avg = c.reduce((s, po) => s + Math.max(1, Math.round((new Date(po.updated_at || po.created_at).getTime() - new Date(po.created_at).getTime()) / 86400000)), 0) / c.length; return `${Math.round(avg)}d`; })(),
-                    color: C.purple,
+                    color: PURPLE,
                   },
                 ]}
               />
-            </HudCard>
+            </DashCard>
           </View>
           <View style={isWide ? { flex: 1 } : undefined}>
-            <HudCard title="Inventory Scorecard" titleColor={C.p} accent={C.p}>
+            <DashCard title="Inventory Scorecard" accentColor={colors.primary} titleColor={colors.primary}>
               <ScoreCardSection
-                title="" subtitle="" icon={null}
-                cardStyle={{ minHeight: 140 }}
+                title="" subtitle="" icon={null} cardStyle={{ minHeight: 140 }}
                 gauges={[
                   { label: 'Stock Health', value: performanceMetrics.stockHealth, displayValue: `${performanceMetrics.stockHealth}%` },
                   { label: 'Fill Rate', value: stats.totalMaterials > 0 ? Math.round(((stats.totalMaterials - stats.outOfStockCount) / stats.totalMaterials) * 100) : 100, displayValue: `${stats.totalMaterials > 0 ? Math.round(((stats.totalMaterials - stats.outOfStockCount) / stats.totalMaterials) * 100) : 100}%` },
-                  { label: 'Low Stock', value: Math.max(0, 100 - (stats.lowStockCount / Math.max(stats.totalMaterials, 1)) * 100), displayValue: `${stats.lowStockCount}`, color: stats.lowStockCount > 0 ? C.amber : C.green },
-                  { label: 'Out of Stock', value: Math.max(0, 100 - (stats.outOfStockCount / Math.max(stats.totalMaterials, 1)) * 100), displayValue: `${stats.outOfStockCount}`, color: stats.outOfStockCount > 0 ? C.red : C.green },
-                  { label: 'Total SKUs', value: Math.min(100, stats.totalMaterials * 10), displayValue: `${stats.totalMaterials}`, color: C.p },
-                  { label: 'Value', value: 75, displayValue: `$${(inventoryValue / 1000).toFixed(0)}K`, color: C.green },
+                  { label: 'Low Stock', value: Math.max(0, 100 - (stats.lowStockCount / Math.max(stats.totalMaterials, 1)) * 100), displayValue: `${stats.lowStockCount}`, color: stats.lowStockCount > 0 ? AMBER : GREEN },
+                  { label: 'Out of Stock', value: Math.max(0, 100 - (stats.outOfStockCount / Math.max(stats.totalMaterials, 1)) * 100), displayValue: `${stats.outOfStockCount}`, color: stats.outOfStockCount > 0 ? RED : GREEN },
+                  { label: 'Total SKUs', value: Math.min(100, stats.totalMaterials * 10), displayValue: `${stats.totalMaterials}`, color: colors.primary },
+                  { label: 'Value', value: 75, displayValue: `$${(inventoryValue / 1000).toFixed(0)}K`, color: GREEN },
                 ]}
               />
-            </HudCard>
+            </DashCard>
           </View>
         </View>
 
         {/* ── DEPARTMENT BUDGETS ───────────────────────────────── */}
         {budgets.length > 0 && (
-          <HudCard title="Department Budgets" titleColor={C.purple} accent={C.purple}>
+          <DashCard title="Department Budgets" accentColor={PURPLE} titleColor={PURPLE}>
             <BudgetCardsRow budgets={budgets} />
-          </HudCard>
+          </DashCard>
         )}
 
         {/* ── CMMS PERFORMANCE ────────────────────────────────── */}
-        <HudCard title="CMMS Performance" titleColor={C.amber} accent={C.amber} sub="30-DAY">
+        <DashCard title="CMMS Performance" accentColor={AMBER} titleColor={AMBER} sub={ts.isHUD ? '30-DAY' : '30 Day'}>
           <MetricCardsSection
             title="" subtitle="" icon={null}
             cards={(() => {
@@ -696,60 +623,60 @@ export default function ExecutiveDashboard() {
               const pmCompleted = pmWOs.filter(wo => wo.status === 'completed').length;
               const pmCompliance = pmWOs.length > 0 ? Math.round((pmCompleted / pmWOs.length) * 100) : 100;
               return [
-                { label: 'MTTR',          value: '0', unit: 'hrs', trend: 0, trendLabel: 'Avg Repair' },
-                { label: 'MTBF',          value: '0', unit: 'hrs', trend: 0, trendLabel: 'Avg Between' },
-                { label: 'PM Compliance', value: pmCompliance.toString(), unit: '%', trend: 0, trendLabel: `${pmCompleted}/${pmWOs.length} PMs`, color: pmCompliance >= 90 ? C.green : pmCompliance >= 70 ? C.amber : C.red },
-                { label: 'Backlog',       value: open.toString(), unit: 'WOs', trend: 0, trendLabel: `${stats.overdueWorkOrders} overdue`, color: open > 5 ? C.amber : C.green },
-                { label: 'In Progress',   value: inProg.toString(), unit: 'WOs', trend: 0, trendLabel: 'Active now', color: C.p },
-                { label: 'Completed',     value: completed.toString(), unit: 'WOs', trend: 0, trendLabel: 'This period', color: C.green },
-                { label: 'Planned',       value: planned.toString(), unit: 'WOs', trend: 0, trendLabel: 'Scheduled', color: C.p },
-                { label: 'Unplanned',     value: unplanned.toString(), unit: 'WOs', trend: 0, trendLabel: 'Reactive', color: unplanned > 0 ? C.red : C.green },
+                { label: 'MTTR', value: '0', unit: 'hrs', trend: 0, trendLabel: 'Avg Repair' },
+                { label: 'MTBF', value: '0', unit: 'hrs', trend: 0, trendLabel: 'Avg Between' },
+                { label: 'PM Compliance', value: pmCompliance.toString(), unit: '%', trend: 0, trendLabel: `${pmCompleted}/${pmWOs.length} PMs`, color: pmCompliance >= 90 ? GREEN : pmCompliance >= 70 ? AMBER : RED },
+                { label: 'Backlog', value: open.toString(), unit: 'WOs', trend: 0, trendLabel: `${stats.overdueWorkOrders} overdue`, color: open > 5 ? AMBER : GREEN },
+                { label: 'In Progress', value: inProg.toString(), unit: 'WOs', trend: 0, trendLabel: 'Active now', color: colors.primary },
+                { label: 'Completed', value: completed.toString(), unit: 'WOs', trend: 0, trendLabel: 'This period', color: GREEN },
+                { label: 'Planned', value: planned.toString(), unit: 'WOs', trend: 0, trendLabel: 'Scheduled', color: colors.primary },
+                { label: 'Unplanned', value: unplanned.toString(), unit: 'WOs', trend: 0, trendLabel: 'Reactive', color: unplanned > 0 ? RED : GREEN },
               ];
             })()}
           />
-        </HudCard>
+        </DashCard>
 
         {/* ── SANITATION ───────────────────────────────────────── */}
-        <HudCard title="Sanitation" titleColor={C.p} accent={C.p} sub="THIS WEEK">
+        <DashCard title="Sanitation" accentColor={colors.primary} titleColor={colors.primary} sub={ts.isHUD ? 'THIS WEEK' : 'This Week'}>
           <MetricCardsSection title="" subtitle="" icon={null} cards={[
-            { label: 'Pre-Op Inspections', value: '0', unit: '/ 5',  trend: 0, trendLabel: 'Completed', color: C.p },
-            { label: 'CIP Cycles',         value: '0', unit: '/ 3',  trend: 0, trendLabel: 'Completed', color: C.p },
-            { label: 'Swab Tests',         value: '0', unit: 'pass', trend: 0, trendLabel: 'All passed', color: C.green },
-            { label: 'Open CARs',          value: '0',               trend: 0, trendLabel: 'Corrective', color: C.green },
-            { label: 'Zone 1 Clean',       value: '100', unit: '%',  trend: 0, trendLabel: 'Product contact', color: C.green },
-            { label: 'Zone 2 Clean',       value: '100', unit: '%',  trend: 0, trendLabel: 'Non-contact', color: C.green },
-            { label: 'Chemical Logs',      value: '0', unit: '/ 5',  trend: 0, trendLabel: 'Verified', color: C.p },
-            { label: 'Overdue Tasks',      value: '0',               trend: 0, trendLabel: 'Past due', color: C.green },
+            { label: 'Pre-Op Inspections', value: '0', unit: '/ 5',  trend: 0, trendLabel: 'Completed', color: colors.primary },
+            { label: 'CIP Cycles',         value: '0', unit: '/ 3',  trend: 0, trendLabel: 'Completed', color: colors.primary },
+            { label: 'Swab Tests',         value: '0', unit: 'pass', trend: 0, trendLabel: 'All passed', color: GREEN },
+            { label: 'Open CARs',          value: '0',               trend: 0, trendLabel: 'Corrective', color: GREEN },
+            { label: 'Zone 1 Clean',       value: '100', unit: '%',  trend: 0, trendLabel: 'Product contact', color: GREEN },
+            { label: 'Zone 2 Clean',       value: '100', unit: '%',  trend: 0, trendLabel: 'Non-contact', color: GREEN },
+            { label: 'Chemical Logs',      value: '0', unit: '/ 5',  trend: 0, trendLabel: 'Verified', color: colors.primary },
+            { label: 'Overdue Tasks',      value: '0',               trend: 0, trendLabel: 'Past due', color: GREEN },
           ]} />
-        </HudCard>
+        </DashCard>
 
         {/* ── QUALITY ──────────────────────────────────────────── */}
-        <HudCard title="Quality" titleColor={C.purple} accent={C.purple} sub="THIS MONTH">
+        <DashCard title="Quality" accentColor={PURPLE} titleColor={PURPLE} sub={ts.isHUD ? 'THIS MONTH' : 'This Month'}>
           <MetricCardsSection title="" subtitle="" icon={null} cards={[
-            { label: 'Hold Lots',           value: '0', trend: 0, trendLabel: 'On hold', color: C.green },
-            { label: 'Rejections',          value: '0', trend: 0, trendLabel: 'This period', color: C.green },
-            { label: 'NCRs Open',           value: '0', trend: 0, trendLabel: 'Non-conformance', color: C.green },
-            { label: 'CCP Deviations',      value: '0', trend: 0, trendLabel: 'Critical control', color: C.green },
-            { label: 'COA Pending',         value: '0', trend: 0, trendLabel: 'Certificates', color: C.green },
-            { label: 'Spec Compliance',     value: '100', unit: '%', trend: 0, trendLabel: 'In spec', color: C.green },
-            { label: 'Foreign Material',    value: '0', trend: 0, trendLabel: 'Incidents', color: C.green },
-            { label: 'Customer Complaints', value: '0', trend: 0, trendLabel: 'Open items', color: C.green },
+            { label: 'Hold Lots',           value: '0', trend: 0, trendLabel: 'On hold', color: GREEN },
+            { label: 'Rejections',          value: '0', trend: 0, trendLabel: 'This period', color: GREEN },
+            { label: 'NCRs Open',           value: '0', trend: 0, trendLabel: 'Non-conformance', color: GREEN },
+            { label: 'CCP Deviations',      value: '0', trend: 0, trendLabel: 'Critical control', color: GREEN },
+            { label: 'COA Pending',         value: '0', trend: 0, trendLabel: 'Certificates', color: GREEN },
+            { label: 'Spec Compliance',     value: '100', unit: '%', trend: 0, trendLabel: 'In spec', color: GREEN },
+            { label: 'Foreign Material',    value: '0', trend: 0, trendLabel: 'Incidents', color: GREEN },
+            { label: 'Customer Complaints', value: '0', trend: 0, trendLabel: 'Open items', color: GREEN },
           ]} />
-        </HudCard>
+        </DashCard>
 
         {/* ── SAFETY ───────────────────────────────────────────── */}
-        <HudCard title="Safety" titleColor={C.amber} accent={C.amber} sub="YTD">
+        <DashCard title="Safety" accentColor={AMBER} titleColor={AMBER} sub={ts.isHUD ? 'YTD' : 'Year to Date'}>
           <MetricCardsSection title="" subtitle="" icon={null} cards={[
-            { label: 'Days No Incident', value: '0',          trend: 0, trendLabel: 'Recordable', color: C.green },
-            { label: 'Near Misses',      value: '0',          trend: 0, trendLabel: 'Reported', color: C.green },
-            { label: 'Open Actions',     value: '0',          trend: 0, trendLabel: 'Corrective', color: C.green },
-            { label: 'Training Due',     value: '0',          trend: 0, trendLabel: 'Employees', color: C.green },
-            { label: 'PPE Compliance',   value: '100', unit: '%', trend: 0, trendLabel: 'Audited', color: C.green },
-            { label: 'Permits Active',   value: '0',          trend: 0, trendLabel: 'Hot work / confined', color: C.p },
-            { label: 'OSHA Recordable',  value: '0',          trend: 0, trendLabel: 'YTD injuries', color: C.green },
-            { label: 'JSA Reviews',      value: '0',          trend: 0, trendLabel: 'Job safety analysis', color: C.green },
+            { label: 'Days No Incident', value: '0',          trend: 0, trendLabel: 'Recordable', color: GREEN },
+            { label: 'Near Misses',      value: '0',          trend: 0, trendLabel: 'Reported', color: GREEN },
+            { label: 'Open Actions',     value: '0',          trend: 0, trendLabel: 'Corrective', color: GREEN },
+            { label: 'Training Due',     value: '0',          trend: 0, trendLabel: 'Employees', color: GREEN },
+            { label: 'PPE Compliance',   value: '100', unit: '%', trend: 0, trendLabel: 'Audited', color: GREEN },
+            { label: 'Permits Active',   value: '0',          trend: 0, trendLabel: 'Hot work / confined', color: colors.primary },
+            { label: 'OSHA Recordable',  value: '0',          trend: 0, trendLabel: 'YTD injuries', color: GREEN },
+            { label: 'JSA Reviews',      value: '0',          trend: 0, trendLabel: 'Job safety analysis', color: GREEN },
           ]} />
-        </HudCard>
+        </DashCard>
 
         <View style={{ height: 40 }} />
       </ScrollView>
@@ -757,50 +684,46 @@ export default function ExecutiveDashboard() {
       {/* ── EMERGENCY MODAL ────────────────────────────────────── */}
       <Modal visible={showEmergencyModal} animationType="slide" transparent onRequestClose={() => setShowEmergencyModal(false)}>
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.82)', justifyContent: 'flex-end' }}>
-          <View style={{ backgroundColor: C.surf, borderTopWidth: 2, borderColor: C.red, padding: 20, paddingBottom: 36, maxHeight: '85%', position: 'relative' }}>
-            <Brackets color={C.red} size={12} />
+          <View style={[ts.card.surface, { borderTopWidth: 2, borderColor: RED, padding: 20, paddingBottom: 36, maxHeight: '85%', position: 'relative' }]}>
+            {ts.isHUD && <Brackets color={RED} size={12} />}
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <View style={{ width: 2, height: 14, backgroundColor: C.red }} />
-                <Siren size={15} color={C.red} />
-                <Text style={{ fontSize: 11, fontWeight: '900', color: C.text, letterSpacing: 3, fontFamily: MONO }}>
-                  EMERGENCY PROTOCOL
-                </Text>
+                {ts.isHUD && <View style={{ width: 2, height: 14, backgroundColor: RED }} />}
+                <Siren size={15} color={RED} />
+                <Text style={[ts.label.section, { color: colors.text }]}>EMERGENCY PROTOCOL</Text>
               </View>
               <Pressable onPress={() => setShowEmergencyModal(false)} hitSlop={12}>
-                <X size={18} color={C.textS} />
+                <X size={18} color={colors.textSecondary} />
               </Pressable>
             </View>
-            <Text style={{ fontSize: 11, color: C.textS, marginBottom: 16, fontFamily: MONO, letterSpacing: 0.5 }}>
-              SELECT TYPE — ROLL CALL STARTS IMMEDIATELY
+            <Text style={[ts.label.secondary, { marginBottom: 16 }]}>
+              Select type — roll call starts immediately
             </Text>
-
-            <Text style={{ fontSize: 8, color: C.textD, letterSpacing: 2, marginBottom: 8, fontFamily: MONO }}>LIVE EMERGENCY</Text>
+            <Text style={[ts.label.section, { marginBottom: 8 }]}>LIVE EMERGENCY</Text>
             {[
-              { type: 'fire', label: 'Fire Emergency', Icon: Flame, color: C.red },
-              { type: 'tornado', label: 'Tornado Emergency', Icon: Tornado, color: C.purple },
-              { type: 'active_shooter', label: 'Active Shooter', Icon: ShieldAlert, color: C.red },
+              { type: 'fire', label: 'Fire Emergency', Icon: Flame, color: RED },
+              { type: 'tornado', label: 'Tornado Emergency', Icon: Tornado, color: PURPLE },
+              { type: 'active_shooter', label: 'Active Shooter', Icon: ShieldAlert, color: RED },
             ].map(({ type, label, Icon, color }) => (
-              <ModalRow key={type} Icon={Icon} color={color} title={label} sub="LIVE — STARTS ROLL CALL NOW"
+              <ModalRow key={type} Icon={Icon} color={color} title={label} sub="Live — starts roll call now"
                 onPress={() => { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning); setShowEmergencyModal(false); router.push({ pathname: '/headcount/emergencyprotocol', params: { type, drill: 'false' } }); }}
               />
             ))}
-
-            <Text style={{ fontSize: 8, color: C.textD, letterSpacing: 2, marginBottom: 8, marginTop: 12, fontFamily: MONO }}>DRILL MODE</Text>
+            <Text style={[ts.label.section, { marginBottom: 8, marginTop: 12 }]}>DRILL MODE</Text>
             {[
-              { type: 'fire', label: 'Fire Drill', Icon: Flame, color: C.amber },
-              { type: 'tornado', label: 'Tornado Drill', Icon: Tornado, color: C.purple },
-              { type: 'active_shooter', label: 'Active Shooter Drill', Icon: ShieldAlert, color: C.textS },
+              { type: 'fire', label: 'Fire Drill', Icon: Flame, color: AMBER },
+              { type: 'tornado', label: 'Tornado Drill', Icon: Tornado, color: PURPLE },
+              { type: 'active_shooter', label: 'Active Shooter Drill', Icon: ShieldAlert, color: colors.textSecondary },
             ].map(({ type, label, Icon, color }) => (
-              <ModalRow key={`drill-${type}`} Icon={Icon} color={C.p} title={label} sub="TRAINING EXERCISE — STARTS ROLL CALL"
+              <ModalRow key={`drill-${type}`} Icon={Icon} color={colors.primary} title={label} sub="Training exercise — starts roll call"
                 onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setShowEmergencyModal(false); router.push({ pathname: '/headcount/emergencyprotocol', params: { type, drill: 'true' } }); }}
               />
             ))}
-
-            <TouchableOpacity activeOpacity={0.7} style={{ marginTop: 14, alignItems: 'center', paddingVertical: 10, borderWidth: 1, borderColor: C.bdrB }}
+            <TouchableOpacity activeOpacity={0.7}
+              style={{ marginTop: 14, alignItems: 'center', paddingVertical: 10, borderWidth: 1, borderColor: colors.border, borderRadius: ts.radius.md }}
               onPress={() => { setShowEmergencyModal(false); router.push('/safety/emergencyinitiation' as any); }}>
-              <Text style={{ fontSize: 11, fontWeight: '700', color: C.p, fontFamily: MONO, letterSpacing: 1 }}>
-                MORE EMERGENCY TYPES →
+              <Text style={[ts.label.body, { color: colors.primary, fontWeight: '600' }]}>
+                More Emergency Types →
               </Text>
             </TouchableOpacity>
           </View>
@@ -810,12 +733,11 @@ export default function ExecutiveDashboard() {
       {/* ── FACILITY PICKER ─────────────────────────────────────── */}
       <Modal visible={showFacilityPicker} transparent animationType="fade" onRequestClose={() => setShowFacilityPicker(false)}>
         <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'center', alignItems: 'center', padding: 40 }} onPress={() => setShowFacilityPicker(false)}>
-          <View style={{ backgroundColor: C.surf, borderWidth: 1, borderColor: C.bdrB, width: '100%', maxWidth: 320, position: 'relative' }}>
-            <Brackets color={C.p} size={10} />
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: C.bdr }}>
-              <View style={{ width: 2, height: 12, backgroundColor: C.p }} />
-              <MapPin size={11} color={C.p} />
-              <Text style={{ fontSize: 9, fontWeight: '900', color: C.p, letterSpacing: 2, fontFamily: MONO }}>SELECT FACILITY</Text>
+          <View style={[ts.card.surface, { width: '100%', maxWidth: 320, position: 'relative' }]}>
+            {ts.isHUD && <Brackets color={colors.hudPrimary} size={10} />}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+              <MapPin size={11} color={colors.primary} />
+              <Text style={[ts.label.section, { color: colors.primary }]}>SELECT FACILITY</Text>
             </View>
             {facilityNames.map(name => {
               const key = name === 'All Facilities' ? 'all' : name;
@@ -823,11 +745,11 @@ export default function ExecutiveDashboard() {
               return (
                 <Pressable
                   key={name}
-                  style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: C.bdr, backgroundColor: active ? C.p + '12' : 'transparent' }}
+                  style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: active ? colors.primary + '12' : 'transparent' }}
                   onPress={() => { setSelectedFacility(key); setShowFacilityPicker(false); }}
                 >
-                  <Text style={{ fontSize: 13, color: active ? C.p : C.text, fontFamily: MONO, fontWeight: active ? '700' : '400' }}>{name}</Text>
-                  {active && <CheckCircle size={13} color={C.p} />}
+                  <Text style={[ts.label.body, { color: active ? colors.primary : colors.text, fontWeight: active ? '700' : '400' }]}>{name}</Text>
+                  {active && <CheckCircle size={13} color={colors.primary} />}
                 </Pressable>
               );
             })}
