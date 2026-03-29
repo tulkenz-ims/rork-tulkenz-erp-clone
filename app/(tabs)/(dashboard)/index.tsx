@@ -208,11 +208,9 @@ function RadarEye({ overallStatus, alertCount, checkedIn, total, primary, second
   const rot3 = ring3.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
 
   const SIZE = 180;
-  const cx = SIZE / 2;
 
   return (
     <View style={{ width: SIZE, height: SIZE, alignItems: 'center', justifyContent: 'center', alignSelf: 'center', position: 'relative' }}>
-      {/* Outer ring */}
       <Animated.View style={{
         position: 'absolute',
         width: SIZE, height: SIZE,
@@ -222,7 +220,6 @@ function RadarEye({ overallStatus, alertCount, checkedIn, total, primary, second
         borderStyle: 'dashed',
         transform: [{ rotate: rot1 }],
       }} />
-      {/* Middle ring */}
       <Animated.View style={{
         position: 'absolute',
         width: SIZE * 0.75, height: SIZE * 0.75,
@@ -231,7 +228,6 @@ function RadarEye({ overallStatus, alertCount, checkedIn, total, primary, second
         borderColor: primary + '35',
         transform: [{ rotate: rot2 }],
       }} />
-      {/* Arc ring */}
       <Animated.View style={{
         position: 'absolute',
         width: SIZE * 0.75, height: SIZE * 0.75,
@@ -242,7 +238,6 @@ function RadarEye({ overallStatus, alertCount, checkedIn, total, primary, second
         borderRightColor: primary + '40',
         transform: [{ rotate: rot2 }],
       }} />
-      {/* Inner ring */}
       <Animated.View style={{
         position: 'absolute',
         width: SIZE * 0.52, height: SIZE * 0.52,
@@ -251,7 +246,6 @@ function RadarEye({ overallStatus, alertCount, checkedIn, total, primary, second
         borderColor: secondary + '45',
         transform: [{ rotate: rot3 }],
       }} />
-      {/* Arc inner */}
       <Animated.View style={{
         position: 'absolute',
         width: SIZE * 0.52, height: SIZE * 0.52,
@@ -262,10 +256,8 @@ function RadarEye({ overallStatus, alertCount, checkedIn, total, primary, second
         borderLeftColor: secondary + '40',
         transform: [{ rotate: rot3 }],
       }} />
-      {/* Crosshair lines */}
       <View style={{ position: 'absolute', width: SIZE * 0.8, height: 1, backgroundColor: primary + '18' }} />
       <View style={{ position: 'absolute', width: 1, height: SIZE * 0.8, backgroundColor: primary + '18' }} />
-      {/* Core */}
       <Animated.View style={{
         width: SIZE * 0.32, height: SIZE * 0.32,
         borderRadius: SIZE * 0.32 / 2,
@@ -277,13 +269,12 @@ function RadarEye({ overallStatus, alertCount, checkedIn, total, primary, second
         opacity: pulse,
       }}>
         <Text style={{ fontSize: alertCount > 0 ? 18 : 14, fontWeight: '900', color: overallStatus, fontFamily: MONO, lineHeight: alertCount > 0 ? 20 : 16 }}>
-          {alertCount > 0 ? alertCount.toString() : '✓'}
+          {alertCount > 0 ? alertCount.toString() : '\u2713'}
         </Text>
         <Text style={{ fontSize: 6, color: overallStatus, letterSpacing: 1, fontFamily: MONO, opacity: 0.8 }}>
           {alertCount > 0 ? 'ALERTS' : 'OK'}
         </Text>
       </Animated.View>
-      {/* Checked-in label */}
       <View style={{ position: 'absolute', bottom: 8 }}>
         <Text style={{ fontSize: 7, color: primary + '80', fontFamily: MONO, letterSpacing: 1, textAlign: 'center' }}>
           {checkedIn}/{total} ON SITE
@@ -552,11 +543,9 @@ export default function ExecutiveDashboard() {
           alignItems: 'center',
         }}>
           <Brackets color={C.p} size={14} />
-          {/* Company name */}
           <Text style={{ fontSize: 10, color: C.textD, fontFamily: MONO, letterSpacing: 3, marginBottom: 4 }}>
             {company?.name?.toUpperCase() || 'TULKENZ OPS'}
           </Text>
-          {/* Radar */}
           <RadarEye
             overallStatus={overallStatus}
             alertCount={alertCount}
@@ -565,7 +554,6 @@ export default function ExecutiveDashboard() {
             primary={C.p}
             secondary={C.s}
           />
-          {/* Date */}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 8 }}>
             <Clock size={10} color={C.textD} />
             <Text style={{ fontSize: 9, color: C.textD, fontFamily: MONO, letterSpacing: 1 }}>
@@ -633,8 +621,9 @@ export default function ExecutiveDashboard() {
               </View>
             </HudCard>
           </View>
+          {/* Compliance — no title prop so ComplianceCountdown owns its own header with Manage button */}
           <View style={isWide ? { flex: 1 } : undefined}>
-            <HudCard title="Compliance" titleColor={C.amber} accent={C.amber}>
+            <HudCard accent={C.amber}>
               <ComplianceCountdown />
             </HudCard>
           </View>
@@ -770,7 +759,6 @@ export default function ExecutiveDashboard() {
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.82)', justifyContent: 'flex-end' }}>
           <View style={{ backgroundColor: C.surf, borderTopWidth: 2, borderColor: C.red, padding: 20, paddingBottom: 36, maxHeight: '85%', position: 'relative' }}>
             <Brackets color={C.red} size={12} />
-            {/* Header */}
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                 <View style={{ width: 2, height: 14, backgroundColor: C.red }} />
@@ -856,4 +844,3 @@ export default function ExecutiveDashboard() {
     </View>
   );
 }
-",
