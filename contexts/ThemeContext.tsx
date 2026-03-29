@@ -6,14 +6,13 @@ const THEME_STORAGE_KEY = 'tulkenz_theme';
 const COMPANY_COLORS_KEY = 'tulkenz_company_colors';
 
 export type ThemeType =
-  | 'hud_cyan_dark'   | 'hud_cyan_light'
-  | 'hud_green_dark'  | 'hud_green_light'
-  | 'hud_silver_dark' | 'hud_silver_light'
-  | 'hud_gold_dark'   | 'hud_gold_light'
-  | 'hud_purple_dark' | 'hud_purple_light'
-  | 'hud_blue_dark'   | 'hud_blue_light';
+  | 'hud_cyan'
+  | 'clean_light'
+  | 'classic'
+  | 'ghost_protocol';
 
 export interface ThemeColors {
+  // ── Standard tokens ──────────────────────────────────────────
   primary: string;
   primaryDark: string;
   primaryLight: string;
@@ -45,8 +44,10 @@ export interface ThemeColors {
   purpleLight: string;
   purpleBg: string;
   chartColors: string[];
+  // ── Theme meta ───────────────────────────────────────────────
   isHUD: boolean;
   isLight: boolean;
+  // ── HUD-specific tokens (used by HUD screens) ────────────────
   hudPrimary: string;
   hudSecondary: string;
   hudDim: string;
@@ -58,173 +59,171 @@ export interface ThemeColors {
   hudTextStrong: string;
   hudScanColor: string;
   hudCityColor: string;
+  // ── Department pill colors ───────────────────────────────────
+  deptColors: Record<string, string>;
 }
 
 export const THEME_LABELS: Record<ThemeType, string> = {
-  hud_cyan_dark:    'Futuristic Cyan — Dark',
-  hud_cyan_light:   'Futuristic Cyan — Light',
-  hud_green_dark:   'Neon Green — Dark',
-  hud_green_light:  'Neon Green — Light',
-  hud_silver_dark:  'Silver Surfer — Dark',
-  hud_silver_light: 'Silver Surfer — Light',
-  hud_gold_dark:    'Silver & Gold — Dark',
-  hud_gold_light:   'Silver & Gold — Light',
-  hud_purple_dark:  'Silver & Purple — Dark',
-  hud_purple_light: 'Silver & Purple — Light',
-  hud_blue_dark:    'Electric Blue — Dark',
-  hud_blue_light:   'Electric Blue — Light',
+  hud_cyan:       'HUD Cyan — Dark',
+  clean_light:    'Clean Light',
+  classic:        'Classic',
+  ghost_protocol: 'Ghost Protocol',
 };
 
 export const THEME_GROUPS: { label: string; themes: ThemeType[] }[] = [
-  { label: 'Futuristic Cyan',  themes: ['hud_cyan_dark',   'hud_cyan_light']   },
-  { label: 'Neon Green',       themes: ['hud_green_dark',  'hud_green_light']  },
-  { label: 'Silver Surfer',    themes: ['hud_silver_dark', 'hud_silver_light'] },
-  { label: 'Silver & Gold',    themes: ['hud_gold_dark',   'hud_gold_light']   },
-  { label: 'Silver & Purple',  themes: ['hud_purple_dark', 'hud_purple_light'] },
-  { label: 'Electric Blue',    themes: ['hud_blue_dark',   'hud_blue_light']   },
+  { label: 'Futuristic',  themes: ['hud_cyan']       },
+  { label: 'Light',       themes: ['clean_light', 'classic', 'ghost_protocol'] },
 ];
 
 export const THEME_PREVIEW_COLORS: Record<ThemeType, { bg: string; accent: string; label: string }> = {
-  hud_cyan_dark:    { bg: '#010B18', accent: '#00D4EE', label: 'Dark'  },
-  hud_cyan_light:   { bg: '#FFFFFF', accent: '#0099AA', label: 'Light' },
-  hud_green_dark:   { bg: '#020E04', accent: '#00CC33', label: 'Dark'  },
-  hud_green_light:  { bg: '#FFFFFF', accent: '#008822', label: 'Light' },
-  hud_silver_dark:  { bg: '#0A0A10', accent: '#A0AACC', label: 'Dark'  },
-  hud_silver_light: { bg: '#FFFFFF', accent: '#445588', label: 'Light' },
-  hud_gold_dark:    { bg: '#080600', accent: '#C8A000', label: 'Dark'  },
-  hud_gold_light:   { bg: '#FFFFFF', accent: '#886600', label: 'Light' },
-  hud_purple_dark:  { bg: '#06000E', accent: '#8844BB', label: 'Dark'  },
-  hud_purple_light: { bg: '#FFFFFF', accent: '#6600AA', label: 'Light' },
-  hud_blue_dark:    { bg: '#00001A', accent: '#5599DD', label: 'Dark'  },
-  hud_blue_light:   { bg: '#FFFFFF', accent: '#0044AA', label: 'Light' },
+  hud_cyan:       { bg: '#010B18', accent: '#00D4EE', label: 'Dark'  },
+  clean_light:    { bg: '#F4F5F7', accent: '#2266DD', label: 'Light' },
+  classic:        { bg: '#F5F0E8', accent: '#8B6F47', label: 'Light' },
+  ghost_protocol: { bg: '#F8F8F8', accent: '#CC0000', label: 'Light' },
 };
 
-function buildHUD(opts: {
-  bg: string; bg2: string; bg3: string; surface: string;
-  c1: string; c2: string; c3: string;
-  textStrong: string; textMid: string; textDim: string;
-  scanColor: string; isLight: boolean;
-}): ThemeColors {
-  const { bg, bg2, bg3, surface, c1, c2, c3, textStrong, textMid, textDim, scanColor, isLight } = opts;
-  return {
-    primary: c1, primaryDark: c3, primaryLight: c2,
-    accent: c2, accentLight: c2,
-    background: bg, backgroundSecondary: bg2, backgroundTertiary: bg3,
-    surface, surfaceLight: bg2,
-    text: textStrong, textSecondary: textMid, textTertiary: textDim,
-    border: `${c1}28`, borderLight: `${c1}14`,
-    success: '#00CC66', successLight: '#00EE77', successBg: 'rgba(0,204,102,0.10)',
-    warning: '#CC9900', warningLight: '#DDAA00', warningBg: 'rgba(204,153,0,0.10)',
-    error: '#DD2233', errorLight: '#EE4455', errorBg: 'rgba(221,34,51,0.10)',
-    info: c1, infoLight: c2, infoBg: `${c1}12`,
-    purple: '#8844BB', purpleLight: '#AA66DD', purpleBg: 'rgba(136,68,187,0.10)',
-    chartColors: [c1, c2, '#CC9900', '#DD2233', '#8844BB'],
-    isHUD: true, isLight,
-    hudPrimary: c1, hudSecondary: c2,
-    hudDim: `${c1}40`, hudGlow: `${c1}0A`,
-    hudBg: bg, hudSurface: surface,
-    hudBorder: isLight ? `${c1}35` : `${c1}25`,
-    hudBorderBright: isLight ? `${c1}70` : `${c1}55`,
-    hudTextStrong: textStrong,
-    hudScanColor: scanColor,
-    hudCityColor: c1,
-  };
-}
+// ── Shared semantic colors (same across all themes) ──────────────
+const SEMANTIC = {
+  success:    '#00CC66',
+  successL:   '#00EE77',
+  successBg:  'rgba(0,204,102,0.10)',
+  warning:    '#CC9900',
+  warningL:   '#DDAA00',
+  warningBg:  'rgba(204,153,0,0.10)',
+  error:      '#DD2233',
+  errorL:     '#EE4455',
+  errorBg:    'rgba(221,34,51,0.10)',
+  purple:     '#8844BB',
+  purpleL:    '#AA66DD',
+  purpleBg:   'rgba(136,68,187,0.10)',
+};
+
+// ── Default dept colors ──────────────────────────────────────────
+const DEPT_COLORS: Record<string, string> = {
+  maintenance:  '#2266DD',
+  sanitation:   '#00AA55',
+  production:   '#EE9900',
+  quality:      '#AA44BB',
+  safety:       '#EE3344',
+  hr:           '#EE4499',
+  warehouse:    '#44BB44',
+  projects:     '#00BBAA',
+};
+
+// ── HUD Cyan Dark ────────────────────────────────────────────────
+const hudCyan: ThemeColors = {
+  primary: '#00D4EE', primaryDark: '#0088AA', primaryLight: '#00BBCC',
+  accent: '#00BBCC', accentLight: '#00D4EE',
+  background: '#010B18', backgroundSecondary: '#031220', backgroundTertiary: '#051A2E',
+  surface: '#040F1C', surfaceLight: '#031220',
+  // Fixed: text uses hudTextStrong (soft cyan-white), NOT #FFFFFF
+  text: '#C8F0F8', textSecondary: '#6ABECC', textTertiary: '#2E6A7A',
+  border: 'rgba(0,212,238,0.25)', borderLight: 'rgba(0,212,238,0.14)',
+  ...SEMANTIC,
+  info: '#00D4EE', infoLight: '#00BBCC', infoBg: 'rgba(0,212,238,0.10)',
+  chartColors: ['#00D4EE', '#00BBCC', '#CC9900', '#DD2233', '#8844BB'],
+  isHUD: true, isLight: false,
+  hudPrimary: '#00D4EE', hudSecondary: '#00BBCC',
+  hudDim: 'rgba(0,212,238,0.40)', hudGlow: 'rgba(0,212,238,0.08)',
+  hudBg: '#010B18', hudSurface: '#040F1C',
+  hudBorder: 'rgba(0,212,238,0.25)', hudBorderBright: 'rgba(0,212,238,0.55)',
+  hudTextStrong: '#C8F0F8',
+  hudScanColor: 'rgba(0,212,238,0.5)',
+  hudCityColor: '#00D4EE',
+  deptColors: DEPT_COLORS,
+};
+
+// ── Clean Light ──────────────────────────────────────────────────
+const cleanLight: ThemeColors = {
+  primary: '#2266DD', primaryDark: '#1144BB', primaryLight: '#5599EE',
+  accent: '#EE9900', accentLight: '#FFBB33',
+  background: '#F4F5F7', backgroundSecondary: '#FFFFFF', backgroundTertiary: '#EAEBEE',
+  surface: '#FFFFFF', surfaceLight: '#F8F8FC',
+  text: '#1A1A2E', textSecondary: '#555577', textTertiary: '#9999AA',
+  border: '#E8E8EC', borderLight: '#F0F0F4',
+  ...SEMANTIC,
+  info: '#2266DD', infoLight: '#5599EE', infoBg: 'rgba(34,102,221,0.08)',
+  chartColors: ['#2266DD', '#EE9900', '#00AA55', '#DD2233', '#8844BB'],
+  isHUD: false, isLight: true,
+  hudPrimary: '#2266DD', hudSecondary: '#EE9900',
+  hudDim: 'rgba(34,102,221,0.25)', hudGlow: 'rgba(34,102,221,0.06)',
+  hudBg: '#F4F5F7', hudSurface: '#FFFFFF',
+  hudBorder: '#E8E8EC', hudBorderBright: '#CCCCDD',
+  hudTextStrong: '#1A1A2E',
+  hudScanColor: 'rgba(34,102,221,0.15)',
+  hudCityColor: '#2266DD',
+  deptColors: DEPT_COLORS,
+};
+
+// ── Classic ──────────────────────────────────────────────────────
+const classic: ThemeColors = {
+  primary: '#8B6F47', primaryDark: '#6B5030', primaryLight: '#AA8855',
+  accent: '#2A5A30', accentLight: '#3A7A40',
+  background: '#F5F0E8', backgroundSecondary: '#EDE8DC', backgroundTertiary: '#E5DFD0',
+  surface: '#FAF7F2', surfaceLight: '#F0EBE0',
+  text: '#3A2A15', textSecondary: '#6B5030', textTertiary: '#9A7A55',
+  border: '#D8CDB8', borderLight: '#E8E0D0',
+  success: '#2A5A30', successLight: '#3A7A40', successBg: 'rgba(42,90,48,0.10)',
+  warning: '#8B6F00', warningLight: '#AA8800', warningBg: 'rgba(139,111,0,0.10)',
+  error: '#8B2020', errorLight: '#AA3333', errorBg: 'rgba(139,32,32,0.10)',
+  info: '#2A4A6B', infoLight: '#3A6A9B', infoBg: 'rgba(42,74,107,0.10)',
+  purple: '#6B3A8B', purpleLight: '#8B5AAB', purpleBg: 'rgba(107,58,139,0.10)',
+  chartColors: ['#8B6F47', '#2A5A30', '#8B6F00', '#8B2020', '#6B3A8B'],
+  isHUD: false, isLight: true,
+  hudPrimary: '#8B6F47', hudSecondary: '#6B5030',
+  hudDim: 'rgba(139,111,71,0.30)', hudGlow: 'rgba(139,111,71,0.06)',
+  hudBg: '#F5F0E8', hudSurface: '#FAF7F2',
+  hudBorder: '#D8CDB8', hudBorderBright: '#C8B89A',
+  hudTextStrong: '#3A2A15',
+  hudScanColor: 'rgba(139,111,71,0.15)',
+  hudCityColor: '#8B6F47',
+  deptColors: {
+    ...DEPT_COLORS,
+    maintenance: '#2A4A6B',
+    sanitation:  '#2A5A30',
+    production:  '#8B6F00',
+    safety:      '#8B2020',
+  },
+};
+
+// ── Ghost Protocol ───────────────────────────────────────────────
+const ghostProtocol: ThemeColors = {
+  primary: '#111111', primaryDark: '#000000', primaryLight: '#333333',
+  accent: '#CC0000', accentLight: '#EE2222',
+  background: '#F8F8F8', backgroundSecondary: '#FFFFFF', backgroundTertiary: '#F0F0F0',
+  surface: '#FFFFFF', surfaceLight: '#F8F8F8',
+  text: '#111111', textSecondary: '#666666', textTertiary: '#999999',
+  border: '#E0E0E0', borderLight: '#EEEEEE',
+  success: '#006633', successLight: '#009944', successBg: 'rgba(0,102,51,0.08)',
+  warning: '#CC6600', warningLight: '#EE8800', warningBg: 'rgba(204,102,0,0.08)',
+  error: '#CC0000', errorLight: '#EE2222', errorBg: 'rgba(204,0,0,0.08)',
+  info: '#003388', infoLight: '#2255AA', infoBg: 'rgba(0,51,136,0.08)',
+  purple: '#550088', purpleLight: '#7722AA', purpleBg: 'rgba(85,0,136,0.08)',
+  chartColors: ['#111111', '#CC0000', '#006633', '#CC6600', '#003388'],
+  isHUD: false, isLight: true,
+  hudPrimary: '#111111', hudSecondary: '#CC0000',
+  hudDim: 'rgba(17,17,17,0.25)', hudGlow: 'rgba(17,17,17,0.05)',
+  hudBg: '#F8F8F8', hudSurface: '#FFFFFF',
+  hudBorder: '#E0E0E0', hudBorderBright: '#CCCCCC',
+  hudTextStrong: '#111111',
+  hudScanColor: 'rgba(204,0,0,0.10)',
+  hudCityColor: '#CC0000',
+  deptColors: {
+    ...DEPT_COLORS,
+    maintenance: '#003388',
+    safety:      '#CC0000',
+  },
+};
 
 const themes: Record<ThemeType, ThemeColors> = {
-
-  hud_cyan_dark: buildHUD({
-    bg: '#010B18', bg2: '#031220', bg3: '#051A2E', surface: '#040F1C',
-    c1: '#00D4EE', c2: '#00BBCC', c3: '#0088AA',
-    textStrong: '#C8F0F8', textMid: '#6ABECC', textDim: '#2E6A7A',
-    scanColor: 'rgba(0,212,238,0.5)', isLight: false,
-  }),
-
-  hud_cyan_light: buildHUD({
-    bg: '#FFFFFF', bg2: '#F0FBFF', bg3: '#E0F6FF', surface: '#FFFFFF',
-    c1: '#0099AA', c2: '#007788', c3: '#005566',
-    textStrong: '#001418', textMid: '#004455', textDim: '#556677',
-    scanColor: 'rgba(0,153,170,0.2)', isLight: true,
-  }),
-
-  hud_green_dark: buildHUD({
-    bg: '#020E04', bg2: '#031608', bg3: '#041C0C', surface: '#031208',
-    c1: '#00CC33', c2: '#88CC00', c3: '#009922',
-    textStrong: '#BBEECC', textMid: '#55BB66', textDim: '#226633',
-    scanColor: 'rgba(0,204,51,0.5)', isLight: false,
-  }),
-
-  hud_green_light: buildHUD({
-    bg: '#FFFFFF', bg2: '#F2FFF5', bg3: '#E4FFE9', surface: '#FFFFFF',
-    c1: '#008822', c2: '#446600', c3: '#006611',
-    textStrong: '#001805', textMid: '#004411', textDim: '#336644',
-    scanColor: 'rgba(0,136,34,0.18)', isLight: true,
-  }),
-
-  hud_silver_dark: buildHUD({
-    bg: '#0A0A10', bg2: '#141420', bg3: '#1C1C2A', surface: '#111118',
-    c1: '#A0AACC', c2: '#C8D0E8', c3: '#6070A0',
-    textStrong: '#E0E8FF', textMid: '#8894B8', textDim: '#4A5070',
-    scanColor: 'rgba(160,170,204,0.45)', isLight: false,
-  }),
-
-  hud_silver_light: buildHUD({
-    bg: '#FFFFFF', bg2: '#F4F5FA', bg3: '#EAECF5', surface: '#FFFFFF',
-    c1: '#445588', c2: '#2A3A70', c3: '#667799',
-    textStrong: '#080A18', textMid: '#2A3355', textDim: '#667788',
-    scanColor: 'rgba(68,85,136,0.18)', isLight: true,
-  }),
-
-  hud_gold_dark: buildHUD({
-    bg: '#080600', bg2: '#100D00', bg3: '#181200', surface: '#0C0900',
-    c1: '#C8A000', c2: '#DD8800', c3: '#996600',
-    textStrong: '#F8EEC8', textMid: '#BBAA44', textDim: '#775500',
-    scanColor: 'rgba(200,160,0,0.5)', isLight: false,
-  }),
-
-  hud_gold_light: buildHUD({
-    bg: '#FFFFFF', bg2: '#FFFEF2', bg3: '#FFF9D6', surface: '#FFFFFF',
-    c1: '#886600', c2: '#664400', c3: '#AA8800',
-    textStrong: '#140E00', textMid: '#553300', textDim: '#887733',
-    scanColor: 'rgba(136,102,0,0.18)', isLight: true,
-  }),
-
-  hud_purple_dark: buildHUD({
-    bg: '#06000E', bg2: '#0C0018', bg3: '#120022', surface: '#090014',
-    c1: '#8844BB', c2: '#AA66DD', c3: '#6622AA',
-    textStrong: '#DDB8FF', textMid: '#9966CC', textDim: '#553388',
-    scanColor: 'rgba(136,68,187,0.45)', isLight: false,
-  }),
-
-  hud_purple_light: buildHUD({
-    bg: '#FFFFFF', bg2: '#FCF5FF', bg3: '#F7EAFF', surface: '#FFFFFF',
-    c1: '#6600AA', c2: '#440088', c3: '#8833BB',
-    textStrong: '#080012', textMid: '#440066', textDim: '#775588',
-    scanColor: 'rgba(102,0,170,0.18)', isLight: true,
-  }),
-
-  hud_blue_dark: buildHUD({
-    bg: '#00001A', bg2: '#000520', bg3: '#000C2E', surface: '#000318',
-    c1: '#5599DD', c2: '#88BBEE', c3: '#2266BB',
-    textStrong: '#C8DDFF', textMid: '#6688BB', textDim: '#224466',
-    scanColor: 'rgba(85,153,221,0.5)', isLight: false,
-  }),
-
-  hud_blue_light: buildHUD({
-    bg: '#FFFFFF', bg2: '#F0F4FF', bg3: '#E0EAFF', surface: '#FFFFFF',
-    c1: '#0044AA', c2: '#002288', c3: '#2266BB',
-    textStrong: '#000818', textMid: '#002266', textDim: '#335577',
-    scanColor: 'rgba(0,68,170,0.18)', isLight: true,
-  }),
+  hud_cyan:       hudCyan,
+  clean_light:    cleanLight,
+  classic:        classic,
+  ghost_protocol: ghostProtocol,
 };
 
 const VALID_THEMES: ThemeType[] = [
-  'hud_cyan_dark',   'hud_cyan_light',
-  'hud_green_dark',  'hud_green_light',
-  'hud_silver_dark', 'hud_silver_light',
-  'hud_gold_dark',   'hud_gold_light',
-  'hud_purple_dark', 'hud_purple_light',
-  'hud_blue_dark',   'hud_blue_light',
+  'hud_cyan', 'clean_light', 'classic', 'ghost_protocol',
 ];
 
 function barTextColor(hexColors: string[]): string {
@@ -238,7 +237,7 @@ function barTextColor(hexColors: string[]): string {
 }
 
 export const [ThemeProvider, useTheme] = createContextHook(() => {
-  const [themeName, setThemeName] = useState<ThemeType>('hud_cyan_dark');
+  const [themeName, setThemeName] = useState<ThemeType>('hud_cyan');
   const [companyColors, setCompanyColorsState] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -251,9 +250,10 @@ export const [ThemeProvider, useTheme] = createContextHook(() => {
         ]);
         if (saved && VALID_THEMES.includes(saved as ThemeType)) {
           setThemeName(saved as ThemeType);
-        } else if (saved) {
-          setThemeName('hud_cyan_dark');
-          await AsyncStorage.setItem(THEME_STORAGE_KEY, 'hud_cyan_dark');
+        } else {
+          // Migrate any old 12-theme value to hud_cyan
+          setThemeName('hud_cyan');
+          await AsyncStorage.setItem(THEME_STORAGE_KEY, 'hud_cyan');
         }
         if (savedColors) {
           try {
@@ -285,14 +285,16 @@ export const [ThemeProvider, useTheme] = createContextHook(() => {
     } catch (e) { console.error('Error saving company colors:', e); }
   }, []);
 
-  const colors = useMemo<ThemeColors>(() => themes[themeName] || themes.hud_cyan_dark, [themeName]);
+  const colors = useMemo<ThemeColors>(() => themes[themeName] || themes.hud_cyan, [themeName]);
+
   const barColors = useMemo<string[]>(() => {
     if (companyColors.length === 0) return [colors.surface, colors.surface];
     if (companyColors.length === 1) return [companyColors[0], companyColors[0]];
     return companyColors;
   }, [companyColors, colors.surface]);
+
   const barText = useMemo(() => barTextColor(companyColors), [companyColors]);
-  const isHUD = true;
+  const isHUD = useMemo(() => colors.isHUD, [colors]);
   const isLight = useMemo(() => colors.isLight, [colors]);
 
   return {
@@ -303,4 +305,4 @@ export const [ThemeProvider, useTheme] = createContextHook(() => {
 });
 
 export const getThemeColors = (theme: ThemeType): ThemeColors =>
-  themes[theme] || themes.hud_cyan_dark;
+  themes[theme] || themes.hud_cyan;
