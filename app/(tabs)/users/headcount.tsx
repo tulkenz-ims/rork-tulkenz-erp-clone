@@ -1,26 +1,11 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  Pressable,
-  Modal,
-  TouchableOpacity,
-  ActivityIndicator,
-  Alert,
-  Platform,
+  View, Text, StyleSheet, ScrollView, Pressable, Modal,
+  TouchableOpacity, ActivityIndicator, Alert, Platform,
 } from 'react-native';
 import {
-  ChevronRight,
-  ChevronLeft,
-  Users,
-  UserCheck,
-  AlertTriangle,
-  Plus,
-  Minus,
-  X,
-  Building2,
+  ChevronRight, ChevronLeft, UserCheck, AlertTriangle,
+  Plus, Minus, X, Building2,
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useOrganization } from '@/contexts/OrganizationContext';
@@ -78,7 +63,7 @@ export default function HeadcountScreen() {
   const queryClient = useQueryClient();
 
   const [selectedDept, setSelectedDept] = useState<Department | null>(null);
-  const [selectedPosition, setSelectedPosition] = useState<Position | null>(null);
+  const [selectedPositionId, setSelectedPositionId] = useState<string | null>(null);
   const [showPositionDetail, setShowPositionDetail] = useState(false);
 
   const bg   = isHUD ? colors.hudBg      : colors.background;
@@ -104,41 +89,48 @@ export default function HeadcountScreen() {
   });
 
   // Load positions for selected department
+  const deptCode = selectedDept?.department_code;
   const { data: positions = [], isLoading: posLoading } = useQuery({
-    queryKey: ['workforce-positions', organizationId, selectedDept?.department_code],
+    queryKey: ['workforce-positions', organizationId, deptCode],
     queryFn: async () => {
-      if (!organizationId || !selectedDept) return [];
+      if (!organizationId || !deptCode) return [];
       const { data, error } = await supabase
         .from('positions')
         .select('id, position_code, title, short_title, job_level, budgeted_headcount, filled_headcount, open_positions, supervisory_role, sort_order, reports_to_position_title')
         .eq('organization_id', organizationId)
-        .eq('department_code', selectedDept.department_code)
+        .eq('department_code', deptCode)
         .eq('status', 'active')
         .order('sort_order');
       if (error) throw error;
       return (data || []) as Position[];
     },
-    enabled: !!organizationId && !!selectedDept,
+    enabled: !!organizationId && !!deptCode,
   });
+
+  // Always read selectedPosition LIVE from the positions array — never stale state
+  const selectedPosition = useMemo(
+    () => positions.find(p => p.id === selectedPositionId) ?? null,
+    [positions, selectedPositionId]
+  );
 
   // Load employees for selected position
   const { data: assignedEmployees = [] } = useQuery({
-    queryKey: ['position-employees', organizationId, selectedPosition?.id],
+    queryKey: ['position-employees', organizationId, selectedPositionId],
     queryFn: async () => {
-      if (!organizationId || !selectedPosition) return [];
+      if (!organizationId || !selectedPositionId) return [];
       const { data, error } = await supabase
         .from('employees')
         .select('id, first_name, last_name, position_id, position')
         .eq('organization_id', organizationId)
-        .eq('position_id', selectedPosition.id)
+        .eq('position_id', selectedPositionId)
         .eq('status', 'active');
       if (error) throw error;
       return (data || []) as Employee[];
     },
-    enabled: !!organizationId && !!selectedPosition,
+    enabled: !!organizationId && !!selectedPositionId,
   });
 
-  // Update budgeted headcount
+  // Update budgeted headcount — captures deptCode at call time, no stale closure
   const updateHeadcount = useMutation({
     mutationFn: async ({ positionId, newCount }: { positionId: string; newCount: number }) => {
       const { error } = await supabase
@@ -146,33 +138,30 @@ export default function HeadcountScreen() {
         .update({ budgeted_headcount: newCount })
         .eq('id', positionId);
       if (error) throw error;
+      return newCount;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['workforce-positions', organizationId, selectedDept?.department_code] });
+      queryClient.invalidateQueries({ queryKey: ['workforce-positions', organizationId, deptCode] });
     },
-    onError: () => Alert.alert('Error', 'Failed to update headcount.'),
+    onError: (err: any) => Alert.alert('Error', err?.message || 'Failed to update headcount.'),
   });
 
-  const handleHeadcountChange = useCallback((position: Position, delta: number) => {
-    const newCount = Math.max(0, position.budgeted_headcount + delta);
-    updateHeadcount.mutate({ positionId: position.id, newCount });
+  // Always reads live budgeted_headcount from the refetched positions list
+  const handleHeadcountChange = useCallback((posId: string, currentCount: number, delta: number) => {
+    const newCount = Math.max(0, currentCount + delta);
+    updateHeadcount.mutate({ positionId: posId, newCount });
   }, [updateHeadcount]);
 
-  // Dept summary stats
-  const deptStats = useMemo(() => {
-    const totalBudgeted = positions.reduce((s, p) => s + p.budgeted_headcount, 0);
-    const totalFilled   = positions.reduce((s, p) => s + p.filled_headcount, 0);
-    const totalOpen     = positions.reduce((s, p) => s + (p.open_positions || 0), 0);
-    return { totalBudgeted, totalFilled, totalOpen };
-  }, [positions]);
+  const deptStats = useMemo(() => ({
+    totalBudgeted: positions.reduce((s, p) => s + p.budgeted_headcount, 0),
+    totalFilled:   positions.reduce((s, p) => s + p.filled_headcount, 0),
+    totalOpen:     positions.reduce((s, p) => s + (p.open_positions || 0), 0),
+  }), [positions]);
 
-  // Company-wide totals
-  const companyTotals = useMemo(() => {
-    return {
-      budgeted: departments.reduce((s, d) => s + (d.budgeted_headcount || 0), 0),
-      actual:   departments.reduce((s, d) => s + (d.actual_headcount || 0), 0),
-    };
-  }, [departments]);
+  const companyTotals = useMemo(() => ({
+    budgeted: departments.reduce((s, d) => s + (d.budgeted_headcount || 0), 0),
+    actual:   departments.reduce((s, d) => s + (d.actual_headcount || 0), 0),
+  }), [departments]);
 
   if (deptsLoading) {
     return (
@@ -185,12 +174,11 @@ export default function HeadcountScreen() {
     );
   }
 
-  // ── Department drill-down view ─────────────────────────────────
+  // ── Department drill-down ──────────────────────────────────────
   if (selectedDept) {
     return (
       <View style={[S.container, { backgroundColor: bg }]}>
 
-        {/* Header */}
         <View style={[S.deptHeader, { backgroundColor: surf, borderBottomColor: bdr }]}>
           <TouchableOpacity style={S.backBtn} onPress={() => setSelectedDept(null)}>
             <ChevronLeft size={17} color={cyan} />
@@ -200,7 +188,6 @@ export default function HeadcountScreen() {
           <Text style={[S.deptHeaderName, { color: colors.text }]}>{selectedDept.name}</Text>
         </View>
 
-        {/* Dept stats */}
         <View style={[S.deptStatsRow, { backgroundColor: surf, borderBottomColor: bdr }]}>
           <View style={S.deptStat}>
             <Text style={[S.deptStatVal, { color: cyan }]}>{deptStats.totalBudgeted}</Text>
@@ -220,31 +207,21 @@ export default function HeadcountScreen() {
           </View>
         </View>
 
-        {/* Position list */}
         <ScrollView style={S.scroll} contentContainerStyle={S.scrollContent} showsVerticalScrollIndicator={false}>
           {posLoading ? (
-            <View style={S.center}>
-              <ActivityIndicator color={cyan} />
-            </View>
+            <View style={S.center}><ActivityIndicator color={cyan} /></View>
           ) : (
             positions.map(pos => {
               const levelColor = LEVEL_COLORS[pos.job_level] || LEVEL_COLORS.entry;
               const fillPct = pos.budgeted_headcount > 0
-                ? (pos.filled_headcount / pos.budgeted_headcount) * 100
-                : 0;
-              const isUnfilled = pos.open_positions > 0;
+                ? (pos.filled_headcount / pos.budgeted_headcount) * 100 : 0;
 
               return (
                 <Pressable
                   key={pos.id}
-                  style={[S.posCard, {
-                    backgroundColor: surf,
-                    borderColor: bdr,
-                    borderLeftColor: selectedDept.color,
-                  }]}
-                  onPress={() => { setSelectedPosition(pos); setShowPositionDetail(true); }}
+                  style={[S.posCard, { backgroundColor: surf, borderColor: bdr, borderLeftColor: selectedDept.color }]}
+                  onPress={() => { setSelectedPositionId(pos.id); setShowPositionDetail(true); }}
                 >
-                  {/* Top row */}
                   <View style={S.posCardTop}>
                     <View style={{ flex: 1 }}>
                       <Text style={[S.posTitle, { color: colors.text }]}>{pos.title}</Text>
@@ -267,11 +244,11 @@ export default function HeadcountScreen() {
                       </View>
                     </View>
 
-                    {/* Headcount adjuster */}
+                    {/* +/- adjuster — passes live pos.budgeted_headcount */}
                     <View style={S.headcountAdjuster}>
                       <TouchableOpacity
                         style={[S.adjBtn, { backgroundColor: colors.error + '18', borderColor: colors.error + '35' }]}
-                        onPress={() => handleHeadcountChange(pos, -1)}
+                        onPress={() => handleHeadcountChange(pos.id, pos.budgeted_headcount, -1)}
                         disabled={updateHeadcount.isPending}
                       >
                         <Minus size={12} color={colors.error} />
@@ -283,7 +260,7 @@ export default function HeadcountScreen() {
                       </View>
                       <TouchableOpacity
                         style={[S.adjBtn, { backgroundColor: colors.success + '18', borderColor: colors.success + '35' }]}
-                        onPress={() => handleHeadcountChange(pos, 1)}
+                        onPress={() => handleHeadcountChange(pos.id, pos.budgeted_headcount, 1)}
                         disabled={updateHeadcount.isPending}
                       >
                         <Plus size={12} color={colors.success} />
@@ -291,7 +268,6 @@ export default function HeadcountScreen() {
                     </View>
                   </View>
 
-                  {/* Fill bar */}
                   <View style={[S.fillTrack, { backgroundColor: bdr }]}>
                     <View style={[S.fillBar, {
                       width: `${Math.min(100, fillPct)}%` as any,
@@ -299,20 +275,15 @@ export default function HeadcountScreen() {
                     }]} />
                   </View>
 
-                  {/* Slot counts */}
                   <View style={S.slotRow}>
                     <View style={S.slotItem}>
                       <UserCheck size={11} color={colors.success} />
-                      <Text style={[S.slotText, { color: colors.success }]}>
-                        {pos.filled_headcount} filled
-                      </Text>
+                      <Text style={[S.slotText, { color: colors.success }]}>{pos.filled_headcount} filled</Text>
                     </View>
-                    {isUnfilled && (
+                    {pos.open_positions > 0 && (
                       <View style={S.slotItem}>
                         <AlertTriangle size={11} color={colors.warning} />
-                        <Text style={[S.slotText, { color: colors.warning }]}>
-                          {pos.open_positions} open
-                        </Text>
+                        <Text style={[S.slotText, { color: colors.warning }]}>{pos.open_positions} open</Text>
                       </View>
                     )}
                     <ChevronRight size={13} color={colors.textSecondary} />
@@ -324,7 +295,7 @@ export default function HeadcountScreen() {
           <View style={{ height: 40 }} />
         </ScrollView>
 
-        {/* Position detail modal */}
+        {/* Position detail modal — selectedPosition is always LIVE from positions array */}
         <Modal
           visible={showPositionDetail}
           animationType="slide"
@@ -345,12 +316,10 @@ export default function HeadcountScreen() {
                 </Pressable>
               </View>
 
-              {/* Slot visualization — smart display, no render limit issues */}
               <View style={[S.slotsSection, { borderBottomColor: bdr }]}>
                 <Text style={[S.slotsSectionTitle, { color: colors.textSecondary, fontFamily: MONO }]}>
-                  {selectedPosition?.budgeted_headcount} BUDGETED · {assignedEmployees.length} FILLED · {Math.max(0,(selectedPosition?.budgeted_headcount||0)-assignedEmployees.length)} OPEN
+                  {selectedPosition?.budgeted_headcount} BUDGETED · {assignedEmployees.length} FILLED · {Math.max(0, (selectedPosition?.budgeted_headcount || 0) - assignedEmployees.length)} OPEN
                 </Text>
-                {/* Filled employees — always safe to render */}
                 {assignedEmployees.length > 0 && (
                   <View style={S.slotsGrid}>
                     {assignedEmployees.map((emp, i) => (
@@ -366,18 +335,17 @@ export default function HeadcountScreen() {
                     ))}
                   </View>
                 )}
-                {/* Open slots — single banner instead of N cards */}
-                {Math.max(0,(selectedPosition?.budgeted_headcount||0)-assignedEmployees.length) > 0 && (
-                  <View style={[S.openSummary, { backgroundColor: colors.error+'10', borderColor: colors.error+'25' }]}>
+                {Math.max(0, (selectedPosition?.budgeted_headcount || 0) - assignedEmployees.length) > 0 && (
+                  <View style={[S.openSummary, { backgroundColor: colors.error + '10', borderColor: colors.error + '25' }]}>
                     <AlertTriangle size={14} color={colors.error} />
                     <Text style={[S.openSummaryText, { color: colors.error, fontFamily: MONO }]}>
-                      {Math.max(0,(selectedPosition?.budgeted_headcount||0)-assignedEmployees.length)} OPEN POSITIONS — NEEDS HIRING
+                      {Math.max(0, (selectedPosition?.budgeted_headcount || 0) - assignedEmployees.length)} OPEN POSITIONS — NEEDS HIRING
                     </Text>
                   </View>
                 )}
               </View>
 
-              {/* Headcount adjuster in detail */}
+              {/* Adjuster in modal — also uses live selectedPosition */}
               <View style={S.detailAdjRow}>
                 <Text style={[S.detailAdjLabel, { color: colors.textSecondary }]}>
                   Adjust budgeted headcount:
@@ -385,7 +353,7 @@ export default function HeadcountScreen() {
                 <View style={S.headcountAdjuster}>
                   <TouchableOpacity
                     style={[S.adjBtn, { backgroundColor: colors.error + '18', borderColor: colors.error + '35' }]}
-                    onPress={() => selectedPosition && handleHeadcountChange(selectedPosition, -1)}
+                    onPress={() => selectedPosition && handleHeadcountChange(selectedPosition.id, selectedPosition.budgeted_headcount, -1)}
                     disabled={updateHeadcount.isPending}
                   >
                     <Minus size={14} color={colors.error} />
@@ -397,7 +365,7 @@ export default function HeadcountScreen() {
                   </View>
                   <TouchableOpacity
                     style={[S.adjBtn, { backgroundColor: colors.success + '18', borderColor: colors.success + '35' }]}
-                    onPress={() => selectedPosition && handleHeadcountChange(selectedPosition, 1)}
+                    onPress={() => selectedPosition && handleHeadcountChange(selectedPosition.id, selectedPosition.budgeted_headcount, 1)}
                     disabled={updateHeadcount.isPending}
                   >
                     <Plus size={14} color={colors.success} />
@@ -413,16 +381,12 @@ export default function HeadcountScreen() {
     );
   }
 
-  // ── Department overview ────────────────────────────────────────
+  // ── Company overview ───────────────────────────────────────────
   return (
     <View style={[S.container, { backgroundColor: bg }]}>
-
-      {/* Company totals */}
       <View style={[S.companyBar, { backgroundColor: surf, borderBottomColor: bdr }]}>
         <Building2 size={13} color={cyan} />
-        <Text style={[S.companyBarText, { color: colors.textSecondary, fontFamily: MONO }]}>
-          COMPANY TOTAL
-        </Text>
+        <Text style={[S.companyBarText, { color: colors.textSecondary, fontFamily: MONO }]}>COMPANY TOTAL</Text>
         <Text style={[S.companyBarVal, { color: cyan, fontFamily: MONO }]}>
           {companyTotals.actual} / {companyTotals.budgeted} FILLED
         </Text>
@@ -431,8 +395,7 @@ export default function HeadcountScreen() {
       <ScrollView style={S.scroll} contentContainerStyle={S.scrollContent} showsVerticalScrollIndicator={false}>
         {departments.map(dept => {
           const fillPct = dept.budgeted_headcount > 0
-            ? (dept.actual_headcount / dept.budgeted_headcount) * 100
-            : 0;
+            ? (dept.actual_headcount / dept.budgeted_headcount) * 100 : 0;
           const open = Math.max(0, (dept.budgeted_headcount || 0) - (dept.actual_headcount || 0));
 
           return (
@@ -445,35 +408,24 @@ export default function HeadcountScreen() {
                 <View style={[S.deptColorDot, { backgroundColor: dept.color }]} />
                 <Text style={[S.deptName, { color: colors.text }]}>{dept.name}</Text>
                 <View style={S.deptCounts}>
-                  <Text style={[S.deptFilled, { color: colors.success }]}>
-                    {dept.actual_headcount || 0}
-                  </Text>
+                  <Text style={[S.deptFilled, { color: colors.success }]}>{dept.actual_headcount || 0}</Text>
                   <Text style={[S.deptSlash, { color: colors.textSecondary }]}>/</Text>
-                  <Text style={[S.deptBudgeted, { color: colors.text }]}>
-                    {dept.budgeted_headcount || 0}
-                  </Text>
+                  <Text style={[S.deptBudgeted, { color: colors.text }]}>{dept.budgeted_headcount || 0}</Text>
                 </View>
                 {open > 0 && (
                   <View style={[S.openBadge, { backgroundColor: colors.warning + '20', borderColor: colors.warning + '40' }]}>
-                    <Text style={[S.openBadgeText, { color: colors.warning, fontFamily: MONO }]}>
-                      {open} OPEN
-                    </Text>
+                    <Text style={[S.openBadgeText, { color: colors.warning, fontFamily: MONO }]}>{open} OPEN</Text>
                   </View>
                 )}
                 <ChevronRight size={16} color={colors.textSecondary} />
               </View>
-
-              {/* Fill bar */}
               <View style={[S.fillTrack, { backgroundColor: bdr, marginTop: 10 }]}>
                 <View style={[S.fillBar, {
                   width: `${Math.min(100, fillPct)}%` as any,
                   backgroundColor: fillPct >= 100 ? colors.success : fillPct >= 60 ? colors.warning : colors.error,
                 }]} />
               </View>
-
-              <Text style={[S.fillPct, { color: colors.textSecondary }]}>
-                {Math.round(fillPct)}% staffed
-              </Text>
+              <Text style={[S.fillPct, { color: colors.textSecondary }]}>{Math.round(fillPct)}% staffed</Text>
             </Pressable>
           );
         })}
@@ -489,13 +441,9 @@ const S = StyleSheet.create({
   loadingText:  { fontSize: 11, letterSpacing: 2 },
   scroll:       { flex: 1 },
   scrollContent:{ padding: 12, gap: 10 },
-
-  // Company bar
   companyBar:     { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1 },
   companyBarText: { fontSize: 9, fontWeight: '700' as const, letterSpacing: 1.5, flex: 1 },
   companyBarVal:  { fontSize: 12, fontWeight: '800' as const, letterSpacing: 0.5 },
-
-  // Dept card
   deptCard:    { borderRadius: 12, borderWidth: 1, borderLeftWidth: 3, padding: 14 },
   deptCardTop: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   deptColorDot:{ width: 10, height: 10, borderRadius: 5 },
@@ -509,8 +457,6 @@ const S = StyleSheet.create({
   fillTrack:   { height: 4, borderRadius: 2, overflow: 'hidden' },
   fillBar:     { height: '100%' as any, borderRadius: 2 },
   fillPct:     { fontSize: 10, marginTop: 4 },
-
-  // Dept header (drill-down)
   deptHeader:     { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1 },
   backBtn:        { flexDirection: 'row', alignItems: 'center', gap: 3 },
   backText:       { fontSize: 11, fontWeight: '800' as const, letterSpacing: 1 },
@@ -521,8 +467,6 @@ const S = StyleSheet.create({
   deptStatVal:    { fontSize: 20, fontWeight: '700' as const },
   deptStatLbl:    { fontSize: 9, fontWeight: '700' as const, letterSpacing: 1 },
   deptStatDiv:    { width: 1, marginVertical: 4 },
-
-  // Position card
   posCard:    { borderRadius: 12, borderWidth: 1, borderLeftWidth: 3, padding: 12 },
   posCardTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 10 },
   posTitle:   { fontSize: 14, fontWeight: '600' as const, marginBottom: 5 },
@@ -535,21 +479,15 @@ const S = StyleSheet.create({
   slotRow:    { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 8 },
   slotItem:   { flexDirection: 'row', alignItems: 'center', gap: 4 },
   slotText:   { fontSize: 11, fontWeight: '600' as const },
-
-  // Headcount adjuster
   headcountAdjuster: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   adjBtn:    { width: 28, height: 28, borderRadius: 7, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   adjCount:  { minWidth: 36, height: 28, borderRadius: 7, borderWidth: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 },
   adjCountText: { fontSize: 13, fontWeight: '800' as const },
-
-  // Position detail modal
   overlay:      { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
   detailSheet:  { borderTopLeftRadius: 24, borderTopRightRadius: 24, borderTopWidth: 1, maxHeight: '88%' as any },
   detailHead:   { flexDirection: 'row', alignItems: 'center', padding: 20, borderBottomWidth: 1 },
   detailTitle:  { fontSize: 17, fontWeight: '700' as const },
   detailCode:   { fontSize: 10, letterSpacing: 1.5, marginTop: 2 },
-
-  // Slots grid
   slotsSection:      { padding: 16, borderBottomWidth: 1 },
   slotsSectionTitle: { fontSize: 9, fontWeight: '800' as const, letterSpacing: 1.5, marginBottom: 12 },
   slotsGrid:         { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
@@ -558,14 +496,8 @@ const S = StyleSheet.create({
   slotAvatarText:    { fontSize: 11, fontWeight: '700' as const },
   slotEmpName:       { fontSize: 10, fontWeight: '600' as const, textAlign: 'center' },
   slotEmpLast:       { fontSize: 9, textAlign: 'center' },
-  slotEmpty:         { width: 32, height: 32, borderRadius: 16, borderWidth: 1, borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center' },
-  slotOpenText:      { fontSize: 8, fontWeight: '700' as const, letterSpacing: 0.5 },
-
-  // Open summary banner
   openSummary:     { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 8, borderWidth: 1, marginTop: 10 },
   openSummaryText: { fontSize: 12, fontWeight: '700' as const, letterSpacing: 0.5 },
-
-  // Detail adjuster row
   detailAdjRow:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16 },
   detailAdjLabel:{ fontSize: 13 },
 });
