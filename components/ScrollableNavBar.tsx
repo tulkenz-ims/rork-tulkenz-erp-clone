@@ -65,44 +65,19 @@ export default function ScrollableNavBar({
   onNavigate,
   visibleModules,
 }: ScrollableNavBarProps) {
-  const { colors, barColors, barText, companyColors, isLight, isHUD } = useTheme();
+  const { colors, isLight, isHUD } = useTheme();
   const insets = useSafeAreaInsets();
   const scrollViewRef = useRef<ScrollView>(null);
   const badgeCounts = useTabBadgeCounts();
 
   const filteredModules = NAVIGATION_MODULES.filter(m => visibleModules.includes(m.key));
-  const hasCompanyColors = companyColors.length > 0;
 
-  // ── Theme-aware nav bar colors ────────────────────────────────
-  // When company colors are set, they override everything.
-  // Otherwise, derive from the active theme.
-  const activeColor = hasCompanyColors
-    ? barText
-    : colors.hudPrimary;
-
-  const inactiveColor = hasCompanyColors
-    ? barText + 'AA'
-    : isLight
-      ? colors.textSecondary
-      : colors.textTertiary;
-
-  const indicatorColor = hasCompanyColors
-    ? barText
-    : colors.hudPrimary;
-
-  // Border top: HUD gets bright cyan border, light themes get a subtle separator
-  const borderTopColor = hasCompanyColors
-    ? 'transparent'
-    : isHUD
-      ? colors.hudBorderBright
-      : colors.border;
-
-  // Background: HUD stays dark, light themes use surface white/near-white
-  const bgColor = hasCompanyColors
-    ? undefined
-    : isHUD
-      ? colors.hudSurface
-      : colors.surface;
+  // ── Theme-aware nav bar colors (always uses theme, never company colors) ──
+  const activeColor    = colors.hudPrimary;
+  const inactiveColor  = isLight ? colors.textSecondary : colors.textTertiary;
+  const indicatorColor = colors.hudPrimary;
+  const borderTopColor = isHUD ? colors.hudBorderBright : colors.border;
+  const bgColor        = isHUD ? colors.hudSurface : colors.surface;
 
   const getIsActive = (module: NavigationModule) => {
     if (module.route === activeRoute) return true;
@@ -119,7 +94,6 @@ export default function ScrollableNavBar({
       activeColor={activeColor}
       inactiveColor={inactiveColor}
       indicatorColor={indicatorColor}
-      isLight={isLight}
       badgeCounts={badgeCounts}
     />
   ));
@@ -149,20 +123,6 @@ export default function ScrollableNavBar({
     },
   ];
 
-  // Company colors override: use gradient
-  if (hasCompanyColors) {
-    return (
-      <LinearGradient
-        colors={barColors as [string, string, ...string[]]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-        style={containerStyle}
-      >
-        {innerContent}
-      </LinearGradient>
-    );
-  }
-
   return (
     <View style={[containerStyle, { backgroundColor: bgColor }]}>
       {innerContent}
@@ -178,13 +138,12 @@ interface NavItemProps {
   activeColor: string;
   inactiveColor: string;
   indicatorColor: string;
-  isLight: boolean;
   badgeCounts: TabBadgeCounts;
 }
 
 function NavItem({
   module, isActive, onPress,
-  activeColor, inactiveColor, indicatorColor, isLight, badgeCounts,
+  activeColor, inactiveColor, indicatorColor, badgeCounts,
 }: NavItemProps) {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const ModuleIcon = module.icon;
