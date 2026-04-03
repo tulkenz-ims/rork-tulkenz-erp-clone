@@ -65,7 +65,7 @@ export default function ScrollableNavBar({
   onNavigate,
   visibleModules,
 }: ScrollableNavBarProps) {
-  const { colors, barColors, barText, companyColors, isLight } = useTheme();
+  const { colors, barColors, barText, companyColors, isLight, isHUD } = useTheme();
   const insets = useSafeAreaInsets();
   const scrollViewRef = useRef<ScrollView>(null);
   const badgeCounts = useTabBadgeCounts();
@@ -73,12 +73,36 @@ export default function ScrollableNavBar({
   const filteredModules = NAVIGATION_MODULES.filter(m => visibleModules.includes(m.key));
   const hasCompanyColors = companyColors.length > 0;
 
-  // HUD color logic
-  const activeColor  = hasCompanyColors ? barText : colors.hudPrimary;
-  const inactiveColor = hasCompanyColors ? barText + 'AA' : colors.textTertiary;
-  const indicatorColor = hasCompanyColors ? barText : colors.hudPrimary;
-  const borderTopColor = hasCompanyColors ? 'transparent' : colors.hudBorderBright;
-  const bgColor = hasCompanyColors ? undefined : (isLight ? '#FFFFFF' : colors.hudSurface);
+  // ── Theme-aware nav bar colors ────────────────────────────────
+  // When company colors are set, they override everything.
+  // Otherwise, derive from the active theme.
+  const activeColor = hasCompanyColors
+    ? barText
+    : colors.hudPrimary;
+
+  const inactiveColor = hasCompanyColors
+    ? barText + 'AA'
+    : isLight
+      ? colors.textSecondary
+      : colors.textTertiary;
+
+  const indicatorColor = hasCompanyColors
+    ? barText
+    : colors.hudPrimary;
+
+  // Border top: HUD gets bright cyan border, light themes get a subtle separator
+  const borderTopColor = hasCompanyColors
+    ? 'transparent'
+    : isHUD
+      ? colors.hudBorderBright
+      : colors.border;
+
+  // Background: HUD stays dark, light themes use surface white/near-white
+  const bgColor = hasCompanyColors
+    ? undefined
+    : isHUD
+      ? colors.hudSurface
+      : colors.surface;
 
   const getIsActive = (module: NavigationModule) => {
     if (module.route === activeRoute) return true;
@@ -95,6 +119,7 @@ export default function ScrollableNavBar({
       activeColor={activeColor}
       inactiveColor={inactiveColor}
       indicatorColor={indicatorColor}
+      isLight={isLight}
       badgeCounts={badgeCounts}
     />
   ));
@@ -124,6 +149,7 @@ export default function ScrollableNavBar({
     },
   ];
 
+  // Company colors override: use gradient
   if (hasCompanyColors) {
     return (
       <LinearGradient
@@ -152,12 +178,13 @@ interface NavItemProps {
   activeColor: string;
   inactiveColor: string;
   indicatorColor: string;
+  isLight: boolean;
   badgeCounts: TabBadgeCounts;
 }
 
 function NavItem({
   module, isActive, onPress,
-  activeColor, inactiveColor, indicatorColor, badgeCounts,
+  activeColor, inactiveColor, indicatorColor, isLight, badgeCounts,
 }: NavItemProps) {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const ModuleIcon = module.icon;
@@ -196,7 +223,7 @@ function NavItem({
           <View style={[styles.topAccentLine, { backgroundColor: indicatorColor }]} />
         )}
 
-        {/* Icon area — no rounded bubble, just the icon */}
+        {/* Icon area */}
         <View style={styles.iconArea}>
           <ModuleIcon
             size={20}
@@ -227,7 +254,7 @@ function NavItem({
           {module.label.toUpperCase()}
         </Text>
 
-        {/* Left corner bracket on active */}
+        {/* Corner brackets on active item */}
         {isActive && (
           <>
             <View style={[styles.bracketTL, { borderColor: indicatorColor }]} />
@@ -267,7 +294,6 @@ const styles = StyleSheet.create({
     minWidth: 60,
     position: 'relative',
   },
-  // Top accent line replaces rounded dot indicator
   topAccentLine: {
     position: 'absolute',
     top: 0,
@@ -275,7 +301,6 @@ const styles = StyleSheet.create({
     right: 8,
     height: 2,
   },
-  // Icon — no background bubble, no borderRadius
   iconArea: {
     width: 36,
     height: 28,
@@ -290,7 +315,6 @@ const styles = StyleSheet.create({
     maxWidth: 68,
     letterSpacing: 0.8,
   },
-  // Corner brackets on active item
   bracketTL: {
     position: 'absolute',
     top: 2,
@@ -309,7 +333,6 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderRightWidth: 1,
   },
-  // Badge
   badge: {
     position: 'absolute',
     top: -2,
