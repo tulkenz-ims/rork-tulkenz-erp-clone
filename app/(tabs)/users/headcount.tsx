@@ -345,51 +345,36 @@ export default function HeadcountScreen() {
                 </Pressable>
               </View>
 
-              {/* Slot visualization */}
+              {/* Slot visualization — smart display, no render limit issues */}
               <View style={[S.slotsSection, { borderBottomColor: bdr }]}>
                 <Text style={[S.slotsSectionTitle, { color: colors.textSecondary, fontFamily: MONO }]}>
-                  POSITION SLOTS ({selectedPosition?.budgeted_headcount} BUDGETED)
+                  {selectedPosition?.budgeted_headcount} BUDGETED · {assignedEmployees.length} FILLED · {Math.max(0,(selectedPosition?.budgeted_headcount||0)-assignedEmployees.length)} OPEN
                 </Text>
-                <View style={S.slotsGrid}>
-                  {Array.from({ length: selectedPosition?.budgeted_headcount || 0 }).map((_, i) => {
-                    const emp = assignedEmployees[i];
-                    return (
-                      <View
-                        key={i}
-                        style={[S.slot, {
-                          backgroundColor: emp ? colors.success + '18' : colors.backgroundSecondary,
-                          borderColor: emp ? colors.success + '40' : bdr,
-                          borderStyle: emp ? 'solid' : 'dashed',
-                        }]}
-                      >
-                        {emp ? (
-                          <>
-                            <View style={[S.slotAvatar, { backgroundColor: colors.success + '25' }]}>
-                              <Text style={[S.slotAvatarText, { color: colors.success }]}>
-                                {emp.first_name[0]}{emp.last_name[0]}
-                              </Text>
-                            </View>
-                            <Text style={[S.slotEmpName, { color: colors.text }]} numberOfLines={1}>
-                              {emp.first_name}
-                            </Text>
-                            <Text style={[S.slotEmpLast, { color: colors.textSecondary }]} numberOfLines={1}>
-                              {emp.last_name}
-                            </Text>
-                          </>
-                        ) : (
-                          <>
-                            <View style={[S.slotEmpty, { borderColor: colors.textTertiary + '40' }]}>
-                              <Plus size={14} color={colors.textTertiary} />
-                            </View>
-                            <Text style={[S.slotOpenText, { color: colors.textTertiary, fontFamily: MONO }]}>
-                              OPEN
-                            </Text>
-                          </>
-                        )}
+                {/* Filled employees — always safe to render */}
+                {assignedEmployees.length > 0 && (
+                  <View style={S.slotsGrid}>
+                    {assignedEmployees.map((emp, i) => (
+                      <View key={i} style={[S.slot, { backgroundColor: colors.success + '18', borderColor: colors.success + '40' }]}>
+                        <View style={[S.slotAvatar, { backgroundColor: colors.success + '25' }]}>
+                          <Text style={[S.slotAvatarText, { color: colors.success }]}>
+                            {emp.first_name[0]}{emp.last_name[0]}
+                          </Text>
+                        </View>
+                        <Text style={[S.slotEmpName, { color: colors.text }]} numberOfLines={1}>{emp.first_name}</Text>
+                        <Text style={[S.slotEmpLast, { color: colors.textSecondary }]} numberOfLines={1}>{emp.last_name}</Text>
                       </View>
-                    );
-                  })}
-                </View>
+                    ))}
+                  </View>
+                )}
+                {/* Open slots — single banner instead of N cards */}
+                {Math.max(0,(selectedPosition?.budgeted_headcount||0)-assignedEmployees.length) > 0 && (
+                  <View style={[S.openSummary, { backgroundColor: colors.error+'10', borderColor: colors.error+'25' }]}>
+                    <AlertTriangle size={14} color={colors.error} />
+                    <Text style={[S.openSummaryText, { color: colors.error, fontFamily: MONO }]}>
+                      {Math.max(0,(selectedPosition?.budgeted_headcount||0)-assignedEmployees.length)} OPEN POSITIONS — NEEDS HIRING
+                    </Text>
+                  </View>
+                )}
               </View>
 
               {/* Headcount adjuster in detail */}
@@ -575,6 +560,10 @@ const S = StyleSheet.create({
   slotEmpLast:       { fontSize: 9, textAlign: 'center' },
   slotEmpty:         { width: 32, height: 32, borderRadius: 16, borderWidth: 1, borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center' },
   slotOpenText:      { fontSize: 8, fontWeight: '700' as const, letterSpacing: 0.5 },
+
+  // Open summary banner
+  openSummary:     { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 8, borderWidth: 1, marginTop: 10 },
+  openSummaryText: { fontSize: 12, fontWeight: '700' as const, letterSpacing: 0.5 },
 
   // Detail adjuster row
   detailAdjRow:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16 },
