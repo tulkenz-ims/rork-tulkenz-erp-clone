@@ -26,6 +26,7 @@ import {
   Building2,
   MapPin,
 } from 'lucide-react-native';
+import QRCode from 'react-native-qrcode-svg';
 import { useRouter } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import {
@@ -52,6 +53,8 @@ interface QRCodeData {
   code: string;
   timestamp: number;
   expiresAt: number;
+  // Full payload embedded in the QR so the scan screen can decode it
+  payload: string;
 }
 
 const generateQRCode = (): QRCodeData => {
@@ -61,10 +64,13 @@ const generateQRCode = (): QRCodeData => {
     code += chars.charAt(Math.floor(Math.random() * chars.length));
   }
   const timestamp = Date.now();
+  // Payload format: TULKENZ:{code}:{timestamp} — scan screen validates prefix + code
+  const payload = `TULKENZ:${code}:${timestamp}`;
   return {
     code,
     timestamp,
     expiresAt: timestamp + 30000,
+    payload,
   };
 };
 
@@ -97,13 +103,12 @@ export default function TimeClockScreen() {
 
   const { isSubscribed } = useTimeClockRealtime();
 
-  const clockInMutation  = useClockInWithLocation();
-  const clockOutMutation = useClockOutWithLocation();
+  const clockInMutation    = useClockInWithLocation();
+  const clockOutMutation   = useClockOutWithLocation();
   const startBreakMutation = useStartBreak();
   const endBreakMutation   = useEndBreak();
   const checkOutOfRoom     = useCheckOutOfRoom();
 
-  // Active room entry for the selected employee (used to show current room in actions modal)
   const { data: activeRoomEntry } = useActiveRoomEntry(
     selectedEmployee?.employee_id ?? undefined
   );
@@ -183,18 +188,14 @@ export default function TimeClockScreen() {
             method: 'employee_number',
           });
 
-          // Store the new time entry ID so we can link it to room labor
           const timeEntryId = (result as any)?.id ?? undefined;
           setCheckedInTimeEntryId(timeEntryId);
-
-          // Close actions modal, then show room picker
           setShowActionsModal(false);
           setShowRoomPicker(true);
           refetchEmployees();
-          return; // Skip the generic success alert — room picker is the next step
+          return;
 
         } else if (action === 'clock_out') {
-          // Auto-exit room if the employee is currently in one
           if (activeRoomEntry) {
             try {
               await checkOutOfRoom.mutateAsync({
@@ -205,7 +206,6 @@ export default function TimeClockScreen() {
               console.warn('[TimeClockScreen] Could not exit room on check-out:', roomErr);
             }
           }
-
           await clockOutMutation.mutateAsync({
             employeeId: selectedEmployee.employee_id,
             method: 'employee_number',
@@ -320,7 +320,6 @@ export default function TimeClockScreen() {
     setCheckedInTimeEntryId(undefined);
   }, []);
 
-  // ── Change Room (standalone action from actions modal) ─────
   const handleChangeRoom = useCallback(() => {
     setShowActionsModal(false);
     setShowRoomPicker(true);
@@ -332,52 +331,65 @@ export default function TimeClockScreen() {
     <Modal visible={showQRModal} animationType="slide" transparent>
       <View style={styles.modalOverlay}>
         <View style={[styles.qrModalContent, { backgroundColor: colors.surface }]}>
+
+          {/* Header */}
           <View style={styles.qrModalHeader}>
-            <Text style={[styles.qrModalTitle, { color: colors.text }]}>QR Code Check-In</Text>
+            <Text style={[styles.qrModalTitle, { color: colors.text }]}>
+              QR Code Check-In
+            </Text>
             <TouchableOpacity onPress={() => setShowQRModal(false)}>
               <X size={24} color={colors.textSecondary} />
             </TouchableOpacity>
           </View>
+
           <Text style={[styles.qrSubtitle, { color: colors.textSecondary }]}>
             Employees scan this code with their phone to check in
           </Text>
-          <View style={[styles.qrCodeBox, { backgroundColor: '#FFFFFF' }]}>
-            <View style={styles.qrPattern}>
-              <Text style={styles.qrCodeText}>{qrData.code}</Text>
-              <View style={styles.qrVisual}>
-                {[...Array(5)].map((_, row) => (
-                  <View key={row} style={styles.qrRow}>
-                    {[...Array(5)].map((_, col) => (
-                      <View
-                        key={col}
-                        style={[
-                          styles.qrCell,
-                          {
-                            backgroundColor:
-                              qrData.code.charCodeAt((row * 5 + col) % 8) % 2 === 0
-                                ? '#000000'
-                                : '#FFFFFF',
-                          },
-                        ]}
-                      />
-                    ))}
-                  </View>
-                ))}
-              </View>
-            </View>
+
+          {/* Real QR code — white background required for scanner contrast */}
+          <View style={styles.qrCodeBox}>
+            <QRCode
+              value={qrData.payload}
+              size={200}
+              color="#000000"
+              backgroundColor="#FFFFFF"
+              // Adds the TulKenz logo in the center if you have a logo asset
+              // logo={require('@/assets/images/icon.png')}
+              // logoSize={36}
+              // logoBackgroundColor="#FFFFFF"
+            />
+            {/* Human-readable code below the QR */}
+            <Text style={styles.qrCodeText}>{qrData.code}</Text>
           </View>
+
+          {/* Countdown */}
           <View style={styles.qrCountdownContainer}>
             <RefreshCw size={16} color={colors.textSecondary} />
             <Text style={[styles.qrCountdownText, { color: colors.textSecondary }]}>
               New code in {qrCountdown}s
             </Text>
           </View>
+
+          {/* Progress bar showing time remaining */}
+          <View style={[styles.qrProgressTrack, { backgroundColor: colors.border }]}>
+            <View
+              style={[
+                styles.qrProgressFill,
+                {
+                  backgroundColor: colors.hudPrimary,
+                  width: `${(qrCountdown / 30) * 100}%` as any,
+                },
+              ]}
+            />
+          </View>
+
           <View style={[styles.qrInfoBanner, { backgroundColor: `${colors.primary}10` }]}>
             <Building2 size={18} color={colors.primary} />
             <Text style={[styles.qrInfoText, { color: colors.primary }]}>
-              Code changes every 30 seconds for security
+              Code refreshes every 30 seconds for security
             </Text>
           </View>
+
         </View>
       </View>
     </Modal>
@@ -612,7 +624,6 @@ export default function TimeClockScreen() {
                 </Text>
               </View>
 
-              {/* Current room display */}
               {activeRoomEntry && (
                 <TouchableOpacity
                   style={styles.currentRoomBadge}
@@ -663,7 +674,6 @@ export default function TimeClockScreen() {
 
               {status === 'clocked_in' && (
                 <>
-                  {/* Change Room button when already checked in */}
                   <TouchableOpacity
                     style={[styles.actionBtn, styles.roomBtn]}
                     onPress={handleChangeRoom}
@@ -773,7 +783,6 @@ export default function TimeClockScreen() {
         }
       />
 
-      {/* Room picker — shown after check-in and from Change Room button */}
       {selectedEmployee && (
         <RoomCheckInPicker
           visible={showRoomPicker}
@@ -859,22 +868,24 @@ const styles = StyleSheet.create({
   cancelBtn:             { paddingVertical: 14, borderRadius: 12, borderWidth: 1, alignItems: 'center' },
   cancelBtnText:         { fontSize: 15, fontWeight: '500' as const },
   modalOverlay:          { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+
+  // QR Modal
   qrModalContent:        { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 40, alignItems: 'center' },
   qrModalHeader:         { width: '100%', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   qrModalTitle:          { fontSize: 20, fontWeight: '700' as const },
+  qrSubtitle:            { fontSize: 14, textAlign: 'center', marginBottom: 24 },
+  qrCodeBox:             { padding: 20, borderRadius: 16, backgroundColor: '#FFFFFF', alignItems: 'center', marginBottom: 16 },
+  qrCodeText:            { fontSize: 24, fontWeight: '800' as const, letterSpacing: 6, color: '#000000', marginTop: 16, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  qrCountdownContainer:  { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 },
+  qrCountdownText:       { fontSize: 13 },
+  qrProgressTrack:       { width: '80%', height: 3, borderRadius: 2, marginBottom: 16, overflow: 'hidden' },
+  qrProgressFill:        { height: '100%' as any, borderRadius: 2 },
+  qrInfoBanner:          { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 12, gap: 12, width: '100%' },
+  qrInfoText:            { flex: 1, fontSize: 13, lineHeight: 18 },
+
+  // Pin / Actions Modals
   pinModalContent:       { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 40 },
   pinModalHeader:        { width: '100%', flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 8 },
   actionsModalContent:   { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 40 },
   actionsModalHeader:    { width: '100%', flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 8 },
-  qrSubtitle:            { fontSize: 14, textAlign: 'center', marginBottom: 20 },
-  qrCodeBox:             { padding: 20, borderRadius: 16, marginBottom: 16 },
-  qrPattern:             { alignItems: 'center' },
-  qrCodeText:            { fontSize: 32, fontWeight: '800' as const, letterSpacing: 4, color: '#000000', marginBottom: 16 },
-  qrVisual:              { gap: 4 },
-  qrRow:                 { flexDirection: 'row', gap: 4 },
-  qrCell:                { width: 24, height: 24, borderRadius: 4 },
-  qrCountdownContainer:  { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 16 },
-  qrCountdownText:       { fontSize: 13 },
-  qrInfoBanner:          { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 12, gap: 12 },
-  qrInfoText:            { flex: 1, fontSize: 13, lineHeight: 18 },
 });
