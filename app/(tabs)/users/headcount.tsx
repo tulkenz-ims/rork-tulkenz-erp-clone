@@ -1,11 +1,11 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, Pressable, Modal,
-  TouchableOpacity, ActivityIndicator, Alert, Platform,
+  TouchableOpacity, ActivityIndicator, Alert, Platform, TextInput,
 } from 'react-native';
 import {
   ChevronRight, ChevronLeft, UserCheck, AlertTriangle,
-  Plus, Minus, X, Building2,
+  Plus, Minus, X, Building2, Search, UserPlus,
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useOrganization } from '@/contexts/OrganizationContext';
@@ -44,6 +44,7 @@ interface Employee {
   last_name: string;
   position_id: string | null;
   position: string | null;
+  department_code: string | null;
 }
 
 const LEVEL_COLORS: Record<string, string> = {
@@ -65,13 +66,17 @@ export default function HeadcountScreen() {
   const [selectedDept, setSelectedDept] = useState<Department | null>(null);
   const [selectedPositionId, setSelectedPositionId] = useState<string | null>(null);
   const [showPositionDetail, setShowPositionDetail] = useState(false);
+  const [showAssignPicker, setShowAssignPicker] = useState(false);
+  const [assignSearch, setAssignSearch] = useState('');
 
   const bg   = isHUD ? colors.hudBg      : colors.background;
   const surf = isHUD ? colors.hudSurface  : colors.surface;
   const bdr  = isHUD ? colors.hudBorderBright : colors.border;
   const cyan = isHUD ? colors.hudPrimary  : colors.primary;
 
-  // Load departments
+  const deptCode = selectedDept?.department_code;
+
+  // Departments
   const { data: departments = [], isLoading: deptsLoading } = useQuery({
     queryKey: ['workforce-departments', organizationId],
     queryFn: async () => {
@@ -88,8 +93,7 @@ export default function HeadcountScreen() {
     enabled: !!organizationId,
   });
 
-  // Load positions for selected department
-  const deptCode = selectedDept?.department_code;
+  // Positions for selected dept
   const { data: positions = [], isLoading: posLoading } = useQuery({
     queryKey: ['workforce-positions', organizationId, deptCode],
     queryFn: async () => {
@@ -107,20 +111,20 @@ export default function HeadcountScreen() {
     enabled: !!organizationId && !!deptCode,
   });
 
-  // Always read selectedPosition LIVE from the positions array — never stale state
+  // Live selected position from array — never stale
   const selectedPosition = useMemo(
     () => positions.find(p => p.id === selectedPositionId) ?? null,
     [positions, selectedPositionId]
   );
 
-  // Load employees for selected position
+  // Employees assigned to selected position
   const { data: assignedEmployees = [] } = useQuery({
     queryKey: ['position-employees', organizationId, selectedPositionId],
     queryFn: async () => {
       if (!organizationId || !selectedPositionId) return [];
       const { data, error } = await supabase
         .from('employees')
-        .select('id, first_name, last_name, position_id, position')
+        .select('id, first_name, last_name, position_id, position, department_code')
         .eq('organization_id', organizationId)
         .eq('position_id', selectedPositionId)
         .eq('status', 'active');
@@ -130,7 +134,36 @@ export default function HeadcountScreen() {
     enabled: !!organizationId && !!selectedPositionId,
   });
 
-  // Update budgeted headcount — captures deptCode at call time, no stale closure
+  // All active employees for assignment picker
+  const { data: allEmployees = [] } = useQuery({
+    queryKey: ['all-employees-for-assign', organizationId],
+    queryFn: async () => {
+      if (!organizationId) return [];
+      const { data, error } = await supabase
+        .from('employees')
+        .select('id, first_name, last_name, position_id, position, department_code')
+        .eq('organization_id', organizationId)
+        .eq('status', 'active')
+        .order('last_name');
+      if (error) throw error;
+      return (data || []) as Employee[];
+    },
+    enabled: !!organizationId && showAssignPicker,
+  });
+
+  // Filtered employee list for picker
+  const pickerEmployees = useMemo(() => {
+    const q = assignSearch.toLowerCase();
+    const assignedIds = new Set(assignedEmployees.map(e => e.id));
+    return allEmployees.filter(e => {
+      if (assignedIds.has(e.id)) return false;
+      if (q === '') return true;
+      return `${e.first_name} ${e.last_name}`.toLowerCase().includes(q) ||
+        (e.position || '').toLowerCase().includes(q);
+    });
+  }, [allEmployees, assignedEmployees, assignSearch]);
+
+  // Update budgeted headcount
   const updateHeadcount = useMutation({
     mutationFn: async ({ positionId, newCount }: { positionId: string; newCount: number }) => {
       const { error } = await supabase
@@ -138,7 +171,6 @@ export default function HeadcountScreen() {
         .update({ budgeted_headcount: newCount })
         .eq('id', positionId);
       if (error) throw error;
-      return newCount;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['workforce-positions', organizationId, deptCode] });
@@ -146,11 +178,78 @@ export default function HeadcountScreen() {
     onError: (err: any) => Alert.alert('Error', err?.message || 'Failed to update headcount.'),
   });
 
-  // Always reads live budgeted_headcount from the refetched positions list
+  // Assign employee to position
+  const assignEmployee = useMutation({
+    mutationFn: async ({ employeeId, positionId, positionTitle, deptCode }: {
+      employeeId: string;
+      positionId: string;
+      positionTitle: string;
+      deptCode: string;
+    }) => {
+      const { error } = await supabase
+        .from('employees')
+        .update({
+          position_id: positionId,
+          position: positionTitle,
+          department_code: deptCode,
+        })
+        .eq('id', employeeId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['position-employees', organizationId, selectedPositionId] });
+      queryClient.invalidateQueries({ queryKey: ['workforce-positions', organizationId, deptCode] });
+      queryClient.invalidateQueries({ queryKey: ['all-employees-for-assign', organizationId] });
+      queryClient.invalidateQueries({ queryKey: ['users', organizationId] });
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
+      setShowAssignPicker(false);
+      setAssignSearch('');
+    },
+    onError: (err: any) => Alert.alert('Error', err?.message || 'Failed to assign employee.'),
+  });
+
+  // Remove employee from position
+  const removeEmployee = useMutation({
+    mutationFn: async (employeeId: string) => {
+      const { error } = await supabase
+        .from('employees')
+        .update({ position_id: null })
+        .eq('id', employeeId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['position-employees', organizationId, selectedPositionId] });
+      queryClient.invalidateQueries({ queryKey: ['workforce-positions', organizationId, deptCode] });
+      queryClient.invalidateQueries({ queryKey: ['all-employees-for-assign', organizationId] });
+    },
+    onError: (err: any) => Alert.alert('Error', err?.message || 'Failed to remove employee.'),
+  });
+
   const handleHeadcountChange = useCallback((posId: string, currentCount: number, delta: number) => {
     const newCount = Math.max(0, currentCount + delta);
     updateHeadcount.mutate({ positionId: posId, newCount });
   }, [updateHeadcount]);
+
+  const handleAssignEmployee = useCallback((emp: Employee) => {
+    if (!selectedPosition || !deptCode) return;
+    assignEmployee.mutate({
+      employeeId: emp.id,
+      positionId: selectedPosition.id,
+      positionTitle: selectedPosition.title,
+      deptCode,
+    });
+  }, [selectedPosition, deptCode, assignEmployee]);
+
+  const handleRemoveEmployee = useCallback((empId: string, empName: string) => {
+    Alert.alert(
+      'Remove from Position',
+      `Remove ${empName} from this position?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Remove', style: 'destructive', onPress: () => removeEmployee.mutate(empId) },
+      ]
+    );
+  }, [removeEmployee]);
 
   const deptStats = useMemo(() => ({
     totalBudgeted: positions.reduce((s, p) => s + p.budgeted_headcount, 0),
@@ -162,6 +261,8 @@ export default function HeadcountScreen() {
     budgeted: departments.reduce((s, d) => s + (d.budgeted_headcount || 0), 0),
     actual:   departments.reduce((s, d) => s + (d.actual_headcount || 0), 0),
   }), [departments]);
+
+  const openCount = Math.max(0, (selectedPosition?.budgeted_headcount || 0) - assignedEmployees.length);
 
   if (deptsLoading) {
     return (
@@ -244,7 +345,6 @@ export default function HeadcountScreen() {
                       </View>
                     </View>
 
-                    {/* +/- adjuster — passes live pos.budgeted_headcount */}
                     <View style={S.headcountAdjuster}>
                       <TouchableOpacity
                         style={[S.adjBtn, { backgroundColor: colors.error + '18', borderColor: colors.error + '35' }]}
@@ -295,15 +395,12 @@ export default function HeadcountScreen() {
           <View style={{ height: 40 }} />
         </ScrollView>
 
-        {/* Position detail modal — selectedPosition is always LIVE from positions array */}
-        <Modal
-          visible={showPositionDetail}
-          animationType="slide"
-          transparent
-          onRequestClose={() => setShowPositionDetail(false)}
-        >
+        {/* Position detail modal */}
+        <Modal visible={showPositionDetail} animationType="slide" transparent onRequestClose={() => setShowPositionDetail(false)}>
           <View style={S.overlay}>
             <View style={[S.detailSheet, { backgroundColor: surf, borderTopColor: bdr }]}>
+
+              {/* Header */}
               <View style={[S.detailHead, { borderBottomColor: bdr }]}>
                 <View style={{ flex: 1 }}>
                   <Text style={[S.detailTitle, { color: colors.text }]}>{selectedPosition?.title}</Text>
@@ -316,62 +413,182 @@ export default function HeadcountScreen() {
                 </Pressable>
               </View>
 
-              <View style={[S.slotsSection, { borderBottomColor: bdr }]}>
-                <Text style={[S.slotsSectionTitle, { color: colors.textSecondary, fontFamily: MONO }]}>
-                  {selectedPosition?.budgeted_headcount} BUDGETED · {assignedEmployees.length} FILLED · {Math.max(0, (selectedPosition?.budgeted_headcount || 0) - assignedEmployees.length)} OPEN
-                </Text>
+              <ScrollView showsVerticalScrollIndicator={false}>
+
+                {/* Stats */}
+                <View style={[S.detailStats, { borderBottomColor: bdr }]}>
+                  <View style={S.detailStat}>
+                    <Text style={[S.detailStatVal, { color: cyan }]}>{selectedPosition?.budgeted_headcount}</Text>
+                    <Text style={[S.detailStatLbl, { color: colors.textSecondary, fontFamily: MONO }]}>BUDGETED</Text>
+                  </View>
+                  <View style={[S.deptStatDiv, { backgroundColor: bdr }]} />
+                  <View style={S.detailStat}>
+                    <Text style={[S.detailStatVal, { color: colors.success }]}>{assignedEmployees.length}</Text>
+                    <Text style={[S.detailStatLbl, { color: colors.textSecondary, fontFamily: MONO }]}>FILLED</Text>
+                  </View>
+                  <View style={[S.deptStatDiv, { backgroundColor: bdr }]} />
+                  <View style={S.detailStat}>
+                    <Text style={[S.detailStatVal, { color: openCount > 0 ? colors.error : colors.success }]}>{openCount}</Text>
+                    <Text style={[S.detailStatLbl, { color: colors.textSecondary, fontFamily: MONO }]}>OPEN</Text>
+                  </View>
+                </View>
+
+                {/* Assigned employees */}
                 {assignedEmployees.length > 0 && (
-                  <View style={S.slotsGrid}>
-                    {assignedEmployees.map((emp, i) => (
-                      <View key={i} style={[S.slot, { backgroundColor: colors.success + '18', borderColor: colors.success + '40' }]}>
-                        <View style={[S.slotAvatar, { backgroundColor: colors.success + '25' }]}>
-                          <Text style={[S.slotAvatarText, { color: colors.success }]}>
+                  <View style={[S.assignedSection, { borderBottomColor: bdr }]}>
+                    <Text style={[S.sectionLabel, { color: colors.textSecondary, fontFamily: MONO }]}>ASSIGNED EMPLOYEES</Text>
+                    {assignedEmployees.map(emp => (
+                      <View key={emp.id} style={[S.empRow, { backgroundColor: colors.success + '10', borderColor: colors.success + '30' }]}>
+                        <View style={[S.empAvatar, { backgroundColor: colors.success + '25' }]}>
+                          <Text style={[S.empAvatarText, { color: colors.success }]}>
                             {emp.first_name[0]}{emp.last_name[0]}
                           </Text>
                         </View>
-                        <Text style={[S.slotEmpName, { color: colors.text }]} numberOfLines={1}>{emp.first_name}</Text>
-                        <Text style={[S.slotEmpLast, { color: colors.textSecondary }]} numberOfLines={1}>{emp.last_name}</Text>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[S.empName, { color: colors.text }]}>
+                            {emp.first_name} {emp.last_name}
+                          </Text>
+                          <Text style={[S.empDept, { color: colors.textSecondary }]}>
+                            {emp.department_code || 'No dept'}
+                          </Text>
+                        </View>
+                        <Pressable
+                          style={[S.removeBtn, { backgroundColor: colors.error + '15', borderColor: colors.error + '30' }]}
+                          onPress={() => handleRemoveEmployee(emp.id, `${emp.first_name} ${emp.last_name}`)}
+                          disabled={removeEmployee.isPending}
+                        >
+                          <X size={12} color={colors.error} />
+                          <Text style={[S.removeBtnText, { color: colors.error, fontFamily: MONO }]}>REMOVE</Text>
+                        </Pressable>
                       </View>
                     ))}
                   </View>
                 )}
-                {Math.max(0, (selectedPosition?.budgeted_headcount || 0) - assignedEmployees.length) > 0 && (
-                  <View style={[S.openSummary, { backgroundColor: colors.error + '10', borderColor: colors.error + '25' }]}>
-                    <AlertTriangle size={14} color={colors.error} />
-                    <Text style={[S.openSummaryText, { color: colors.error, fontFamily: MONO }]}>
-                      {Math.max(0, (selectedPosition?.budgeted_headcount || 0) - assignedEmployees.length)} OPEN POSITIONS — NEEDS HIRING
+
+                {/* Assign employee button */}
+                {openCount > 0 && (
+                  <View style={S.assignSection}>
+                    <Text style={[S.sectionLabel, { color: colors.textSecondary, fontFamily: MONO }]}>
+                      {openCount} OPEN SLOT{openCount !== 1 ? 'S' : ''} — ASSIGN EMPLOYEES
                     </Text>
+                    <Pressable
+                      style={[S.assignBtn, { backgroundColor: cyan + '18', borderColor: cyan + '40' }]}
+                      onPress={() => { setShowAssignPicker(true); }}
+                    >
+                      <UserPlus size={16} color={cyan} />
+                      <Text style={[S.assignBtnText, { color: cyan, fontFamily: MONO }]}>
+                        ASSIGN EMPLOYEE TO THIS POSITION
+                      </Text>
+                    </Pressable>
                   </View>
+                )}
+
+                {/* Headcount adjuster */}
+                <View style={[S.detailAdjRow, { borderTopColor: bdr }]}>
+                  <Text style={[S.detailAdjLabel, { color: colors.textSecondary }]}>
+                    Adjust budgeted headcount:
+                  </Text>
+                  <View style={S.headcountAdjuster}>
+                    <TouchableOpacity
+                      style={[S.adjBtn, { backgroundColor: colors.error + '18', borderColor: colors.error + '35' }]}
+                      onPress={() => selectedPosition && handleHeadcountChange(selectedPosition.id, selectedPosition.budgeted_headcount, -1)}
+                      disabled={updateHeadcount.isPending}
+                    >
+                      <Minus size={14} color={colors.error} />
+                    </TouchableOpacity>
+                    <View style={[S.adjCount, { backgroundColor: bg, borderColor: bdr }]}>
+                      <Text style={[S.adjCountText, { color: colors.text, fontFamily: MONO }]}>
+                        {selectedPosition?.budgeted_headcount}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      style={[S.adjBtn, { backgroundColor: colors.success + '18', borderColor: colors.success + '35' }]}
+                      onPress={() => selectedPosition && handleHeadcountChange(selectedPosition.id, selectedPosition.budgeted_headcount, 1)}
+                      disabled={updateHeadcount.isPending}
+                    >
+                      <Plus size={14} color={colors.success} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                <View style={{ height: 20 }} />
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Employee assignment picker */}
+        <Modal visible={showAssignPicker} animationType="slide" transparent onRequestClose={() => setShowAssignPicker(false)}>
+          <View style={S.overlay}>
+            <View style={[S.detailSheet, { backgroundColor: surf, borderTopColor: bdr }]}>
+
+              <View style={[S.detailHead, { borderBottomColor: bdr }]}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[S.detailTitle, { color: colors.text }]}>Assign Employee</Text>
+                  <Text style={[S.detailCode, { color: colors.textSecondary, fontFamily: MONO }]}>
+                    {selectedPosition?.title}
+                  </Text>
+                </View>
+                <Pressable onPress={() => { setShowAssignPicker(false); setAssignSearch(''); }} hitSlop={12}>
+                  <X size={20} color={colors.textSecondary} />
+                </Pressable>
+              </View>
+
+              {/* Search */}
+              <View style={[S.searchBox, { backgroundColor: bg, borderColor: bdr }]}>
+                <Search size={15} color={colors.textSecondary} />
+                <TextInput
+                  style={[S.searchInput, { color: colors.text }]}
+                  placeholder="Search by name or current position..."
+                  placeholderTextColor={colors.textSecondary}
+                  value={assignSearch}
+                  onChangeText={setAssignSearch}
+                  autoFocus
+                />
+                {assignSearch.length > 0 && (
+                  <Pressable onPress={() => setAssignSearch('')}>
+                    <X size={13} color={colors.textSecondary} />
+                  </Pressable>
                 )}
               </View>
 
-              {/* Adjuster in modal — also uses live selectedPosition */}
-              <View style={S.detailAdjRow}>
-                <Text style={[S.detailAdjLabel, { color: colors.textSecondary }]}>
-                  Adjust budgeted headcount:
-                </Text>
-                <View style={S.headcountAdjuster}>
-                  <TouchableOpacity
-                    style={[S.adjBtn, { backgroundColor: colors.error + '18', borderColor: colors.error + '35' }]}
-                    onPress={() => selectedPosition && handleHeadcountChange(selectedPosition.id, selectedPosition.budgeted_headcount, -1)}
-                    disabled={updateHeadcount.isPending}
-                  >
-                    <Minus size={14} color={colors.error} />
-                  </TouchableOpacity>
-                  <View style={[S.adjCount, { backgroundColor: bg, borderColor: bdr }]}>
-                    <Text style={[S.adjCountText, { color: colors.text, fontFamily: MONO }]}>
-                      {selectedPosition?.budgeted_headcount}
+              <ScrollView style={S.pickerList} showsVerticalScrollIndicator={false}>
+                {pickerEmployees.length === 0 ? (
+                  <View style={S.center}>
+                    <Text style={[S.emptyText, { color: colors.textSecondary }]}>
+                      No available employees found
                     </Text>
                   </View>
-                  <TouchableOpacity
-                    style={[S.adjBtn, { backgroundColor: colors.success + '18', borderColor: colors.success + '35' }]}
-                    onPress={() => selectedPosition && handleHeadcountChange(selectedPosition.id, selectedPosition.budgeted_headcount, 1)}
-                    disabled={updateHeadcount.isPending}
-                  >
-                    <Plus size={14} color={colors.success} />
-                  </TouchableOpacity>
-                </View>
-              </View>
+                ) : (
+                  pickerEmployees.map(emp => (
+                    <Pressable
+                      key={emp.id}
+                      style={[S.pickerRow, { backgroundColor: bg, borderColor: bdr }]}
+                      onPress={() => handleAssignEmployee(emp)}
+                      disabled={assignEmployee.isPending}
+                    >
+                      <View style={[S.empAvatar, { backgroundColor: cyan + '20' }]}>
+                        <Text style={[S.empAvatarText, { color: cyan }]}>
+                          {emp.first_name[0]}{emp.last_name[0]}
+                        </Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[S.empName, { color: colors.text }]}>
+                          {emp.first_name} {emp.last_name}
+                        </Text>
+                        <Text style={[S.empDept, { color: colors.textSecondary }]}>
+                          {emp.position || 'No position'} {emp.department_code ? `· ${emp.department_code}` : ''}
+                        </Text>
+                      </View>
+                      {assignEmployee.isPending
+                        ? <ActivityIndicator size="small" color={cyan} />
+                        : <UserPlus size={16} color={cyan} />
+                      }
+                    </Pressable>
+                  ))
+                )}
+                <View style={{ height: 40 }} />
+              </ScrollView>
 
             </View>
           </View>
@@ -439,6 +656,7 @@ const S = StyleSheet.create({
   container:    { flex: 1 },
   center:       { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 40 },
   loadingText:  { fontSize: 11, letterSpacing: 2 },
+  emptyText:    { fontSize: 13, textAlign: 'center' as const },
   scroll:       { flex: 1 },
   scrollContent:{ padding: 12, gap: 10 },
   companyBar:     { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1 },
@@ -484,20 +702,30 @@ const S = StyleSheet.create({
   adjCount:  { minWidth: 36, height: 28, borderRadius: 7, borderWidth: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 },
   adjCountText: { fontSize: 13, fontWeight: '800' as const },
   overlay:      { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
-  detailSheet:  { borderTopLeftRadius: 24, borderTopRightRadius: 24, borderTopWidth: 1, maxHeight: '88%' as any },
+  detailSheet:  { borderTopLeftRadius: 24, borderTopRightRadius: 24, borderTopWidth: 1, maxHeight: '90%' as any },
   detailHead:   { flexDirection: 'row', alignItems: 'center', padding: 20, borderBottomWidth: 1 },
   detailTitle:  { fontSize: 17, fontWeight: '700' as const },
   detailCode:   { fontSize: 10, letterSpacing: 1.5, marginTop: 2 },
-  slotsSection:      { padding: 16, borderBottomWidth: 1 },
-  slotsSectionTitle: { fontSize: 9, fontWeight: '800' as const, letterSpacing: 1.5, marginBottom: 12 },
-  slotsGrid:         { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  slot:              { width: 72, alignItems: 'center', padding: 10, borderRadius: 10, borderWidth: 1, gap: 4 },
-  slotAvatar:        { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
-  slotAvatarText:    { fontSize: 11, fontWeight: '700' as const },
-  slotEmpName:       { fontSize: 10, fontWeight: '600' as const, textAlign: 'center' },
-  slotEmpLast:       { fontSize: 9, textAlign: 'center' },
-  openSummary:     { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 8, borderWidth: 1, marginTop: 10 },
-  openSummaryText: { fontSize: 12, fontWeight: '700' as const, letterSpacing: 0.5 },
-  detailAdjRow:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16 },
+  detailStats:  { flexDirection: 'row', paddingVertical: 14, borderBottomWidth: 1 },
+  detailStat:   { flex: 1, alignItems: 'center', gap: 3 },
+  detailStatVal:{ fontSize: 22, fontWeight: '700' as const },
+  detailStatLbl:{ fontSize: 9, fontWeight: '700' as const, letterSpacing: 1 },
+  assignedSection: { padding: 16, borderBottomWidth: 1 },
+  assignSection:   { padding: 16 },
+  sectionLabel:    { fontSize: 9, fontWeight: '800' as const, letterSpacing: 1.5, marginBottom: 10 },
+  empRow:    { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, borderRadius: 10, borderWidth: 1, marginBottom: 8 },
+  empAvatar: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  empAvatarText: { fontSize: 12, fontWeight: '800' as const },
+  empName:   { fontSize: 14, fontWeight: '600' as const },
+  empDept:   { fontSize: 11, marginTop: 1 },
+  removeBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 5, borderRadius: 6, borderWidth: 1 },
+  removeBtnText: { fontSize: 9, fontWeight: '800' as const, letterSpacing: 0.5 },
+  assignBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, padding: 14, borderRadius: 10, borderWidth: 1 },
+  assignBtnText: { fontSize: 12, fontWeight: '800' as const, letterSpacing: 1 },
+  searchBox:   { flexDirection: 'row', alignItems: 'center', margin: 12, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 10, borderWidth: 1, gap: 8 },
+  searchInput: { flex: 1, fontSize: 14 },
+  pickerList:  { maxHeight: 400, paddingHorizontal: 12 },
+  pickerRow:   { flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: 10, borderWidth: 1, marginBottom: 8, gap: 10 },
+  detailAdjRow:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderTopWidth: 1 },
   detailAdjLabel:{ fontSize: 13 },
 });
