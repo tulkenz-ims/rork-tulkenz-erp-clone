@@ -74,7 +74,8 @@ export default function ScrollableNavBar({
 
   // ── Theme-aware nav bar colors (always uses theme, never company colors) ──
   const activeColor    = colors.hudPrimary;
-  const inactiveColor  = isLight ? colors.textSecondary : colors.textTertiary;
+  // Light themes: textSecondary is dark enough. Dark/HUD: use hudTextStrong (#C8F0F8) so inactive labels are clearly visible
+  const inactiveColor  = isLight ? colors.textSecondary : colors.hudTextStrong + 'BB';
   const indicatorColor = colors.hudPrimary;
   const borderTopColor = isHUD ? colors.hudBorderBright : colors.border;
   const bgColor        = isHUD ? colors.hudSurface : colors.surface;
