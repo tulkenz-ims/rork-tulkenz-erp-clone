@@ -4,140 +4,151 @@ import {
   Text,
   StyleSheet,
   Pressable,
+  Platform,
 } from 'react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { usePermissions } from '@/contexts/PermissionsContext';
 import { useUserStats } from '@/hooks/useSupabaseUsers';
+import { useUser } from '@/contexts/UserContext';
 import {
   Users,
   Shield,
   Key,
+  GitBranch,
+  BarChart2,
   UserCheck,
   UserX,
   Layers,
-  GitBranch,
 } from 'lucide-react-native';
 
 import UserManagementScreen from '@/app/(tabs)/settings/users';
 import RolesScreen from '@/app/(tabs)/settings/roles';
 import PermissionsMatrixScreen from './permissions';
 import OrgChartScreen from './orgchart';
+import HeadcountScreen from './headcount';
 
-type TabKey = 'users' | 'roles' | 'permissions' | 'orgchart';
+const MONO = Platform.OS === 'ios' ? 'Menlo' : 'monospace';
+
+type TabKey = 'directory' | 'orgchart' | 'headcount' | 'roles' | 'permissions';
 
 const TABS: { key: TabKey; label: string; icon: typeof Users }[] = [
-  { key: 'users',       label: 'Users',       icon: Users },
+  { key: 'directory',   label: 'Directory',   icon: Users },
+  { key: 'orgchart',    label: 'Org Chart',   icon: GitBranch },
+  { key: 'headcount',   label: 'Headcount',   icon: BarChart2 },
   { key: 'roles',       label: 'Roles',       icon: Shield },
   { key: 'permissions', label: 'Permissions', icon: Key },
-  { key: 'orgchart',    label: 'Org Chart',   icon: GitBranch },
 ];
 
-export default function UsersModuleScreen() {
-  const { colors } = useTheme();
+export default function WorkforceModuleScreen() {
+  const { colors, isHUD } = useTheme();
   const { roles, stats: permStats } = usePermissions();
   const { data: userStats } = useUserStats();
-  const [activeTab, setActiveTab] = useState<TabKey>('users');
+  const { userProfile } = useUser();
+  const [activeTab, setActiveTab] = useState<TabKey>('directory');
 
-  const assignedCount = useMemo(() => permStats?.assignedEmployees || 0, [permStats]);
-  const unassignedCount = useMemo(() => {
-    const total = userStats?.total || 0;
-    return Math.max(0, total - assignedCount);
-  }, [userStats, assignedCount]);
+  const assignedCount  = useMemo(() => permStats?.assignedEmployees || 0, [permStats]);
+  const unassignedCount = useMemo(() => Math.max(0, (userStats?.total || 0) - assignedCount), [userStats, assignedCount]);
+
+  // Theme tokens
+  const bg      = isHUD ? colors.hudBg      : colors.background;
+  const surf    = isHUD ? colors.hudSurface  : colors.surface;
+  const bdr     = isHUD ? colors.hudBorderBright : colors.border;
+  const cyan    = isHUD ? colors.hudPrimary  : colors.primary;
+  const textSec = colors.textSecondary;
 
   const renderTab = () => {
     switch (activeTab) {
-      case 'users':       return <UserManagementScreen />;
+      case 'directory':   return <UserManagementScreen />;
+      case 'orgchart':    return <OrgChartScreen />;
+      case 'headcount':   return <HeadcountScreen />;
       case 'roles':       return <RolesScreen />;
       case 'permissions': return <PermissionsMatrixScreen />;
-      case 'orgchart':    return <OrgChartScreen />;
     }
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <View style={[S.container, { backgroundColor: bg }]}>
 
-      {/* Stats Bar */}
-      <View style={[styles.statsBar, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
-        <View style={styles.statItem}>
-          <View style={[styles.statIcon, { backgroundColor: colors.primary + '20' }]}>
-            <Users size={16} color={colors.primary} />
+      {/* Stats bar */}
+      <View style={[S.statsBar, { backgroundColor: surf, borderBottomColor: bdr }]}>
+        <View style={S.statItem}>
+          <View style={[S.statIcon, { backgroundColor: cyan + '20' }]}>
+            <Users size={15} color={cyan} />
           </View>
-          <Text style={[styles.statValue, { color: colors.text }]}>{userStats?.total || 0}</Text>
-          <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Total</Text>
+          <Text style={[S.statVal, { color: colors.text }]}>{userStats?.total || 0}</Text>
+          <Text style={[S.statLbl, { color: textSec, fontFamily: MONO }]}>TOTAL</Text>
         </View>
 
-        <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
+        <View style={[S.statDivider, { backgroundColor: bdr }]} />
 
-        <View style={styles.statItem}>
-          <View style={[styles.statIcon, { backgroundColor: '#10B981' + '20' }]}>
-            <UserCheck size={16} color="#10B981" />
+        <View style={S.statItem}>
+          <View style={[S.statIcon, { backgroundColor: colors.success + '20' }]}>
+            <UserCheck size={15} color={colors.success} />
           </View>
-          <Text style={[styles.statValue, { color: colors.text }]}>{userStats?.active || 0}</Text>
-          <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Active</Text>
+          <Text style={[S.statVal, { color: colors.text }]}>{userStats?.active || 0}</Text>
+          <Text style={[S.statLbl, { color: textSec, fontFamily: MONO }]}>ACTIVE</Text>
         </View>
 
-        <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
+        <View style={[S.statDivider, { backgroundColor: bdr }]} />
 
-        <View style={styles.statItem}>
-          <View style={[styles.statIcon, { backgroundColor: '#EF4444' + '20' }]}>
-            <UserX size={16} color="#EF4444" />
+        <View style={S.statItem}>
+          <View style={[S.statIcon, { backgroundColor: colors.error + '20' }]}>
+            <UserX size={15} color={colors.error} />
           </View>
-          <Text style={[styles.statValue, { color: colors.text }]}>{userStats?.inactive || 0}</Text>
-          <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Inactive</Text>
+          <Text style={[S.statVal, { color: colors.text }]}>{userStats?.inactive || 0}</Text>
+          <Text style={[S.statLbl, { color: textSec, fontFamily: MONO }]}>INACTIVE</Text>
         </View>
 
-        <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
+        <View style={[S.statDivider, { backgroundColor: bdr }]} />
 
-        <View style={styles.statItem}>
-          <View style={[styles.statIcon, { backgroundColor: '#8B5CF6' + '20' }]}>
-            <Shield size={16} color="#8B5CF6" />
+        <View style={S.statItem}>
+          <View style={[S.statIcon, { backgroundColor: colors.purple + '20' }]}>
+            <Shield size={15} color={colors.purple} />
           </View>
-          <Text style={[styles.statValue, { color: colors.text }]}>{roles.length}</Text>
-          <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Roles</Text>
+          <Text style={[S.statVal, { color: colors.text }]}>{roles.length}</Text>
+          <Text style={[S.statLbl, { color: textSec, fontFamily: MONO }]}>ROLES</Text>
         </View>
 
-        <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
+        <View style={[S.statDivider, { backgroundColor: bdr }]} />
 
-        <View style={styles.statItem}>
-          <View style={[styles.statIcon, { backgroundColor: '#F59E0B' + '20' }]}>
-            <Layers size={16} color="#F59E0B" />
+        <View style={S.statItem}>
+          <View style={[S.statIcon, { backgroundColor: colors.warning + '20' }]}>
+            <Layers size={15} color={colors.warning} />
           </View>
-          <Text style={[styles.statValue, { color: colors.text }]}>{unassignedCount}</Text>
-          <Text style={[styles.statLabel, { color: colors.textSecondary }]}>No Role</Text>
+          <Text style={[S.statVal, { color: colors.text }]}>{unassignedCount}</Text>
+          <Text style={[S.statLbl, { color: textSec, fontFamily: MONO }]}>NO ROLE</Text>
         </View>
       </View>
 
-      {/* Tab Bar */}
-      <View style={[styles.tabBar, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
-        {TABS.map((tab) => {
+      {/* Tab bar */}
+      <View style={[S.tabBar, { backgroundColor: surf, borderBottomColor: bdr }]}>
+        {TABS.map(tab => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.key;
           return (
             <Pressable
               key={tab.key}
               style={[
-                styles.tab,
-                isActive && [styles.tabActive, { borderBottomColor: colors.primary }],
+                S.tab,
+                isActive && [S.tabActive, { borderBottomColor: cyan }],
               ]}
               onPress={() => setActiveTab(tab.key)}
             >
-              <Icon size={16} color={isActive ? colors.primary : colors.textSecondary} />
-              <Text
-                style={[
-                  styles.tabLabel,
-                  { color: isActive ? colors.primary : colors.textSecondary },
-                  isActive && styles.tabLabelActive,
-                ]}
-              >
-                {tab.label}
+              <Icon size={15} color={isActive ? cyan : textSec} />
+              <Text style={[
+                S.tabLabel,
+                { color: isActive ? cyan : textSec, fontFamily: MONO },
+                isActive && S.tabLabelActive,
+              ]}>
+                {tab.label.toUpperCase()}
               </Text>
             </Pressable>
           );
         })}
       </View>
 
-      {/* Tab Content */}
-      <View style={styles.content}>
+      {/* Content */}
+      <View style={S.content}>
         {renderTab()}
       </View>
 
@@ -145,33 +156,36 @@ export default function UsersModuleScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const S = StyleSheet.create({
   container: { flex: 1 },
   statsBar: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
-    paddingVertical: 12,
+    paddingVertical: 10,
     borderBottomWidth: 1,
   },
-  statItem:  { flex: 1, alignItems: 'center', gap: 4 },
-  statIcon:  { width: 28, height: 28, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
-  statValue: { fontSize: 16, fontWeight: '700' as const },
-  statLabel: { fontSize: 10, fontWeight: '500' as const },
-  statDivider: { width: 1, height: 36, marginHorizontal: 4 },
-  tabBar: { flexDirection: 'row', borderBottomWidth: 1 },
+  statItem:    { flex: 1, alignItems: 'center', gap: 3 },
+  statIcon:    { width: 26, height: 26, borderRadius: 7, justifyContent: 'center', alignItems: 'center' },
+  statVal:     { fontSize: 15, fontWeight: '700' as const },
+  statLbl:     { fontSize: 8, fontWeight: '700' as const, letterSpacing: 0.5 },
+  statDivider: { width: 1, height: 32, marginHorizontal: 4 },
+  tabBar: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+  },
   tab: {
     flex: 1,
-    flexDirection: 'row',
+    flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 5,
-    paddingVertical: 12,
+    gap: 3,
+    paddingVertical: 10,
     borderBottomWidth: 2,
     borderBottomColor: 'transparent',
   },
   tabActive:      { borderBottomWidth: 2 },
-  tabLabel:       { fontSize: 12, fontWeight: '500' as const },
-  tabLabelActive: { fontWeight: '600' as const },
+  tabLabel:       { fontSize: 8, fontWeight: '500' as const, letterSpacing: 0.5 },
+  tabLabelActive: { fontWeight: '700' as const },
   content:        { flex: 1 },
 });
