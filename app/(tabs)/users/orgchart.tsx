@@ -1,24 +1,11 @@
 import React, { useState, useMemo, useCallback, useRef } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  Pressable,
-  Modal,
-  TextInput,
-  TouchableOpacity,
-  ActivityIndicator,
-  Alert,
-  Platform,
-  Animated,
+  View, Text, StyleSheet, ScrollView, Pressable,
+  TouchableOpacity, ActivityIndicator, Platform, Animated,
 } from 'react-native';
-import {
-  Search, X, Check, ChevronLeft, GitBranch,
-  UserPlus, Users, Building2,
-} from 'lucide-react-native';
+import { ChevronLeft, GitBranch, UserPlus } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useOrganization } from '@/contexts/OrganizationContext';
 
@@ -46,8 +33,8 @@ interface Position {
   open_positions: number;
   supervisory_role: boolean;
   sort_order: number;
-  reports_to_position_title: string | null;
   reports_to_position_id: string | null;
+  reports_to_position_title: string | null;
 }
 
 interface Employee {
@@ -55,32 +42,24 @@ interface Employee {
   first_name: string;
   last_name: string;
   position_id: string | null;
-  position: string | null;
-  department_code: string | null;
-  manager_id: string | null;
 }
 
-interface PositionWithEmployees extends Position {
+interface PositionNode extends Position {
   employees: Employee[];
-  children: PositionWithEmployees[];
+  children: PositionNode[];
 }
 
 // ── Helpers ────────────────────────────────────────────────────
-function initials(emp: Employee) {
-  return `${emp.first_name[0]}${emp.last_name[0]}`.toUpperCase();
+function initials(e: Employee) {
+  return `${e.first_name[0]}${e.last_name[0]}`.toUpperCase();
 }
 
-function buildPositionTree(positions: Position[], employees: Employee[]): PositionWithEmployees[] {
-  const byId: Record<string, PositionWithEmployees> = {};
+function buildTree(positions: Position[], employees: Employee[]): PositionNode[] {
+  const byId: Record<string, PositionNode> = {};
   positions.forEach(p => {
-    byId[p.id] = {
-      ...p,
-      employees: employees.filter(e => e.position_id === p.id),
-      children: [],
-    };
+    byId[p.id] = { ...p, employees: employees.filter(e => e.position_id === p.id), children: [] };
   });
-
-  const roots: PositionWithEmployees[] = [];
+  const roots: PositionNode[] = [];
   positions.forEach(p => {
     if (p.reports_to_position_id && byId[p.reports_to_position_id]) {
       byId[p.reports_to_position_id].children.push(byId[p.id]);
@@ -88,226 +67,146 @@ function buildPositionTree(positions: Position[], employees: Employee[]): Positi
       roots.push(byId[p.id]);
     }
   });
-
-  // Sort children by sort_order
-  const sortChildren = (nodes: PositionWithEmployees[]) => {
+  const sort = (nodes: PositionNode[]) => {
     nodes.sort((a, b) => a.sort_order - b.sort_order);
-    nodes.forEach(n => sortChildren(n.children));
+    nodes.forEach(n => sort(n.children));
   };
-  sortChildren(roots);
-  roots.sort((a, b) => a.sort_order - b.sort_order);
-
+  sort(roots);
   return roots;
 }
 
-// ── Slot Card ──────────────────────────────────────────────────
-function SlotCard({
-  employee,
-  position,
-  deptColor,
-  colors,
-  isHUD,
-  onPress,
+// ── Tree Row (left-aligned, indented) ──────────────────────────
+function TreeRow({
+  node, deptColor, colors, isHUD, depth,
 }: {
-  employee: Employee | null;
-  position: Position;
+  node: PositionNode;
   deptColor: string;
   colors: any;
   isHUD: boolean;
-  onPress: () => void;
+  depth: number;
 }) {
-  const bg   = isHUD ? '#050f1e' : colors.surface;
-  const bdr  = isHUD ? '#1a4060' : colors.border;
+  const bdr    = isHUD ? '#1a4060' : colors.border;
+  const bg     = isHUD ? '#050f1e' : colors.surface;
+  const indent = depth * 20;
 
-  if (employee) {
-    return (
-      <Pressable
-        style={[
-          S.slotCard,
-          {
-            backgroundColor: bg,
-            borderColor: deptColor + '50',
-            borderLeftColor: deptColor,
-          },
-        ]}
-        onPress={onPress}
-      >
-        <View style={[S.slotAccent, { backgroundColor: deptColor }]} />
-        <View style={[S.slotAvatar, { backgroundColor: deptColor + '22' }]}>
-          <Text style={[S.slotAvatarText, { color: deptColor, fontFamily: MONO }]}>
-            {initials(employee)}
-          </Text>
-        </View>
-        <Text style={[S.slotName, { color: colors.text }]} numberOfLines={1}>
-          {employee.first_name}
-        </Text>
-        <Text style={[S.slotLast, { color: colors.text }]} numberOfLines={1}>
-          {employee.last_name}
-        </Text>
-        <Text style={[S.slotTitle, { color: colors.textSecondary, fontFamily: MONO }]} numberOfLines={2}>
-          {position.short_title || position.title}
-        </Text>
-        <View style={[S.slotBadge, { backgroundColor: deptColor + '18', borderColor: deptColor + '35' }]}>
-          <Text style={[S.slotBadgeText, { color: deptColor, fontFamily: MONO }]}>FILLED</Text>
-        </View>
-      </Pressable>
-    );
-  }
-
-  return (
-    <Pressable
-      style={[S.slotCard, S.slotCardOpen, { backgroundColor: isHUD ? '#020912' : colors.backgroundSecondary, borderColor: bdr }]}
-      onPress={onPress}
-    >
-      <View style={[S.slotAvatar, { backgroundColor: colors.textTertiary + '15' }]}>
-        <UserPlus size={14} color={colors.textTertiary} />
-      </View>
-      <Text style={[S.slotName, { color: colors.textSecondary }]}>Open</Text>
-      <Text style={[S.slotTitle, { color: colors.textSecondary, fontFamily: MONO }]} numberOfLines={2}>
-        {position.short_title || position.title}
-      </Text>
-      <View style={[S.slotBadge, { backgroundColor: colors.error + '15', borderColor: colors.error + '30' }]}>
-        <Text style={[S.slotBadgeText, { color: colors.error, fontFamily: MONO }]}>HIRE</Text>
-      </View>
-    </Pressable>
-  );
-}
-
-// ── Cluster (multiple slots for same position) ─────────────────
-function PositionCluster({
-  position,
-  deptColor,
-  colors,
-  isHUD,
-  onSlotPress,
-}: {
-  position: PositionWithEmployees;
-  deptColor: string;
-  colors: any;
-  isHUD: boolean;
-  onSlotPress: () => void;
-}) {
-  const bdr = isHUD ? '#1a4060' : colors.border;
-  const slots = Array.from({ length: position.budgeted_headcount }).map((_, i) => ({
-    employee: position.employees[i] || null,
-    index: i,
+  const slots = Array.from({ length: node.budgeted_headcount }).map((_, i) => ({
+    emp: node.employees[i] || null,
+    i,
   }));
 
-  if (position.budgeted_headcount === 1) {
-    return (
-      <SlotCard
-        employee={position.employees[0] || null}
-        position={position}
-        deptColor={deptColor}
-        colors={colors}
-        isHUD={isHUD}
-        onPress={onSlotPress}
-      />
-    );
-  }
-
   return (
-    <View style={S.cluster}>
-      <View style={[S.clusterHeader, { backgroundColor: deptColor + '15', borderColor: deptColor + '30' }]}>
-        <Text style={[S.clusterTitle, { color: deptColor, fontFamily: MONO }]}>
-          {position.title.toUpperCase()}
-        </Text>
-        <Text style={[S.clusterCount, { color: deptColor, fontFamily: MONO }]}>
-          {position.employees.length}/{position.budgeted_headcount}
-        </Text>
-      </View>
-      <View style={S.clusterSlots}>
-        {slots.map(({ employee, index }) => (
-          <SlotCard
-            key={index}
-            employee={employee}
-            position={position}
-            deptColor={deptColor}
-            colors={colors}
-            isHUD={isHUD}
-            onPress={onSlotPress}
-          />
-        ))}
-      </View>
-    </View>
-  );
-}
+    <View>
+      {/* Row card */}
+      <View style={{ paddingLeft: indent }}>
+        <View style={[
+          S.rowCard,
+          {
+            backgroundColor: bg,
+            borderColor: depth === 0 ? deptColor + '55' : bdr,
+            borderLeftColor: deptColor,
+          },
+        ]}>
+          {depth === 0 && <View style={[S.rowAccent, { backgroundColor: deptColor }]} />}
 
-// ── Tree Node ──────────────────────────────────────────────────
-function TreeNode({
-  position,
-  deptColor,
-  colors,
-  isHUD,
-  isRoot,
-  onSlotPress,
-}: {
-  position: PositionWithEmployees;
-  deptColor: string;
-  colors: any;
-  isHUD: boolean;
-  isRoot: boolean;
-  onSlotPress: () => void;
-}) {
-  const bdrColor = isHUD ? '#1a4060' : colors.border;
-  const hasChildren = position.children.length > 0;
-
-  return (
-    <View style={S.treeNode}>
-      {/* The position cluster */}
-      <PositionCluster
-        position={position}
-        deptColor={deptColor}
-        colors={colors}
-        isHUD={isHUD}
-        onSlotPress={onSlotPress}
-      />
-
-      {/* Connector down */}
-      {hasChildren && (
-        <View style={[S.connectorDown, { backgroundColor: bdrColor }]} />
-      )}
-
-      {/* Children row */}
-      {hasChildren && (
-        <View style={S.childrenWrap}>
-          {/* Horizontal bar connecting children */}
-          {position.children.length > 1 && (
-            <View style={[S.connectorHBar, { backgroundColor: bdrColor }]} />
-          )}
-          <View style={S.childrenRow}>
-            {position.children.map((child, i) => (
-              <View key={child.id} style={S.childBranch}>
-                {/* Vertical drop to child */}
-                <View style={[S.connectorUp, { backgroundColor: bdrColor }]} />
-                <TreeNode
-                  position={child}
-                  deptColor={deptColor}
-                  colors={colors}
-                  isHUD={isHUD}
-                  isRoot={false}
-                  onSlotPress={onSlotPress}
-                />
+          {/* Title row */}
+          <View style={S.rowTop}>
+            <View style={{ flex: 1 }}>
+              <Text style={[S.rowTitle, { color: colors.text }]}>{node.title}</Text>
+              <View style={S.rowPills}>
+                <View style={[S.pill, { backgroundColor: deptColor + '18', borderColor: deptColor + '35' }]}>
+                  <Text style={[S.pillText, { color: deptColor, fontFamily: MONO }]}>
+                    {node.job_level.toUpperCase()}
+                  </Text>
+                </View>
+                {node.supervisory_role && (
+                  <View style={[S.pill, { backgroundColor: colors.primary + '15', borderColor: colors.primary + '30' }]}>
+                    <Text style={[S.pillText, { color: colors.primary, fontFamily: MONO }]}>SUPERVISORY</Text>
+                  </View>
+                )}
               </View>
-            ))}
+            </View>
+
+            {/* Headcount summary */}
+            <View style={S.rowCount}>
+              <Text style={[S.countFilled, { color: colors.success }]}>{node.employees.length}</Text>
+              <Text style={[S.countSlash, { color: colors.textSecondary }]}>/</Text>
+              <Text style={[S.countTotal, { color: colors.text }]}>{node.budgeted_headcount}</Text>
+              {(node.open_positions || 0) > 0 && (
+                <View style={[S.openBadge, { backgroundColor: colors.error + '15', borderColor: colors.error + '30' }]}>
+                  <Text style={[S.openBadgeText, { color: colors.error, fontFamily: MONO }]}>
+                    {node.open_positions} OPEN
+                  </Text>
+                </View>
+              )}
+            </View>
           </View>
+
+          {/* Slot cards */}
+          {node.budgeted_headcount > 0 && (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={S.slotsRow}
+              style={{ marginTop: 8 }}
+            >
+              {slots.map(({ emp, i }) => (
+                <View
+                  key={i}
+                  style={[
+                    S.slot,
+                    {
+                      backgroundColor: emp ? deptColor + '15' : (isHUD ? '#020912' : colors.backgroundSecondary),
+                      borderColor: emp ? deptColor + '40' : bdr,
+                      borderStyle: emp ? 'solid' : 'dashed',
+                    },
+                  ]}
+                >
+                  <View style={[S.slotAvatar, { backgroundColor: emp ? deptColor + '22' : colors.textTertiary + '18' }]}>
+                    {emp ? (
+                      <Text style={[S.slotAvatarText, { color: deptColor, fontFamily: MONO }]}>
+                        {initials(emp)}
+                      </Text>
+                    ) : (
+                      <UserPlus size={11} color={colors.textTertiary} />
+                    )}
+                  </View>
+                  <Text style={[S.slotName, { color: emp ? colors.text : colors.textSecondary }]} numberOfLines={1}>
+                    {emp ? emp.first_name : 'OPEN'}
+                  </Text>
+                  {emp && (
+                    <Text style={[S.slotLast, { color: colors.textSecondary }]} numberOfLines={1}>
+                      {emp.last_name}
+                    </Text>
+                  )}
+                </View>
+              ))}
+            </ScrollView>
+          )}
+        </View>
+      </View>
+
+      {/* Children — indented with left border line */}
+      {node.children.length > 0 && (
+        <View style={[S.childBlock, { borderLeftColor: deptColor + '30', marginLeft: indent + 16 }]}>
+          {node.children.map(child => (
+            <TreeRow
+              key={child.id}
+              node={child}
+              deptColor={deptColor}
+              colors={colors}
+              isHUD={isHUD}
+              depth={depth + 1}
+            />
+          ))}
         </View>
       )}
     </View>
   );
 }
 
-// ── Dept Card (company overview) ───────────────────────────────
-function DeptCard({
-  dept,
-  colors,
-  isHUD,
-  onPress,
-}: {
-  dept: Department;
-  colors: any;
-  isHUD: boolean;
-  onPress: () => void;
+// ── Dept Card ──────────────────────────────────────────────────
+function DeptCard({ dept, colors, isHUD, onPress }: {
+  dept: Department; colors: any; isHUD: boolean; onPress: () => void;
 }) {
   const bg  = isHUD ? '#050f1e' : colors.surface;
   const bdr = isHUD ? '#1a4060' : colors.border;
@@ -321,23 +220,18 @@ function DeptCard({
     <Pressable
       style={({ pressed }) => [
         S.deptCard,
-        {
-          backgroundColor: bg,
-          borderColor: bdr,
-          borderLeftColor: dept.color,
-          opacity: pressed ? 0.85 : 1,
-        },
+        { backgroundColor: bg, borderColor: bdr, borderLeftColor: dept.color, opacity: pressed ? 0.85 : 1 },
       ]}
       onPress={onPress}
     >
       <View style={S.deptCardTop}>
         <View style={[S.deptDot, { backgroundColor: dept.color }]} />
         <Text style={[S.deptName, { color: colors.text }]}>{dept.name}</Text>
-      </View>
-      <View style={S.deptCounts}>
-        <Text style={[S.deptFilled, { color: colors.success }]}>{dept.actual_headcount || 0}</Text>
-        <Text style={[S.deptSlash, { color: colors.textSecondary }]}>/</Text>
-        <Text style={[S.deptBudget, { color: colors.text }]}>{dept.budgeted_headcount || 0}</Text>
+        <View style={S.deptCounts}>
+          <Text style={[S.deptFilled, { color: colors.success }]}>{dept.actual_headcount || 0}</Text>
+          <Text style={[S.deptSlash, { color: colors.textSecondary }]}>/</Text>
+          <Text style={[S.deptBudget, { color: colors.text }]}>{dept.budgeted_headcount || 0}</Text>
+        </View>
         {open > 0 && (
           <View style={[S.openBadge, { backgroundColor: colors.warning + '20', borderColor: colors.warning + '40' }]}>
             <Text style={[S.openBadgeText, { color: colors.warning, fontFamily: MONO }]}>{open} OPEN</Text>
@@ -356,19 +250,23 @@ function DeptCard({
 export default function OrgChartScreen() {
   const { colors, isHUD } = useTheme();
   const { organizationId } = useOrganization();
-  const queryClient = useQueryClient();
   const fadeAnim = useRef(new Animated.Value(1)).current;
 
   const [selectedDept, setSelectedDept] = useState<Department | null>(null);
-  const [showManagerPicker, setShowManagerPicker] = useState(false);
-  const [search, setSearch] = useState('');
 
   const bg   = isHUD ? '#020912' : colors.background;
   const surf = isHUD ? '#050f1e' : colors.surface;
   const bdr  = isHUD ? '#1a4060' : colors.border;
   const cyan = isHUD ? '#00D4EE' : colors.primary;
 
-  // ── Departments ────────────────────────────────────────────────
+  const fade = (cb: () => void) => {
+    Animated.timing(fadeAnim, { toValue: 0, duration: 130, useNativeDriver: true }).start(() => {
+      cb();
+      Animated.timing(fadeAnim, { toValue: 1, duration: 170, useNativeDriver: true }).start();
+    });
+  };
+
+  // Departments
   const { data: departments = [], isLoading: deptsLoading } = useQuery({
     queryKey: ['org-departments', organizationId],
     queryFn: async () => {
@@ -385,14 +283,14 @@ export default function OrgChartScreen() {
     enabled: !!organizationId,
   });
 
-  // ── Positions for selected dept ────────────────────────────────
+  // Positions for selected dept
   const { data: positions = [], isLoading: posLoading } = useQuery({
     queryKey: ['org-positions', organizationId, selectedDept?.department_code],
     queryFn: async () => {
       if (!organizationId || !selectedDept) return [];
       const { data, error } = await supabase
         .from('positions')
-        .select('id, position_code, title, short_title, job_level, budgeted_headcount, filled_headcount, open_positions, supervisory_role, sort_order, reports_to_position_title, reports_to_position_id')
+        .select('id, position_code, title, short_title, job_level, budgeted_headcount, filled_headcount, open_positions, supervisory_role, sort_order, reports_to_position_id, reports_to_position_title')
         .eq('organization_id', organizationId)
         .eq('department_code', selectedDept.department_code)
         .eq('status', 'active')
@@ -403,14 +301,14 @@ export default function OrgChartScreen() {
     enabled: !!organizationId && !!selectedDept,
   });
 
-  // ── Employees for selected dept ────────────────────────────────
+  // Employees for selected dept
   const { data: deptEmployees = [], isLoading: empLoading } = useQuery({
     queryKey: ['org-employees', organizationId, selectedDept?.department_code],
     queryFn: async () => {
       if (!organizationId || !selectedDept) return [];
       const { data, error } = await supabase
         .from('employees')
-        .select('id, first_name, last_name, position_id, position, department_code, manager_id')
+        .select('id, first_name, last_name, position_id')
         .eq('organization_id', organizationId)
         .eq('department_code', selectedDept.department_code)
         .eq('status', 'active');
@@ -420,19 +318,10 @@ export default function OrgChartScreen() {
     enabled: !!organizationId && !!selectedDept,
   });
 
-  // ── Build tree ──────────────────────────────────────────────────
   const positionTree = useMemo(
-    () => buildPositionTree(positions, deptEmployees),
+    () => buildTree(positions, deptEmployees),
     [positions, deptEmployees]
   );
-
-  // ── Fade transition ─────────────────────────────────────────────
-  const fade = (cb: () => void) => {
-    Animated.timing(fadeAnim, { toValue: 0, duration: 130, useNativeDriver: true }).start(() => {
-      cb();
-      Animated.timing(fadeAnim, { toValue: 1, duration: 170, useNativeDriver: true }).start();
-    });
-  };
 
   const handleDeptPress = useCallback((dept: Department) => {
     fade(() => setSelectedDept(dept));
@@ -442,7 +331,6 @@ export default function OrgChartScreen() {
     fade(() => setSelectedDept(null));
   }, []);
 
-  // ── Loading ─────────────────────────────────────────────────────
   if (deptsLoading) {
     return (
       <View style={[S.center, { backgroundColor: bg }]}>
@@ -454,7 +342,7 @@ export default function OrgChartScreen() {
     );
   }
 
-  // ── Dept drill-down view ────────────────────────────────────────
+  // ── Dept drill-down ────────────────────────────────────────────
   if (selectedDept) {
     const totalFilled   = positions.reduce((s, p) => s + p.filled_headcount, 0);
     const totalBudgeted = positions.reduce((s, p) => s + p.budgeted_headcount, 0);
@@ -462,54 +350,47 @@ export default function OrgChartScreen() {
 
     return (
       <View style={[S.container, { backgroundColor: bg }]}>
-        {/* Header */}
         <View style={[S.topBar, { backgroundColor: surf, borderBottomColor: bdr }]}>
           <TouchableOpacity style={S.backBtn} onPress={handleBack}>
             <ChevronLeft size={17} color={cyan} />
-            <Text style={[S.backText, { color: cyan, fontFamily: MONO }]}>COMPANY</Text>
+            <Text style={[S.backText, { color: cyan, fontFamily: MONO }]}>DEPARTMENTS</Text>
           </TouchableOpacity>
           <View style={[S.deptDot, { backgroundColor: selectedDept.color }]} />
-          <Text style={[S.topBarTitle, { color: colors.text }]}>{selectedDept.name}</Text>
+          <Text style={[S.topBarDeptName, { color: colors.text }]}>{selectedDept.name}</Text>
           <Text style={[S.topBarCount, { color: colors.textSecondary, fontFamily: MONO }]}>
             {totalFilled}/{totalBudgeted} · {totalOpen} OPEN
           </Text>
         </View>
 
-        {/* Tree */}
         <Animated.ScrollView
           style={{ flex: 1, opacity: fadeAnim }}
-          contentContainerStyle={S.treeScroll}
+          contentContainerStyle={S.treeContent}
           showsVerticalScrollIndicator={false}
-          horizontal={false}
         >
-          <ScrollView horizontal showsHorizontalScrollIndicator={true}>
-            <View style={S.treeRoot}>
-              {posLoading || empLoading ? (
-                <View style={S.center}>
-                  <ActivityIndicator color={cyan} />
-                </View>
-              ) : positionTree.length === 0 ? (
-                <View style={S.empty}>
-                  <GitBranch size={32} color={colors.textTertiary} />
-                  <Text style={[S.emptyText, { color: colors.textSecondary }]}>
-                    No positions defined yet
-                  </Text>
-                </View>
-              ) : (
-                positionTree.map(root => (
-                  <TreeNode
-                    key={root.id}
-                    position={root}
-                    deptColor={selectedDept.color}
-                    colors={colors}
-                    isHUD={isHUD}
-                    isRoot={true}
-                    onSlotPress={() => {}}
-                  />
-                ))
-              )}
+          {posLoading || empLoading ? (
+            <View style={S.center}>
+              <ActivityIndicator color={cyan} />
             </View>
-          </ScrollView>
+          ) : positionTree.length === 0 ? (
+            <View style={S.empty}>
+              <GitBranch size={32} color={colors.textTertiary} />
+              <Text style={[S.emptyText, { color: colors.textSecondary }]}>
+                No positions defined yet
+              </Text>
+            </View>
+          ) : (
+            positionTree.map(root => (
+              <TreeRow
+                key={root.id}
+                node={root}
+                deptColor={selectedDept.color}
+                colors={colors}
+                isHUD={isHUD}
+                depth={0}
+              />
+            ))
+          )}
+          <View style={{ height: 60 }} />
         </Animated.ScrollView>
       </View>
     );
@@ -521,7 +402,6 @@ export default function OrgChartScreen() {
 
   return (
     <View style={[S.container, { backgroundColor: bg }]}>
-      {/* Header */}
       <View style={[S.topBar, { backgroundColor: surf, borderBottomColor: bdr }]}>
         <View style={S.topBarLeft}>
           <GitBranch size={13} color={cyan} />
@@ -554,75 +434,72 @@ export default function OrgChartScreen() {
 
 // ── Styles ─────────────────────────────────────────────────────
 const S = StyleSheet.create({
-  container:   { flex: 1 },
-  center:      { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 40 },
-  loadingText: { fontSize: 11, letterSpacing: 2, marginTop: 8 },
+  container:    { flex: 1 },
+  center:       { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 40 },
+  loadingText:  { fontSize: 11, letterSpacing: 2, marginTop: 8 },
 
   // Top bar
-  topBar:     { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, gap: 8 },
-  topBarLeft: { flexDirection: 'row', alignItems: 'center', gap: 7, flex: 1 },
-  topBarLabel:{ fontSize: 11, fontWeight: '800' as const, letterSpacing: 2 },
-  topBarTitle:{ flex: 1, fontSize: 14, fontWeight: '600' as const },
-  topBarCount:{ fontSize: 9, letterSpacing: 1 },
-  backBtn:    { flexDirection: 'row', alignItems: 'center', gap: 3, flex: 1 },
-  backText:   { fontSize: 11, fontWeight: '800' as const, letterSpacing: 1 },
-  deptDot:    { width: 10, height: 10, borderRadius: 5 },
+  topBar:        { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, gap: 8 },
+  topBarLeft:    { flexDirection: 'row', alignItems: 'center', gap: 7, flex: 1 },
+  topBarLabel:   { fontSize: 11, fontWeight: '800' as const, letterSpacing: 2 },
+  topBarDeptName:{ flex: 1, fontSize: 14, fontWeight: '600' as const },
+  topBarCount:   { fontSize: 9, letterSpacing: 1 },
+  backBtn:       { flexDirection: 'row', alignItems: 'center', gap: 3, flex: 1 },
+  backText:      { fontSize: 11, fontWeight: '800' as const, letterSpacing: 1 },
+  deptDot:       { width: 10, height: 10, borderRadius: 5 },
 
-  // Dept grid (company view)
-  deptGrid: { padding: 12, gap: 10 },
-  deptCard: {
-    borderRadius: 12, borderWidth: 1, borderLeftWidth: 3,
-    padding: 14, gap: 6,
-  },
+  // Dept grid
+  deptGrid:    { padding: 12, gap: 10 },
+  deptCard:    { borderRadius: 12, borderWidth: 1, borderLeftWidth: 3, padding: 14, gap: 7 },
   deptCardTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   deptName:    { flex: 1, fontSize: 14, fontWeight: '600' as const },
-  deptCounts:  { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  deptFilled:  { fontSize: 18, fontWeight: '700' as const },
-  deptSlash:   { fontSize: 14 },
-  deptBudget:  { fontSize: 15, fontWeight: '600' as const },
-  openBadge:   { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6, borderWidth: 1 },
-  openBadgeText:{ fontSize: 9, fontWeight: '800' as const, letterSpacing: 0.5 },
+  deptCounts:  { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  deptFilled:  { fontSize: 16, fontWeight: '700' as const },
+  deptSlash:   { fontSize: 13 },
+  deptBudget:  { fontSize: 14, fontWeight: '600' as const },
   fillTrack:   { height: 4, borderRadius: 2, overflow: 'hidden' },
   fillBar:     { height: '100%' as any, borderRadius: 2 },
   fillPct:     { fontSize: 10 },
 
-  // Tree layout
-  treeScroll:  { padding: 16, paddingBottom: 60 },
-  treeRoot:    { flexDirection: 'column', alignItems: 'center', gap: 0, paddingBottom: 40 },
-  treeNode:    { flexDirection: 'column', alignItems: 'center' },
-  connectorDown:{ width: 1, height: 20 },
-  childrenWrap: { position: 'relative', flexDirection: 'column', alignItems: 'center' },
-  connectorHBar:{ height: 1, position: 'absolute', top: 0, left: '10%', right: '10%' },
-  childrenRow:  { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
-  childBranch:  { flexDirection: 'column', alignItems: 'center' },
-  connectorUp:  { width: 1, height: 16 },
+  // Tree
+  treeContent: { padding: 12, gap: 10 },
 
-  // Slot card
-  slotCard: {
-    width: 110,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderLeftWidth: 3,
-    padding: 10,
-    alignItems: 'center',
-    overflow: 'hidden',
+  // Row card
+  rowCard: {
+    borderRadius: 10, borderWidth: 1, borderLeftWidth: 3,
+    padding: 12, marginBottom: 8, overflow: 'hidden',
   },
-  slotCardOpen: { borderStyle: 'dashed', borderLeftWidth: 1, opacity: 0.75 },
-  slotAccent:    { position: 'absolute', top: 0, left: 0, right: 0, height: 2 },
-  slotAvatar:    { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
-  slotAvatarText:{ fontSize: 13, fontWeight: '900' as const },
-  slotName:      { fontSize: 12, fontWeight: '700' as const, textAlign: 'center' },
-  slotLast:      { fontSize: 12, fontWeight: '700' as const, textAlign: 'center', marginBottom: 3 },
-  slotTitle:     { fontSize: 8, textAlign: 'center', letterSpacing: 0.3, lineHeight: 12, marginBottom: 5 },
-  slotBadge:     { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5, borderWidth: 1 },
-  slotBadgeText: { fontSize: 8, fontWeight: '800' as const, letterSpacing: 0.5 },
+  rowAccent:  { position: 'absolute', top: 0, left: 0, right: 0, height: 2 },
+  rowTop:     { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  rowInfo:    { flex: 1 },
+  rowTitle:   { fontSize: 13, fontWeight: '600' as const, marginBottom: 5 },
+  rowPills:   { flexDirection: 'row', gap: 5, flexWrap: 'wrap' },
+  pill:       { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5, borderWidth: 1 },
+  pillText:   { fontSize: 8, fontWeight: '800' as const, letterSpacing: 0.5 },
+  supPill:    { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5, borderWidth: 1 },
+  supPillText:{ fontSize: 8, fontWeight: '700' as const, letterSpacing: 0.5 },
 
-  // Cluster
-  cluster:       { alignItems: 'center' },
-  clusterHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1, marginBottom: 8, gap: 8 },
-  clusterTitle:  { fontSize: 9, fontWeight: '800' as const, letterSpacing: 1 },
-  clusterCount:  { fontSize: 11, fontWeight: '700' as const },
-  clusterSlots:  { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center', maxWidth: 500 },
+  // Headcount
+  rowCount:     { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  countFilled:  { fontSize: 16, fontWeight: '700' as const },
+  countSlash:   { fontSize: 12 },
+  countTotal:   { fontSize: 13, fontWeight: '600' as const },
+  openBadge:    { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5, borderWidth: 1, marginLeft: 4 },
+  openBadgeText:{ fontSize: 8, fontWeight: '800' as const, letterSpacing: 0.5 },
+
+  // Slot cards
+  slotsRow:     { paddingBottom: 2, gap: 8, flexDirection: 'row' },
+  slot: {
+    width: 72, alignItems: 'center', padding: 8,
+    borderRadius: 8, borderWidth: 1, gap: 3,
+  },
+  slotAvatar:     { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
+  slotAvatarText: { fontSize: 11, fontWeight: '800' as const },
+  slotName:       { fontSize: 9, fontWeight: '600' as const, textAlign: 'center' },
+  slotLast:       { fontSize: 8, textAlign: 'center' },
+
+  // Child indentation
+  childBlock: { borderLeftWidth: 1, paddingLeft: 12, marginBottom: 4, marginTop: 0 },
 
   // Empty
   empty:     { alignItems: 'center', gap: 12, paddingVertical: 60 },
