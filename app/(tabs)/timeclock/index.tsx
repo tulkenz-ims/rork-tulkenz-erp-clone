@@ -399,7 +399,7 @@ export default function TimeClockScreen() {
     <View style={[styles.header, { borderBottomColor: colors.border }]}>
       <View style={styles.headerLeft}>
         <View>
-          <Text style={[styles.headerTitle, { color: colors.text }]}>Check In Kiosk</Text>
+          <Text style={[styles.headerTitle, { color: colors.text }]}>Roll Call</Text>
           <View style={styles.headerSubRow}>
             <View style={[styles.liveIndicator, { backgroundColor: isSubscribed ? '#10B98120' : '#F59E0B20' }]}>
               <View style={[styles.liveDot, { backgroundColor: isSubscribed ? '#10B981' : '#F59E0B' }]} />
