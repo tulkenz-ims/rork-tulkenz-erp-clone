@@ -15,19 +15,21 @@ import {
   UserCheck,
   UserX,
   Layers,
+  GitBranch,
 } from 'lucide-react-native';
 
-// Import existing screens directly
 import UserManagementScreen from '@/app/(tabs)/settings/users';
 import RolesScreen from '@/app/(tabs)/settings/roles';
 import PermissionsMatrixScreen from './permissions';
+import OrgChartScreen from './orgchart';
 
-type TabKey = 'users' | 'roles' | 'permissions';
+type TabKey = 'users' | 'roles' | 'permissions' | 'orgchart';
 
 const TABS: { key: TabKey; label: string; icon: typeof Users }[] = [
-  { key: 'users', label: 'Users', icon: Users },
-  { key: 'roles', label: 'Roles', icon: Shield },
+  { key: 'users',       label: 'Users',       icon: Users },
+  { key: 'roles',       label: 'Roles',       icon: Shield },
   { key: 'permissions', label: 'Permissions', icon: Key },
+  { key: 'orgchart',    label: 'Org Chart',   icon: GitBranch },
 ];
 
 export default function UsersModuleScreen() {
@@ -36,10 +38,7 @@ export default function UsersModuleScreen() {
   const { data: userStats } = useUserStats();
   const [activeTab, setActiveTab] = useState<TabKey>('users');
 
-  const assignedCount = useMemo(() => {
-    return permStats?.assignedEmployees || 0;
-  }, [permStats]);
-
+  const assignedCount = useMemo(() => permStats?.assignedEmployees || 0, [permStats]);
   const unassignedCount = useMemo(() => {
     const total = userStats?.total || 0;
     return Math.max(0, total - assignedCount);
@@ -47,12 +46,10 @@ export default function UsersModuleScreen() {
 
   const renderTab = () => {
     switch (activeTab) {
-      case 'users':
-        return <UserManagementScreen />;
-      case 'roles':
-        return <RolesScreen />;
-      case 'permissions':
-        return <PermissionsMatrixScreen />;
+      case 'users':       return <UserManagementScreen />;
+      case 'roles':       return <RolesScreen />;
+      case 'permissions': return <PermissionsMatrixScreen />;
+      case 'orgchart':    return <OrgChartScreen />;
     }
   };
 
@@ -124,10 +121,7 @@ export default function UsersModuleScreen() {
               ]}
               onPress={() => setActiveTab(tab.key)}
             >
-              <Icon
-                size={18}
-                color={isActive ? colors.primary : colors.textSecondary}
-              />
+              <Icon size={16} color={isActive ? colors.primary : colors.textSecondary} />
               <Text
                 style={[
                   styles.tabLabel,
@@ -152,9 +146,7 @@ export default function UsersModuleScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
+  container: { flex: 1 },
   statsBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -162,56 +154,24 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: 1,
   },
-  statItem: {
-    flex: 1,
-    alignItems: 'center',
-    gap: 4,
-  },
-  statIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  statValue: {
-    fontSize: 16,
-    fontWeight: '700' as const,
-  },
-  statLabel: {
-    fontSize: 10,
-    fontWeight: '500' as const,
-  },
-  statDivider: {
-    width: 1,
-    height: 36,
-    marginHorizontal: 4,
-  },
-  tabBar: {
-    flexDirection: 'row',
-    borderBottomWidth: 1,
-  },
+  statItem:  { flex: 1, alignItems: 'center', gap: 4 },
+  statIcon:  { width: 28, height: 28, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
+  statValue: { fontSize: 16, fontWeight: '700' as const },
+  statLabel: { fontSize: 10, fontWeight: '500' as const },
+  statDivider: { width: 1, height: 36, marginHorizontal: 4 },
+  tabBar: { flexDirection: 'row', borderBottomWidth: 1 },
   tab: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 14,
+    gap: 5,
+    paddingVertical: 12,
     borderBottomWidth: 2,
     borderBottomColor: 'transparent',
   },
-  tabActive: {
-    borderBottomWidth: 2,
-  },
-  tabLabel: {
-    fontSize: 14,
-    fontWeight: '500' as const,
-  },
-  tabLabelActive: {
-    fontWeight: '600' as const,
-  },
-  content: {
-    flex: 1,
-  },
+  tabActive:      { borderBottomWidth: 2 },
+  tabLabel:       { fontSize: 12, fontWeight: '500' as const },
+  tabLabelActive: { fontWeight: '600' as const },
+  content:        { flex: 1 },
 });
