@@ -34,7 +34,7 @@ export interface NavigationModule {
 export const NAVIGATION_MODULES: NavigationModule[] = [
   { key: 'dashboard',    label: 'Dashboard',          icon: LayoutDashboard, route: '(dashboard)', alwaysVisible: true },
   { key: 'taskfeed',     label: 'Task Feed',           icon: MessageSquare,   route: 'taskfeed',    alwaysVisible: true },
-  { key: 'timeclock',    label: 'Roll Call',      icon: LogIn,           route: 'timeclock' },
+  { key: 'timeclock',    label: 'Roll Call',           icon: LogIn,           route: 'timeclock' },
   { key: 'cmms',         label: 'CMMS',                icon: Cog,             route: 'cmms' },
   { key: 'inventory',    label: 'Inventory',           icon: Package,         route: 'inventory' },
   { key: 'documents',    label: 'Documents',           icon: FolderOpen,      route: 'documents' },
@@ -47,7 +47,7 @@ export const NAVIGATION_MODULES: NavigationModule[] = [
   { key: 'production',   label: 'Production',          icon: Factory,         route: 'production' },
   { key: 'compliance',   label: 'Compliance',          icon: FileText,        route: 'compliance' },
   { key: 'recycling',    label: 'Recycling',           icon: Recycle,         route: 'recycling' },
-  { key: 'users',        label: 'Users',               icon: UserCheck,       route: 'users',       superAdminOnly: true },
+  { key: 'users',        label: 'Workforce',            icon: UserCheck,       route: 'users',       superAdminOnly: true },
   { key: 'watchscreen',  label: 'Watch Screen',        icon: Eye,             route: 'watchscreen', superAdminOnly: true },
   { key: 'settings',     label: 'Settings',            icon: Settings,        route: 'settings' },
 ];
