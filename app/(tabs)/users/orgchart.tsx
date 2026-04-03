@@ -12,16 +12,10 @@ import {
   Alert,
   Platform,
   Animated,
-  Dimensions,
 } from 'react-native';
 import {
-  Search,
-  X,
-  Check,
-  ChevronLeft,
-  GitBranch,
-  Users,
-  UserPlus,
+  Search, X, Check, ChevronLeft, GitBranch,
+  UserPlus, Users, Building2,
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -29,493 +23,608 @@ import { supabase } from '@/lib/supabase';
 import { useOrganization } from '@/contexts/OrganizationContext';
 
 const MONO = Platform.OS === 'ios' ? 'Menlo' : 'monospace';
-const { width: SW } = Dimensions.get('window');
+
+// ── Types ──────────────────────────────────────────────────────
+interface Department {
+  id: string;
+  department_code: string;
+  name: string;
+  color: string;
+  budgeted_headcount: number;
+  actual_headcount: number;
+  sort_order: number;
+}
+
+interface Position {
+  id: string;
+  position_code: string;
+  title: string;
+  short_title: string;
+  job_level: string;
+  budgeted_headcount: number;
+  filled_headcount: number;
+  open_positions: number;
+  supervisory_role: boolean;
+  sort_order: number;
+  reports_to_position_title: string | null;
+  reports_to_position_id: string | null;
+}
 
 interface Employee {
   id: string;
   first_name: string;
   last_name: string;
-  position: string;
+  position_id: string | null;
+  position: string | null;
   department_code: string | null;
   manager_id: string | null;
-  status: string;
 }
 
-const DEPT_PALETTE: Record<string, { color: string; dim: string }> = {
-  production:  { color: '#EE9900', dim: '#EE990022' },
-  quality:     { color: '#AA44BB', dim: '#AA44BB22' },
-  maintenance: { color: '#2266DD', dim: '#2266DD22' },
-  sanitation:  { color: '#00AA55', dim: '#00AA5522' },
-  safety:      { color: '#EE3344', dim: '#EE334422' },
-  hr:          { color: '#EE4499', dim: '#EE449922' },
-  warehouse:   { color: '#44BB44', dim: '#44BB4422' },
-  it:          { color: '#00BBCC', dim: '#00BBCC22' },
-  default:     { color: '#6B7280', dim: '#6B728022' },
-};
-
-function getDeptStyle(code: string | null) {
-  if (!code) return DEPT_PALETTE.default;
-  const key = Object.keys(DEPT_PALETTE).find(k => code.toLowerCase().includes(k));
-  return key ? DEPT_PALETTE[key] : DEPT_PALETTE.default;
+interface PositionWithEmployees extends Position {
+  employees: Employee[];
+  children: PositionWithEmployees[];
 }
 
-function OrgCard({
-  employee, reportCount, onPress, onDrillDown, colors, isHUD,
+// ── Helpers ────────────────────────────────────────────────────
+function initials(emp: Employee) {
+  return `${emp.first_name[0]}${emp.last_name[0]}`.toUpperCase();
+}
+
+function buildPositionTree(positions: Position[], employees: Employee[]): PositionWithEmployees[] {
+  const byId: Record<string, PositionWithEmployees> = {};
+  positions.forEach(p => {
+    byId[p.id] = {
+      ...p,
+      employees: employees.filter(e => e.position_id === p.id),
+      children: [],
+    };
+  });
+
+  const roots: PositionWithEmployees[] = [];
+  positions.forEach(p => {
+    if (p.reports_to_position_id && byId[p.reports_to_position_id]) {
+      byId[p.reports_to_position_id].children.push(byId[p.id]);
+    } else {
+      roots.push(byId[p.id]);
+    }
+  });
+
+  // Sort children by sort_order
+  const sortChildren = (nodes: PositionWithEmployees[]) => {
+    nodes.sort((a, b) => a.sort_order - b.sort_order);
+    nodes.forEach(n => sortChildren(n.children));
+  };
+  sortChildren(roots);
+  roots.sort((a, b) => a.sort_order - b.sort_order);
+
+  return roots;
+}
+
+// ── Slot Card ──────────────────────────────────────────────────
+function SlotCard({
+  employee,
+  position,
+  deptColor,
+  colors,
+  isHUD,
+  onPress,
 }: {
-  employee: Employee;
-  reportCount: number;
-  onPress: (e: Employee) => void;
-  onDrillDown?: (e: Employee) => void;
+  employee: Employee | null;
+  position: Position;
+  deptColor: string;
   colors: any;
   isHUD: boolean;
+  onPress: () => void;
 }) {
-  const ds = getDeptStyle(employee.department_code);
-  const cardBg = isHUD ? '#050f1e' : colors.surface;
-  const cardBorder = isHUD ? '#1a4060' : colors.border;
+  const bg   = isHUD ? '#050f1e' : colors.surface;
+  const bdr  = isHUD ? '#1a4060' : colors.border;
+
+  if (employee) {
+    return (
+      <Pressable
+        style={[
+          S.slotCard,
+          {
+            backgroundColor: bg,
+            borderColor: deptColor + '50',
+            borderLeftColor: deptColor,
+          },
+        ]}
+        onPress={onPress}
+      >
+        <View style={[S.slotAccent, { backgroundColor: deptColor }]} />
+        <View style={[S.slotAvatar, { backgroundColor: deptColor + '22' }]}>
+          <Text style={[S.slotAvatarText, { color: deptColor, fontFamily: MONO }]}>
+            {initials(employee)}
+          </Text>
+        </View>
+        <Text style={[S.slotName, { color: colors.text }]} numberOfLines={1}>
+          {employee.first_name}
+        </Text>
+        <Text style={[S.slotLast, { color: colors.text }]} numberOfLines={1}>
+          {employee.last_name}
+        </Text>
+        <Text style={[S.slotTitle, { color: colors.textSecondary, fontFamily: MONO }]} numberOfLines={2}>
+          {position.short_title || position.title}
+        </Text>
+        <View style={[S.slotBadge, { backgroundColor: deptColor + '18', borderColor: deptColor + '35' }]}>
+          <Text style={[S.slotBadgeText, { color: deptColor, fontFamily: MONO }]}>FILLED</Text>
+        </View>
+      </Pressable>
+    );
+  }
 
   return (
     <Pressable
-      onPress={() => onPress(employee)}
-      style={({ pressed }) => [
-        C.card,
-        { backgroundColor: cardBg, borderColor: cardBorder, borderLeftColor: ds.color, opacity: pressed ? 0.82 : 1, shadowColor: ds.color },
-      ]}
+      style={[S.slotCard, S.slotCardOpen, { backgroundColor: isHUD ? '#020912' : colors.backgroundSecondary, borderColor: bdr }]}
+      onPress={onPress}
     >
-      <View style={[C.cardAccent, { backgroundColor: ds.color }]} />
-      <View style={[C.cardAvatar, { backgroundColor: ds.dim }]}>
-        <Text style={[C.cardAvatarText, { color: ds.color, fontFamily: MONO }]}>
-          {employee.first_name[0]}{employee.last_name[0]}
-        </Text>
+      <View style={[S.slotAvatar, { backgroundColor: colors.textTertiary + '15' }]}>
+        <UserPlus size={14} color={colors.textTertiary} />
       </View>
-      <Text style={[C.cardName, { color: colors.text }]} numberOfLines={2}>
-        {employee.first_name}{'\n'}{employee.last_name}
+      <Text style={[S.slotName, { color: colors.textSecondary }]}>Open</Text>
+      <Text style={[S.slotTitle, { color: colors.textSecondary, fontFamily: MONO }]} numberOfLines={2}>
+        {position.short_title || position.title}
       </Text>
-      <Text style={[C.cardPos, { color: colors.textSecondary, fontFamily: MONO }]} numberOfLines={2}>
-        {employee.position || 'No title'}
-      </Text>
-      {employee.department_code && (
-        <View style={[C.deptPill, { backgroundColor: ds.dim, borderColor: ds.color + '44' }]}>
-          <Text style={[C.deptPillText, { color: ds.color, fontFamily: MONO }]}>
-            {employee.department_code.toUpperCase()}
-          </Text>
-        </View>
-      )}
-      {reportCount > 0 && onDrillDown && (
-        <Pressable
-          style={[C.drillBtn, { backgroundColor: ds.color + '18', borderColor: ds.color + '40' }]}
-          onPress={() => onDrillDown(employee)}
-        >
-          <Users size={9} color={ds.color} />
-          <Text style={[C.drillBtnText, { color: ds.color, fontFamily: MONO }]}>
-            {reportCount} REPORT{reportCount !== 1 ? 'S' : ''}
-          </Text>
-        </Pressable>
-      )}
+      <View style={[S.slotBadge, { backgroundColor: colors.error + '15', borderColor: colors.error + '30' }]}>
+        <Text style={[S.slotBadgeText, { color: colors.error, fontFamily: MONO }]}>HIRE</Text>
+      </View>
     </Pressable>
   );
 }
 
-function LevelRow({
-  employees, allEmployees, onSelect, onDrillDown, colors, isHUD, accentColor, label,
+// ── Cluster (multiple slots for same position) ─────────────────
+function PositionCluster({
+  position,
+  deptColor,
+  colors,
+  isHUD,
+  onSlotPress,
 }: {
-  employees: Employee[];
-  allEmployees: Employee[];
-  onSelect: (e: Employee) => void;
-  onDrillDown?: (e: Employee) => void;
+  position: PositionWithEmployees;
+  deptColor: string;
   colors: any;
   isHUD: boolean;
-  accentColor: string;
-  label: string;
+  onSlotPress: () => void;
 }) {
-  const reportCount = (emp: Employee) =>
-    allEmployees.filter(e => e.manager_id === emp.id).length;
+  const bdr = isHUD ? '#1a4060' : colors.border;
+  const slots = Array.from({ length: position.budgeted_headcount }).map((_, i) => ({
+    employee: position.employees[i] || null,
+    index: i,
+  }));
+
+  if (position.budgeted_headcount === 1) {
+    return (
+      <SlotCard
+        employee={position.employees[0] || null}
+        position={position}
+        deptColor={deptColor}
+        colors={colors}
+        isHUD={isHUD}
+        onPress={onSlotPress}
+      />
+    );
+  }
 
   return (
-    <View style={C.levelWrap}>
-      <View style={C.levelLabelRow}>
-        <View style={[C.levelLine, { backgroundColor: accentColor + '35' }]} />
-        <Text style={[C.levelLabel, { color: accentColor, fontFamily: MONO }]}>{label.toUpperCase()}</Text>
-        <View style={[C.levelLine, { backgroundColor: accentColor + '35' }]} />
+    <View style={S.cluster}>
+      <View style={[S.clusterHeader, { backgroundColor: deptColor + '15', borderColor: deptColor + '30' }]}>
+        <Text style={[S.clusterTitle, { color: deptColor, fontFamily: MONO }]}>
+          {position.title.toUpperCase()}
+        </Text>
+        <Text style={[S.clusterCount, { color: deptColor, fontFamily: MONO }]}>
+          {position.employees.length}/{position.budgeted_headcount}
+        </Text>
       </View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={C.cardsRow}>
-        {employees.map(emp => (
-          <OrgCard
-            key={emp.id}
-            employee={emp}
-            reportCount={reportCount(emp)}
-            onPress={onSelect}
-            onDrillDown={onDrillDown}
+      <View style={S.clusterSlots}>
+        {slots.map(({ employee, index }) => (
+          <SlotCard
+            key={index}
+            employee={employee}
+            position={position}
+            deptColor={deptColor}
             colors={colors}
             isHUD={isHUD}
+            onPress={onSlotPress}
           />
         ))}
-      </ScrollView>
+      </View>
     </View>
   );
 }
 
-const LEVEL_LABELS = ['Executive', 'Leadership', 'Management', 'Coordination', 'Leads', 'Operators', 'Staff'];
+// ── Tree Node ──────────────────────────────────────────────────
+function TreeNode({
+  position,
+  deptColor,
+  colors,
+  isHUD,
+  isRoot,
+  onSlotPress,
+}: {
+  position: PositionWithEmployees;
+  deptColor: string;
+  colors: any;
+  isHUD: boolean;
+  isRoot: boolean;
+  onSlotPress: () => void;
+}) {
+  const bdrColor = isHUD ? '#1a4060' : colors.border;
+  const hasChildren = position.children.length > 0;
 
+  return (
+    <View style={S.treeNode}>
+      {/* The position cluster */}
+      <PositionCluster
+        position={position}
+        deptColor={deptColor}
+        colors={colors}
+        isHUD={isHUD}
+        onSlotPress={onSlotPress}
+      />
+
+      {/* Connector down */}
+      {hasChildren && (
+        <View style={[S.connectorDown, { backgroundColor: bdrColor }]} />
+      )}
+
+      {/* Children row */}
+      {hasChildren && (
+        <View style={S.childrenWrap}>
+          {/* Horizontal bar connecting children */}
+          {position.children.length > 1 && (
+            <View style={[S.connectorHBar, { backgroundColor: bdrColor }]} />
+          )}
+          <View style={S.childrenRow}>
+            {position.children.map((child, i) => (
+              <View key={child.id} style={S.childBranch}>
+                {/* Vertical drop to child */}
+                <View style={[S.connectorUp, { backgroundColor: bdrColor }]} />
+                <TreeNode
+                  position={child}
+                  deptColor={deptColor}
+                  colors={colors}
+                  isHUD={isHUD}
+                  isRoot={false}
+                  onSlotPress={onSlotPress}
+                />
+              </View>
+            ))}
+          </View>
+        </View>
+      )}
+    </View>
+  );
+}
+
+// ── Dept Card (company overview) ───────────────────────────────
+function DeptCard({
+  dept,
+  colors,
+  isHUD,
+  onPress,
+}: {
+  dept: Department;
+  colors: any;
+  isHUD: boolean;
+  onPress: () => void;
+}) {
+  const bg  = isHUD ? '#050f1e' : colors.surface;
+  const bdr = isHUD ? '#1a4060' : colors.border;
+  const open = Math.max(0, (dept.budgeted_headcount || 0) - (dept.actual_headcount || 0));
+  const pct  = dept.budgeted_headcount > 0
+    ? Math.round((dept.actual_headcount / dept.budgeted_headcount) * 100)
+    : 0;
+  const barColor = pct >= 80 ? colors.success : pct >= 40 ? colors.warning : colors.error;
+
+  return (
+    <Pressable
+      style={({ pressed }) => [
+        S.deptCard,
+        {
+          backgroundColor: bg,
+          borderColor: bdr,
+          borderLeftColor: dept.color,
+          opacity: pressed ? 0.85 : 1,
+        },
+      ]}
+      onPress={onPress}
+    >
+      <View style={S.deptCardTop}>
+        <View style={[S.deptDot, { backgroundColor: dept.color }]} />
+        <Text style={[S.deptName, { color: colors.text }]}>{dept.name}</Text>
+      </View>
+      <View style={S.deptCounts}>
+        <Text style={[S.deptFilled, { color: colors.success }]}>{dept.actual_headcount || 0}</Text>
+        <Text style={[S.deptSlash, { color: colors.textSecondary }]}>/</Text>
+        <Text style={[S.deptBudget, { color: colors.text }]}>{dept.budgeted_headcount || 0}</Text>
+        {open > 0 && (
+          <View style={[S.openBadge, { backgroundColor: colors.warning + '20', borderColor: colors.warning + '40' }]}>
+            <Text style={[S.openBadgeText, { color: colors.warning, fontFamily: MONO }]}>{open} OPEN</Text>
+          </View>
+        )}
+      </View>
+      <View style={[S.fillTrack, { backgroundColor: isHUD ? '#1a4060' : colors.border }]}>
+        <View style={[S.fillBar, { width: `${Math.min(100, pct)}%`, backgroundColor: barColor }]} />
+      </View>
+      <Text style={[S.fillPct, { color: colors.textSecondary }]}>{pct}% staffed</Text>
+    </Pressable>
+  );
+}
+
+// ── Main Screen ────────────────────────────────────────────────
 export default function OrgChartScreen() {
   const { colors, isHUD } = useTheme();
   const { organizationId } = useOrganization();
   const queryClient = useQueryClient();
   const fadeAnim = useRef(new Animated.Value(1)).current;
 
-  const [drillTarget, setDrillTarget] = useState<Employee | null>(null);
-  const [selectedEmp, setSelectedEmp] = useState<Employee | null>(null);
-  const [showPicker, setShowPicker]   = useState(false);
-  const [search, setSearch]           = useState('');
+  const [selectedDept, setSelectedDept] = useState<Department | null>(null);
+  const [showManagerPicker, setShowManagerPicker] = useState(false);
+  const [search, setSearch] = useState('');
 
   const bg   = isHUD ? '#020912' : colors.background;
-  const cyan = isHUD ? '#00D4EE' : colors.primary;
-  const card = isHUD ? '#050f1e' : colors.surface;
+  const surf = isHUD ? '#050f1e' : colors.surface;
   const bdr  = isHUD ? '#1a4060' : colors.border;
+  const cyan = isHUD ? '#00D4EE' : colors.primary;
 
-  const { data: employees = [], isLoading } = useQuery({
-    queryKey: ['org-chart-employees', organizationId],
+  // ── Departments ────────────────────────────────────────────────
+  const { data: departments = [], isLoading: deptsLoading } = useQuery({
+    queryKey: ['org-departments', organizationId],
     queryFn: async () => {
       if (!organizationId) return [];
       const { data, error } = await supabase
-        .from('employees')
-        .select('id, first_name, last_name, position, department_code, manager_id, status')
+        .from('departments')
+        .select('id, department_code, name, color, budgeted_headcount, actual_headcount, sort_order')
         .eq('organization_id', organizationId)
-        .eq('status', 'active')
-        .order('last_name');
+        .is('deleted_at', null)
+        .order('sort_order');
       if (error) throw error;
-      return (data || []) as Employee[];
+      return (data || []) as Department[];
     },
     enabled: !!organizationId,
   });
 
-  const updateManager = useMutation({
-    mutationFn: async ({ employeeId, managerId }: { employeeId: string; managerId: string | null }) => {
-      const { error } = await supabase
-        .from('employees').update({ manager_id: managerId }).eq('id', employeeId);
+  // ── Positions for selected dept ────────────────────────────────
+  const { data: positions = [], isLoading: posLoading } = useQuery({
+    queryKey: ['org-positions', organizationId, selectedDept?.department_code],
+    queryFn: async () => {
+      if (!organizationId || !selectedDept) return [];
+      const { data, error } = await supabase
+        .from('positions')
+        .select('id, position_code, title, short_title, job_level, budgeted_headcount, filled_headcount, open_positions, supervisory_role, sort_order, reports_to_position_title, reports_to_position_id')
+        .eq('organization_id', organizationId)
+        .eq('department_code', selectedDept.department_code)
+        .eq('status', 'active')
+        .order('sort_order');
       if (error) throw error;
+      return (data || []) as Position[];
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['org-chart-employees', organizationId] });
-      setShowPicker(false);
-      setSelectedEmp(null);
-      setSearch('');
-    },
-    onError: () => Alert.alert('Error', 'Failed to update. Please try again.'),
+    enabled: !!organizationId && !!selectedDept,
   });
 
-  const activeIds = useMemo(() => new Set(employees.map(e => e.id)), [employees]);
+  // ── Employees for selected dept ────────────────────────────────
+  const { data: deptEmployees = [], isLoading: empLoading } = useQuery({
+    queryKey: ['org-employees', organizationId, selectedDept?.department_code],
+    queryFn: async () => {
+      if (!organizationId || !selectedDept) return [];
+      const { data, error } = await supabase
+        .from('employees')
+        .select('id, first_name, last_name, position_id, position, department_code, manager_id')
+        .eq('organization_id', organizationId)
+        .eq('department_code', selectedDept.department_code)
+        .eq('status', 'active');
+      if (error) throw error;
+      return (data || []) as Employee[];
+    },
+    enabled: !!organizationId && !!selectedDept,
+  });
 
-  // Build levels for company or drill view
-  const buildLevels = useCallback((startIds: string[]): Employee[][] => {
-    const levels: Employee[][] = [];
-    let current = startIds;
-    let safety = 0;
-    while (safety < 8) {
-      const next = employees
-        .filter(e => e.manager_id && current.includes(e.manager_id))
-        .sort((a, b) => a.last_name.localeCompare(b.last_name));
-      if (next.length === 0) break;
-      levels.push(next);
-      current = next.map(e => e.id);
-      safety++;
-    }
-    return levels;
-  }, [employees]);
-
-  const roots = useMemo(() =>
-    employees.filter(e => !e.manager_id || !activeIds.has(e.manager_id))
-      .sort((a, b) => a.last_name.localeCompare(b.last_name)),
-    [employees, activeIds]
+  // ── Build tree ──────────────────────────────────────────────────
+  const positionTree = useMemo(
+    () => buildPositionTree(positions, deptEmployees),
+    [positions, deptEmployees]
   );
 
-  const companyLevels = useMemo(() => {
-    if (roots.length === 0) return [];
-    return [roots, ...buildLevels(roots.map(e => e.id))];
-  }, [roots, buildLevels]);
-
-  const drillLevels = useMemo(() => {
-    if (!drillTarget) return [];
-    return [[drillTarget], ...buildLevels([drillTarget.id])];
-  }, [drillTarget, buildLevels]);
-
-  const unmapped = useMemo(() =>
-    employees.filter(e => !e.manager_id),
-    [employees]
-  );
-
+  // ── Fade transition ─────────────────────────────────────────────
   const fade = (cb: () => void) => {
-    Animated.timing(fadeAnim, { toValue: 0, duration: 140, useNativeDriver: true }).start(() => {
+    Animated.timing(fadeAnim, { toValue: 0, duration: 130, useNativeDriver: true }).start(() => {
       cb();
-      Animated.timing(fadeAnim, { toValue: 1, duration: 180, useNativeDriver: true }).start();
+      Animated.timing(fadeAnim, { toValue: 1, duration: 170, useNativeDriver: true }).start();
     });
   };
 
-  const handleDrillDown = useCallback((emp: Employee) => fade(() => setDrillTarget(emp)), []);
-  const handleBack      = useCallback(() => fade(() => setDrillTarget(null)), []);
-  const handleSelect    = useCallback((emp: Employee) => { setSelectedEmp(emp); setSearch(''); setShowPicker(true); }, []);
+  const handleDeptPress = useCallback((dept: Department) => {
+    fade(() => setSelectedDept(dept));
+  }, []);
 
-  const managerOptions = useMemo(() => {
-    if (!selectedEmp) return [];
-    const excl = new Set<string>([selectedEmp.id]);
-    const addSubs = (id: string) =>
-      employees.filter(e => e.manager_id === id).forEach(e => { excl.add(e.id); addSubs(e.id); });
-    addSubs(selectedEmp.id);
-    const q = search.toLowerCase();
-    return employees
-      .filter(e => !excl.has(e.id) && (q === '' || `${e.first_name} ${e.last_name} ${e.position}`.toLowerCase().includes(q)))
-      .sort((a, b) => a.last_name.localeCompare(b.last_name));
-  }, [employees, selectedEmp, search]);
+  const handleBack = useCallback(() => {
+    fade(() => setSelectedDept(null));
+  }, []);
 
-  const currentManager = selectedEmp ? employees.find(e => e.id === selectedEmp.manager_id) : null;
-  const activeLevels   = drillTarget ? drillLevels : companyLevels;
-  const drillColor     = drillTarget ? getDeptStyle(drillTarget.department_code).color : cyan;
-
-  if (isLoading) {
+  // ── Loading ─────────────────────────────────────────────────────
+  if (deptsLoading) {
     return (
-      <View style={[C.center, { backgroundColor: bg }]}>
+      <View style={[S.center, { backgroundColor: bg }]}>
         <ActivityIndicator color={cyan} size="large" />
-        <Text style={[C.loadingText, { color: colors.textSecondary, fontFamily: MONO }]}>LOADING ORG CHART...</Text>
+        <Text style={[S.loadingText, { color: colors.textSecondary, fontFamily: MONO }]}>
+          LOADING ORG CHART...
+        </Text>
       </View>
     );
   }
 
-  return (
-    <View style={[C.container, { backgroundColor: bg }]}>
+  // ── Dept drill-down view ────────────────────────────────────────
+  if (selectedDept) {
+    const totalFilled   = positions.reduce((s, p) => s + p.filled_headcount, 0);
+    const totalBudgeted = positions.reduce((s, p) => s + p.budgeted_headcount, 0);
+    const totalOpen     = totalBudgeted - totalFilled;
 
-      {/* Top bar */}
-      <View style={[C.topBar, { backgroundColor: card, borderBottomColor: bdr }]}>
-        {drillTarget ? (
-          <>
-            <TouchableOpacity style={C.backBtn} onPress={handleBack}>
-              <ChevronLeft size={17} color={cyan} />
-              <Text style={[C.backText, { color: cyan, fontFamily: MONO }]}>COMPANY</Text>
-            </TouchableOpacity>
-            <Text style={[C.drillTitle, { color: colors.text }]}>
-              {drillTarget.first_name} {drillTarget.last_name}
-            </Text>
-          </>
-        ) : (
-          <View style={C.topBarLeft}>
-            <GitBranch size={13} color={cyan} />
-            <Text style={[C.topBarTitle, { color: cyan, fontFamily: MONO }]}>ORG CHART</Text>
-          </View>
-        )}
-        <Text style={[C.topBarCount, { color: colors.textSecondary, fontFamily: MONO }]}>
-          {employees.length} EMPLOYEES
+    return (
+      <View style={[S.container, { backgroundColor: bg }]}>
+        {/* Header */}
+        <View style={[S.topBar, { backgroundColor: surf, borderBottomColor: bdr }]}>
+          <TouchableOpacity style={S.backBtn} onPress={handleBack}>
+            <ChevronLeft size={17} color={cyan} />
+            <Text style={[S.backText, { color: cyan, fontFamily: MONO }]}>COMPANY</Text>
+          </TouchableOpacity>
+          <View style={[S.deptDot, { backgroundColor: selectedDept.color }]} />
+          <Text style={[S.topBarTitle, { color: colors.text }]}>{selectedDept.name}</Text>
+          <Text style={[S.topBarCount, { color: colors.textSecondary, fontFamily: MONO }]}>
+            {totalFilled}/{totalBudgeted} · {totalOpen} OPEN
+          </Text>
+        </View>
+
+        {/* Tree */}
+        <Animated.ScrollView
+          style={{ flex: 1, opacity: fadeAnim }}
+          contentContainerStyle={S.treeScroll}
+          showsVerticalScrollIndicator={false}
+          horizontal={false}
+        >
+          <ScrollView horizontal showsHorizontalScrollIndicator={true}>
+            <View style={S.treeRoot}>
+              {posLoading || empLoading ? (
+                <View style={S.center}>
+                  <ActivityIndicator color={cyan} />
+                </View>
+              ) : positionTree.length === 0 ? (
+                <View style={S.empty}>
+                  <GitBranch size={32} color={colors.textTertiary} />
+                  <Text style={[S.emptyText, { color: colors.textSecondary }]}>
+                    No positions defined yet
+                  </Text>
+                </View>
+              ) : (
+                positionTree.map(root => (
+                  <TreeNode
+                    key={root.id}
+                    position={root}
+                    deptColor={selectedDept.color}
+                    colors={colors}
+                    isHUD={isHUD}
+                    isRoot={true}
+                    onSlotPress={() => {}}
+                  />
+                ))
+              )}
+            </View>
+          </ScrollView>
+        </Animated.ScrollView>
+      </View>
+    );
+  }
+
+  // ── Company overview ────────────────────────────────────────────
+  const totalBudgeted = departments.reduce((s, d) => s + (d.budgeted_headcount || 0), 0);
+  const totalActual   = departments.reduce((s, d) => s + (d.actual_headcount || 0), 0);
+
+  return (
+    <View style={[S.container, { backgroundColor: bg }]}>
+      {/* Header */}
+      <View style={[S.topBar, { backgroundColor: surf, borderBottomColor: bdr }]}>
+        <View style={S.topBarLeft}>
+          <GitBranch size={13} color={cyan} />
+          <Text style={[S.topBarLabel, { color: cyan, fontFamily: MONO }]}>ORG CHART</Text>
+        </View>
+        <Text style={[S.topBarCount, { color: colors.textSecondary, fontFamily: MONO }]}>
+          {totalActual}/{totalBudgeted} COMPANY TOTAL
         </Text>
       </View>
 
-      {/* Chart */}
       <Animated.ScrollView
         style={{ flex: 1, opacity: fadeAnim }}
-        contentContainerStyle={C.chartContent}
+        contentContainerStyle={S.deptGrid}
         showsVerticalScrollIndicator={false}
       >
-        {activeLevels.map((level, i) => (
-          <View key={i}>
-            {i > 0 && (
-              <View style={C.vertConnector}>
-                <View style={[C.vertLine, { backgroundColor: drillColor + '50' }]} />
-              </View>
-            )}
-            <LevelRow
-              employees={level}
-              allEmployees={employees}
-              onSelect={handleSelect}
-              onDrillDown={drillTarget || i === 0 ? undefined : handleDrillDown}
-              colors={colors}
-              isHUD={isHUD}
-              accentColor={i === 0 ? cyan : drillColor}
-              label={drillTarget
-                ? (i === 0 ? (drillTarget.position || drillTarget.department_code || 'Root') : LEVEL_LABELS[i] || `Level ${i + 1}`)
-                : (LEVEL_LABELS[i] || `Level ${i + 1}`)
-              }
-            />
-          </View>
+        {departments.map(dept => (
+          <DeptCard
+            key={dept.id}
+            dept={dept}
+            colors={colors}
+            isHUD={isHUD}
+            onPress={() => handleDeptPress(dept)}
+          />
         ))}
-
-        {/* Unmapped — company view only */}
-        {!drillTarget && unmapped.length > 0 && (
-          <View style={{ marginTop: 24 }}>
-            <View style={C.levelLabelRow}>
-              <View style={[C.levelLine, { backgroundColor: colors.textTertiary + '30' }]} />
-              <Text style={[C.levelLabel, { color: colors.textTertiary, fontFamily: MONO }]}>UNMAPPED ({unmapped.length})</Text>
-              <View style={[C.levelLine, { backgroundColor: colors.textTertiary + '30' }]} />
-            </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={C.cardsRow}>
-              {unmapped.sort((a, b) => a.last_name.localeCompare(b.last_name)).map(emp => (
-                <Pressable
-                  key={emp.id}
-                  style={[C.unmappedCard, { backgroundColor: card, borderColor: bdr }]}
-                  onPress={() => handleSelect(emp)}
-                >
-                  <View style={[C.cardAvatar, { backgroundColor: colors.textTertiary + '15' }]}>
-                    <Text style={[C.cardAvatarText, { color: colors.textSecondary, fontFamily: MONO }]}>
-                      {emp.first_name[0]}{emp.last_name[0]}
-                    </Text>
-                  </View>
-                  <Text style={[C.cardName, { color: colors.text }]} numberOfLines={2}>
-                    {emp.first_name}{'\n'}{emp.last_name}
-                  </Text>
-                  <Text style={[C.cardPos, { color: colors.textSecondary, fontFamily: MONO }]} numberOfLines={1}>
-                    {emp.position || 'No title'}
-                  </Text>
-                  <View style={[C.assignPrompt, { backgroundColor: cyan + '15', borderColor: cyan + '35' }]}>
-                    <UserPlus size={9} color={cyan} />
-                    <Text style={[C.assignText, { color: cyan, fontFamily: MONO }]}>ASSIGN</Text>
-                  </View>
-                </Pressable>
-              ))}
-            </ScrollView>
-          </View>
-        )}
-
-        <View style={{ height: 60 }} />
+        <View style={{ height: 40 }} />
       </Animated.ScrollView>
-
-      {/* Manager picker */}
-      <Modal visible={showPicker} animationType="slide" transparent onRequestClose={() => setShowPicker(false)}>
-        <View style={C.overlay}>
-          <View style={[C.pickerSheet, { backgroundColor: card, borderTopColor: bdr }]}>
-            <View style={[C.pickerHead, { borderBottomColor: bdr }]}>
-              <View style={{ flex: 1 }}>
-                <Text style={[C.pickerTitle, { color: colors.text, fontFamily: MONO }]}>ASSIGN MANAGER</Text>
-                <Text style={[C.pickerSub, { color: colors.textSecondary }]}>
-                  {selectedEmp?.first_name} {selectedEmp?.last_name} · {selectedEmp?.position || 'No title'}
-                </Text>
-              </View>
-              <Pressable onPress={() => { setShowPicker(false); setSelectedEmp(null); }} hitSlop={12}>
-                <X size={21} color={colors.textSecondary} />
-              </Pressable>
-            </View>
-
-            {currentManager && (
-              <View style={[C.currentMgr, { backgroundColor: cyan + '10', borderColor: cyan + '28' }]}>
-                <Text style={[C.currentMgrLabel, { color: colors.textSecondary, fontFamily: MONO }]}>CURRENT MANAGER</Text>
-                <Text style={[C.currentMgrName, { color: colors.text }]}>
-                  {currentManager.first_name} {currentManager.last_name} · {currentManager.position}
-                </Text>
-              </View>
-            )}
-
-            <View style={[C.searchBox, { backgroundColor: bg, borderColor: bdr }]}>
-              <Search size={14} color={colors.textSecondary} />
-              <TextInput
-                style={[C.searchInput, { color: colors.text }]}
-                placeholder="Search by name or title..."
-                placeholderTextColor={colors.textSecondary}
-                value={search}
-                onChangeText={setSearch}
-                autoFocus
-              />
-              {search.length > 0 && (
-                <Pressable onPress={() => setSearch('')}><X size={13} color={colors.textSecondary} /></Pressable>
-              )}
-            </View>
-
-            {selectedEmp?.manager_id && (
-              <Pressable
-                style={[C.removeBtn, { backgroundColor: colors.error + '10', borderColor: colors.error + '35' }]}
-                onPress={() => updateManager.mutate({ employeeId: selectedEmp.id, managerId: null })}
-                disabled={updateManager.isPending}
-              >
-                <X size={12} color={colors.error} />
-                <Text style={[C.removeBtnText, { color: colors.error, fontFamily: MONO }]}>REMOVE MANAGER</Text>
-              </Pressable>
-            )}
-
-            <ScrollView style={C.pickerList} showsVerticalScrollIndicator={false}>
-              {managerOptions.map(emp => {
-                const isSelected = emp.id === selectedEmp?.manager_id;
-                const ds = getDeptStyle(emp.department_code);
-                return (
-                  <Pressable
-                    key={emp.id}
-                    style={[C.pickerRow, {
-                      borderColor: isSelected ? cyan + '55' : bdr,
-                      backgroundColor: isSelected ? cyan + '10' : bg,
-                    }]}
-                    onPress={() => updateManager.mutate({ employeeId: selectedEmp!.id, managerId: emp.id })}
-                    disabled={updateManager.isPending}
-                  >
-                    <View style={[C.cardAvatar, { backgroundColor: ds.dim, width: 36, height: 36, borderRadius: 18 }]}>
-                      <Text style={[C.cardAvatarText, { color: ds.color, fontFamily: MONO, fontSize: 12 }]}>
-                        {emp.first_name[0]}{emp.last_name[0]}
-                      </Text>
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[C.pickerName, { color: colors.text }]}>{emp.first_name} {emp.last_name}</Text>
-                      <Text style={[C.pickerSub2, { color: colors.textSecondary }]} numberOfLines={1}>
-                        {emp.position || 'No title'}{emp.department_code ? ` · ${emp.department_code}` : ''}
-                      </Text>
-                    </View>
-                    {updateManager.isPending
-                      ? <ActivityIndicator size="small" color={cyan} />
-                      : isSelected ? <Check size={15} color={cyan} /> : null
-                    }
-                  </Pressable>
-                );
-              })}
-              <View style={{ height: 20 }} />
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
-
     </View>
   );
 }
 
-const C = StyleSheet.create({
-  container:    { flex: 1 },
-  center:       { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14 },
-  loadingText:  { fontSize: 11, letterSpacing: 2, marginTop: 8 },
-  topBar:       { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, gap: 10 },
-  topBarLeft:   { flexDirection: 'row', alignItems: 'center', gap: 7, flex: 1 },
-  topBarTitle:  { fontSize: 11, fontWeight: '800' as const, letterSpacing: 2 },
-  topBarCount:  { fontSize: 9, letterSpacing: 1 },
-  backBtn:      { flexDirection: 'row', alignItems: 'center', gap: 3, flex: 1 },
-  backText:     { fontSize: 11, fontWeight: '800' as const, letterSpacing: 1 },
-  drillTitle:   { flex: 2, fontSize: 13, fontWeight: '600' as const, textAlign: 'center' },
-  chartContent: { paddingVertical: 20 },
-  levelWrap:    { marginBottom: 4 },
-  levelLabelRow:{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, marginBottom: 12, gap: 10 },
-  levelLine:    { flex: 1, height: 1 },
-  levelLabel:   { fontSize: 9, fontWeight: '800' as const, letterSpacing: 2 },
-  cardsRow:     { paddingHorizontal: 16, gap: 12, paddingBottom: 4 },
-  vertConnector:{ alignItems: 'center', paddingVertical: 2, marginBottom: 4 },
-  vertLine:     { width: 1, height: 30 },
-  card: {
-    width: 140, borderRadius: 10, borderWidth: 1, borderLeftWidth: 3,
-    overflow: 'hidden', padding: 12, alignItems: 'center',
-    shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.25, shadowRadius: 8, elevation: 4,
+// ── Styles ─────────────────────────────────────────────────────
+const S = StyleSheet.create({
+  container:   { flex: 1 },
+  center:      { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 40 },
+  loadingText: { fontSize: 11, letterSpacing: 2, marginTop: 8 },
+
+  // Top bar
+  topBar:     { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, gap: 8 },
+  topBarLeft: { flexDirection: 'row', alignItems: 'center', gap: 7, flex: 1 },
+  topBarLabel:{ fontSize: 11, fontWeight: '800' as const, letterSpacing: 2 },
+  topBarTitle:{ flex: 1, fontSize: 14, fontWeight: '600' as const },
+  topBarCount:{ fontSize: 9, letterSpacing: 1 },
+  backBtn:    { flexDirection: 'row', alignItems: 'center', gap: 3, flex: 1 },
+  backText:   { fontSize: 11, fontWeight: '800' as const, letterSpacing: 1 },
+  deptDot:    { width: 10, height: 10, borderRadius: 5 },
+
+  // Dept grid (company view)
+  deptGrid: { padding: 12, gap: 10 },
+  deptCard: {
+    borderRadius: 12, borderWidth: 1, borderLeftWidth: 3,
+    padding: 14, gap: 6,
   },
-  cardAccent:    { position: 'absolute', top: 0, left: 0, right: 0, height: 2 },
-  cardAvatar:    { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
-  cardAvatarText:{ fontSize: 14, fontWeight: '900' as const },
-  cardName:      { fontSize: 13, fontWeight: '700' as const, textAlign: 'center', lineHeight: 17, marginBottom: 4 },
-  cardPos:       { fontSize: 9, textAlign: 'center', lineHeight: 13, letterSpacing: 0.3, marginBottom: 6 },
-  deptPill:      { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 5, borderWidth: 1, marginBottom: 6 },
-  deptPillText:  { fontSize: 8, fontWeight: '800' as const, letterSpacing: 1 },
-  drillBtn:      { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, borderWidth: 1 },
-  drillBtnText:  { fontSize: 8, fontWeight: '800' as const, letterSpacing: 0.5 },
-  unmappedCard:  { width: 130, borderRadius: 10, borderWidth: 1, borderStyle: 'dashed', padding: 12, alignItems: 'center', opacity: 0.7 },
-  assignPrompt:  { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 5, borderWidth: 1, marginTop: 6 },
-  assignText:    { fontSize: 8, fontWeight: '800' as const, letterSpacing: 1 },
-  overlay:       { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
-  pickerSheet:   { borderTopLeftRadius: 24, borderTopRightRadius: 24, borderTopWidth: 1, maxHeight: '88%' as any },
-  pickerHead:    { flexDirection: 'row', alignItems: 'center', padding: 20, borderBottomWidth: 1 },
-  pickerTitle:   { fontSize: 13, fontWeight: '800' as const, letterSpacing: 2 },
-  pickerSub:     { fontSize: 12, marginTop: 3 },
-  pickerList:    { maxHeight: 380, paddingHorizontal: 12 },
-  currentMgr:    { margin: 12, marginBottom: 4, padding: 12, borderRadius: 10, borderWidth: 1 },
-  currentMgrLabel:{ fontSize: 9, fontWeight: '700' as const, letterSpacing: 1.5, marginBottom: 3 },
-  currentMgrName: { fontSize: 13, fontWeight: '600' as const },
-  searchBox:     { flexDirection: 'row', alignItems: 'center', margin: 12, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 10, borderWidth: 1, gap: 8 },
-  searchInput:   { flex: 1, fontSize: 14 },
-  removeBtn:     { flexDirection: 'row', alignItems: 'center', gap: 7, marginHorizontal: 12, marginBottom: 6, padding: 10, borderRadius: 8, borderWidth: 1 },
-  removeBtnText: { fontSize: 11, fontWeight: '800' as const, letterSpacing: 1 },
-  pickerRow:     { flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: 10, borderWidth: 1, marginBottom: 6, gap: 10 },
-  pickerName:    { fontSize: 14, fontWeight: '600' as const, marginBottom: 2 },
-  pickerSub2:    { fontSize: 11 },
+  deptCardTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  deptName:    { flex: 1, fontSize: 14, fontWeight: '600' as const },
+  deptCounts:  { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  deptFilled:  { fontSize: 18, fontWeight: '700' as const },
+  deptSlash:   { fontSize: 14 },
+  deptBudget:  { fontSize: 15, fontWeight: '600' as const },
+  openBadge:   { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6, borderWidth: 1 },
+  openBadgeText:{ fontSize: 9, fontWeight: '800' as const, letterSpacing: 0.5 },
+  fillTrack:   { height: 4, borderRadius: 2, overflow: 'hidden' },
+  fillBar:     { height: '100%' as any, borderRadius: 2 },
+  fillPct:     { fontSize: 10 },
+
+  // Tree layout
+  treeScroll:  { padding: 16, paddingBottom: 60 },
+  treeRoot:    { flexDirection: 'column', alignItems: 'center', gap: 0, paddingBottom: 40 },
+  treeNode:    { flexDirection: 'column', alignItems: 'center' },
+  connectorDown:{ width: 1, height: 20 },
+  childrenWrap: { position: 'relative', flexDirection: 'column', alignItems: 'center' },
+  connectorHBar:{ height: 1, position: 'absolute', top: 0, left: '10%', right: '10%' },
+  childrenRow:  { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  childBranch:  { flexDirection: 'column', alignItems: 'center' },
+  connectorUp:  { width: 1, height: 16 },
+
+  // Slot card
+  slotCard: {
+    width: 110,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderLeftWidth: 3,
+    padding: 10,
+    alignItems: 'center',
+    overflow: 'hidden',
+  },
+  slotCardOpen: { borderStyle: 'dashed', borderLeftWidth: 1, opacity: 0.75 },
+  slotAccent:    { position: 'absolute', top: 0, left: 0, right: 0, height: 2 },
+  slotAvatar:    { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
+  slotAvatarText:{ fontSize: 13, fontWeight: '900' as const },
+  slotName:      { fontSize: 12, fontWeight: '700' as const, textAlign: 'center' },
+  slotLast:      { fontSize: 12, fontWeight: '700' as const, textAlign: 'center', marginBottom: 3 },
+  slotTitle:     { fontSize: 8, textAlign: 'center', letterSpacing: 0.3, lineHeight: 12, marginBottom: 5 },
+  slotBadge:     { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5, borderWidth: 1 },
+  slotBadgeText: { fontSize: 8, fontWeight: '800' as const, letterSpacing: 0.5 },
+
+  // Cluster
+  cluster:       { alignItems: 'center' },
+  clusterHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1, marginBottom: 8, gap: 8 },
+  clusterTitle:  { fontSize: 9, fontWeight: '800' as const, letterSpacing: 1 },
+  clusterCount:  { fontSize: 11, fontWeight: '700' as const },
+  clusterSlots:  { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center', maxWidth: 500 },
+
+  // Empty
+  empty:     { alignItems: 'center', gap: 12, paddingVertical: 60 },
+  emptyText: { fontSize: 13 },
 });
