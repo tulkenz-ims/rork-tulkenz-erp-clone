@@ -111,13 +111,16 @@ const DEPT_COLORS: Record<string, string> = {
 };
 
 // ── HUD Cyan Dark ────────────────────────────────────────────────
+// textSecondary: bumped from #6ABECC to #8ED8E8 — clearly readable on dark bg
+// textTertiary:  bumped from #2E6A7A to #5AAABB — visible but still secondary
 const hudCyan: ThemeColors = {
   primary: '#00D4EE', primaryDark: '#0088AA', primaryLight: '#00BBCC',
   accent: '#00BBCC', accentLight: '#00D4EE',
   background: '#010B18', backgroundSecondary: '#031220', backgroundTertiary: '#051A2E',
   surface: '#040F1C', surfaceLight: '#031220',
-  // Fixed: text uses hudTextStrong (soft cyan-white), NOT #FFFFFF
-  text: '#C8F0F8', textSecondary: '#6ABECC', textTertiary: '#2E6A7A',
+  text: '#C8F0F8',
+  textSecondary: '#8ED8E8',   // was #6ABECC — brighter, clearly readable
+  textTertiary:  '#5AAABB',   // was #2E6A7A — nearly invisible, now visible
   border: 'rgba(0,212,238,0.25)', borderLight: 'rgba(0,212,238,0.14)',
   ...SEMANTIC,
   info: '#00D4EE', infoLight: '#00BBCC', infoBg: 'rgba(0,212,238,0.10)',
@@ -139,7 +142,7 @@ const cleanLight: ThemeColors = {
   accent: '#EE9900', accentLight: '#FFBB33',
   background: '#F4F5F7', backgroundSecondary: '#FFFFFF', backgroundTertiary: '#EAEBEE',
   surface: '#FFFFFF', surfaceLight: '#F8F8FC',
-  text: '#1A1A2E', textSecondary: '#555577', textTertiary: '#9999AA',
+  text: '#1A1A2E', textSecondary: '#444466', textTertiary: '#777799',
   border: '#E8E8EC', borderLight: '#F0F0F4',
   ...SEMANTIC,
   info: '#2266DD', infoLight: '#5599EE', infoBg: 'rgba(34,102,221,0.08)',
@@ -161,7 +164,7 @@ const classic: ThemeColors = {
   accent: '#2A5A30', accentLight: '#3A7A40',
   background: '#F5F0E8', backgroundSecondary: '#EDE8DC', backgroundTertiary: '#E5DFD0',
   surface: '#FAF7F2', surfaceLight: '#F0EBE0',
-  text: '#3A2A15', textSecondary: '#6B5030', textTertiary: '#9A7A55',
+  text: '#3A2A15', textSecondary: '#5A3A20', textTertiary: '#7A5A35',
   border: '#D8CDB8', borderLight: '#E8E0D0',
   success: '#2A5A30', successLight: '#3A7A40', successBg: 'rgba(42,90,48,0.10)',
   warning: '#8B6F00', warningLight: '#AA8800', warningBg: 'rgba(139,111,0,0.10)',
@@ -192,7 +195,7 @@ const ghostProtocol: ThemeColors = {
   accent: '#CC0000', accentLight: '#EE2222',
   background: '#F8F8F8', backgroundSecondary: '#FFFFFF', backgroundTertiary: '#F0F0F0',
   surface: '#FFFFFF', surfaceLight: '#F8F8F8',
-  text: '#111111', textSecondary: '#666666', textTertiary: '#999999',
+  text: '#111111', textSecondary: '#333333', textTertiary: '#666666',
   border: '#E0E0E0', borderLight: '#EEEEEE',
   success: '#006633', successLight: '#009944', successBg: 'rgba(0,102,51,0.08)',
   warning: '#CC6600', warningLight: '#EE8800', warningBg: 'rgba(204,102,0,0.08)',
@@ -251,7 +254,6 @@ export const [ThemeProvider, useTheme] = createContextHook(() => {
         if (saved && VALID_THEMES.includes(saved as ThemeType)) {
           setThemeName(saved as ThemeType);
         } else {
-          // Migrate any old 12-theme value to hud_cyan
           setThemeName('hud_cyan');
           await AsyncStorage.setItem(THEME_STORAGE_KEY, 'hud_cyan');
         }
