@@ -130,7 +130,7 @@ export function useUsers(filters?: UserFilters) {
   });
 }
 
-export function useUser2(userId: string | undefined) {
+export function useUser(userId: string | undefined) {
   const { organizationId } = useOrganization();
   return useQuery({
     queryKey: ['user', userId, organizationId],
