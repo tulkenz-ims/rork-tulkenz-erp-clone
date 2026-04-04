@@ -17,6 +17,7 @@ import { usePermissions } from '@/contexts/PermissionsContext';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import { useUser } from '@/contexts/UserContext';
 import { useQuery } from '@tanstack/react-query';
+import EmployeePermissionsOverride from '@/components/EmployeePermissionsOverride';
 import { supabase } from '@/lib/supabase';
 import {
   useUsers, useCreateUser, useUpdateUser, useToggleUserStatus,
@@ -302,6 +303,8 @@ export default function UserManagementScreen() {
   const [roleAssignModalVisible, setRoleAssignModalVisible] = useState(false);
   const [userForRoleAssign, setUserForRoleAssign] = useState<SupabaseUser | null>(null);
   const [showPositionPicker, setShowPositionPicker] = useState(false);
+  const [overrideModalVisible, setOverrideModalVisible] = useState(false);
+  const [userForOverride, setUserForOverride] = useState<SupabaseUser | null>(null);
 
   // Form state
   const [firstName, setFirstName]       = useState('');
@@ -735,27 +738,32 @@ export default function UserManagementScreen() {
                         </Pressable>
                       )}
                       {showActionMenu === user.id && (
-                        <View style={[S.actionMenu, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                          <Pressable style={S.actionMenuItem} onPress={() => openEditModal(user)}>
-                            <Edit3 size={16} color={colors.text} />
-                            <Text style={[S.actionMenuText, { color: colors.text }]}>Edit User</Text>
-                          </Pressable>
-                          <Pressable style={S.actionMenuItem} onPress={() => handleToggleStatus(user)}>
-                            <Power size={16} color={user.status === 'active' ? colors.error : colors.success} />
-                            <Text style={[S.actionMenuText, { color: user.status === 'active' ? colors.error : colors.success }]}>
-                              {user.status === 'active' ? 'Deactivate' : 'Activate'}
-                            </Text>
-                          </Pressable>
-                          <Pressable style={S.actionMenuItem} onPress={() => handleResetPin(user)}>
-                            <RefreshCw size={16} color={colors.warning} />
-                            <Text style={[S.actionMenuText, { color: colors.warning }]}>Reset PIN</Text>
-                          </Pressable>
-                          <View style={[S.actionMenuDivider, { backgroundColor: colors.border }]} />
-                          <Pressable style={S.actionMenuItem} onPress={() => { setUserForRoleAssign(user); setRoleAssignModalVisible(true); setShowActionMenu(null); }}>
-                            <Shield size={16} color={colors.primary} />
-                            <Text style={[S.actionMenuText, { color: colors.primary }]}>Assign Role & Permissions</Text>
-                          </Pressable>
-                        </View>
+  <View style={[S.actionMenu, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+    <Pressable style={S.actionMenuItem} onPress={() => openEditModal(user)}>
+      <Edit3 size={16} color={colors.text} />
+      <Text style={[S.actionMenuText, { color: colors.text }]}>Edit User</Text>
+    </Pressable>
+    <Pressable style={S.actionMenuItem} onPress={() => handleToggleStatus(user)}>
+      <Power size={16} color={user.status === 'active' ? colors.error : colors.success} />
+      <Text style={[S.actionMenuText, { color: user.status === 'active' ? colors.error : colors.success }]}>
+        {user.status === 'active' ? 'Deactivate' : 'Activate'}
+      </Text>
+    </Pressable>
+    <Pressable style={S.actionMenuItem} onPress={() => handleResetPin(user)}>
+      <RefreshCw size={16} color={colors.warning} />
+      <Text style={[S.actionMenuText, { color: colors.warning }]}>Reset PIN</Text>
+    </Pressable>
+    <View style={[S.actionMenuDivider, { backgroundColor: colors.border }]} />
+    <Pressable style={S.actionMenuItem} onPress={() => { setUserForRoleAssign(user); setRoleAssignModalVisible(true); setShowActionMenu(null); }}>
+      <Shield size={16} color={colors.primary} />
+      <Text style={[S.actionMenuText, { color: colors.primary }]}>Assign Role & Permissions</Text>
+    </Pressable>
+    <Pressable style={S.actionMenuItem} onPress={() => { setUserForOverride(user); setOverrideModalVisible(true); setShowActionMenu(null); }}>
+      <Shield size={16} color={colors.warning} />
+      <Text style={[S.actionMenuText, { color: colors.warning }]}>Custom Permissions</Text>
+    </Pressable>
+  </View>
+)}
                       )}
                     </Pressable>
                   );
