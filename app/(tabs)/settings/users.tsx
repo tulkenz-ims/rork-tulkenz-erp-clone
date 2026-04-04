@@ -267,6 +267,7 @@ export default function UserManagementScreen() {
   const { colors } = useTheme();
   const { organizationId } = useOrganization();
   const { roles: permissionRoles, assignRoleToEmployee, getEmployeeRole } = usePermissions();
+  const { isSuperAdmin } = useUser();
 
   const [searchQuery, setSearchQuery]     = useState('');
   const [statusFilter, setStatusFilter]   = useState<StatusFilter>('all');
@@ -356,11 +357,24 @@ export default function UserManagementScreen() {
   }, [resetForm]);
 
   const openEditModal = useCallback((user: SupabaseUser) => {
+    // Block editing of superadmin accounts unless current user is superadmin
+    if (user.role === 'superadmin' && !isSuperAdmin) {
+      Alert.alert('Access Denied', 'You do not have permission to edit this account.');
+      setShowActionMenu(null);
+      return;
+    }
+    // Block editing of platform admin accounts entirely
+    if (user.is_platform_admin) {
+      Alert.alert('Access Denied', 'Platform administrator accounts cannot be edited here.');
+      setShowActionMenu(null);
+      return;
+    }
+
     setSelectedUser(user);
     setFirstName(user.first_name); setLastName(user.last_name); setEmail(user.email);
     setEmployeeCode(user.employee_code); setPin('');
     setPositionTitle(user.position || '');
-    setPositionId((user as any).position_id || null);
+    setPositionId(user.position_id || null);
     setDepartment(user.department_code || '');
     const currentPermRole = getEmployeeRole(user.id);
     if (currentPermRole) {
@@ -373,7 +387,7 @@ export default function UserManagementScreen() {
     }
     setStatus(user.status);
     setModalMode('edit'); setModalVisible(true); setShowActionMenu(null);
-  }, [getEmployeeRole]);
+  }, [getEmployeeRole, isSuperAdmin]);
 
   const closeModal = useCallback(() => {
     setModalVisible(false); setModalMode(null); setSelectedUser(null); resetForm();
