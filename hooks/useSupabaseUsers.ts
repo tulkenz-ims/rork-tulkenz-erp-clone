@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase, fetchById, updateRecord } from '@/lib/supabase';
 import { useOrganization } from '@/contexts/OrganizationContext';
-import { useUser } from '@/contexts/UserContext';
+import { useUser as useCurrentUser } from '@/contexts/UserContext';
 
 export interface SupabaseUser {
   id: string;
@@ -77,7 +77,7 @@ export interface UpdateUserInput {
 
 export function useUsers(filters?: UserFilters) {
   const { organizationId } = useOrganization();
-  const { isPlatformAdmin } = useUser();
+  const { isPlatformAdmin } = useCurrentUser();
 
   return useQuery({
     queryKey: ['users', organizationId, filters, isPlatformAdmin],
@@ -152,10 +152,16 @@ export function useCreateUser() {
     mutationFn: async (input: CreateUserInput) => {
       if (!organizationId) throw new Error('No organization ID');
 
-      const existingEmail = await supabase.from('employees').select('id').eq('organization_id', organizationId).eq('email', input.email).single();
+      const existingEmail = await supabase
+        .from('employees').select('id')
+        .eq('organization_id', organizationId)
+        .eq('email', input.email).single();
       if (existingEmail.data) throw new Error('A user with this email already exists');
 
-      const existingCode = await supabase.from('employees').select('id').eq('organization_id', organizationId).eq('employee_code', input.employee_code).single();
+      const existingCode = await supabase
+        .from('employees').select('id')
+        .eq('organization_id', organizationId)
+        .eq('employee_code', input.employee_code).single();
       if (existingCode.data) throw new Error('A user with this employee code already exists');
 
       const { data, error } = await supabase
@@ -205,11 +211,17 @@ export function useUpdateUser() {
       if (!organizationId) throw new Error('No organization ID');
 
       if (updates.email) {
-        const existing = await supabase.from('employees').select('id').eq('organization_id', organizationId).eq('email', updates.email).neq('id', id).single();
+        const existing = await supabase
+          .from('employees').select('id')
+          .eq('organization_id', organizationId)
+          .eq('email', updates.email).neq('id', id).single();
         if (existing.data) throw new Error('A user with this email already exists');
       }
       if (updates.employee_code) {
-        const existing = await supabase.from('employees').select('id').eq('organization_id', organizationId).eq('employee_code', updates.employee_code).neq('id', id).single();
+        const existing = await supabase
+          .from('employees').select('id')
+          .eq('organization_id', organizationId)
+          .eq('employee_code', updates.employee_code).neq('id', id).single();
         if (existing.data) throw new Error('A user with this employee code already exists');
       }
 
@@ -269,9 +281,14 @@ export function useUserDepartments() {
     queryKey: ['user-departments', organizationId],
     queryFn: async () => {
       if (!organizationId) return [];
-      const { data, error } = await supabase.from('employees').select('department_code').eq('organization_id', organizationId).not('department_code', 'is', null);
+      const { data, error } = await supabase
+        .from('employees').select('department_code')
+        .eq('organization_id', organizationId)
+        .not('department_code', 'is', null);
       if (error) throw new Error(error.message);
-      return [...new Set(data?.map(d => d.department_code).filter((d): d is string => !!d))].sort();
+      return [...new Set(
+        data?.map(d => d.department_code).filter((d): d is string => !!d)
+      )].sort();
     },
     enabled: !!organizationId,
     staleTime: 1000 * 60 * 10,
@@ -284,7 +301,9 @@ export function useUserRoles() {
     queryKey: ['user-roles', organizationId],
     queryFn: async () => {
       if (!organizationId) return [];
-      const { data, error } = await supabase.from('employees').select('role').eq('organization_id', organizationId);
+      const { data, error } = await supabase
+        .from('employees').select('role')
+        .eq('organization_id', organizationId);
       if (error) throw new Error(error.message);
       return [...new Set(data?.map(d => d.role).filter(Boolean))] as string[];
     },
@@ -295,16 +314,17 @@ export function useUserRoles() {
 
 export function useUserStats() {
   const { organizationId } = useOrganization();
-  const { isPlatformAdmin } = useUser();
+  const { isPlatformAdmin } = useCurrentUser();
 
   return useQuery({
     queryKey: ['user-stats', organizationId, isPlatformAdmin],
     queryFn: async () => {
       if (!organizationId) return { total: 0, active: 0, inactive: 0, onLeave: 0 };
 
-      let query = supabase.from('employees').select('status').eq('organization_id', organizationId);
+      let query = supabase
+        .from('employees').select('status')
+        .eq('organization_id', organizationId);
 
-      // Exclude platform admins from stats unless viewer is platform admin
       if (!isPlatformAdmin) {
         query = query.not('is_platform_admin', 'eq', true);
       }
