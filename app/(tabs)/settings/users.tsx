@@ -418,15 +418,21 @@ export default function UserManagementScreen() {
     if (!validateForm()) return;
     try {
       if (modalMode === 'create') {
-        const input: CreateUserInput = {
-          first_name: firstName.trim(), last_name: lastName.trim(),
-          email: email.trim().toLowerCase(), employee_code: employeeCode.trim(),
-          pin, position: positionTitle.trim() || undefined,
-          position_id: positionId, department_code: department || null,
-          role, status,
-        };
-        await createUserMutation.mutateAsync(input);
-        Alert.alert('Success', 'User created successfully');
+  const input: CreateUserInput = {
+    first_name: firstName.trim(), last_name: lastName.trim(),
+    email: email.trim().toLowerCase(), employee_code: employeeCode.trim(),
+    pin, position: positionTitle.trim() || undefined,
+    position_id: positionId, department_code: department || null,
+    role: selectedPermissionRoleId
+      ? (permissionRoles.find(r => r.id === selectedPermissionRoleId)?.name.toLowerCase() || 'employee')
+      : 'employee',
+    status,
+  };
+  const created = await createUserMutation.mutateAsync(input);
+  if (selectedPermissionRoleId && created?.id) {
+    assignRoleToEmployee(created.id, selectedPermissionRoleId);
+  }
+  Alert.alert('Success', 'User created successfully');
       } else if (modalMode === 'edit' && selectedUser) {
         let roleToSave = role;
         if (selectedPermissionRoleId) {
@@ -903,28 +909,30 @@ export default function UserManagementScreen() {
                   )}
 
                   {/* System Role */}
-                  <View style={S.inputGroup}>
-                    <Text style={[S.inputLabel, { color: colors.text }]}>System Role</Text>
-                    {modalMode === 'edit' ? (
-                      <View style={S.roleGrid}>
-                        {permissionRoles.map(pr => (
-                          <Pressable key={pr.id} style={[S.roleOption, { borderColor: selectedPermissionRoleId === pr.id ? pr.color : colors.border }, selectedPermissionRoleId === pr.id && { backgroundColor: pr.color + '15' }]} onPress={() => setSelectedPermissionRoleId(pr.id)}>
-                            {selectedPermissionRoleId === pr.id && <Check size={14} color={pr.color} />}
-                            <Text style={[S.roleOptionText, { color: selectedPermissionRoleId === pr.id ? pr.color : colors.textSecondary }]}>{pr.name}</Text>
-                          </Pressable>
-                        ))}
-                      </View>
-                    ) : (
-                      <View style={S.roleGrid}>
-                        {BASIC_ROLE_OPTIONS.map(o => (
-                          <Pressable key={o.value} style={[S.roleOption, { borderColor: role === o.value ? colors.primary : colors.border }, role === o.value && { backgroundColor: colors.primary + '15' }]} onPress={() => setRole(o.value)}>
-                            {role === o.value && <Check size={14} color={colors.primary} />}
-                            <Text style={[S.roleOptionText, { color: role === o.value ? colors.primary : colors.textSecondary }]}>{o.label}</Text>
-                          </Pressable>
-                        ))}
-                      </View>
-                    )}
-                  </View>
+<View style={S.inputGroup}>
+  <Text style={[S.inputLabel, { color: colors.text }]}>System Role</Text>
+  <View style={S.roleGrid}>
+    {permissionRoles.map(pr => (
+      <Pressable
+        key={pr.id}
+        style={[
+          S.roleOption,
+          { borderColor: selectedPermissionRoleId === pr.id ? pr.color : colors.border },
+          selectedPermissionRoleId === pr.id && { backgroundColor: pr.color + '15' },
+        ]}
+        onPress={() => setSelectedPermissionRoleId(pr.id)}
+      >
+        {selectedPermissionRoleId === pr.id && <Check size={14} color={pr.color} />}
+        <Text style={[S.roleOptionText, { color: selectedPermissionRoleId === pr.id ? pr.color : colors.textSecondary }]}>
+          {pr.name}
+        </Text>
+      </Pressable>
+    ))}
+  </View>
+  <Text style={[S.pinNote, { color: colors.textTertiary, marginTop: 8 }]}>
+    Select the role that matches this employee's position to set their app permissions.
+  </Text>
+</View>
 
                   {/* Status */}
                   <View style={S.inputGroup}>
