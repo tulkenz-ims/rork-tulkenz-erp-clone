@@ -418,6 +418,14 @@ export default function WatchScreen() {
           </View>
           <Text style={styles.headerSub}>Platform Admin · Silent Monitoring</Text>
         </View>
+        {/* AI KB button — goes here, before the Flag button */}
+        <TouchableOpacity
+          style={[styles.flagBtn, { backgroundColor: HUD_PURPLE, marginRight: 8 }]}
+          onPress={() => router.push('/(tabs)/watchscreen/ai-org-context')}
+        >
+          <Ionicons name="brain-outline" size={16} color={HUD_BG} />
+          <Text style={styles.flagBtnText}>AI KB</Text>
+        </TouchableOpacity>
         <TouchableOpacity style={styles.flagBtn} onPress={() => setFlagModal(true)}>
           <Ionicons name="add" size={16} color={HUD_BG} />
           <Text style={styles.flagBtnText}>Flag</Text>
