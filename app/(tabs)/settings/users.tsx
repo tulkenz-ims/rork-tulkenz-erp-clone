@@ -8,13 +8,14 @@ import {
   Search, X, Users, UserCheck, UserX, Clock, Filter, Check,
   Mail, Building2, Shield, Key, MoreVertical, UserPlus, Edit3,
   Power, RefreshCw, CheckSquare, Square, AlertTriangle,
-  UserMinus, Minus, Copy, KeyRound, ChevronDown, ChevronRight,
+  Copy, KeyRound, ChevronDown, ChevronRight,
 } from 'lucide-react-native';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/contexts/ThemeContext';
 import { usePermissions } from '@/contexts/PermissionsContext';
 import { useOrganization } from '@/contexts/OrganizationContext';
+import { useUser } from '@/contexts/UserContext';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import {
@@ -28,7 +29,6 @@ import {
 } from '@/constants/permissionsConstants';
 
 const MONO = 'monospace';
-
 type ModalMode = 'create' | 'edit' | null;
 type StatusFilter = 'all' | 'active' | 'inactive' | 'on_leave';
 type RoleAssignmentView = 'select' | 'preview';
@@ -119,8 +119,12 @@ function RoleAssignmentModal({ visible, user, onClose, onAssign, colors, roles, 
           <View style={[RA.tabBar, { backgroundColor: colors.backgroundSecondary }]}>
             {(['select', 'preview'] as RoleAssignmentView[]).map(v => (
               <Pressable key={v} style={[RA.tab, view === v && { backgroundColor: colors.surface }]} onPress={() => setView(v)}>
-                {v === 'select' ? <Shield size={16} color={view === v ? colors.primary : colors.textSecondary} /> : <Key size={16} color={view === v ? colors.primary : colors.textSecondary} />}
-                <Text style={[RA.tabText, { color: view === v ? colors.primary : colors.textSecondary }]}>{v === 'select' ? 'Select Role' : 'Permissions'}</Text>
+                {v === 'select'
+                  ? <Shield size={16} color={view === v ? colors.primary : colors.textSecondary} />
+                  : <Key size={16} color={view === v ? colors.primary : colors.textSecondary} />}
+                <Text style={[RA.tabText, { color: view === v ? colors.primary : colors.textSecondary }]}>
+                  {v === 'select' ? 'Select Role' : 'Permissions'}
+                </Text>
               </Pressable>
             ))}
           </View>
@@ -213,7 +217,7 @@ function PositionPickerModal({ visible, onClose, onSelect, departmentCode, color
             <View style={S.pickerLoading}><ActivityIndicator color={colors.primary} /></View>
           ) : filtered.length === 0 ? (
             <View style={S.pickerLoading}>
-              <Text style={[{ color: colors.textSecondary, fontSize: 13 }]}>
+              <Text style={{ color: colors.textSecondary, fontSize: 13 }}>
                 {departmentCode ? 'No positions found' : 'Select a department first'}
               </Text>
             </View>
@@ -244,12 +248,20 @@ function PositionPickerModal({ visible, onClose, onSelect, departmentCode, color
 }
 
 // ── Helpers ────────────────────────────────────────────────────
-function generateEmployeeCode() { return `EMP${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`; }
-function generatePin() { return Math.floor(1000 + Math.random() * 9000).toString(); }
+function generateEmployeeCode() {
+  return `EMP${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`;
+}
+function generatePin() {
+  return Math.floor(1000 + Math.random() * 9000).toString();
+}
 
-function StatusToggle({ isActive, onToggle, disabled, colors }: { isActive: boolean; onToggle: () => void; disabled?: boolean; colors: any }) {
+function StatusToggle({ isActive, onToggle, disabled, colors }: {
+  isActive: boolean; onToggle: () => void; disabled?: boolean; colors: any;
+}) {
   const anim = useRef(new Animated.Value(isActive ? 1 : 0)).current;
-  useEffect(() => { Animated.spring(anim, { toValue: isActive ? 1 : 0, useNativeDriver: false, tension: 50, friction: 10 }).start(); }, [isActive]);
+  useEffect(() => {
+    Animated.spring(anim, { toValue: isActive ? 1 : 0, useNativeDriver: false, tension: 50, friction: 10 }).start();
+  }, [isActive]);
   const bg = anim.interpolate({ inputRange: [0, 1], outputRange: ['#EF4444', '#10B981'] });
   const tx = anim.interpolate({ inputRange: [0, 1], outputRange: [2, 22] });
   return (
@@ -267,42 +279,42 @@ export default function UserManagementScreen() {
   const { colors } = useTheme();
   const { organizationId } = useOrganization();
   const { roles: permissionRoles, assignRoleToEmployee, getEmployeeRole } = usePermissions();
-  const { isSuperAdmin } = useUser();
+  const { isSuperAdmin, isPlatformAdmin } = useUser();
 
-  const [searchQuery, setSearchQuery]     = useState('');
-  const [statusFilter, setStatusFilter]   = useState<StatusFilter>('all');
+  const [searchQuery, setSearchQuery]           = useState('');
+  const [statusFilter, setStatusFilter]         = useState<StatusFilter>('all');
   const [departmentFilter, setDepartmentFilter] = useState('');
-  const [roleFilter, setRoleFilter]       = useState('');
-  const [showFilters, setShowFilters]     = useState(false);
-  const [modalVisible, setModalVisible]   = useState(false);
-  const [modalMode, setModalMode]         = useState<ModalMode>(null);
-  const [selectedUser, setSelectedUser]   = useState<SupabaseUser | null>(null);
-  const [showActionMenu, setShowActionMenu] = useState<string | null>(null);
-  const [selectionMode, setSelectionMode] = useState(false);
-  const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set());
+  const [roleFilter, setRoleFilter]             = useState('');
+  const [showFilters, setShowFilters]           = useState(false);
+  const [modalVisible, setModalVisible]         = useState(false);
+  const [modalMode, setModalMode]               = useState<ModalMode>(null);
+  const [selectedUser, setSelectedUser]         = useState<SupabaseUser | null>(null);
+  const [showActionMenu, setShowActionMenu]     = useState<string | null>(null);
+  const [selectionMode, setSelectionMode]       = useState(false);
+  const [selectedUserIds, setSelectedUserIds]   = useState<Set<string>>(new Set());
   const [deactivationModalVisible, setDeactivationModalVisible] = useState(false);
   const [usersToDeactivate, setUsersToDeactivate] = useState<SupabaseUser[]>([]);
   const [passwordResetModalVisible, setPasswordResetModalVisible] = useState(false);
   const [userToResetPassword, setUserToResetPassword] = useState<SupabaseUser | null>(null);
-  const [generatedPin, setGeneratedPin]   = useState('');
+  const [generatedPin, setGeneratedPin]         = useState('');
   const [showResetSuccess, setShowResetSuccess] = useState(false);
-  const [pinCopied, setPinCopied]         = useState(false);
+  const [pinCopied, setPinCopied]               = useState(false);
   const [roleAssignModalVisible, setRoleAssignModalVisible] = useState(false);
   const [userForRoleAssign, setUserForRoleAssign] = useState<SupabaseUser | null>(null);
   const [showPositionPicker, setShowPositionPicker] = useState(false);
 
   // Form state
-  const [firstName, setFirstName]   = useState('');
-  const [lastName, setLastName]     = useState('');
-  const [email, setEmail]           = useState('');
+  const [firstName, setFirstName]       = useState('');
+  const [lastName, setLastName]         = useState('');
+  const [email, setEmail]               = useState('');
   const [employeeCode, setEmployeeCode] = useState('');
-  const [pin, setPin]               = useState('');
-  const [positionId, setPositionId] = useState<string | null>(null);
+  const [pin, setPin]                   = useState('');
+  const [positionId, setPositionId]     = useState<string | null>(null);
   const [positionTitle, setPositionTitle] = useState('');
-  const [department, setDepartment] = useState('');
-  const [role, setRole]             = useState('default');
+  const [department, setDepartment]     = useState('');
+  const [role, setRole]                 = useState('default');
   const [selectedPermissionRoleId, setSelectedPermissionRoleId] = useState<string | null>(null);
-  const [status, setStatus]         = useState<'active' | 'inactive' | 'on_leave'>('active');
+  const [status, setStatus]             = useState<'active' | 'inactive' | 'on_leave'>('active');
 
   const isSystemRole = SYSTEM_ROLES.includes(role);
 
@@ -314,11 +326,9 @@ export default function UserManagementScreen() {
   }), [statusFilter, departmentFilter, roleFilter, searchQuery]);
 
   const { data: users = [], isLoading, refetch, isRefetching } = useUsers(filters);
-  const { data: filterDepts = [] } = useUserDepartments();
-  const { data: filterRoles = [] } = useUserRoles();
   const { data: stats } = useUserStats();
 
-  // Load departments for picker
+  // Departments for picker
   const { data: deptOptions = [] } = useQuery({
     queryKey: ['dept-options', organizationId],
     queryFn: async () => {
@@ -335,14 +345,14 @@ export default function UserManagementScreen() {
     enabled: !!organizationId,
   });
 
-  const createUserMutation      = useCreateUser();
-  const updateUserMutation      = useUpdateUser();
-  const toggleStatusMutation    = useToggleUserStatus();
-  const resetPinMutation        = useResetUserPin();
+  const createUserMutation       = useCreateUser();
+  const updateUserMutation       = useUpdateUser();
+  const toggleStatusMutation     = useToggleUserStatus();
+  const resetPinMutation         = useResetUserPin();
   const bulkToggleStatusMutation = useBulkToggleUserStatus();
 
-  const selectedUsers       = useMemo(() => users.filter(u => selectedUserIds.has(u.id)), [users, selectedUserIds]);
-  const selectedActiveCount = useMemo(() => selectedUsers.filter(u => u.status === 'active').length, [selectedUsers]);
+  const selectedUsers        = useMemo(() => users.filter(u => selectedUserIds.has(u.id)), [users, selectedUserIds]);
+  const selectedActiveCount  = useMemo(() => selectedUsers.filter(u => u.status === 'active').length, [selectedUsers]);
   const selectedInactiveCount = useMemo(() => selectedUsers.filter(u => u.status === 'inactive').length, [selectedUsers]);
 
   const resetForm = useCallback(() => {
@@ -357,15 +367,15 @@ export default function UserManagementScreen() {
   }, [resetForm]);
 
   const openEditModal = useCallback((user: SupabaseUser) => {
-    // Block editing of superadmin accounts unless current user is superadmin
-    if (user.role === 'superadmin' && !isSuperAdmin) {
-      Alert.alert('Access Denied', 'You do not have permission to edit this account.');
+    // Platform admin accounts cannot be edited by anyone
+    if (user.is_platform_admin) {
+      Alert.alert('Access Denied', 'Platform administrator accounts cannot be edited here.');
       setShowActionMenu(null);
       return;
     }
-    // Block editing of platform admin accounts entirely
-    if (user.is_platform_admin) {
-      Alert.alert('Access Denied', 'Platform administrator accounts cannot be edited here.');
+    // Super admin accounts can only be edited by super admins
+    if (user.role === 'superadmin' && !isSuperAdmin) {
+      Alert.alert('Access Denied', 'You do not have permission to edit this account.');
       setShowActionMenu(null);
       return;
     }
@@ -397,7 +407,7 @@ export default function UserManagementScreen() {
     if (!firstName.trim()) { Alert.alert('Validation Error', 'First name is required'); return false; }
     if (!lastName.trim())  { Alert.alert('Validation Error', 'Last name is required');  return false; }
     if (!email.trim())     { Alert.alert('Validation Error', 'Email is required');       return false; }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { Alert.alert('Validation Error', 'Invalid email'); return false; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { Alert.alert('Validation Error', 'Invalid email address'); return false; }
     if (!employeeCode.trim()) { Alert.alert('Validation Error', 'Employee code is required'); return false; }
     if (modalMode === 'create' && (!pin || pin.length < 4)) { Alert.alert('Validation Error', 'PIN must be at least 4 digits'); return false; }
     if (!isSystemRole && !positionId) { Alert.alert('Validation Error', 'Please select a position'); return false; }
@@ -408,13 +418,13 @@ export default function UserManagementScreen() {
     if (!validateForm()) return;
     try {
       if (modalMode === 'create') {
-        const input: CreateUserInput & { position_id?: string } = {
+        const input: CreateUserInput = {
           first_name: firstName.trim(), last_name: lastName.trim(),
           email: email.trim().toLowerCase(), employee_code: employeeCode.trim(),
           pin, position: positionTitle.trim() || undefined,
-          department_code: department || null, role, status,
+          position_id: positionId, department_code: department || null,
+          role, status,
         };
-        if (positionId) (input as any).position_id = positionId;
         await createUserMutation.mutateAsync(input);
         Alert.alert('Success', 'User created successfully');
       } else if (modalMode === 'edit' && selectedUser) {
@@ -423,12 +433,12 @@ export default function UserManagementScreen() {
           const pr = permissionRoles.find(r => r.id === selectedPermissionRoleId);
           if (pr) roleToSave = BASIC_ROLE_MAP[pr.name.toLowerCase()] || role;
         }
-        const updates: UpdateUserInput & { position_id?: string | null } = {
+        const updates: UpdateUserInput = {
           first_name: firstName.trim(), last_name: lastName.trim(),
           email: email.trim().toLowerCase(), employee_code: employeeCode.trim(),
           position: positionTitle.trim() || undefined,
-          department_code: department || null, role: roleToSave, status,
-          position_id: positionId,
+          position_id: positionId, department_code: department || null,
+          role: roleToSave, status,
         };
         await updateUserMutation.mutateAsync({ id: selectedUser.id, updates });
         if (selectedPermissionRoleId) assignRoleToEmployee(selectedUser.id, selectedPermissionRoleId);
@@ -441,6 +451,7 @@ export default function UserManagementScreen() {
   }, [modalMode, firstName, lastName, email, employeeCode, pin, positionTitle, positionId, department, role, selectedPermissionRoleId, status, selectedUser, validateForm, createUserMutation, updateUserMutation, closeModal, permissionRoles, assignRoleToEmployee]);
 
   const handleToggleStatus = useCallback((user: SupabaseUser) => {
+    if (user.is_platform_admin) return; // Never allow toggling platform admin status
     if (user.status === 'active') {
       setUsersToDeactivate([user]); setDeactivationModalVisible(true);
     } else {
@@ -468,8 +479,8 @@ export default function UserManagementScreen() {
   }, [usersToDeactivate, toggleStatusMutation, bulkToggleStatusMutation]);
 
   const handleBulkActivate = useCallback(async () => {
-    const toActivate = selectedUsers.filter(u => u.status !== 'active');
-    if (!toActivate.length) { Alert.alert('Info', 'All selected users are already active'); return; }
+    const toActivate = selectedUsers.filter(u => u.status !== 'active' && !u.is_platform_admin);
+    if (!toActivate.length) { Alert.alert('Info', 'No eligible users to activate'); return; }
     Alert.alert('Activate Users', `Activate ${toActivate.length} user(s)?`, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Activate', onPress: async () => {
@@ -482,12 +493,13 @@ export default function UserManagementScreen() {
   }, [selectedUsers, bulkToggleStatusMutation]);
 
   const handleBulkDeactivate = useCallback(() => {
-    const toDeactivate = selectedUsers.filter(u => u.status === 'active');
-    if (!toDeactivate.length) { Alert.alert('Info', 'All selected users are already inactive'); return; }
+    const toDeactivate = selectedUsers.filter(u => u.status === 'active' && !u.is_platform_admin);
+    if (!toDeactivate.length) { Alert.alert('Info', 'No eligible users to deactivate'); return; }
     setUsersToDeactivate(toDeactivate); setDeactivationModalVisible(true);
   }, [selectedUsers]);
 
   const handleResetPin = useCallback((user: SupabaseUser) => {
+    if (user.is_platform_admin) return;
     setGeneratedPin(generatePin()); setUserToResetPassword(user);
     setShowResetSuccess(false); setPinCopied(false);
     setPasswordResetModalVisible(true); setShowActionMenu(null);
@@ -501,7 +513,7 @@ export default function UserManagementScreen() {
     setRoleAssignModalVisible(false); setUserForRoleAssign(null);
   }, [userForRoleAssign, assignRoleToEmployee, permissionRoles]);
 
-  const handleConfirmPasswordReset = useCallback(async (sendEmail: boolean) => {
+  const handleConfirmPasswordReset = useCallback(async (_sendEmail: boolean) => {
     if (!userToResetPassword) return;
     try {
       await resetPinMutation.mutateAsync({ id: userToResetPassword.id, newPin: generatedPin });
@@ -517,24 +529,37 @@ export default function UserManagementScreen() {
     setTimeout(() => setPinCopied(false), 3000);
   }, [generatedPin]);
 
-  const getStatusColor = (s: string) => ({ active: '#10B981', inactive: '#EF4444', on_leave: '#F59E0B' }[s] || '#6B7280');
-  const getStatusLabel = (s: string) => ({ active: 'Active', inactive: 'Inactive', on_leave: 'On Leave' }[s] || s);
-  const activeFiltersCount = [statusFilter !== 'all', !!departmentFilter, !!roleFilter].filter(Boolean).length;
+  const getStatusColor = (s: string) =>
+    ({ active: '#10B981', inactive: '#EF4444', on_leave: '#F59E0B' }[s] || '#6B7280');
+  const activeFiltersCount =
+    [statusFilter !== 'all', !!departmentFilter, !!roleFilter].filter(Boolean).length;
   const isAllSelected = users.length > 0 && selectedUserIds.size === users.length;
   const isSomeSelected = selectedUserIds.size > 0 && selectedUserIds.size < users.length;
 
+  const toggleUserSelection = useCallback((userId: string) => {
+    setSelectedUserIds(prev => {
+      const n = new Set(prev);
+      n.has(userId) ? n.delete(userId) : n.add(userId);
+      return n;
+    });
+  }, []);
+
   return (
     <>
-      <Stack.Screen options={{ title: 'User Management', headerStyle: { backgroundColor: colors.surface }, headerTintColor: colors.text }} />
+      <Stack.Screen options={{
+        title: 'Directory',
+        headerStyle: { backgroundColor: colors.surface },
+        headerTintColor: colors.text,
+      }} />
       <View style={[S.container, { backgroundColor: colors.background }]}>
 
         {/* Stats */}
         <View style={S.statsRow}>
           {[
-            { icon: Users, color: colors.primary, val: stats?.total || 0, lbl: 'Total' },
-            { icon: UserCheck, color: '#10B981', val: stats?.active || 0, lbl: 'Active' },
-            { icon: UserX, color: '#EF4444', val: stats?.inactive || 0, lbl: 'Inactive' },
-            { icon: Clock, color: '#F59E0B', val: stats?.onLeave || 0, lbl: 'On Leave' },
+            { icon: Users,     color: colors.primary, val: stats?.total    || 0, lbl: 'Total'    },
+            { icon: UserCheck, color: '#10B981',       val: stats?.active   || 0, lbl: 'Active'   },
+            { icon: UserX,     color: '#EF4444',       val: stats?.inactive || 0, lbl: 'Inactive' },
+            { icon: Clock,     color: '#F59E0B',       val: stats?.onLeave  || 0, lbl: 'On Leave' },
           ].map(({ icon: Icon, color, val, lbl }) => (
             <View key={lbl} style={[S.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <View style={[S.statIcon, { backgroundColor: color + '20' }]}><Icon size={18} color={color} /></View>
@@ -547,7 +572,13 @@ export default function UserManagementScreen() {
         {/* Search */}
         <View style={[S.searchRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Search size={20} color={colors.textSecondary} />
-          <TextInput style={[S.searchInput, { color: colors.text }]} placeholder="Search by name, email, or code..." placeholderTextColor={colors.textTertiary} value={searchQuery} onChangeText={setSearchQuery} />
+          <TextInput
+            style={[S.searchInput, { color: colors.text }]}
+            placeholder="Search by name, email, or code..."
+            placeholderTextColor={colors.textTertiary}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
           {searchQuery.length > 0 && <Pressable onPress={() => setSearchQuery('')}><X size={18} color={colors.textSecondary} /></Pressable>}
           <View style={[S.searchDivider, { backgroundColor: colors.border }]} />
           <Pressable style={S.filterButton} onPress={() => setShowFilters(!showFilters)}>
@@ -561,7 +592,11 @@ export default function UserManagementScreen() {
           <View style={[S.filtersContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <View style={S.filterHeader}>
               <Text style={[S.filterTitle, { color: colors.text }]}>Filters</Text>
-              {activeFiltersCount > 0 && <Pressable onPress={() => { setStatusFilter('all'); setDepartmentFilter(''); setRoleFilter(''); }}><Text style={[S.clearFilters, { color: colors.primary }]}>Clear All</Text></Pressable>}
+              {activeFiltersCount > 0 && (
+                <Pressable onPress={() => { setStatusFilter('all'); setDepartmentFilter(''); setRoleFilter(''); }}>
+                  <Text style={[S.clearFilters, { color: colors.primary }]}>Clear All</Text>
+                </Pressable>
+              )}
             </View>
             <Text style={[S.filterLabel, { color: colors.textSecondary }]}>Status</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={S.filterChipsRow}>
@@ -581,16 +616,28 @@ export default function UserManagementScreen() {
             <Text style={S.createButtonText}>Add New User</Text>
           </Pressable>
           {!selectionMode
-            ? <Pressable style={[S.selectButton, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={() => setSelectionMode(true)}><CheckSquare size={18} color={colors.textSecondary} /><Text style={[S.selectButtonText, { color: colors.textSecondary }]}>Select</Text></Pressable>
-            : <Pressable style={[S.selectButton, { backgroundColor: colors.surface, borderColor: colors.primary }]} onPress={() => { setSelectionMode(false); setSelectedUserIds(new Set()); }}><X size={18} color={colors.primary} /><Text style={[S.selectButtonText, { color: colors.primary }]}>Cancel</Text></Pressable>
+            ? <Pressable style={[S.selectButton, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={() => setSelectionMode(true)}>
+                <CheckSquare size={18} color={colors.textSecondary} />
+                <Text style={[S.selectButtonText, { color: colors.textSecondary }]}>Select</Text>
+              </Pressable>
+            : <Pressable style={[S.selectButton, { backgroundColor: colors.surface, borderColor: colors.primary }]} onPress={() => { setSelectionMode(false); setSelectedUserIds(new Set()); }}>
+                <X size={18} color={colors.primary} />
+                <Text style={[S.selectButtonText, { color: colors.primary }]}>Cancel</Text>
+              </Pressable>
           }
         </View>
 
         {/* User list */}
         {isLoading ? (
-          <View style={S.loadingContainer}><ActivityIndicator size="large" color={colors.primary} /><Text style={[S.loadingText, { color: colors.textSecondary }]}>Loading users...</Text></View>
+          <View style={S.loadingContainer}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={[S.loadingText, { color: colors.textSecondary }]}>Loading users...</Text>
+          </View>
         ) : (
-          <ScrollView style={S.scrollView} contentContainerStyle={S.scrollContent} showsVerticalScrollIndicator={false}
+          <ScrollView
+            style={S.scrollView}
+            contentContainerStyle={S.scrollContent}
+            showsVerticalScrollIndicator={false}
             refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={colors.primary} />}
           >
             {users.length === 0 ? (
@@ -601,53 +648,112 @@ export default function UserManagementScreen() {
               </View>
             ) : (
               <>
-                <Text style={[S.resultCount, { color: colors.textSecondary }]}>{users.length} user{users.length !== 1 ? 's' : ''} found</Text>
-                {users.map(user => (
-                  <Pressable
-                    key={user.id}
-                    style={[S.userCard, { backgroundColor: colors.surface, borderColor: colors.border }, selectionMode && selectedUserIds.has(user.id) && { borderColor: colors.primary, backgroundColor: colors.primary + '08' }]}
-                    onPress={() => selectionMode ? setSelectedUserIds(prev => { const n = new Set(prev); n.has(user.id) ? n.delete(user.id) : n.add(user.id); return n; }) : openEditModal(user)}
-                    onLongPress={() => { if (!selectionMode) { setSelectionMode(true); setSelectedUserIds(new Set([user.id])); } }}
-                  >
-                    {selectionMode && (
-                      <Pressable style={S.checkbox} onPress={() => setSelectedUserIds(prev => { const n = new Set(prev); n.has(user.id) ? n.delete(user.id) : n.add(user.id); return n; })}>
-                        {selectedUserIds.has(user.id) ? <CheckSquare size={22} color={colors.primary} /> : <Square size={22} color={colors.textSecondary} />}
-                      </Pressable>
-                    )}
-                    <View style={[S.userAvatar, { backgroundColor: getStatusColor(user.status) + '20' }]}>
-                      <Text style={[S.avatarText, { color: getStatusColor(user.status) }]}>{user.first_name[0]}{user.last_name[0]}</Text>
-                    </View>
-                    <View style={S.userInfo}>
-                      <View style={S.userNameRow}>
-                        <Text style={[S.userName, { color: colors.text }]}>{user.first_name} {user.last_name}</Text>
-                        {!selectionMode && user.status !== 'on_leave' && (
-                          <StatusToggle isActive={user.status === 'active'} onToggle={() => handleToggleStatus(user)} disabled={toggleStatusMutation.isPending} colors={colors} />
-                        )}
+                <Text style={[S.resultCount, { color: colors.textSecondary }]}>
+                  {users.length} user{users.length !== 1 ? 's' : ''} found
+                </Text>
+                {users.map(user => {
+                  const isProtected = user.is_platform_admin || (user.role === 'superadmin' && !isSuperAdmin);
+                  return (
+                    <Pressable
+                      key={user.id}
+                      style={[
+                        S.userCard,
+                        { backgroundColor: colors.surface, borderColor: colors.border },
+                        selectionMode && selectedUserIds.has(user.id) && { borderColor: colors.primary, backgroundColor: colors.primary + '08' },
+                      ]}
+                      onPress={() => selectionMode ? toggleUserSelection(user.id) : openEditModal(user)}
+                      onLongPress={() => {
+                        if (!selectionMode && !isProtected) {
+                          setSelectionMode(true);
+                          setSelectedUserIds(new Set([user.id]));
+                        }
+                      }}
+                    >
+                      {selectionMode && !isProtected && (
+                        <Pressable style={S.checkbox} onPress={() => toggleUserSelection(user.id)}>
+                          {selectedUserIds.has(user.id)
+                            ? <CheckSquare size={22} color={colors.primary} />
+                            : <Square size={22} color={colors.textSecondary} />}
+                        </Pressable>
+                      )}
+                      <View style={[S.userAvatar, { backgroundColor: getStatusColor(user.status) + '20' }]}>
+                        <Text style={[S.avatarText, { color: getStatusColor(user.status) }]}>
+                          {user.first_name[0]}{user.last_name[0]}
+                        </Text>
                       </View>
-                      <Text style={[S.userEmail, { color: colors.textSecondary }]}>{user.email}</Text>
-                      <View style={S.userMeta}>
-                        <View style={[S.metaBadge, { backgroundColor: colors.backgroundSecondary }]}><Text style={[S.metaText, { color: colors.textTertiary }]}>{user.employee_code}</Text></View>
-                        {user.position && <View style={[S.metaBadge, { backgroundColor: colors.backgroundSecondary }]}><Text style={[S.metaText, { color: colors.textTertiary }]}>{user.position}</Text></View>}
-                        {user.department_code && <View style={[S.metaBadge, { backgroundColor: colors.backgroundSecondary }]}><Building2 size={10} color={colors.textTertiary} /><Text style={[S.metaText, { color: colors.textTertiary }]}>{user.department_code}</Text></View>}
-                        {(() => { const ar = getEmployeeRole(user.id); const rc = ar?.color || colors.primary; return <View style={[S.metaBadge, { backgroundColor: rc + '15' }]}><Shield size={10} color={rc} /><Text style={[S.metaText, { color: rc }]}>{ar?.name || user.role}</Text></View>; })()}
+                      <View style={S.userInfo}>
+                        <View style={S.userNameRow}>
+                          <Text style={[S.userName, { color: colors.text }]}>{user.first_name} {user.last_name}</Text>
+                          {!selectionMode && !isProtected && user.status !== 'on_leave' && (
+                            <StatusToggle isActive={user.status === 'active'} onToggle={() => handleToggleStatus(user)} disabled={toggleStatusMutation.isPending} colors={colors} />
+                          )}
+                          {user.role === 'superadmin' && (
+                            <View style={[S.metaBadge, { backgroundColor: colors.primary + '20' }]}>
+                              <Shield size={10} color={colors.primary} />
+                              <Text style={[S.metaText, { color: colors.primary }]}>Super Admin</Text>
+                            </View>
+                          )}
+                        </View>
+                        <Text style={[S.userEmail, { color: colors.textSecondary }]}>{user.email}</Text>
+                        <View style={S.userMeta}>
+                          <View style={[S.metaBadge, { backgroundColor: colors.backgroundSecondary }]}>
+                            <Text style={[S.metaText, { color: colors.textTertiary }]}>{user.employee_code}</Text>
+                          </View>
+                          {user.position && (
+                            <View style={[S.metaBadge, { backgroundColor: colors.backgroundSecondary }]}>
+                              <Text style={[S.metaText, { color: colors.textTertiary }]}>{user.position}</Text>
+                            </View>
+                          )}
+                          {user.department_code && (
+                            <View style={[S.metaBadge, { backgroundColor: colors.backgroundSecondary }]}>
+                              <Building2 size={10} color={colors.textTertiary} />
+                              <Text style={[S.metaText, { color: colors.textTertiary }]}>{user.department_code}</Text>
+                            </View>
+                          )}
+                          {(() => {
+                            const ar = getEmployeeRole(user.id);
+                            const rc = ar?.color || colors.primary;
+                            return (
+                              <View style={[S.metaBadge, { backgroundColor: rc + '15' }]}>
+                                <Shield size={10} color={rc} />
+                                <Text style={[S.metaText, { color: rc }]}>{ar?.name || user.role}</Text>
+                              </View>
+                            );
+                          })()}
+                        </View>
                       </View>
-                    </View>
-                    {!selectionMode && (
-                      <Pressable style={S.moreButton} onPress={e => { e.stopPropagation(); setShowActionMenu(showActionMenu === user.id ? null : user.id); }}>
-                        <MoreVertical size={20} color={colors.textSecondary} />
-                      </Pressable>
-                    )}
-                    {showActionMenu === user.id && (
-                      <View style={[S.actionMenu, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                        <Pressable style={S.actionMenuItem} onPress={() => openEditModal(user)}><Edit3 size={16} color={colors.text} /><Text style={[S.actionMenuText, { color: colors.text }]}>Edit User</Text></Pressable>
-                        <Pressable style={S.actionMenuItem} onPress={() => handleToggleStatus(user)}><Power size={16} color={user.status === 'active' ? colors.error : colors.success} /><Text style={[S.actionMenuText, { color: user.status === 'active' ? colors.error : colors.success }]}>{user.status === 'active' ? 'Deactivate' : 'Activate'}</Text></Pressable>
-                        <Pressable style={S.actionMenuItem} onPress={() => handleResetPin(user)}><RefreshCw size={16} color={colors.warning} /><Text style={[S.actionMenuText, { color: colors.warning }]}>Reset PIN</Text></Pressable>
-                        <View style={[S.actionMenuDivider, { backgroundColor: colors.border }]} />
-                        <Pressable style={S.actionMenuItem} onPress={() => { setUserForRoleAssign(user); setRoleAssignModalVisible(true); setShowActionMenu(null); }}><Shield size={16} color={colors.primary} /><Text style={[S.actionMenuText, { color: colors.primary }]}>Assign Role & Permissions</Text></Pressable>
-                      </View>
-                    )}
-                  </Pressable>
-                ))}
+                      {/* Only show action menu for non-protected accounts */}
+                      {!selectionMode && !isProtected && (
+                        <Pressable style={S.moreButton} onPress={e => { e.stopPropagation(); setShowActionMenu(showActionMenu === user.id ? null : user.id); }}>
+                          <MoreVertical size={20} color={colors.textSecondary} />
+                        </Pressable>
+                      )}
+                      {showActionMenu === user.id && (
+                        <View style={[S.actionMenu, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                          <Pressable style={S.actionMenuItem} onPress={() => openEditModal(user)}>
+                            <Edit3 size={16} color={colors.text} />
+                            <Text style={[S.actionMenuText, { color: colors.text }]}>Edit User</Text>
+                          </Pressable>
+                          <Pressable style={S.actionMenuItem} onPress={() => handleToggleStatus(user)}>
+                            <Power size={16} color={user.status === 'active' ? colors.error : colors.success} />
+                            <Text style={[S.actionMenuText, { color: user.status === 'active' ? colors.error : colors.success }]}>
+                              {user.status === 'active' ? 'Deactivate' : 'Activate'}
+                            </Text>
+                          </Pressable>
+                          <Pressable style={S.actionMenuItem} onPress={() => handleResetPin(user)}>
+                            <RefreshCw size={16} color={colors.warning} />
+                            <Text style={[S.actionMenuText, { color: colors.warning }]}>Reset PIN</Text>
+                          </Pressable>
+                          <View style={[S.actionMenuDivider, { backgroundColor: colors.border }]} />
+                          <Pressable style={S.actionMenuItem} onPress={() => { setUserForRoleAssign(user); setRoleAssignModalVisible(true); setShowActionMenu(null); }}>
+                            <Shield size={16} color={colors.primary} />
+                            <Text style={[S.actionMenuText, { color: colors.primary }]}>Assign Role & Permissions</Text>
+                          </Pressable>
+                        </View>
+                      )}
+                    </Pressable>
+                  );
+                })}
               </>
             )}
             <View style={{ height: 100 }} />
@@ -678,13 +784,14 @@ export default function UserManagementScreen() {
               <Pressable onPress={closeModal} style={S.modalCloseButton}><X size={24} color={colors.text} /></Pressable>
               <Text style={[S.modalTitle, { color: colors.text }]}>{modalMode === 'create' ? 'Add New User' : 'Edit User'}</Text>
               <Pressable onPress={handleSave} style={S.modalSaveButton} disabled={createUserMutation.isPending || updateUserMutation.isPending}>
-                {(createUserMutation.isPending || updateUserMutation.isPending) ? <ActivityIndicator size="small" color={colors.primary} /> : <Check size={24} color={colors.primary} />}
+                {(createUserMutation.isPending || updateUserMutation.isPending)
+                  ? <ActivityIndicator size="small" color={colors.primary} />
+                  : <Check size={24} color={colors.primary} />}
               </Pressable>
             </View>
 
             <ScrollView style={S.modalContent} showsVerticalScrollIndicator={false}>
-
-              {/* Basic info */}
+              {/* Basic Info */}
               <View style={S.formSection}>
                 <Text style={[S.formLabel, { color: colors.textSecondary }]}>BASIC INFORMATION</Text>
                 <View style={[S.formCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -731,12 +838,12 @@ export default function UserManagementScreen() {
                 </View>
               </View>
 
-              {/* Organization — Department + Position picker */}
+              {/* Organization */}
               <View style={S.formSection}>
                 <Text style={[S.formLabel, { color: colors.textSecondary }]}>ORGANIZATION</Text>
                 <View style={[S.formCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
 
-                  {/* Department picker */}
+                  {/* Department chips */}
                   {!isSystemRole && (
                     <View style={S.inputGroup}>
                       <Text style={[S.inputLabel, { color: colors.text }]}>Department *</Text>
@@ -751,8 +858,8 @@ export default function UserManagementScreen() {
                               }]}
                               onPress={() => {
                                 setDepartment(d.department_code);
-                                // Clear position when dept changes
-                                setPositionId(null); setPositionTitle('');
+                                setPositionId(null);
+                                setPositionTitle('');
                               }}
                             >
                               <View style={[S.deptChipDot, { backgroundColor: d.color }]} />
@@ -795,7 +902,7 @@ export default function UserManagementScreen() {
                     </View>
                   )}
 
-                  {/* Role */}
+                  {/* System Role */}
                   <View style={S.inputGroup}>
                     <Text style={[S.inputLabel, { color: colors.text }]}>System Role</Text>
                     {modalMode === 'edit' ? (
@@ -844,11 +951,7 @@ export default function UserManagementScreen() {
           <PositionPickerModal
             visible={showPositionPicker}
             onClose={() => setShowPositionPicker(false)}
-            onSelect={pos => {
-              setPositionId(pos.id);
-              setPositionTitle(pos.title);
-              setShowPositionPicker(false);
-            }}
+            onSelect={pos => { setPositionId(pos.id); setPositionTitle(pos.title); setShowPositionPicker(false); }}
             departmentCode={department}
             colors={colors}
             organizationId={organizationId}
@@ -866,21 +969,25 @@ export default function UserManagementScreen() {
           currentRoleId={userForRoleAssign ? (getEmployeeRole(userForRoleAssign.id)?.id || null) : null}
         />
 
-        {/* Deactivation confirm */}
+        {/* Deactivation modal */}
         <Modal visible={deactivationModalVisible} transparent animationType="fade" onRequestClose={() => setDeactivationModalVisible(false)}>
           <View style={S.confirmModalOverlay}>
             <View style={[S.confirmModalContent, { backgroundColor: colors.surface }]}>
               <View style={[S.confirmModalIcon, { backgroundColor: '#EF444415' }]}><AlertTriangle size={32} color="#EF4444" /></View>
               <Text style={[S.confirmModalTitle, { color: colors.text }]}>{usersToDeactivate.length > 1 ? 'Deactivate Users' : 'Deactivate User'}</Text>
               <Text style={[S.confirmModalMessage, { color: colors.textSecondary }]}>
-                {usersToDeactivate.length > 1 ? `Deactivate ${usersToDeactivate.length} users?` : `Deactivate ${usersToDeactivate[0]?.first_name} ${usersToDeactivate[0]?.last_name}?`}
+                {usersToDeactivate.length > 1
+                  ? `Deactivate ${usersToDeactivate.length} users? They will lose access until reactivated.`
+                  : `Deactivate ${usersToDeactivate[0]?.first_name} ${usersToDeactivate[0]?.last_name}? They will lose access until reactivated.`}
               </Text>
               <View style={S.confirmModalActions}>
                 <Pressable style={[S.confirmModalButton, S.confirmModalCancel, { borderColor: colors.border }]} onPress={() => { setDeactivationModalVisible(false); setUsersToDeactivate([]); }}>
                   <Text style={[S.confirmModalButtonText, { color: colors.text }]}>Cancel</Text>
                 </Pressable>
                 <Pressable style={[S.confirmModalButton, { backgroundColor: '#EF4444' }]} onPress={handleConfirmDeactivation} disabled={toggleStatusMutation.isPending || bulkToggleStatusMutation.isPending}>
-                  {toggleStatusMutation.isPending || bulkToggleStatusMutation.isPending ? <ActivityIndicator size="small" color="#FFF" /> : <><Power size={16} color="#FFF" /><Text style={{ color: '#FFF', fontSize: 15, fontWeight: '600' as const }}>Deactivate</Text></>}
+                  {toggleStatusMutation.isPending || bulkToggleStatusMutation.isPending
+                    ? <ActivityIndicator size="small" color="#FFF" />
+                    : <><Power size={16} color="#FFF" /><Text style={{ color: '#FFF', fontSize: 15, fontWeight: '600' as const }}>Deactivate</Text></>}
                 </Pressable>
               </View>
             </View>
@@ -895,11 +1002,17 @@ export default function UserManagementScreen() {
                 <>
                   <View style={[S.confirmModalIcon, { backgroundColor: '#F59E0B15' }]}><KeyRound size={32} color="#F59E0B" /></View>
                   <Text style={[S.confirmModalTitle, { color: colors.text }]}>Reset PIN</Text>
-                  <Text style={[S.confirmModalMessage, { color: colors.textSecondary }]}>Generate a new PIN for {userToResetPassword?.first_name} {userToResetPassword?.last_name}?</Text>
+                  <Text style={[S.confirmModalMessage, { color: colors.textSecondary }]}>
+                    Generate a new PIN for {userToResetPassword?.first_name} {userToResetPassword?.last_name}?
+                  </Text>
                   <View style={S.confirmModalActions}>
-                    <Pressable style={[S.confirmModalButton, S.confirmModalCancel, { borderColor: colors.border }]} onPress={() => { setPasswordResetModalVisible(false); setUserToResetPassword(null); }}><Text style={[S.confirmModalButtonText, { color: colors.text }]}>Cancel</Text></Pressable>
+                    <Pressable style={[S.confirmModalButton, S.confirmModalCancel, { borderColor: colors.border }]} onPress={() => { setPasswordResetModalVisible(false); setUserToResetPassword(null); }}>
+                      <Text style={[S.confirmModalButtonText, { color: colors.text }]}>Cancel</Text>
+                    </Pressable>
                     <Pressable style={[S.confirmModalButton, { backgroundColor: '#F59E0B' }]} onPress={() => handleConfirmPasswordReset(false)} disabled={resetPinMutation.isPending}>
-                      {resetPinMutation.isPending ? <ActivityIndicator size="small" color="#FFF" /> : <><RefreshCw size={16} color="#FFF" /><Text style={{ color: '#FFF', fontSize: 15, fontWeight: '600' as const }}>Reset PIN</Text></>}
+                      {resetPinMutation.isPending
+                        ? <ActivityIndicator size="small" color="#FFF" />
+                        : <><RefreshCw size={16} color="#FFF" /><Text style={{ color: '#FFF', fontSize: 15, fontWeight: '600' as const }}>Reset PIN</Text></>}
                     </Pressable>
                   </View>
                 </>
@@ -998,7 +1111,6 @@ const S = StyleSheet.create({
   bulkActionButtons: { flexDirection: 'row', gap: 8 },
   bulkButton: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10 },
   bulkButtonText: { color: '#FFF', fontSize: 13, fontWeight: '600' as const },
-  // Modal
   modalContainer: { flex: 1 },
   modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderBottomWidth: 1 },
   modalCloseButton: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
@@ -1015,16 +1127,13 @@ const S = StyleSheet.create({
   inputWithIcon: { flexDirection: 'row', alignItems: 'center', borderRadius: 10, borderWidth: 1, paddingHorizontal: 12, gap: 10 },
   inputIconText: { flex: 1, paddingVertical: 12, fontSize: 15 },
   pinNote: { fontSize: 12, fontStyle: 'italic' as const, marginTop: -8 },
-  // Department chip picker
   deptChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, borderWidth: 1 },
   deptChipDot: { width: 8, height: 8, borderRadius: 4 },
   deptChipText: { fontSize: 12, fontWeight: '500' as const },
-  // Position picker button
   positionPickerBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderRadius: 10, borderWidth: 1, padding: 12 },
   positionPickerText: { fontSize: 15, flex: 1 },
   clearPosition: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
   clearPositionText: { fontSize: 12 },
-  // Role / Status
   roleGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   roleOption: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, borderWidth: 1 },
   roleOptionText: { fontSize: 13, fontWeight: '500' as const },
@@ -1032,7 +1141,6 @@ const S = StyleSheet.create({
   statusOption: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 8, borderWidth: 1 },
   statusOptionDot: { width: 8, height: 8, borderRadius: 4 },
   statusOptionText: { fontSize: 13, fontWeight: '500' as const },
-  // Position picker modal
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
   pickerSheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '85%' as any },
   pickerHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20, borderBottomWidth: 1 },
@@ -1044,7 +1152,6 @@ const S = StyleSheet.create({
   pickerRow: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 10, borderWidth: 1, marginBottom: 8 },
   pickerRowTitle: { fontSize: 14, fontWeight: '600' as const, marginBottom: 2 },
   pickerRowMeta: { fontSize: 11 },
-  // Confirm modals
   confirmModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 },
   confirmModalContent: { width: '100%', maxWidth: 360, borderRadius: 20, padding: 24, alignItems: 'center' },
   confirmModalIcon: { width: 64, height: 64, borderRadius: 32, justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
@@ -1066,7 +1173,6 @@ const S = StyleSheet.create({
   doneButtonText: { color: '#FFF', fontSize: 15, fontWeight: '600' as const },
 });
 
-// ── Sub-component styles ───────────────────────────────────────
 const PP = StyleSheet.create({
   container: { flex: 1 },
   emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32, borderRadius: 12, gap: 12 },
