@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase, fetchById, updateRecord } from '@/lib/supabase';
 import { useOrganization } from '@/contexts/OrganizationContext';
+import { useUser } from '@/contexts/UserContext';
 
 export interface SupabaseUser {
   id: string;
@@ -11,9 +12,9 @@ export interface SupabaseUser {
   first_name: string;
   last_name: string;
   email: string;
-
   role: string;
   position: string | null;
+  position_id: string | null;
   hire_date: string | null;
   status: 'active' | 'inactive' | 'on_leave';
   hourly_rate: number | null;
@@ -22,6 +23,7 @@ export interface SupabaseUser {
   cost_center: string | null;
   gl_account: string | null;
   manager_id: string | null;
+  is_platform_admin: boolean | null;
   profile: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
@@ -41,9 +43,9 @@ export interface CreateUserInput {
   first_name: string;
   last_name: string;
   email: string;
-
   role?: string;
   position?: string;
+  position_id?: string | null;
   department_code?: string | null;
   facility_id?: string | null;
   status?: 'active' | 'inactive' | 'on_leave';
@@ -60,9 +62,9 @@ export interface UpdateUserInput {
   first_name?: string;
   last_name?: string;
   email?: string;
-
   role?: string;
   position?: string;
+  position_id?: string | null;
   department_code?: string | null;
   facility_id?: string | null;
   status?: 'active' | 'inactive' | 'on_leave';
@@ -75,14 +77,12 @@ export interface UpdateUserInput {
 
 export function useUsers(filters?: UserFilters) {
   const { organizationId } = useOrganization();
+  const { isPlatformAdmin } = useUser();
 
   return useQuery({
-    queryKey: ['users', organizationId, filters],
+    queryKey: ['users', organizationId, filters, isPlatformAdmin],
     queryFn: async () => {
-      if (!organizationId) {
-        console.log('[useUsers] No organization ID');
-        return [];
-      }
+      if (!organizationId) return [];
 
       let query = supabase
         .from('employees')
@@ -90,43 +90,39 @@ export function useUsers(filters?: UserFilters) {
         .eq('organization_id', organizationId)
         .order('last_name', { ascending: true });
 
+      // Hide platform admin accounts from everyone except platform admins
+      if (!isPlatformAdmin) {
+        query = query.not('is_platform_admin', 'eq', true);
+      }
+
       if (filters?.status && filters.status !== 'all') {
         query = query.eq('status', filters.status);
       }
-
       if (filters?.department) {
         query = query.eq('department_code', filters.department);
       }
-
       if (filters?.role) {
         query = query.eq('role', filters.role);
       }
-
       if (filters?.facilityId) {
         query = query.eq('facility_id', filters.facilityId);
       }
 
       const { data, error } = await query;
-
-      if (error) {
-        console.error('[useUsers] Error:', error);
-        throw new Error(error.message);
-      }
+      if (error) throw new Error(error.message);
 
       let users = (data || []) as SupabaseUser[];
 
       if (filters?.search) {
-        const searchLower = filters.search.toLowerCase();
-        users = users.filter(
-          (user) =>
-            user.first_name.toLowerCase().includes(searchLower) ||
-            user.last_name.toLowerCase().includes(searchLower) ||
-            user.email.toLowerCase().includes(searchLower) ||
-            user.employee_code.toLowerCase().includes(searchLower)
+        const q = filters.search.toLowerCase();
+        users = users.filter(u =>
+          u.first_name.toLowerCase().includes(q) ||
+          u.last_name.toLowerCase().includes(q) ||
+          u.email.toLowerCase().includes(q) ||
+          u.employee_code.toLowerCase().includes(q)
         );
       }
 
-      console.log(`[useUsers] Fetched ${users.length} users`);
       return users;
     },
     enabled: !!organizationId,
@@ -134,24 +130,14 @@ export function useUsers(filters?: UserFilters) {
   });
 }
 
-export function useUser(userId: string | undefined) {
+export function useUser2(userId: string | undefined) {
   const { organizationId } = useOrganization();
-
   return useQuery({
     queryKey: ['user', userId, organizationId],
     queryFn: async () => {
-      if (!organizationId || !userId) {
-        return null;
-      }
-
+      if (!organizationId || !userId) return null;
       const { data, error } = await fetchById('employees', userId, organizationId);
-
-      if (error) {
-        console.error('[useUser] Error:', error);
-        throw error;
-      }
-
-      console.log(`[useUser] Fetched user: ${userId}`);
+      if (error) throw error;
       return data as SupabaseUser | null;
     },
     enabled: !!organizationId && !!userId,
@@ -164,31 +150,13 @@ export function useCreateUser() {
 
   return useMutation({
     mutationFn: async (input: CreateUserInput) => {
-      if (!organizationId) {
-        throw new Error('No organization ID');
-      }
+      if (!organizationId) throw new Error('No organization ID');
 
-      const existingEmail = await supabase
-        .from('employees')
-        .select('id')
-        .eq('organization_id', organizationId)
-        .eq('email', input.email)
-        .single();
+      const existingEmail = await supabase.from('employees').select('id').eq('organization_id', organizationId).eq('email', input.email).single();
+      if (existingEmail.data) throw new Error('A user with this email already exists');
 
-      if (existingEmail.data) {
-        throw new Error('A user with this email already exists');
-      }
-
-      const existingCode = await supabase
-        .from('employees')
-        .select('id')
-        .eq('organization_id', organizationId)
-        .eq('employee_code', input.employee_code)
-        .single();
-
-      if (existingCode.data) {
-        throw new Error('A user with this employee code already exists');
-      }
+      const existingCode = await supabase.from('employees').select('id').eq('organization_id', organizationId).eq('employee_code', input.employee_code).single();
+      if (existingCode.data) throw new Error('A user with this employee code already exists');
 
       const { data, error } = await supabase
         .from('employees')
@@ -201,7 +169,7 @@ export function useCreateUser() {
           email: input.email,
           role: input.role || 'default',
           position: input.position || '',
-
+          position_id: input.position_id || null,
           department_code: input.department_code || null,
           facility_id: input.facility_id || null,
           status: input.status || 'active',
@@ -218,12 +186,7 @@ export function useCreateUser() {
         .select()
         .single();
 
-      if (error) {
-        console.error('[useCreateUser] Error:', error);
-        throw error;
-      }
-
-      console.log('[useCreateUser] Created user:', data?.id);
+      if (error) throw error;
       return data as SupabaseUser;
     },
     onSuccess: () => {
@@ -239,46 +202,19 @@ export function useUpdateUser() {
 
   return useMutation({
     mutationFn: async ({ id, updates }: { id: string; updates: UpdateUserInput }) => {
-      if (!organizationId) {
-        throw new Error('No organization ID');
-      }
+      if (!organizationId) throw new Error('No organization ID');
 
       if (updates.email) {
-        const existingEmail = await supabase
-          .from('employees')
-          .select('id')
-          .eq('organization_id', organizationId)
-          .eq('email', updates.email)
-          .neq('id', id)
-          .single();
-
-        if (existingEmail.data) {
-          throw new Error('A user with this email already exists');
-        }
+        const existing = await supabase.from('employees').select('id').eq('organization_id', organizationId).eq('email', updates.email).neq('id', id).single();
+        if (existing.data) throw new Error('A user with this email already exists');
       }
-
       if (updates.employee_code) {
-        const existingCode = await supabase
-          .from('employees')
-          .select('id')
-          .eq('organization_id', organizationId)
-          .eq('employee_code', updates.employee_code)
-          .neq('id', id)
-          .single();
-
-        if (existingCode.data) {
-          throw new Error('A user with this employee code already exists');
-        }
+        const existing = await supabase.from('employees').select('id').eq('organization_id', organizationId).eq('employee_code', updates.employee_code).neq('id', id).single();
+        if (existing.data) throw new Error('A user with this employee code already exists');
       }
 
       const { data, error } = await updateRecord('employees', id, updates, organizationId);
-
-      if (error) {
-        console.error('[useUpdateUser] Error:', error);
-        throw error;
-      }
-
-      console.log('[useUpdateUser] Updated user:', id);
+      if (error) throw error;
       return data as unknown as SupabaseUser;
     },
     onSuccess: (data) => {
@@ -295,18 +231,9 @@ export function useToggleUserStatus() {
 
   return useMutation({
     mutationFn: async ({ id, status }: { id: string; status: 'active' | 'inactive' | 'on_leave' }) => {
-      if (!organizationId) {
-        throw new Error('No organization ID');
-      }
-
+      if (!organizationId) throw new Error('No organization ID');
       const { data, error } = await updateRecord('employees', id, { status }, organizationId);
-
-      if (error) {
-        console.error('[useToggleUserStatus] Error:', error);
-        throw error;
-      }
-
-      console.log('[useToggleUserStatus] Updated user status:', id, status);
+      if (error) throw error;
       return data as unknown as SupabaseUser;
     },
     onSuccess: (data) => {
@@ -323,22 +250,10 @@ export function useResetUserPin() {
 
   return useMutation({
     mutationFn: async ({ id, newPin }: { id: string; newPin: string }) => {
-      if (!organizationId) {
-        throw new Error('No organization ID');
-      }
-
-      if (newPin.length < 4) {
-        throw new Error('PIN must be at least 4 characters');
-      }
-
+      if (!organizationId) throw new Error('No organization ID');
+      if (newPin.length < 4) throw new Error('PIN must be at least 4 characters');
       const { data, error } = await updateRecord('employees', id, { pin: newPin }, organizationId);
-
-      if (error) {
-        console.error('[useResetUserPin] Error:', error);
-        throw error;
-      }
-
-      console.log('[useResetUserPin] Reset PIN for user:', id);
+      if (error) throw error;
       return data as unknown as SupabaseUser;
     },
     onSuccess: (data) => {
@@ -350,28 +265,13 @@ export function useResetUserPin() {
 
 export function useUserDepartments() {
   const { organizationId } = useOrganization();
-
   return useQuery({
     queryKey: ['user-departments', organizationId],
     queryFn: async () => {
-      if (!organizationId) {
-        return [];
-      }
-
-      const { data, error } = await supabase
-        .from('employees')
-        .select('department_code')
-        .eq('organization_id', organizationId)
-        .not('department_code', 'is', null);
-
-      if (error) {
-        console.error('[useUserDepartments] Error:', error);
-        throw new Error(error.message);
-      }
-
-      const departments = [...new Set(data?.map((d) => d.department_code).filter((d): d is string => d !== null && d !== undefined))];
-      console.log(`[useUserDepartments] Found ${departments.length} departments`);
-      return departments.sort();
+      if (!organizationId) return [];
+      const { data, error } = await supabase.from('employees').select('department_code').eq('organization_id', organizationId).not('department_code', 'is', null);
+      if (error) throw new Error(error.message);
+      return [...new Set(data?.map(d => d.department_code).filter((d): d is string => !!d))].sort();
     },
     enabled: !!organizationId,
     staleTime: 1000 * 60 * 10,
@@ -380,27 +280,13 @@ export function useUserDepartments() {
 
 export function useUserRoles() {
   const { organizationId } = useOrganization();
-
   return useQuery({
     queryKey: ['user-roles', organizationId],
     queryFn: async () => {
-      if (!organizationId) {
-        return [];
-      }
-
-      const { data, error } = await supabase
-        .from('employees')
-        .select('role')
-        .eq('organization_id', organizationId);
-
-      if (error) {
-        console.error('[useUserRoles] Error:', error);
-        throw new Error(error.message);
-      }
-
-      const roles = [...new Set(data?.map((d) => d.role).filter(Boolean))] as string[];
-      console.log(`[useUserRoles] Found ${roles.length} roles`);
-      return roles.sort();
+      if (!organizationId) return [];
+      const { data, error } = await supabase.from('employees').select('role').eq('organization_id', organizationId);
+      if (error) throw new Error(error.message);
+      return [...new Set(data?.map(d => d.role).filter(Boolean))] as string[];
     },
     enabled: !!organizationId,
     staleTime: 1000 * 60 * 10,
@@ -409,33 +295,29 @@ export function useUserRoles() {
 
 export function useUserStats() {
   const { organizationId } = useOrganization();
+  const { isPlatformAdmin } = useUser();
 
   return useQuery({
-    queryKey: ['user-stats', organizationId],
+    queryKey: ['user-stats', organizationId, isPlatformAdmin],
     queryFn: async () => {
-      if (!organizationId) {
-        return { total: 0, active: 0, inactive: 0, onLeave: 0 };
+      if (!organizationId) return { total: 0, active: 0, inactive: 0, onLeave: 0 };
+
+      let query = supabase.from('employees').select('status').eq('organization_id', organizationId);
+
+      // Exclude platform admins from stats unless viewer is platform admin
+      if (!isPlatformAdmin) {
+        query = query.not('is_platform_admin', 'eq', true);
       }
 
-      const { data, error } = await supabase
-        .from('employees')
-        .select('status')
-        .eq('organization_id', organizationId);
+      const { data, error } = await query;
+      if (error) throw new Error(error.message);
 
-      if (error) {
-        console.error('[useUserStats] Error:', error);
-        throw new Error(error.message);
-      }
-
-      const stats = {
-        total: data?.length || 0,
-        active: data?.filter((d) => d.status === 'active').length || 0,
-        inactive: data?.filter((d) => d.status === 'inactive').length || 0,
-        onLeave: data?.filter((d) => d.status === 'on_leave').length || 0,
+      return {
+        total:    data?.length || 0,
+        active:   data?.filter(d => d.status === 'active').length || 0,
+        inactive: data?.filter(d => d.status === 'inactive').length || 0,
+        onLeave:  data?.filter(d => d.status === 'on_leave').length || 0,
       };
-
-      console.log('[useUserStats] Stats:', stats);
-      return stats;
     },
     enabled: !!organizationId,
     staleTime: 1000 * 60 * 5,
@@ -448,15 +330,8 @@ export function useBulkToggleUserStatus() {
 
   return useMutation({
     mutationFn: async ({ userIds, status }: { userIds: string[]; status: 'active' | 'inactive' }) => {
-      if (!organizationId) {
-        throw new Error('No organization ID');
-      }
-
-      if (userIds.length === 0) {
-        throw new Error('No users selected');
-      }
-
-      console.log(`[useBulkToggleUserStatus] Updating ${userIds.length} users to ${status}`);
+      if (!organizationId) throw new Error('No organization ID');
+      if (!userIds.length) throw new Error('No users selected');
 
       const { data, error } = await supabase
         .from('employees')
@@ -465,12 +340,7 @@ export function useBulkToggleUserStatus() {
         .in('id', userIds)
         .select();
 
-      if (error) {
-        console.error('[useBulkToggleUserStatus] Error:', error);
-        throw error;
-      }
-
-      console.log(`[useBulkToggleUserStatus] Successfully updated ${data?.length || 0} users`);
+      if (error) throw error;
       return data as SupabaseUser[];
     },
     onSuccess: () => {
