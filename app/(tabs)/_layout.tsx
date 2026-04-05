@@ -216,7 +216,7 @@ export default function TabLayout() {
           <Tabs.Screen name="timeclock" />
           <Tabs.Screen name="inventory" />
           <Tabs.Screen name="documents" />
-          <Tabs.Screen name="employees" />
+          <Tabs.Screen name="directory" />
           <Tabs.Screen name="procurement" />
           <Tabs.Screen name="approvals" />
           <Tabs.Screen name="quality" />
