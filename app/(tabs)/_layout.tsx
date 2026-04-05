@@ -204,6 +204,7 @@ export default function TabLayout() {
           <Tabs.Screen name="production" />
           <Tabs.Screen name="compliance" />
           <Tabs.Screen name="recycling" />
+          <Tabs.Screen name="plant-designer" />
           <Tabs.Screen name="users" />
           <Tabs.Screen name="watchscreen" />
           <Tabs.Screen name="settings" />
