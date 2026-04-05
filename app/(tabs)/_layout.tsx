@@ -28,13 +28,11 @@ export default function TabLayout() {
   const visibleModules = useMemo(() => {
     if (!isAuthenticated || !userProfile) return [];
 
-    // Platform Admins always get full access
     if (userProfile.is_platform_admin) {
       console.log('[TabLayout] User is Platform Admin - showing all modules');
       return NAVIGATION_MODULES.map(m => m.key);
     }
 
-    // Get the user's assigned role from the permissions system
     const userRole = getEmployeeRole(userProfile.id);
 
     console.log('[TabLayout] Permission check:', {
@@ -45,26 +43,22 @@ export default function TabLayout() {
       isEmployee,
     });
 
-    // Check if assigned role grants super admin access
     const hasAdminRole = userRole && (
       userRole.name === 'Super Admin' ||
       userRole.name === 'Administrator' ||
       (userRole.isSystem && userRole.name?.toLowerCase().includes('super'))
     );
 
-    // For non-employee logins without an assigned role, check legacy employees.role
     const legacySuperAdmin = !isEmployee && !userRole && (
       userProfile.role === 'super_admin' ||
       userProfile.role === 'superadmin'
     );
 
-    // Super admins get ALL modules
     if (hasAdminRole || legacySuperAdmin) {
       console.log('[TabLayout] User has admin access - showing all modules');
       return NAVIGATION_MODULES.map(m => m.key);
     }
 
-    // If no role assigned, only show basic modules
     if (!userRole) {
       console.log('[TabLayout] No role assigned - showing basic modules for user:', userProfile.id);
       return ['dashboard', 'taskfeed', 'timeclock'];
@@ -72,111 +66,95 @@ export default function TabLayout() {
 
     console.log('[TabLayout] User role:', userRole.name, 'permissions:', userRole.permissions.length);
 
-    // Build module list from role permissions
     const moduleKeys: string[] = ['dashboard', 'taskfeed'];
 
     userRole.permissions.forEach(perm => {
       if (perm.actions.includes('view')) {
         switch (perm.module) {
 
-          // CMMS — work orders and preventive maintenance
           case 'work_orders':
           case 'preventive_maintenance':
             if (!moduleKeys.includes('cmms')) moduleKeys.push('cmms');
             break;
 
-          // Inventory
           case 'inventory':
             if (!moduleKeys.includes('inventory')) moduleKeys.push('inventory');
             break;
 
-          // Documents
           case 'documents':
             if (!moduleKeys.includes('documents')) moduleKeys.push('documents');
             break;
 
-          // Procurement and Vendors both surface the Procurement module
           case 'procurement':
           case 'vendors':
             if (!moduleKeys.includes('procurement')) moduleKeys.push('procurement');
             break;
 
-          // Approvals
           case 'approvals':
             if (!moduleKeys.includes('approvals')) moduleKeys.push('approvals');
             break;
 
-          // Quality — inspections also surface the Quality module
           case 'quality':
           case 'inspections':
             if (!moduleKeys.includes('quality')) moduleKeys.push('quality');
             break;
 
-          // Safety
           case 'safety':
             if (!moduleKeys.includes('safety')) moduleKeys.push('safety');
             break;
 
-          // Sanitation — standalone, not tied to recycling
           case 'sanitation':
             if (!moduleKeys.includes('sanitation')) moduleKeys.push('sanitation');
             break;
 
-          // Production
           case 'production':
             if (!moduleKeys.includes('production')) moduleKeys.push('production');
+            if (!moduleKeys.includes('live-floor')) moduleKeys.push('live-floor');
             break;
 
-          // Compliance
+          case 'live_floor':
+            if (!moduleKeys.includes('live-floor')) moduleKeys.push('live-floor');
+            break;
+
           case 'compliance':
             if (!moduleKeys.includes('compliance')) moduleKeys.push('compliance');
             break;
 
-          // Recycling — standalone, not tied to sanitation
           case 'recycling':
             if (!moduleKeys.includes('recycling')) moduleKeys.push('recycling');
             break;
 
-          // Users — people, roles, permissions
           case 'users':
             if (!moduleKeys.includes('users')) moduleKeys.push('users');
             break;
 
-          // Directory
           case 'employees':
-            if (!moduleKeys.includes('employees')) moduleKeys.push('employees');
+            if (!moduleKeys.includes('directory')) moduleKeys.push('directory');
             break;
 
-          // Settings
           case 'settings':
             if (!moduleKeys.includes('settings')) moduleKeys.push('settings');
             break;
 
-          // Watch Screen — superAdminOnly, surfaced via users module permission
           case 'watchscreen':
             if (!moduleKeys.includes('watchscreen')) moduleKeys.push('watchscreen');
             break;
 
-          // Reports — future module, not yet in nav
           case 'reports':
             break;
 
-          // Portal — employee self-service, not a nav tab
           case 'portal':
             break;
 
-          // LMS — future module, not yet in nav
           case 'lms':
             break;
 
-          // Task feed is always visible, no need to add here
           case 'task_feed':
             break;
         }
       }
     });
 
-    // Time Clock is available to all authenticated users with a role
     if (!moduleKeys.includes('timeclock')) moduleKeys.push('timeclock');
 
     console.log('[TabLayout] Visible modules for user:', moduleKeys);
@@ -218,6 +196,7 @@ export default function TabLayout() {
           <Tabs.Screen name="inventory" />
           <Tabs.Screen name="documents" />
           <Tabs.Screen name="directory" />
+          <Tabs.Screen name="labor-tracking" />
           <Tabs.Screen name="procurement" />
           <Tabs.Screen name="approvals" />
           <Tabs.Screen name="quality" />
