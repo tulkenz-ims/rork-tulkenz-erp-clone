@@ -10,6 +10,10 @@ import {
   Wrench, ChevronDown, ChevronRight, X, CheckCircle,
   Radio, Layers, Box,
 } from 'lucide-react-native';
+import Svg, {
+  Line, Rect, Path, Ellipse, Circle, G, Text as SvgText,
+  Defs, Marker, Pattern, ClipPath, Polygon,
+} from 'react-native-svg';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import { supabase } from '@/lib/supabase';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -32,7 +36,6 @@ const SC: Record<string, string> = { normal: HUD.green, warning: HUD.amber, crit
 const AC: Record<string, string> = { green: HUD.green, yellow: HUD.amber, red: HUD.red, blue: HUD.cyan, gray: HUD.textDim };
 
 // ══════════════════════════════ A1200 MANUAL DATA ══════════════════════════
-// Avatar A1200/A2200 Installation & Maintenance Manual — AFI Publication 4110811
 const A1200_SYSTEMS = [
   {
     id: 'belt_drive', name: 'Belt Drive System', short: 'Belt Drive', color: HUD.cyan,
@@ -64,11 +67,10 @@ const A1200_SYSTEMS = [
       { pn: 'AVT-VS-205', name: '220V Solid-State Relay', stock: 2, min: 1 },
     ],
     troubleshooting: [
-      { symptom: 'Cannot control sealing temperature', steps: ['Check PLC output connections to heating element relay — must be secure', 'Verify correct voltage at relay coil side — energized = switch side closes', 'Inspect thermocouple wiring in black electrical box for kinks or damage', 'Confirm programmed temp setpoint is correct for film type', 'After element or TC replacement: run AutoTune from TEMPERATURE menu'] },
-      { symptom: 'Partial vertical seal', steps: ['Check side-to-side film roll positioning on unwind shaft', 'Verify film is tracking straight through the machine', 'Inspect forming collar for damage or misalignment', 'Check sealing element surface for contamination or wear'] },
-      { symptom: 'Seals opening easily after filling', steps: ['Verify temperature setpoint matches film specification', 'Check sealing dwell time in PLC settings', 'Inspect heating element for hot/cold spots'] },
+      { symptom: 'Cannot control sealing temperature', steps: ['Check PLC output connections to heating element relay', 'Verify correct voltage at relay coil side', 'Inspect thermocouple wiring for kinks or damage', 'Confirm programmed temp setpoint is correct for film type', 'After element or TC replacement: run AutoTune from TEMPERATURE menu'] },
+      { symptom: 'Partial vertical seal', steps: ['Check side-to-side film roll positioning on unwind shaft', 'Verify film is tracking straight through the machine', 'Inspect forming collar for damage or misalignment'] },
     ],
-    repair: ['LOCKOUT: Disconnect electrical AND pneumatic connections', 'Open front door — remove 2 knobs from mounting posts', 'Pull vertical sealing assembly off mounting posts', 'Rotate assembly 180° facing forward — place back on posts loosely', 'Open black electrical box — remove 4 screws on cover', 'Label, loosen, and disconnect thermocouple connections inside box', 'Remove cable ties securing thermocouple to machine', 'Loosen thermocouple at jaw and slide out', 'Slide new thermocouple into vertical sealing jaw — tighten', 'Route cable to black box, connect, reinstall cover', 'Restore assembly to normal orientation, reinstall knobs', 'Reconnect all connections — power on — run AutoTune'],
+    repair: ['LOCKOUT: Disconnect electrical AND pneumatic connections', 'Open front door — remove 2 knobs from mounting posts', 'Pull vertical sealing assembly off mounting posts', 'Rotate assembly 180° facing forward — place back on posts loosely', 'Open black electrical box — remove 4 screws on cover', 'Label, loosen, and disconnect thermocouple connections inside box', 'Remove cable ties securing thermocouple to machine', 'Loosen thermocouple at jaw and slide out', 'Slide new thermocouple into vertical sealing jaw — tighten', 'Route cable to black box, connect, reinstall cover', 'Reconnect all connections — power on — run AutoTune'],
   },
   {
     id: 'endseal_jaw', name: 'Endseal Jaw / Knife', short: 'Endseal', color: HUD.red,
@@ -84,8 +86,8 @@ const A1200_SYSTEMS = [
       { pn: 'AVT-EJ-307', name: 'Jaw Plastic Bushings', stock: 6, min: 4 },
     ],
     troubleshooting: [
-      { symptom: 'Jaw not closing / not functioning', steps: ['Confirm compressed air is reaching jaw cylinder', 'Verify air can vent from opposite side of cylinder', 'Check PLC output voltage to electric/pneumatic solenoids', 'Use TEST button on valve block to manually test solenoid function', 'Inspect front jaw plastic bushings — replace if damaged or contaminated'] },
-      { symptom: 'Incomplete or weak end seals', steps: ['Verify temperature setpoint matches film spec for both elements', 'Check bag deflator position — foam pads should LEAD seals by ¼"', 'Ensure bag deflators are not pushing product up into endseal zone'] },
+      { symptom: 'Jaw not closing / not functioning', steps: ['Confirm compressed air is reaching jaw cylinder', 'Verify air can vent from opposite side of cylinder', 'Check PLC output voltage to electric/pneumatic solenoids', 'Use TEST button on valve block to manually test solenoid function'] },
+      { symptom: 'Incomplete or weak end seals', steps: ['Verify temperature setpoint matches film spec for both elements', 'Check bag deflator position — foam pads should LEAD seals by ¼"'] },
     ],
     repair: ['LOCKOUT: Disconnect electrical AND pneumatic connections', 'Open front door to access endseal jaws', 'KNIFE BLADE: Remove 2 mounting bolts — slide blade out', 'Install new blade with cutting edge facing REAR of machine — tighten bolts', 'HEATING ELEMENT: Open left side door', 'Label and disconnect element connections in black electrical box', 'Remove element from endseal jaw', 'Install new element, route wires, connect inside box, reinstall cover', 'Close all doors, reconnect connections', 'Power on — run AutoTune for affected endseal temperature channel'],
   },
@@ -100,10 +102,9 @@ const A1200_SYSTEMS = [
       { pn: 'AVT-FR-404', name: 'Air Supply QC Fitting ½"', stock: 4, min: 2 },
     ],
     troubleshooting: [
-      { symptom: 'Air pressure drops after machine starts', steps: ['Check compressed air supply line for restrictions or damage', 'Inspect internal air lines for leaks — use soapy water test on all fittings', 'Verify filter element is not clogged (inspect monthly per PM schedule)', 'Confirm air supply spec: 70 PSI @ 25 SCFM (laminate) or 45 SCFM (poly)', 'Check main air supply compressor and refrigerated dryer'] },
-      { symptom: 'Pneumatic component not actuating', steps: ['Check PLC I/O LEDs activating at correct timing', 'Test valve using TEST button on electric/pneumatic valve block', 'Check valve block solenoid electrical connections at block assembly', 'Confirm air pressure is at spec before the valve block'] },
+      { symptom: 'Air pressure drops after machine starts', steps: ['Check compressed air supply line for restrictions or damage', 'Inspect internal air lines for leaks — use soapy water test', 'Verify filter element is not clogged', 'Confirm air supply spec: 70 PSI @ 25 SCFM'] },
     ],
-    repair: ['LOCKOUT: Disconnect electrical AND pneumatic connections', 'Disconnect air line from Filter/Regulator', 'Disconnect electrical connection from electronic dump valve', 'Remove mounting bolts from base frame', 'Remove dump valve from old unit', 'Assemble dump valve onto new Filter/Regulator', 'Mount in position — tighten bolts', 'Connect air lines to quick-connect fittings and electrical connections', 'Adjust air pressure: CW = increase, CCW = decrease — target 70 PSI', 'Power on and test all pneumatic functions'],
+    repair: ['LOCKOUT: Disconnect electrical AND pneumatic connections', 'Disconnect air line from Filter/Regulator', 'Disconnect electrical connection from electronic dump valve', 'Remove mounting bolts from base frame', 'Remove dump valve from old unit', 'Assemble dump valve onto new Filter/Regulator', 'Mount in position — tighten bolts', 'Connect air lines and electrical connections', 'Adjust air pressure to 70 PSI', 'Power on and test all pneumatic functions'],
   },
   {
     id: 'film_unwind', name: 'Film Unwind / Encoder', short: 'Film Feed', color: HUD.green,
@@ -118,9 +119,8 @@ const A1200_SYSTEMS = [
     ],
     troubleshooting: [
       { symptom: 'Film tracking off-center or misaligned', steps: ['Use measuring scale on shaft flat to center film roll', 'Secure conical locking collars in centered position after adjusting', 'Adjust film tracking knob — right side, behind electrical box', 'Note 2:1 ratio: 1" knob adjustment = 2" film shift'] },
-      { symptom: 'Photoeye not detecting registration marks', steps: ['Check output LED — must illuminate when mark is at sensing block', 'Flashing LED = short circuit condition', 'Advance film manually — monitor bar graph LEDs on photoeye controller', 'Confirm LIGHT film with DARK registration marks (A1200 requirement)', 'Adjust sensing tip angle to 10–15° perpendicular to film surface'] },
     ],
-    repair: ['LOCKOUT: Disconnect electrical AND pneumatic connections', 'Open right side electrical panel door', 'Locate encoder/photoeye cable connection at PLC', 'Label and disconnect cable', 'Remove wire ties securing cable along base frame', 'Pull cable back to component — bundle so it cannot tangle with moving parts', 'Loosen hex head screw (encoder) or mounting bolt (photoeye)', 'Remove old component and install new one', 'Route cable to panel following original path — secure all cable ties', 'Connect to PLC — reconnect all power', 'Calibrate photoeye: advance film so mark is NOT under sensor, press white button on controller'],
+    repair: ['LOCKOUT: Disconnect electrical AND pneumatic connections', 'Open right side electrical panel door', 'Locate encoder/photoeye cable connection at PLC', 'Label and disconnect cable', 'Remove wire ties securing cable along base frame', 'Pull cable back to component', 'Loosen hex head screw (encoder) or mounting bolt (photoeye)', 'Remove old component and install new one', 'Route cable to panel following original path', 'Connect to PLC — reconnect all power', 'Calibrate photoeye: advance film so mark is NOT under sensor, press white button on controller'],
   },
 ];
 
@@ -148,12 +148,20 @@ const EVENT_LABEL: Record<string, { title: string; desc: string; severity: strin
 // ══════════════════════════════ ANIMATED HOOKS ══════════════════════════════
 function usePulse(ms = 1800) {
   const a = useRef(new Animated.Value(0)).current;
-  useEffect(() => { Animated.loop(Animated.sequence([Animated.timing(a, { toValue: 1, duration: ms, useNativeDriver: true }), Animated.timing(a, { toValue: 0, duration: ms, useNativeDriver: true })])).start(); }, []);
+  useEffect(() => {
+    Animated.loop(Animated.sequence([
+      Animated.timing(a, { toValue: 1, duration: ms, useNativeDriver: true }),
+      Animated.timing(a, { toValue: 0, duration: ms, useNativeDriver: true }),
+    ])).start();
+  }, []);
   return a;
 }
+
 function useScan(width: number, ms = 3200) {
   const a = useRef(new Animated.Value(-40)).current;
-  useEffect(() => { Animated.loop(Animated.timing(a, { toValue: width + 40, duration: ms, useNativeDriver: true })).start(); }, [width]);
+  useEffect(() => {
+    Animated.loop(Animated.timing(a, { toValue: width + 40, duration: ms, useNativeDriver: true })).start();
+  }, [width]);
   return a;
 }
 
@@ -161,18 +169,772 @@ function useScan(width: number, ms = 3200) {
 function PulsingDot({ color, size = 8 }: { color: string; size?: number }) {
   const p = usePulse(1600);
   return (
-    <Animated.View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: color, opacity: p.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1] }), transform: [{ scale: p.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1.2] }) }] }} />
+    <Animated.View style={{
+      width: size, height: size, borderRadius: size / 2, backgroundColor: color,
+      opacity: p.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1] }),
+      transform: [{ scale: p.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1.2] }) }],
+    }} />
   );
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// PA1 PRODUCTION FLOW SCHEMATIC (native SVG)
+// Flow: Super Sack → Hopper (with Magnets inside) → Screwfeed (angled up-left)
+//       → Avatar A1200 → Conveyor Feed → Packout Area
+// Layout: right-to-left, Super Sack top-right, Packout Area bottom-left
+// ══════════════════════════════════════════════════════════════════════════════
+
+interface SchematicNode {
+  id: string;
+  label: string;
+  status: 'ok' | 'alert' | 'idle';
+  sublabel?: string;
+}
+
+function PA1SchematicSVG({
+  alertNodeId,
+  onNodePress,
+  sensors,
+}: {
+  alertNodeId?: string | null;
+  onNodePress: (id: string) => void;
+  sensors: any[];
+}) {
+  const schW = W - 32;
+  const schH = 300;
+
+  // Scale factor: design at 900px wide, scale to device
+  const scale = schW / 900;
+  const h = schH;
+
+  const pulse = usePulse(1200);
+  const alertOpacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1] });
+
+  const getSensor = (name: string) => sensors.find(s => s.sensor_name?.toLowerCase().includes(name.toLowerCase()));
+  const hopperLevel = getSensor('Hopper Level');
+  const augerSpeed = getSensor('Auger Speed');
+
+  const hopperPct = hopperLevel?.value ? Math.min(Math.max(hopperLevel.value / 100, 0), 1) : 0.46;
+  const augerRpm = augerSpeed?.value ? augerSpeed.value.toFixed(0) : '97';
+
+  const isAlert = (id: string) => alertNodeId === id;
+
+  // Colors
+  const C = {
+    stroke: '#00ff90',
+    strokeDim: '#00ff9044',
+    strokeAlert: '#ff4444',
+    fill: '#001a0a',
+    fillAlert: '#1a0000',
+    text: '#00ff90',
+    textAlert: '#ff4444',
+    textDim: '#00ff9088',
+    pipe: '#00ff9066',
+    support: '#00ff9033',
+    level: '#00ff9015',
+    hatch: '#00ff9018',
+    motor: '#001510',
+  };
+
+  // All coordinates designed at 900px width, scaled via transform
+  return (
+    <View style={{ width: schW, height: h }}>
+      <Svg width={schW} height={h} viewBox={`0 0 900 ${h / scale}`}>
+
+        {/* ── FLOOR LINE ── */}
+        <Line x1="20" y1="320" x2="880" y2="320" stroke={C.strokeDim} strokeWidth="1" />
+
+        {/* ══ 1. SUPER SACK (top-right) ══ */}
+        <G onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onNodePress('supersack'); }}>
+          {/* Gantry uprights */}
+          <Line x1="760" y1="18" x2="760" y2="95" stroke={C.stroke} strokeWidth="1.5" />
+          <Line x1="840" y1="18" x2="840" y2="95" stroke={C.stroke} strokeWidth="1.5" />
+          {/* Top beam */}
+          <Line x1="760" y1="18" x2="840" y2="18" stroke={C.stroke} strokeWidth="1.5" />
+          {/* Cross brace */}
+          <Line x1="760" y1="32" x2="840" y2="32" stroke={C.stroke} strokeWidth="0.7" />
+          <Line x1="760" y1="22" x2="840" y2="32" stroke={C.stroke} strokeWidth="0.5" />
+          <Line x1="840" y1="22" x2="760" y2="32" stroke={C.stroke} strokeWidth="0.5" />
+          {/* Hoist beam */}
+          <Rect x="786" y="18" width="28" height="5" rx="1" fill={C.fill} stroke={C.stroke} strokeWidth="1" />
+          {/* Hook */}
+          <Line x1="800" y1="23" x2="800" y2="34" stroke={C.stroke} strokeWidth="1.2" />
+          <Path d="M794 34 Q794 41 800 41 Q806 41 806 34" fill="none" stroke={C.stroke} strokeWidth="1.2" />
+          {/* FIBC Bag body */}
+          <Path d="M778 41 Q778 35 800 35 Q822 35 822 41 L818 86 Q818 93 800 93 Q782 93 782 86 Z" fill={C.fill} stroke={C.stroke} strokeWidth="1.3" />
+          {/* Bag straps */}
+          <Line x1="790" y1="35" x2="790" y2="41" stroke={C.stroke} strokeWidth="2" />
+          <Line x1="810" y1="35" x2="810" y2="41" stroke={C.stroke} strokeWidth="2" />
+          {/* Discharge spout */}
+          <Path d="M790 93 L793 107 L807 107 L810 93" fill={C.fill} stroke={C.stroke} strokeWidth="1.2" />
+          <Rect x="792" y="107" width="16" height="8" rx="1" fill={C.fill} stroke={C.stroke} strokeWidth="1" />
+          {/* Feet */}
+          <Rect x="752" y="91" width="16" height="5" rx="1" fill={C.fill} stroke={C.stroke} strokeWidth="1" />
+          <Rect x="832" y="91" width="16" height="5" rx="1" fill={C.fill} stroke={C.stroke} strokeWidth="1" />
+          {/* Step circle */}
+          <Circle cx="762" cy="16" r="6" fill={C.fill} stroke={C.strokeDim} strokeWidth="0.8" />
+          <SvgText x="762" y="20" textAnchor="middle" fontSize="7" fill={C.textDim} fontFamily="Courier New">1</SvgText>
+          {/* Label */}
+          <SvgText x="800" y="136" textAnchor="middle" fontSize="9" fill={C.text} fontWeight="bold" fontFamily="Courier New" letterSpacing="1">SUPER SACK</SvgText>
+          <SvgText x="800" y="147" textAnchor="middle" fontSize="7" fill={C.textDim} fontFamily="Courier New">BULK INPUT</SvgText>
+        </G>
+
+        {/* ── SS → Hopper pipe ── */}
+        <Line x1="800" y1="115" x2="800" y2="128" stroke={C.pipe} strokeWidth="2.5" />
+        <Path d="M796 124 L800 132 L804 124" fill={C.pipe} />
+
+        {/* ══ 2. HOPPER with MAGNETS inside (center-right) ══ */}
+        <G onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onNodePress('hopper'); }}>
+          {/* Tank body */}
+          <Rect x="768" y="128" width="64" height="82" rx="2" fill={C.fill} stroke={C.stroke} strokeWidth="1.5" />
+          {/* Level fill */}
+          <Rect x="770" y={128 + 82 * (1 - hopperPct)} width="60" height={82 * hopperPct} fill={C.level} />
+          <Line x1="770" y1={128 + 82 * (1 - hopperPct)} x2="830" y1={128 + 82 * (1 - hopperPct)} stroke={C.stroke} strokeWidth="0.7" strokeDasharray="3,2" />
+          {/* Level % */}
+          <SvgText x="800" y="185" textAnchor="middle" fontSize="9" fill={C.text} fontWeight="bold" fontFamily="Courier New">{Math.round(hopperPct * 100)}%</SvgText>
+          {/* Level gauge glass */}
+          <Rect x="759" y="132" width="5" height="74" rx="1" fill="#001510" stroke={C.strokeDim} strokeWidth="0.8" />
+          <Rect x="760" y={132 + 74 * (1 - hopperPct)} width="3" height={74 * hopperPct} rx="1" fill="#00ff9033" />
+          {/* Inlet stub top */}
+          <Rect x="793" y="118" width="14" height="12" fill={C.fill} stroke={C.stroke} strokeWidth="1" />
+          {/* Cone bottom */}
+          <Path d="M768 210 L786 242 L814 242 L832 210" fill={C.fill} stroke={C.stroke} strokeWidth="1.5" />
+          {/* Outlet stub */}
+          <Rect x="788" y="242" width="24" height="14" rx="1" fill={C.fill} stroke={C.stroke} strokeWidth="1.2" />
+
+          {/* MAGNETS inside hopper — alert state */}
+          <G onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onNodePress('magnets'); }}>
+            <Rect x="773" y="135" width="54" height="9" rx="1" fill={isAlert('magnets') ? C.fillAlert : '#0d1a10'} stroke={isAlert('magnets') ? C.strokeAlert : '#00ff9066'} strokeWidth="1" />
+            <Rect x="773" y="148" width="54" height="9" rx="1" fill={isAlert('magnets') ? C.fillAlert : '#0d1a10'} stroke={isAlert('magnets') ? C.strokeAlert : '#00ff9066'} strokeWidth="1" />
+            <Rect x="773" y="161" width="54" height="9" rx="1" fill={isAlert('magnets') ? C.fillAlert : '#0d1a10'} stroke={isAlert('magnets') ? C.strokeAlert : '#00ff9066'} strokeWidth="1" />
+            {/* N/S labels */}
+            {['N','S','N','S'].map((p, i) => (
+              <SvgText key={`m1${i}`} x={780 + i * 13} y="142" textAnchor="middle" fontSize="5.5" fill={isAlert('magnets') ? C.textAlert : '#00ff9066'} fontFamily="Courier New">{p}</SvgText>
+            ))}
+            {['S','N','S','N'].map((p, i) => (
+              <SvgText key={`m2${i}`} x={780 + i * 13} y="155" textAnchor="middle" fontSize="5.5" fill={isAlert('magnets') ? C.textAlert + '88' : '#00ff9044'} fontFamily="Courier New">{p}</SvgText>
+            ))}
+            {['N','S','N','S'].map((p, i) => (
+              <SvgText key={`m3${i}`} x={780 + i * 13} y="168" textAnchor="middle" fontSize="5.5" fill={isAlert('magnets') ? C.textAlert : '#00ff9066'} fontFamily="Courier New">{p}</SvgText>
+            ))}
+            {/* Alert tag */}
+            {isAlert('magnets') && (
+              <SvgText x="836" y="155" fontSize="10" fill={C.textAlert}>⚠</SvgText>
+            )}
+          </G>
+
+          {/* Magnets callout label */}
+          <Line x1="832" y1="152" x2="854" y2="152" stroke={isAlert('magnets') ? '#ff444444' : C.strokeDim} strokeWidth="0.7" />
+          <SvgText x="856" y="150" fontSize="7" fill={isAlert('magnets') ? C.textAlert : C.textDim} fontFamily="Courier New" fontWeight="bold">MAGNETS</SvgText>
+          <SvgText x="856" y="159" fontSize="6" fill={isAlert('magnets') ? '#ff444488' : C.textDim} fontFamily="Courier New">{isAlert('magnets') ? 'ALERT' : 'METAL SEP'}</SvgText>
+
+          {/* Step circle */}
+          <Circle cx="770" cy="126" r="6" fill={C.fill} stroke={C.strokeDim} strokeWidth="0.8" />
+          <SvgText x="770" y="130" textAnchor="middle" fontSize="7" fill={C.textDim} fontFamily="Courier New">2</SvgText>
+          {/* Label */}
+          <SvgText x="800" y="268" textAnchor="middle" fontSize="9" fill={C.text} fontWeight="bold" fontFamily="Courier New" letterSpacing="1">HOPPER</SvgText>
+          <SvgText x="800" y="278" textAnchor="middle" fontSize="7" fill={C.textDim} fontFamily="Courier New">{Math.round(hopperPct * 100)}% FULL</SvgText>
+        </G>
+
+        {/* ══ 3. SCREWFEED — angled from hopper bottom up-left ══
+             Inlet (motor) at hopper outlet: ~800,256
+             Outlet (discharge tip): ~440,58
+             Top wall: (440,50) → (794,256)
+             Bottom wall: (440,66) → (794,272)
+        */}
+        <G onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onNodePress('screwfeed'); }}>
+          {/* Tube walls */}
+          <Line x1="440" y1="50" x2="794" y2="256" stroke={C.stroke} strokeWidth="1.5" />
+          <Line x1="440" y1="66" x2="794" y2="272" stroke={C.stroke} strokeWidth="1.5" />
+          {/* End caps */}
+          <Line x1="440" y1="50" x2="440" y2="66" stroke={C.stroke} strokeWidth="1.5" />
+          <Line x1="794" y1="256" x2="794" y2="272" stroke={C.stroke} strokeWidth="1.5" />
+          {/* Screw flights */}
+          {[480,520,560,600,640,680,720,760].map((x, i) => {
+            const t = (x - 440) / (794 - 440);
+            const yTop = 50 + t * (256 - 50);
+            const yBot = 66 + t * (272 - 66);
+            return <Line key={i} x1={x} y1={yTop} x2={x - 4} y2={yBot} stroke="#00ff9055" strokeWidth="0.9" />;
+          })}
+          {/* Motor housing at inlet (right/low) */}
+          <Ellipse cx="800" cy="264" rx="10" ry="16" fill={C.fill} stroke={C.stroke} strokeWidth="1.2" />
+          <Ellipse cx="800" cy="264" rx="5" ry="8" fill={C.motor} stroke={C.strokeDim} strokeWidth="0.7" />
+          <Line x1="800" y1="256" x2="800" y2="272" stroke={C.strokeDim} strokeWidth="0.5" />
+          <Line x1="792" y1="264" x2="808" y2="264" stroke={C.strokeDim} strokeWidth="0.5" />
+          {/* Support legs */}
+          {[700, 600, 510].map((x, i) => {
+            const t = (x - 440) / (794 - 440);
+            const yMid = (50 + 66) / 2 + t * ((256 + 272) / 2 - (50 + 66) / 2);
+            return (
+              <G key={i}>
+                <Line x1={x} y1={yMid} x2={x - 2} y2="320" stroke={C.support} strokeWidth="1" />
+                <Line x1={x - 8} y1="320" x2={x + 6} y2="320" stroke={C.support} strokeWidth="1" />
+              </G>
+            );
+          })}
+          {/* Flow arrow */}
+          <Line x1="660" y1="170" x2="540" y2="126" stroke={C.strokeDim} strokeWidth="1" />
+          <Path d="M542 122 L536 128 L546 130" fill={C.strokeDim} />
+          {/* RPM badge */}
+          <Rect x="560" y="158" width="52" height="14" rx="2" fill="#000d06" stroke={C.strokeDim} strokeWidth="0.7" />
+          <SvgText x="586" y="168" textAnchor="middle" fontSize="7.5" fill={C.text} fontFamily="Courier New">{augerRpm} RPM</SvgText>
+          {/* Step circle */}
+          <Circle cx="806" cy="244" r="6" fill={C.fill} stroke={C.strokeDim} strokeWidth="0.8" />
+          <SvgText x="806" y="248" textAnchor="middle" fontSize="7" fill={C.textDim} fontFamily="Courier New">3</SvgText>
+          {/* Label */}
+          <SvgText x="610" y="218" textAnchor="middle" fontSize="9" fill={C.text} fontWeight="bold" fontFamily="Courier New" letterSpacing="1">AUGER / SCREWFEED</SvgText>
+        </G>
+
+        {/* ── Screwfeed discharge → Avatar drop ── */}
+        <Line x1="440" y1="66" x2="440" y2="90" stroke={C.pipe} strokeWidth="2.5" />
+        <Path d="M436 86 L440 94 L444 86" fill={C.pipe} />
+
+        {/* ══ 4. AVATAR A1200 VFFS ══ */}
+        <G onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onNodePress('avatar_a1200'); }}>
+          {/* Main cabinet */}
+          <Rect x="400" y="94" width="80" height="75" rx="2" fill={C.fill} stroke={isAlert('avatar_a1200') ? C.strokeAlert : C.stroke} strokeWidth="1.5" />
+          {/* Film roll top */}
+          <Ellipse cx="440" cy="99" rx="18" ry="8" fill={C.fill} stroke={C.stroke} strokeWidth="1.2" />
+          <Ellipse cx="440" cy="99" rx="8" ry="3.5" fill={C.motor} stroke={C.strokeDim} strokeWidth="0.8" />
+          {/* Form tube */}
+          <Rect x="431" y="94" width="18" height="28" fill={C.motor} stroke={C.strokeDim} strokeWidth="0.8" />
+          {/* Jaw sealing area */}
+          <Rect x="412" y="125" width="56" height="16" rx="1" fill={C.fill} stroke={C.stroke} strokeWidth="1.2" />
+          <Line x1="412" y1="130" x2="468" y2="130" stroke={C.strokeDim} strokeWidth="0.5" />
+          <Line x1="412" y1="135" x2="468" y2="135" stroke={C.strokeDim} strokeWidth="0.5" />
+          <Line x1="412" y1="139" x2="468" y2="139" stroke={C.strokeDim} strokeWidth="0.5" />
+          {/* Control panel side */}
+          <Rect x="402" y="100" width="18" height="26" rx="1" fill={C.motor} stroke={C.strokeDim} strokeWidth="0.8" />
+          <Rect x="405" y="103" width="12" height="7" rx="1" fill="#000d06" stroke={C.strokeDim} strokeWidth="0.5" />
+          <Circle cx="408" cy="117" r="2" fill={C.strokeDim} />
+          <Circle cx="414" cy="117" r="2" fill="#00cc4455" />
+          {/* Bag output chute */}
+          <Path d="M416 141 L420 166 L460 166 L464 141" fill={C.fill} stroke={C.stroke} strokeWidth="1" />
+          {/* VFFS badge */}
+          <Rect x="450" y="100" width="20" height="8" rx="1" fill="#000d06" stroke={C.strokeDim} strokeWidth="0.5" />
+          <SvgText x="460" y="107" textAnchor="middle" fontSize="5.5" fill={C.textDim} fontFamily="Courier New">VFFS</SvgText>
+          {/* Support legs */}
+          <Line x1="415" y1="166" x2="413" y2="320" stroke={C.support} strokeWidth="1" />
+          <Line x1="465" y1="166" x2="463" y2="320" stroke={C.support} strokeWidth="1" />
+          {/* Step circle */}
+          <Circle cx="402" cy="92" r="6" fill={C.fill} stroke={C.strokeDim} strokeWidth="0.8" />
+          <SvgText x="402" y="96" textAnchor="middle" fontSize="7" fill={C.textDim} fontFamily="Courier New">4</SvgText>
+          {/* Label */}
+          <SvgText x="440" y="188" textAnchor="middle" fontSize="9" fill={C.text} fontWeight="bold" fontFamily="Courier New" letterSpacing="0.5">AVATAR A1200</SvgText>
+          <SvgText x="440" y="198" textAnchor="middle" fontSize="7" fill={C.textDim} fontFamily="Courier New">VFFS BAGGER</SvgText>
+        </G>
+
+        {/* ── Avatar → Conveyor ── */}
+        <Line x1="400" y1="155" x2="350" y2="155" stroke={C.pipe} strokeWidth="2.5" />
+        <Path d="M354 151 L346 155 L354 159" fill={C.pipe} />
+
+        {/* ══ 5. CONVEYOR FEED ══ */}
+        <G onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onNodePress('conveyor'); }}>
+          {/* Frame */}
+          <Rect x="190" y="148" width="162" height="16" rx="2" fill={C.fill} stroke={C.stroke} strokeWidth="1.5" />
+          {/* Belt surface */}
+          <Rect x="192" y="150" width="158" height="7" rx="1" fill={C.motor} />
+          {/* Belt segs */}
+          {[210,228,246,264,282,300,318,336].map((x, i) => (
+            <Line key={i} x1={x} y1="150" x2={x} y2="157" stroke={C.strokeDim} strokeWidth="0.8" />
+          ))}
+          {/* Drive roller right */}
+          <Ellipse cx="346" cy="156" rx="6" ry="9" fill={C.fill} stroke={C.stroke} strokeWidth="1.2" />
+          <Ellipse cx="346" cy="156" rx="3" ry="4" fill={C.motor} stroke={C.strokeDim} strokeWidth="0.7" />
+          {/* Tail roller left */}
+          <Ellipse cx="196" cy="156" rx="5" ry="8" fill={C.fill} stroke={C.stroke} strokeWidth="1.2" />
+          {/* Gearmotor */}
+          <Rect x="348" y="152" width="14" height="8" rx="1" fill={C.fill} stroke={C.stroke} strokeWidth="1" />
+          {/* Legs */}
+          <Line x1="214" y1="164" x2="212" y2="320" stroke={C.support} strokeWidth="1" />
+          <Line x1="318" y1="164" x2="316" y2="320" stroke={C.support} strokeWidth="1" />
+          {/* Speed readout */}
+          <Rect x="236" y="172" width="56" height="13" rx="2" fill="#000d06" stroke={C.strokeDim} strokeWidth="0.7" />
+          <SvgText x="264" y="181" textAnchor="middle" fontSize="7.5" fill={C.text} fontFamily="Courier New">24.3 ft/min</SvgText>
+          {/* Step circle */}
+          <Circle cx="192" cy="146" r="6" fill={C.fill} stroke={C.strokeDim} strokeWidth="0.8" />
+          <SvgText x="192" y="150" textAnchor="middle" fontSize="7" fill={C.textDim} fontFamily="Courier New">5</SvgText>
+          {/* Label */}
+          <SvgText x="270" y="198" textAnchor="middle" fontSize="9" fill={C.text} fontWeight="bold" fontFamily="Courier New" letterSpacing="1">CONVEYOR FEED</SvgText>
+        </G>
+
+        {/* ── Conveyor → Packout ── */}
+        <Line x1="190" y1="156" x2="156" y2="156" stroke={C.pipe} strokeWidth="2.5" />
+        <Path d="M160 152 L152 156 L160 160" fill={C.pipe} />
+
+        {/* ══ 6. PACKOUT AREA (far left) ══ */}
+        <G onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onNodePress('packout'); }}>
+          {/* Work table */}
+          <Rect x="20" y="148" width="134" height="12" rx="1" fill={C.fill} stroke={C.stroke} strokeWidth="1.5" />
+          {/* Legs */}
+          <Line x1="34" y1="160" x2="32" y2="320" stroke={C.stroke} strokeWidth="1.2" />
+          <Line x1="140" y1="160" x2="138" y2="320" stroke={C.stroke} strokeWidth="1.2" />
+          <Line x1="32" y1="320" x2="140" y2="320" stroke={C.stroke} strokeWidth="0.8" />
+          {/* Pallet */}
+          <Rect x="20" y="321" width="134" height="6" rx="1" fill={C.motor} stroke={C.strokeDim} strokeWidth="0.8" />
+          {[38,60,82,104,126].map((x, i) => (
+            <Line key={i} x1={x} y1="321" x2={x} y2="327" stroke={C.strokeDim} strokeWidth="2" />
+          ))}
+          {/* Cases on table */}
+          <Rect x="28" y="128" width="36" height="21" rx="1" fill={C.fill} stroke={C.stroke} strokeWidth="1" />
+          <Line x1="28" y1="138" x2="64" y2="138" stroke={C.strokeDim} strokeWidth="0.5" />
+          <Rect x="72" y="131" width="30" height="18" rx="1" fill={C.fill} stroke={C.strokeDim} strokeWidth="1" />
+          {/* Counter display */}
+          <Rect x="24" y="112" width="66" height="14" rx="2" fill="#000d06" stroke={C.strokeDim} strokeWidth="0.8" />
+          <SvgText x="57" y="122" textAnchor="middle" fontSize="7.5" fill={C.text} fontFamily="Courier New">48 CASES/HR</SvgText>
+          {/* Step circle */}
+          <Circle cx="22" cy="146" r="6" fill={C.fill} stroke={C.strokeDim} strokeWidth="0.8" />
+          <SvgText x="22" y="150" textAnchor="middle" fontSize="7" fill={C.textDim} fontFamily="Courier New">6</SvgText>
+          {/* Label */}
+          <SvgText x="87" y="212" textAnchor="middle" fontSize="9" fill={C.text} fontWeight="bold" fontFamily="Courier New" letterSpacing="1">PACKOUT AREA</SvgText>
+        </G>
+
+        {/* ── Legend ── */}
+        <Rect x="620" y="290" width="8" height="8" rx="1" fill="none" stroke={C.stroke} strokeWidth="1.2" />
+        <SvgText x="634" y="297" fontSize="7.5" fill={C.textDim} fontFamily="Courier New">NOMINAL</SvgText>
+        <Rect x="700" y="290" width="8" height="8" rx="1" fill="none" stroke={C.strokeAlert} strokeWidth="1.2" />
+        <SvgText x="714" y="297" fontSize="7.5" fill="#ff444477" fontFamily="Courier New">ALERT</SvgText>
+
+      </Svg>
+    </View>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// PR1/PR2 PRODUCTION FLOW SCHEMATIC (native SVG)
+// Flow: Super Sack → Hopper → Screwfeed (long steep) → [top of screwfeed]:
+//       Cone Feed → Metal Detector → drop spout → Scale → Conveyor/Sealer → Packout
+// ══════════════════════════════════════════════════════════════════════════════
+
+function PR1PR2SchematicSVG({
+  alertNodeId,
+  onNodePress,
+  sensors,
+}: {
+  alertNodeId?: string | null;
+  onNodePress: (id: string) => void;
+  sensors: any[];
+}) {
+  const schW = W - 32;
+  const vbW = 1100;
+  const vbH = 400;
+
+  const pulse = usePulse(1200);
+
+  const getSensor = (name: string) => sensors.find(s => s.sensor_name?.toLowerCase().includes(name.toLowerCase()));
+  const hopperLevel = getSensor('Hopper Level');
+  const augerSpeed = getSensor('Auger Speed');
+
+  const hopperPct = hopperLevel?.value ? Math.min(Math.max(hopperLevel.value / 100, 0), 1) : 0.52;
+  const augerRpm = augerSpeed?.value ? augerSpeed.value.toFixed(0) : '112';
+
+  const C = {
+    stroke: '#00ff90',
+    strokeDim: '#00ff9044',
+    strokeAlert: '#ff4444',
+    fill: '#001a0a',
+    fillAlert: '#1a0000',
+    text: '#00ff90',
+    textAlert: '#ff4444',
+    textDim: '#00ff9088',
+    pipe: '#00ff9066',
+    support: '#00ff9033',
+    level: '#00ff9015',
+    motor: '#001510',
+  };
+
+  const isAlert = (id: string) => alertNodeId === id;
+
+  return (
+    <View style={{ width: schW, height: schW * vbH / vbW }}>
+      <Svg width={schW} height={schW * vbH / vbW} viewBox={`0 0 ${vbW} ${vbH}`}>
+
+        {/* Floor */}
+        <Line x1="20" y1="365" x2="1080" y2="365" stroke={C.strokeDim} strokeWidth="1" />
+
+        {/* Flow label */}
+        <SvgText x="550" y="13" textAnchor="middle" fontSize="7" fill={C.strokeDim} fontFamily="Courier New" letterSpacing="2">FLOW DIRECTION ←</SvgText>
+
+        {/* ══ 1. SUPER SACK (far right) ══ */}
+        <G onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onNodePress('supersack'); }}>
+          <Line x1="1010" y1="24" x2="1010" y2="100" stroke={C.stroke} strokeWidth="1.5" />
+          <Line x1="1082" y1="24" x2="1082" y2="100" stroke={C.stroke} strokeWidth="1.5" />
+          <Line x1="1010" y1="24" x2="1082" y2="24" stroke={C.stroke} strokeWidth="1.5" />
+          <Line x1="1010" y1="40" x2="1082" y2="40" stroke={C.stroke} strokeWidth="0.7" />
+          <Line x1="1010" y1="28" x2="1082" y2="40" stroke={C.stroke} strokeWidth="0.5" />
+          <Line x1="1082" y1="28" x2="1010" y2="40" stroke={C.stroke} strokeWidth="0.5" />
+          <Rect x="1034" y="24" width="28" height="5" rx="1" fill={C.fill} stroke={C.stroke} strokeWidth="1" />
+          <Line x1="1048" y1="29" x2="1048" y2="40" stroke={C.stroke} strokeWidth="1.2" />
+          <Path d="M1042 40 Q1042 47 1048 47 Q1054 47 1054 40" fill="none" stroke={C.stroke} strokeWidth="1.2" />
+          <Path d="M1026 47 Q1026 41 1048 41 Q1070 41 1070 47 L1066 94 Q1066 102 1048 102 Q1030 102 1030 94 Z" fill={C.fill} stroke={C.stroke} strokeWidth="1.3" />
+          <Line x1="1037" y1="41" x2="1037" y2="47" stroke={C.stroke} strokeWidth="2" />
+          <Line x1="1059" y1="41" x2="1059" y2="47" stroke={C.stroke} strokeWidth="2" />
+          <Path d="M1038 102 L1041 116 L1055 116 L1058 102" fill={C.fill} stroke={C.stroke} strokeWidth="1.2" />
+          <Rect x="1040" y="116" width="16" height="8" rx="1" fill={C.fill} stroke={C.stroke} strokeWidth="1" />
+          <Rect x="1002" y="96" width="16" height="5" rx="1" fill={C.fill} stroke={C.stroke} strokeWidth="1" />
+          <Rect x="1074" y="96" width="16" height="5" rx="1" fill={C.fill} stroke={C.stroke} strokeWidth="1" />
+          <Circle cx="1012" cy="22" r="6" fill={C.fill} stroke={C.strokeDim} strokeWidth="0.8" />
+          <SvgText x="1012" y="26" textAnchor="middle" fontSize="7" fill={C.textDim} fontFamily="Courier New">1</SvgText>
+          <SvgText x="1048" y="142" textAnchor="middle" fontSize="8" fill={C.text} fontWeight="bold" fontFamily="Courier New" letterSpacing="1">SUPER SACK</SvgText>
+        </G>
+
+        {/* SS → Hopper */}
+        <Line x1="1048" y1="124" x2="1048" y2="138" stroke={C.pipe} strokeWidth="2.5" />
+        <Path d="M1044 134 L1048 142 L1052 134" fill={C.pipe} />
+
+        {/* ══ 2. HOPPER ══ */}
+        <G onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onNodePress('hopper'); }}>
+          <Rect x="1016" y="138" width="64" height="84" rx="2" fill={C.fill} stroke={C.stroke} strokeWidth="1.5" />
+          <Rect x="1018" y={138 + 84 * (1 - hopperPct)} width="60" height={84 * hopperPct} fill={C.level} />
+          <Line x1="1018" y1={138 + 84 * (1 - hopperPct)} x2="1078" y1={138 + 84 * (1 - hopperPct)} stroke={C.stroke} strokeWidth="0.7" strokeDasharray="3,2" />
+          <SvgText x="1048" y="186" textAnchor="middle" fontSize="9" fill={C.text} fontWeight="bold" fontFamily="Courier New">{Math.round(hopperPct * 100)}%</SvgText>
+          <Rect x="1008" y="142" width="5" height="76" rx="1" fill={C.motor} stroke={C.strokeDim} strokeWidth="0.8" />
+          <Rect x="1009" y={142 + 76 * (1 - hopperPct)} width="3" height={76 * hopperPct} rx="1" fill="#00ff9033" />
+          <Path d="M1016 222 L1034 258 L1062 258 L1080 222" fill={C.fill} stroke={C.stroke} strokeWidth="1.5" />
+          <Rect x="1036" y="258" width="24" height="16" rx="1" fill={C.fill} stroke={C.stroke} strokeWidth="1.2" />
+          <Circle cx="1018" cy="136" r="6" fill={C.fill} stroke={C.strokeDim} strokeWidth="0.8" />
+          <SvgText x="1018" y="140" textAnchor="middle" fontSize="7" fill={C.textDim} fontFamily="Courier New">2</SvgText>
+          <SvgText x="1048" y="282" textAnchor="middle" fontSize="8" fill={C.text} fontWeight="bold" fontFamily="Courier New">HOPPER</SvgText>
+          <SvgText x="1048" y="292" textAnchor="middle" fontSize="7" fill={C.textDim} fontFamily="Courier New">{Math.round(hopperPct * 100)}% FULL</SvgText>
+        </G>
+
+        {/* ══ 3. SCREWFEED — long steep, inlet at hopper outlet, outlet at x=700 y=58 ══
+             Top wall:    (700,50) → (1036,260)
+             Bottom wall: (700,66) → (1036,276)
+        */}
+        <G onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onNodePress('screwfeed'); }}>
+          <Line x1="700" y1="50" x2="1036" y2="260" stroke={C.stroke} strokeWidth="1.5" />
+          <Line x1="700" y1="66" x2="1036" y2="276" stroke={C.stroke} strokeWidth="1.5" />
+          <Line x1="700" y1="50" x2="700" y2="66" stroke={C.stroke} strokeWidth="1.5" />
+          <Line x1="1036" y1="260" x2="1036" y2="276" stroke={C.stroke} strokeWidth="1.5" />
+          {/* Flights */}
+          {[740,790,840,890,940,990,1000].map((x, i) => {
+            const t = (x - 700) / (1036 - 700);
+            const yT = 50 + t * (260 - 50);
+            const yB = 66 + t * (276 - 66);
+            return <Line key={i} x1={x} y1={yT} x2={x - 4} y2={yB} stroke="#00ff9055" strokeWidth="0.9" />;
+          })}
+          {/* Motor */}
+          <Ellipse cx="1044" cy="268" rx="10" ry="16" fill={C.fill} stroke={C.stroke} strokeWidth="1.2" />
+          <Ellipse cx="1044" cy="268" rx="5" ry="8" fill={C.motor} stroke={C.strokeDim} strokeWidth="0.7" />
+          {/* Support legs */}
+          {[900, 800, 740].map((x, i) => {
+            const t = (x - 700) / (1036 - 700);
+            const yMid = (58 + t * (268 - 58));
+            return (
+              <G key={i}>
+                <Line x1={x} y1={yMid} x2={x - 2} y2="365" stroke={C.support} strokeWidth="1" />
+                <Line x1={x - 8} y1="365" x2={x + 6} y2="365" stroke={C.support} strokeWidth="1" />
+              </G>
+            );
+          })}
+          {/* Flow arrow */}
+          <Line x1="900" y1="190" x2="780" y2="148" stroke={C.strokeDim} strokeWidth="1" />
+          <Path d="M782 144 L776 150 L786 152" fill={C.strokeDim} />
+          {/* RPM badge */}
+          <Rect x="800" y="172" width="52" height="13" rx="2" fill="#000d06" stroke={C.strokeDim} strokeWidth="0.7" />
+          <SvgText x="826" y="181" textAnchor="middle" fontSize="7.5" fill={C.text} fontFamily="Courier New">{augerRpm} RPM</SvgText>
+          <Circle cx="1048" cy="248" r="6" fill={C.fill} stroke={C.strokeDim} strokeWidth="0.8" />
+          <SvgText x="1048" y="252" textAnchor="middle" fontSize="7" fill={C.textDim} fontFamily="Courier New">3</SvgText>
+          <SvgText x="860" y="380" textAnchor="middle" fontSize="8" fill={C.text} fontWeight="bold" fontFamily="Courier New">SCREWFEED</SvgText>
+        </G>
+
+        {/* Screwfeed tip → Cone Feed top */}
+        <Line x1="700" y1="66" x2="700" y2="86" stroke={C.pipe} strokeWidth="2.5" />
+        <Path d="M696 82 L700 90 L704 82" fill={C.pipe} />
+
+        {/* ══ 4. CONE FEED — stacked directly at screwfeed discharge ══ */}
+        <G onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onNodePress('conefeed'); }}>
+          {/* Cone hopper shape */}
+          <Path d="M658 86 L742 86 L724 162 L676 162 Z" fill={C.fill} stroke={C.stroke} strokeWidth="1.5" />
+          {/* Fins inside */}
+          <Line x1="678" y1="104" x2="677" y2="158" stroke={C.strokeDim} strokeWidth="0.8" />
+          <Line x1="700" y1="100" x2="700" y2="160" stroke={C.strokeDim} strokeWidth="0.8" />
+          <Line x1="722" y1="104" x2="723" y2="158" stroke={C.strokeDim} strokeWidth="0.8" />
+          {/* Outlet tube */}
+          <Rect x="676" y="162" width="48" height="20" rx="1" fill={C.fill} stroke={C.stroke} strokeWidth="1.2" />
+          {/* Side motor */}
+          <Ellipse cx="746" cy="120" rx="8" ry="13" fill={C.fill} stroke={C.stroke} strokeWidth="1" />
+          <Ellipse cx="746" cy="120" rx="4" ry="6" fill={C.motor} stroke={C.strokeDim} strokeWidth="0.7" />
+          {/* Legs */}
+          <Line x1="658" y1="162" x2="654" y2="365" stroke={C.support} strokeWidth="1" />
+          <Line x1="742" y1="162" x2="746" y2="365" stroke={C.support} strokeWidth="1" />
+          <Circle cx="660" cy="84" r="6" fill={C.fill} stroke={C.strokeDim} strokeWidth="0.8" />
+          <SvgText x="660" y="88" textAnchor="middle" fontSize="7" fill={C.textDim} fontFamily="Courier New">4</SvgText>
+          <SvgText x="700" y="200" textAnchor="middle" fontSize="8" fill={C.text} fontWeight="bold" fontFamily="Courier New">CONE FEED</SvgText>
+        </G>
+
+        {/* Cone Feed → Metal Detector */}
+        <Line x1="700" y1="182" x2="700" y2="204" stroke={C.pipe} strokeWidth="2.5" />
+        <Path d="M696 200 L700 208 L704 200" fill={C.pipe} />
+
+        {/* ══ 5. METAL DETECTOR — stacked below cone feed ══ */}
+        <G onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onNodePress('metaldet'); }}>
+          {/* Tunnel housing */}
+          <Rect x="658" y="204" width="84" height="68" rx="3" fill={isAlert('metaldet') ? C.fillAlert : C.fill} stroke={isAlert('metaldet') ? C.strokeAlert : C.stroke} strokeWidth="1.5" />
+          {/* Coil rings */}
+          <Ellipse cx="679" cy="238" rx="13" ry="25" fill="none" stroke={isAlert('metaldet') ? C.strokeAlert + '88' : C.strokeDim} strokeWidth="1" />
+          <Ellipse cx="679" cy="238" rx="7" ry="13" fill="none" stroke={isAlert('metaldet') ? C.strokeAlert + '55' : '#00ff9033'} strokeWidth="0.7" />
+          <Ellipse cx="721" cy="238" rx="13" ry="25" fill="none" stroke={isAlert('metaldet') ? C.strokeAlert + '88' : C.strokeDim} strokeWidth="1" />
+          <Ellipse cx="721" cy="238" rx="7" ry="13" fill="none" stroke={isAlert('metaldet') ? C.strokeAlert + '55' : '#00ff9033'} strokeWidth="0.7" />
+          {/* Control head */}
+          <Rect x="666" y="190" width="68" height="16" rx="2" fill={C.motor} stroke={C.strokeDim} strokeWidth="0.8" />
+          <Rect x="671" y="194" width="20" height="8" rx="1" fill="#000d06" stroke={C.strokeDim} strokeWidth="0.5" />
+          <Circle cx="700" cy="198" r="2.5" fill={isAlert('metaldet') ? C.strokeAlert : C.strokeDim} />
+          <Circle cx="712" cy="198" r="2.5" fill="#00cc4455" />
+          {/* Inlet/outlet stubs */}
+          <Rect x="686" y="192" width="28" height="14" fill={C.fill} stroke={C.stroke} strokeWidth="1" />
+          <Rect x="686" y="270" width="28" height="16" rx="1" fill={C.fill} stroke={C.stroke} strokeWidth="1.2" />
+          {/* Alert indicator */}
+          {isAlert('metaldet') && (
+            <SvgText x="700" y="244" textAnchor="middle" fontSize="12" fill={C.textAlert}>⚠</SvgText>
+          )}
+          {/* Legs */}
+          <Line x1="664" y1="272" x2="662" y2="365" stroke={C.support} strokeWidth="1" />
+          <Line x1="736" y1="272" x2="738" y2="365" stroke={C.support} strokeWidth="1" />
+          <Circle cx="660" cy="202" r="6" fill={C.fill} stroke={C.strokeDim} strokeWidth="0.8" />
+          <SvgText x="660" y="206" textAnchor="middle" fontSize="7" fill={C.textDim} fontFamily="Courier New">5</SvgText>
+          <SvgText x="700" y="302" textAnchor="middle" fontSize="8" fill={isAlert('metaldet') ? C.textAlert : C.text} fontWeight="bold" fontFamily="Courier New">METAL DET.</SvgText>
+        </G>
+
+        {/* Drop spout from metal det → floor level */}
+        <Line x1="700" y1="286" x2="700" y2="330" stroke={C.pipe} strokeWidth="2.5" />
+        <Path d="M688 308 L712 308 L707 330 L693 330 Z" fill={C.fill} stroke={C.stroke} strokeWidth="1" />
+        {/* Horizontal to scale */}
+        <Line x1="700" y1="330" x2="576" y2="330" stroke={C.pipe} strokeWidth="2.5" />
+        <Path d="M580 326 L572 330 L580 334" fill={C.pipe} />
+
+        {/* ══ 6. SCALE ══ */}
+        <G onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onNodePress('scale'); }}>
+          {/* Platform */}
+          <Rect x="504" y="322" width="72" height="14" rx="1" fill={C.fill} stroke={C.stroke} strokeWidth="1.5" />
+          {/* Load cell legs */}
+          <Line x1="518" y1="336" x2="516" y2="355" stroke={C.stroke} strokeWidth="1.2" />
+          <Line x1="562" y1="336" x2="560" y2="355" stroke={C.stroke} strokeWidth="1.2" />
+          {/* Base */}
+          <Rect x="510" y="355" width="56" height="8" rx="1" fill={C.fill} stroke={C.stroke} strokeWidth="1.2" />
+          {/* Display */}
+          <Rect x="516" y="296" width="56" height="24" rx="2" fill={C.motor} stroke={C.strokeDim} strokeWidth="1" />
+          <Rect x="521" y="301" width="46" height="12" rx="1" fill="#000d06" stroke={C.strokeDim} strokeWidth="0.5" />
+          <SvgText x="544" y="310" textAnchor="middle" fontSize="8" fill={C.text} fontFamily="Courier New">24.8 LB</SvgText>
+          {/* Bag on platform */}
+          <Path d="M512 312 L510 322 L574 322 L572 312 Q544 307 512 312 Z" fill={C.motor} stroke={C.strokeDim} strokeWidth="0.8" />
+          <Circle cx="506" cy="320" r="6" fill={C.fill} stroke={C.strokeDim} strokeWidth="0.8" />
+          <SvgText x="506" y="324" textAnchor="middle" fontSize="7" fill={C.textDim} fontFamily="Courier New">6</SvgText>
+          <SvgText x="544" y="378" textAnchor="middle" fontSize="8" fill={C.text} fontWeight="bold" fontFamily="Courier New">SCALE</SvgText>
+        </G>
+
+        {/* Scale → Conveyor/Sealer */}
+        <Line x1="504" y1="329" x2="450" y2="329" stroke={C.pipe} strokeWidth="2.5" />
+        <Path d="M454 325 L446 329 L454 333" fill={C.pipe} />
+
+        {/* ══ 7. CONVEYOR / SEALER ══ */}
+        <G onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onNodePress('sealer'); }}>
+          {/* Frame */}
+          <Rect x="196" y="321" width="256" height="16" rx="2" fill={C.fill} stroke={C.stroke} strokeWidth="1.5" />
+          {/* Belt */}
+          <Rect x="198" y="323" width="252" height="7" rx="1" fill={C.motor} />
+          {/* Belt segs */}
+          {[214,232,250,268,286,304,322,340,358,376,394,412,430].map((x, i) => (
+            <Line key={i} x1={x} y1="323" x2={x} y2="330" stroke={C.strokeDim} strokeWidth="0.8" />
+          ))}
+          {/* Rollers */}
+          <Ellipse cx="446" cy="329" rx="6" ry="9" fill={C.fill} stroke={C.stroke} strokeWidth="1.2" />
+          <Ellipse cx="446" cy="329" rx="3" ry="4" fill={C.motor} stroke={C.strokeDim} strokeWidth="0.7" />
+          <Ellipse cx="200" cy="329" rx="5" ry="8" fill={C.fill} stroke={C.stroke} strokeWidth="1.2" />
+          {/* Sealer arch */}
+          <Path d="M300 321 Q300 296 320 294 Q340 296 340 321" fill="none" stroke={C.stroke} strokeWidth="1.5" />
+          <Rect x="298" y="290" width="44" height="10" rx="1" fill={C.fill} stroke={C.stroke} strokeWidth="1" />
+          {[308,315,322,329,336].map((x, i) => (
+            <Line key={i} x1={x} y1="300" x2={x} y2="321" stroke={i % 2 === 0 ? C.strokeDim : '#00ff9033'} strokeWidth="0.8" />
+          ))}
+          {/* Gearmotor */}
+          <Rect x="448" y="325" width="12" height="8" rx="1" fill={C.fill} stroke={C.stroke} strokeWidth="1" />
+          {/* Legs */}
+          <Line x1="218" y1="337" x2="216" y2="365" stroke={C.support} strokeWidth="1" />
+          <Line x1="414" y1="337" x2="412" y2="365" stroke={C.support} strokeWidth="1" />
+          {/* Speed */}
+          <Rect x="232" y="342" width="58" height="13" rx="2" fill="#000d06" stroke={C.strokeDim} strokeWidth="0.7" />
+          <SvgText x="261" y="351" textAnchor="middle" fontSize="7.5" fill={C.text} fontFamily="Courier New">18.5 ft/min</SvgText>
+          <Circle cx="198" cy="319" r="6" fill={C.fill} stroke={C.strokeDim} strokeWidth="0.8" />
+          <SvgText x="198" y="323" textAnchor="middle" fontSize="7" fill={C.textDim} fontFamily="Courier New">7</SvgText>
+          <SvgText x="322" y="382" textAnchor="middle" fontSize="8" fill={C.text} fontWeight="bold" fontFamily="Courier New">CONVEYOR / SEALER</SvgText>
+        </G>
+
+        {/* Sealer → Packout */}
+        <Line x1="196" y1="329" x2="162" y2="329" stroke={C.pipe} strokeWidth="2.5" />
+        <Path d="M166 325 L158 329 L166 333" fill={C.pipe} />
+
+        {/* ══ 8. PACKOUT (compact, far left) ══ */}
+        <G onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onNodePress('packout'); }}>
+          <Rect x="22" y="320" width="136" height="12" rx="1" fill={C.fill} stroke={C.stroke} strokeWidth="1.5" />
+          <Line x1="38" y1="332" x2="36" y2="365" stroke={C.stroke} strokeWidth="1.2" />
+          <Line x1="144" y1="332" x2="142" y2="365" stroke={C.stroke} strokeWidth="1.2" />
+          {/* Pallet */}
+          <Rect x="22" y="366" width="136" height="6" rx="1" fill={C.motor} stroke={C.strokeDim} strokeWidth="0.8" />
+          {[44,68,92,116,140].map((x, i) => (
+            <Line key={i} x1={x} y1="366" x2={x} y2="372" stroke={C.strokeDim} strokeWidth="2" />
+          ))}
+          {/* Cases */}
+          <Rect x="30" y="300" width="34" height="21" rx="1" fill={C.fill} stroke={C.stroke} strokeWidth="1" />
+          <Line x1="30" y1="310" x2="64" y2="310" stroke={C.strokeDim} strokeWidth="0.5" />
+          <Rect x="72" y="304" width="30" height="17" rx="1" fill={C.fill} stroke={C.strokeDim} strokeWidth="1" />
+          {/* Counter */}
+          <Rect x="28" y="284" width="72" height="14" rx="2" fill="#000d06" stroke={C.strokeDim} strokeWidth="0.8" />
+          <SvgText x="64" y="294" textAnchor="middle" fontSize="7.5" fill={C.text} fontFamily="Courier New">52 CASES/HR</SvgText>
+          <Circle cx="24" cy="318" r="6" fill={C.fill} stroke={C.strokeDim} strokeWidth="0.8" />
+          <SvgText x="24" y="322" textAnchor="middle" fontSize="7" fill={C.textDim} fontFamily="Courier New">8</SvgText>
+          <SvgText x="90" y="390" textAnchor="middle" fontSize="8" fill={C.text} fontWeight="bold" fontFamily="Courier New">PACKOUT</SvgText>
+        </G>
+
+        {/* Legend */}
+        <Rect x="920" y="388" width="8" height="8" rx="1" fill="none" stroke={C.stroke} strokeWidth="1.2" />
+        <SvgText x="934" y="395" fontSize="7.5" fill={C.textDim} fontFamily="Courier New">NOMINAL</SvgText>
+        <Rect x="1014" y="388" width="8" height="8" rx="1" fill="none" stroke={C.strokeAlert} strokeWidth="1.2" />
+        <SvgText x="1028" y="395" fontSize="7.5" fill="#ff444477" fontFamily="Courier New">ALERT</SvgText>
+
+      </Svg>
+    </View>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SCHEMATIC WRAPPER — routes PA1 vs PR1/PR2, wraps with HUD card + sensor panel
+// ══════════════════════════════════════════════════════════════════════════════
+
+const SENSOR_DATA: Record<string, { label: string; sensors: string[] }> = {
+  supersack:   { label: 'SUPER SACK',        sensors: ['Discharge flow: ACTIVE', 'Low level: NORMAL'] },
+  hopper:      { label: 'HOPPER',             sensors: ['Level: 46%', 'Fill rate: 41.6 bags/min'] },
+  magnets:     { label: 'MAGNETS',            sensors: ['Reject count: 0', 'Sensitivity: 98.4%', 'Last test: 4 hr ago'] },
+  screwfeed:   { label: 'SCREWFEED / AUGER',  sensors: ['Speed: 97 RPM', 'Motor temp: 147.5°F', 'Vibration: 2.9 mm/s'] },
+  avatar_a1200:{ label: 'AVATAR A1200 VFFS',  sensors: ['Seal temp: 301.1°F', 'Air pressure: 68.2 PSI', 'Fill rate: 41.6 bag/min'] },
+  conveyor:    { label: 'CONVEYOR FEED',      sensors: ['Speed: 24.3 ft/min', 'Belt tension: NORMAL'] },
+  packout:     { label: 'PACKOUT AREA',       sensors: ['Cases/hr: 48', 'Label verify: PASS', 'Scale check: PASS'] },
+  conefeed:    { label: 'CONE FEED',          sensors: ['Feed rate: 42.0 bag/min', 'Motor: RUNNING'] },
+  metaldet:    { label: 'METAL DETECTOR',     sensors: ['Sensitivity: 98.4%', 'Reject count: 0', 'Last test: 4 hr ago'] },
+  scale:       { label: 'SCALE',              sensors: ['Net weight: 24.8 LB', 'Overweight alerts: 0', 'Underweight alerts: 0'] },
+  sealer:      { label: 'CONVEYOR / SEALER',  sensors: ['Belt speed: 18.5 ft/min', 'Seal temp: 312.0°F', 'Belt tension: NORMAL'] },
+};
+
+function ProductionFlowSchematic({
+  roomCode,
+  alertNodeId,
+  onSelectSystem,
+  sensors,
+}: {
+  roomCode: string;
+  alertNodeId?: string | null;
+  onSelectSystem: (id: string) => void;
+  sensors: any[];
+}) {
+  const [selectedNode, setSelectedNode] = useState<string | null>(null);
+
+  const handleNodePress = useCallback((id: string) => {
+    setSelectedNode(prev => prev === id ? null : id);
+    // If it's the Avatar machine, also open the modal
+    if (id === 'avatar_a1200') {
+      onSelectSystem(id);
+    }
+  }, [onSelectSystem]);
+
+  const nodeInfo = selectedNode ? SENSOR_DATA[selectedNode] : null;
+
+  return (
+    <View style={fsS.wrap}>
+      {/* Header */}
+      <View style={fsS.header}>
+        <Activity size={12} color={HUD.cyan} />
+        <Text style={fsS.headerTitle}>{roomCode} · PRODUCTION FLOW</Text>
+        <Text style={fsS.headerSub}>TAP EQUIPMENT TO INSPECT</Text>
+      </View>
+
+      {/* Schematic */}
+      {roomCode === 'PA1' ? (
+        <PA1SchematicSVG
+          alertNodeId={alertNodeId}
+          onNodePress={handleNodePress}
+          sensors={sensors}
+        />
+      ) : (
+        <PR1PR2SchematicSVG
+          alertNodeId={alertNodeId}
+          onNodePress={handleNodePress}
+          sensors={sensors}
+        />
+      )}
+
+      {/* Sensor panel — slides in when node selected */}
+      {selectedNode && nodeInfo && (
+        <View style={fsS.sensorPanel}>
+          <View style={fsS.sensorPanelHeader}>
+            <Text style={fsS.sensorPanelTitle}>{nodeInfo.label}</Text>
+            <Pressable onPress={() => setSelectedNode(null)} style={fsS.sensorPanelClose}>
+              <X size={12} color={HUD.textDim} />
+            </Pressable>
+          </View>
+          {nodeInfo.sensors.map((s, i) => {
+            const [label, val] = s.split(': ');
+            return (
+              <View key={i} style={fsS.sensorRow}>
+                <Text style={fsS.sensorLabel}>{label}</Text>
+                <Text style={fsS.sensorVal}>{val}</Text>
+              </View>
+            );
+          })}
+          {selectedNode === 'avatar_a1200' && (
+            <Pressable
+              style={fsS.viewManualBtn}
+              onPress={() => onSelectSystem('avatar_a1200')}
+            >
+              <Cpu size={11} color={HUD.cyan} />
+              <Text style={fsS.viewManualTxt}>VIEW EQUIPMENT MANUAL →</Text>
+            </Pressable>
+          )}
+        </View>
+      )}
+
+      {/* Legend row */}
+      <View style={fsS.legend}>
+        {[
+          { color: '#00ff90', label: 'NOMINAL' },
+          { color: '#ff4444', label: 'ALERT' },
+        ].map(l => (
+          <View key={l.label} style={fsS.legendItem}>
+            <View style={[fsS.legendDot, { backgroundColor: l.color }]} />
+            <Text style={fsS.legendTxt}>{l.label}</Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+const fsS = StyleSheet.create({
+  wrap: { backgroundColor: HUD.bgCard, borderRadius: 14, borderWidth: 1, borderColor: HUD.borderBright, padding: 12, marginBottom: 14, overflow: 'hidden' },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
+  headerTitle: { fontSize: 11, fontWeight: '800', color: HUD.cyan, letterSpacing: 1.5, flex: 1 },
+  headerSub: { fontSize: 9, color: HUD.textDim, letterSpacing: 1 },
+  sensorPanel: { marginTop: 10, backgroundColor: HUD.bgCardAlt, borderRadius: 10, borderWidth: 1, borderColor: HUD.borderBright, overflow: 'hidden' },
+  sensorPanelHeader: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#00ff9012', borderBottomWidth: 1, borderBottomColor: HUD.borderBright, paddingHorizontal: 12, paddingVertical: 8 },
+  sensorPanelTitle: { fontSize: 10, fontWeight: '800', color: '#00ff90', letterSpacing: 1, flex: 1, fontFamily: 'Courier New' },
+  sensorPanelClose: { padding: 4 },
+  sensorRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: HUD.border },
+  sensorLabel: { fontSize: 10, color: HUD.textSec, fontFamily: 'Courier New' },
+  sensorVal: { fontSize: 11, fontWeight: '700', color: '#00ff90', fontFamily: 'Courier New' },
+  viewManualBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 10, borderTopWidth: 1, borderTopColor: HUD.borderBright },
+  viewManualTxt: { fontSize: 10, fontWeight: '800', color: HUD.cyan, letterSpacing: 1 },
+  legend: { flexDirection: 'row', gap: 14, marginTop: 10 },
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  legendDot: { width: 7, height: 7, borderRadius: 4 },
+  legendTxt: { fontSize: 8, color: HUD.textSec, fontWeight: '600' },
+});
+
 // ══════════════════════════ HEARTBEAT MONITOR ══════════════════════════════
-// EKG-style scrolling waveform driven by live sensor values
-const HB_POINTS = 48; // number of columns in the waveform
+const HB_POINTS = 48;
 
 function HeartbeatMonitor({ bpm, color, onBeat }: { bpm: number; color: string; onBeat?: () => void }) {
   const onBeatRef = useRef(onBeat);
   useEffect(() => { onBeatRef.current = onBeat; }, [onBeat]);
-
   const [waveData, setWaveData] = useState<number[]>(() => Array.from({ length: HB_POINTS }, (_, i) => 0.3 + 0.4 * Math.sin(i * 0.4)));
   const waveRef = useRef<number[]>(Array.from({ length: HB_POINTS }, (_, i) => 0.3 + 0.4 * Math.sin(i * 0.4)));
   const tickRef = useRef(0);
@@ -196,11 +958,9 @@ function HeartbeatMonitor({ bpm, color, onBeat }: { bpm: number; color: string; 
       else if (phase < 0.45) sample = 0.35 + 0.15 * Math.sin((phase - 0.28) / 0.17 * Math.PI);
       sample += (Math.random() - 0.5) * 0.03;
       sample = Math.min(Math.max(sample, 0.02), 0.98);
-
       const inSpike = phase >= 0.18 && phase < 0.22;
       if (inSpike && !lastBeatPhaseRef.current) onBeatRef.current?.();
       lastBeatPhaseRef.current = inSpike;
-
       waveRef.current = [...waveRef.current.slice(1), sample];
       setWaveData([...waveRef.current]);
     }, 100);
@@ -218,21 +978,12 @@ function HeartbeatMonitor({ bpm, color, onBeat }: { bpm: number; color: string; 
         <Text style={[hbS.title, { color }]}>LINE HEARTBEAT</Text>
         <Text style={hbS.bpmLabel}>{bpm > 0 ? `${bpm} PKG/MIN` : 'IDLE'}</Text>
       </View>
-      {/* Solid flowing bars — grow from bottom, tops trace the waveform */}
       <View style={{ height: chartH, backgroundColor: HUD.bg, borderRadius: 8, overflow: 'hidden' }}>
         {waveData.map((v, i) => {
           const barH = Math.max(2, v * chartH);
           const isSpike = v > 0.6;
           return (
-            <View key={i} style={{
-              position: 'absolute',
-              bottom: 0,
-              left: i * barW,
-              width: barW - 0.5,
-              height: barH,
-              backgroundColor: isSpike ? color : color + '70',
-              borderRadius: 1,
-            }} />
+            <View key={i} style={{ position: 'absolute', bottom: 0, left: i * barW, width: barW - 0.5, height: barH, backgroundColor: isSpike ? color : color + '70', borderRadius: 1 }} />
           );
         })}
       </View>
@@ -250,7 +1001,6 @@ const hbS = StyleSheet.create({
 function AutoPostToast({ visible, eventTitle, onDismiss }: { visible: boolean; eventTitle: string; onDismiss: () => void }) {
   const slideY = useRef(new Animated.Value(-60)).current;
   const opacity = useRef(new Animated.Value(0)).current;
-
   useEffect(() => {
     if (visible) {
       Animated.parallel([
@@ -266,7 +1016,6 @@ function AutoPostToast({ visible, eventTitle, onDismiss }: { visible: boolean; e
       return () => clearTimeout(t);
     }
   }, [visible]);
-
   if (!visible) return null;
   return (
     <Animated.View style={[toastS.container, { transform: [{ translateY: slideY }], opacity }]}>
@@ -294,14 +1043,12 @@ function IncidentAlertCard({ alert, onCreatePost, onDismiss }: { alert: ActiveAl
   const slideY = useRef(new Animated.Value(80)).current;
   const fadeIn = useRef(new Animated.Value(0)).current;
   const pulse = usePulse(900);
-
   useEffect(() => {
     Animated.parallel([
       Animated.spring(slideY, { toValue: 0, useNativeDriver: true, tension: 70, friction: 12 }),
       Animated.timing(fadeIn, { toValue: 1, duration: 300, useNativeDriver: true }),
     ]).start();
   }, []);
-
   return (
     <Animated.View style={[aS.container, { borderColor: color + '70', shadowColor: color, transform: [{ translateY: slideY }], opacity: fadeIn }]}>
       <View style={aS.header}>
@@ -322,7 +1069,10 @@ function IncidentAlertCard({ alert, onCreatePost, onDismiss }: { alert: ActiveAl
           {alert.target != null && <Text style={aS.sensorTarget}>TGT: {alert.target}{alert.unit || ''}</Text>}
         </View>
       )}
-      <Pressable style={({ pressed }) => [aS.cta, { backgroundColor: pressed ? color + '35' : color + '18', borderColor: color + '60' }]} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onCreatePost(); }}>
+      <Pressable
+        style={({ pressed }) => [aS.cta, { backgroundColor: pressed ? color + '35' : color + '18', borderColor: color + '60' }]}
+        onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onCreatePost(); }}
+      >
         <Wrench size={14} color={color} />
         <Text style={[aS.ctaText, { color }]}>POST TO TASK FEED · ALL DEPTS + AUDIT IMAGE</Text>
         <ChevronRight size={14} color={color} />
@@ -347,7 +1097,6 @@ const aS = StyleSheet.create({
 });
 
 // ══════════════════════════ WORK ORDER MODAL ══════════════════════════════
-// Departments that receive every ACTIVE FAULT post
 const FAULT_DEPARTMENTS = [
   { id: '1001', name: 'Maintenance', color: HUD.cyan },
   { id: '1002', name: 'Sanitation', color: HUD.green },
@@ -357,27 +1106,23 @@ const FAULT_DEPARTMENTS = [
 ];
 
 function TaskFeedPostModal({ visible, alert, roomCode, onClose, onOpenAvatar }: {
-  visible: boolean; alert: ActiveAlert | null; roomCode: string;
-  onClose: () => void; onOpenAvatar: () => void;
+  visible: boolean; alert: ActiveAlert | null; roomCode: string; onClose: () => void; onOpenAvatar: () => void;
 }) {
   const info = alert ? (EVENT_LABEL[alert.eventType] || { title: alert.eventType, desc: '', severity: 'warning' }) : null;
   const color = info?.severity === 'critical' ? HUD.red : HUD.amber;
   const systemId = alert ? EVENT_SYSTEM[alert.eventType] : null;
   const system = systemId ? A1200_SYSTEMS.find(s => s.id === systemId) : null;
   const [submitted, setSubmitted] = useState(false);
-
   const postTime = useMemo(() => new Date().toLocaleString(), [visible]);
-
   const aiDescription = useMemo(() => {
     if (!alert || !info || !system) return '';
     const sensorLine = alert.sensorName && alert.value != null
       ? `\nSensor reading at detection: ${alert.sensorName} = ${alert.value.toFixed(1)} ${alert.unit || ''} (target: ${alert.target ?? '—'}${alert.unit || ''})`
       : '';
-    return `ACTIVE FAULT — ${info.title}\n\nEquipment: Avatar A1200 / A2200 VFFS\nAffected System: ${system.name}\nRoom: ${roomCode}\nDetected: ${postTime}${sensorLine}\n\nThis post was auto-generated by TulKenz OPS sensor monitoring. All listed departments are required to acknowledge. Maintenance to investigate and resolve. Safety, Quality, Sanitation, and Production to assess impact on operations and compliance.\n\nSee Equipment Intelligence for troubleshooting steps, affected parts, and repair procedures.`;
+    return `ACTIVE FAULT — ${info.title}\n\nEquipment: Avatar A1200 / A2200 VFFS\nAffected System: ${system.name}\nRoom: ${roomCode}\nDetected: ${postTime}${sensorLine}\n\nThis post was auto-generated by TulKenz OPS sensor monitoring. All listed departments are required to acknowledge.\n\nSee Equipment Intelligence for troubleshooting steps, affected parts, and repair procedures.`;
   }, [alert, info, system, postTime, roomCode]);
 
   if (!visible || !alert || !info) return null;
-
   const handleSubmit = () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setSubmitted(true);
@@ -387,17 +1132,14 @@ function TaskFeedPostModal({ visible, alert, roomCode, onClose, onOpenAvatar }: 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={tfS.container}>
-        {/* Header */}
         <View style={tfS.header}>
           <View style={{ flex: 1 }}>
-            <Text style={tfS.eyebrow}>TASK FEED  ·  TULSENZ OPS</Text>
+            <Text style={tfS.eyebrow}>TASK FEED  ·  TULKENZ OPS</Text>
             <Text style={tfS.title}>ACTIVE FAULT POST</Text>
           </View>
           <Pressable onPress={onClose} style={tfS.closeBtn}><X size={20} color={HUD.textSec} /></Pressable>
         </View>
-
         {submitted ? (
-          // Success state
           <View style={tfS.successScreen}>
             <CheckCircle size={48} color={HUD.green} />
             <Text style={tfS.successTitle}>POST SUBMITTED</Text>
@@ -405,8 +1147,6 @@ function TaskFeedPostModal({ visible, alert, roomCode, onClose, onOpenAvatar }: 
           </View>
         ) : (
           <ScrollView contentContainerStyle={{ padding: 20, gap: 14 }}>
-
-            {/* AI banner */}
             <View style={[tfS.aiBanner, { borderColor: HUD.cyan + '40', backgroundColor: HUD.cyanDim }]}>
               <Cpu size={12} color={HUD.cyan} />
               <View style={{ flex: 1 }}>
@@ -418,8 +1158,6 @@ function TaskFeedPostModal({ visible, alert, roomCode, onClose, onOpenAvatar }: 
                 <Text style={[tfS.sevTxt, { color }]}>{info.severity.toUpperCase()}</Text>
               </View>
             </View>
-
-            {/* Template type */}
             <View style={tfS.fBlock}>
               <Text style={tfS.label}>TEMPLATE TYPE</Text>
               <View style={[tfS.fieldRow, { borderColor: color + '50', backgroundColor: color + '0a' }]}>
@@ -430,12 +1168,10 @@ function TaskFeedPostModal({ visible, alert, roomCode, onClose, onOpenAvatar }: 
                 </View>
               </View>
             </View>
-
-            {/* Equipment — taps to Avatar */}
             <View style={tfS.fBlock}>
               <Text style={tfS.label}>EQUIPMENT  <Text style={{ color: HUD.cyan, letterSpacing: 0, fontWeight: '700' }}>← TAP TO VIEW MANUAL</Text></Text>
               <Pressable
-                style={({ pressed }) => [tfS.fieldRow, tfS.equipBtn, { borderColor: HUD.cyan + '60', backgroundColor: pressed ? HUD.cyanDim : HUD.bgCardAlt }]}
+                style={({ pressed }) => [tfS.fieldRow, { borderColor: HUD.cyan + '60', backgroundColor: pressed ? HUD.cyanDim : HUD.bgCardAlt }]}
                 onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onOpenAvatar(); }}
               >
                 <Box size={14} color={HUD.cyan} />
@@ -446,36 +1182,6 @@ function TaskFeedPostModal({ visible, alert, roomCode, onClose, onOpenAvatar }: 
                 <ChevronRight size={15} color={HUD.cyan} />
               </Pressable>
             </View>
-
-            {/* AI-attached image */}
-            <View style={tfS.fBlock}>
-              <Text style={tfS.label}>AUDIT IMAGE  <Text style={{ color: HUD.green, letterSpacing: 0, fontWeight: '700' }}>← AI-ATTACHED</Text></Text>
-              <View style={[tfS.imageBox, { borderColor: HUD.green + '40', backgroundColor: HUD.green + '06' }]}>
-                {/* Simulated sensor snapshot */}
-                <View style={tfS.imagePlaceholder}>
-                  <View style={tfS.imgGrid}>
-                    {Array.from({ length: 6 }).map((_, i) => (
-                      <View key={i} style={[tfS.imgBar, { height: 12 + Math.sin(i * 1.3) * 8, backgroundColor: i === 3 ? color : HUD.cyan + '60' }]} />
-                    ))}
-                  </View>
-                  <View style={[tfS.imgAlertOverlay, { borderColor: color + '60' }]}>
-                    <AlertTriangle size={10} color={color} />
-                    <Text style={[tfS.imgAlertTxt, { color }]}>{info.title}</Text>
-                  </View>
-                  <Text style={tfS.imgTimestamp}>{postTime}</Text>
-                </View>
-                <View style={{ flex: 1, gap: 3 }}>
-                  <Text style={[tfS.imgLabel, { color: HUD.green }]}>AI SENSOR SNAPSHOT</Text>
-                  <Text style={tfS.imgDesc}>Auto-captured at time of fault detection. Includes sensor telemetry, room state, and alert classification. Required for SQF / BRCGS audit trail.</Text>
-                  <View style={[tfS.auditBadge, { backgroundColor: HUD.green + '18', borderColor: HUD.green + '40' }]}>
-                    <CheckCircle size={9} color={HUD.green} />
-                    <Text style={[tfS.auditBadgeTxt, { color: HUD.green }]}>AUDIT COMPLIANT</Text>
-                  </View>
-                </View>
-              </View>
-            </View>
-
-            {/* Departments — all 5 pre-selected */}
             <View style={tfS.fBlock}>
               <Text style={tfS.label}>NOTIFIED DEPARTMENTS  <Text style={{ color: HUD.cyan, letterSpacing: 0, fontWeight: '700' }}>ALL REQUIRED</Text></Text>
               <View style={tfS.deptGrid}>
@@ -486,27 +1192,13 @@ function TaskFeedPostModal({ visible, alert, roomCode, onClose, onOpenAvatar }: 
                   </View>
                 ))}
               </View>
-              <Text style={tfS.deptNote}>All departments must acknowledge. This is protocol for every Active Fault post.</Text>
             </View>
-
-            {/* AI description */}
             <View style={tfS.fBlock}>
               <Text style={tfS.label}>AI-GENERATED POST BODY</Text>
               <View style={[tfS.descBox, { borderColor: HUD.borderBright }]}>
                 <Text style={tfS.descTxt}>{aiDescription}</Text>
               </View>
             </View>
-
-            {/* PM / Work Order option */}
-            <View style={[tfS.pmNote, { borderColor: HUD.purple + '40', backgroundColor: HUD.purpleDim }]}>
-              <Wrench size={12} color={HUD.purple} />
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 10, fontWeight: '800', color: HUD.purple, letterSpacing: 1.5, marginBottom: 3 }}>PM TEMPLATE AVAILABLE</Text>
-                <Text style={{ fontSize: 11, color: HUD.textSec }}>A recurring Preventive Maintenance work order template can be configured for this equipment. Maintenance tab → PM Schedules → Avatar A1200.</Text>
-              </View>
-            </View>
-
-            {/* Submit */}
             <Pressable
               style={({ pressed }) => [tfS.submit, { backgroundColor: pressed ? color + '40' : color + '20', borderColor: color }]}
               onPress={handleSubmit}
@@ -514,7 +1206,6 @@ function TaskFeedPostModal({ visible, alert, roomCode, onClose, onOpenAvatar }: 
               <CheckCircle size={18} color={color} />
               <Text style={[tfS.submitTxt, { color }]}>POST TO ALL 5 DEPARTMENTS · AUDIT TRAIL</Text>
             </Pressable>
-
           </ScrollView>
         )}
       </View>
@@ -536,27 +1227,13 @@ const tfS = StyleSheet.create({
   fBlock: { gap: 0 },
   fieldRow: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: HUD.bgCardAlt, borderRadius: 10, borderWidth: 1, padding: 12 },
   fieldTxt: { fontSize: 13, fontWeight: '600', flex: 1 },
-  equipBtn: {},
   lockedBadge: { paddingHorizontal: 6, paddingVertical: 3, borderRadius: 5 },
   lockedTxt: { fontSize: 8, fontWeight: '800', color: HUD.textSec, letterSpacing: 1 },
-  imageBox: { flexDirection: 'row', gap: 12, padding: 12, borderRadius: 10, borderWidth: 1, alignItems: 'flex-start' },
-  imagePlaceholder: { width: 72, height: 72, backgroundColor: HUD.bg, borderRadius: 8, borderWidth: 1, borderColor: HUD.borderBright, padding: 6, justifyContent: 'flex-end', overflow: 'hidden', gap: 4 },
-  imgGrid: { flexDirection: 'row', alignItems: 'flex-end', gap: 4, marginBottom: 4 },
-  imgBar: { flex: 1, borderRadius: 2, minHeight: 4 },
-  imgAlertOverlay: { flexDirection: 'row', alignItems: 'center', gap: 3, borderWidth: 1, borderRadius: 4, paddingHorizontal: 3, paddingVertical: 2 },
-  imgAlertTxt: { fontSize: 6, fontWeight: '800', letterSpacing: 0.3 },
-  imgTimestamp: { fontSize: 5, color: HUD.textDim, marginTop: 2 },
-  imgLabel: { fontSize: 10, fontWeight: '900', letterSpacing: 1 },
-  imgDesc: { fontSize: 10, color: HUD.textSec, lineHeight: 14, flex: 1 },
-  auditBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 6, paddingVertical: 3, borderRadius: 6, borderWidth: 1, alignSelf: 'flex-start', marginTop: 4 },
-  auditBadgeTxt: { fontSize: 8, fontWeight: '800', letterSpacing: 1 },
   deptGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 6 },
   deptChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 20, borderWidth: 1 },
   deptTxt: { fontSize: 11, fontWeight: '800' },
-  deptNote: { fontSize: 10, color: HUD.textDim, fontStyle: 'italic' as any },
   descBox: { backgroundColor: HUD.bgCardAlt, borderRadius: 10, borderWidth: 1, padding: 12 },
   descTxt: { fontSize: 11, color: HUD.textSec, lineHeight: 17 },
-  pmNote: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, padding: 12, borderRadius: 10, borderWidth: 1 },
   submit: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, padding: 16, borderRadius: 14, borderWidth: 2, marginTop: 4, marginBottom: 20 },
   submitTxt: { fontSize: 13, fontWeight: '900', letterSpacing: 0.8 },
   successScreen: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14, padding: 40 },
@@ -564,206 +1241,23 @@ const tfS = StyleSheet.create({
   successSub: { fontSize: 13, color: HUD.textSec, textAlign: 'center', letterSpacing: 0.5 },
 });
 
-// ══════════════════════════ PA1 PRODUCTION FLOW SCHEMATIC ══════════════════
-// Two-row layout matching actual PA1 flow:
-// Row 1 (ingredient input): SUPERSACK → AUGER/SCREWFEED → HOPPER (+ MAGNETS)
-// Row 2 (packaging output): CONVEYOR → AVATAR A1200 VFFS → PACKOUT AREA
-// The A1200 is tappable and opens the full equipment manual
-
-function PA1Schematic({ activeSystem, onSelectSystem, sensors, beatSignal }: {
-  activeSystem: string | null;
-  onSelectSystem: (id: string) => void;
-  sensors: any[];
-  beatSignal: number;
-}) {
-  const schW = W - 48;
-  const scanX = useScan(schW, 5000);
-
-  const getSensor = (name: string) => sensors.find(s => s.sensor_name?.toLowerCase().includes(name.toLowerCase()));
-  const augerSpeed = getSensor('Auger Speed');
-  const hopperLevel = getSensor('Hopper Level');
-  const bpmSensor = getSensor('Bags Per Minute');
-
-  // Live jittered values for node display
-  const [augerVal, setAugerVal] = useState(augerSpeed?.value ?? null);
-  const [hopperVal, setHopperVal] = useState(hopperLevel?.value ?? null);
-  const [bpmVal, setBpmVal] = useState(bpmSensor?.value ?? null);
-  useEffect(() => { setAugerVal(augerSpeed?.value ?? null); }, [augerSpeed?.value]);
-  useEffect(() => { setHopperVal(hopperLevel?.value ?? null); }, [hopperLevel?.value]);
-  useEffect(() => { setBpmVal(bpmSensor?.value ?? null); }, [bpmSensor?.value]);
-
-  useEffect(() => {
-    if (!beatSignal) return;
-    if (augerSpeed?.value != null) setAugerVal(v => v != null ? v + (Math.random() - 0.5) * v * 0.012 : v);
-    if (hopperLevel?.value != null) setHopperVal(v => v != null ? Math.min(99, Math.max(0, v + (Math.random() - 0.5) * 0.8)) : v);
-    if (bpmSensor?.value != null) setBpmVal(v => v != null ? v + (Math.random() - 0.5) * v * 0.01 : v);
-  }, [beatSignal]);
-
-  const colW = Math.floor((schW - 16) / 6);
-  const nodes = [
-    { id: 'supersack',    label: 'SUPER\nSACK',        col: 0, row: 0, color: HUD.purple, sys: false },
-    { id: 'auger',        label: 'AUGER /\nSCREWFEED',  col: 1, row: 0, color: HUD.cyan,   sys: true,  sensorVal: augerVal != null ? `${augerVal.toFixed(0)} RPM` : null, sensorStatus: augerSpeed?.status },
-    { id: 'hopper',       label: 'HOPPER',              col: 2, row: 0, color: HUD.amber,  sys: false, sensorVal: hopperVal != null ? `${hopperVal.toFixed(0)}% FULL` : null, sensorStatus: hopperLevel?.status },
-    { id: 'magnets',      label: 'MAGNETS',             col: 3, row: 0, color: HUD.red,    sys: false },
-    { id: 'conveyor',     label: 'CONVEYOR\nFEED',      col: 1, row: 1, color: HUD.green,  sys: false },
-    { id: 'avatar_a1200', label: 'AVATAR\nA1200 VFFS',  col: 2, row: 1, color: HUD.cyan,   sys: true,  sensorVal: bpmVal != null ? `${bpmVal.toFixed(0)} PKG/MIN` : null, sensorStatus: bpmSensor?.status, isMachine: true },
-    { id: 'packout',      label: 'PACKOUT\nAREA',       col: 3, row: 1, color: HUD.green,  sys: false },
-  ];
-
-  const nodeW = colW - 8;
-  const nodeH = 46;
-  const rowY = [6, 72];
-  const totalH = 126;
-
-  // Flow arrows (from→to by id)
-  const arrows: { fromCol: number; fromRow: number; toCol: number; toRow: number; color: string }[] = [
-    { fromCol: 0, fromRow: 0, toCol: 1, toRow: 0, color: HUD.purple },  // supersack→auger
-    { fromCol: 1, fromRow: 0, toCol: 2, toRow: 0, color: HUD.cyan },    // auger→hopper
-    { fromCol: 2, fromRow: 0, toCol: 3, toRow: 0, color: HUD.amber },   // hopper→magnets
-    { fromCol: 1, fromRow: 1, toCol: 2, toRow: 1, color: HUD.green },   // conveyor→a1200
-    { fromCol: 2, fromRow: 1, toCol: 3, toRow: 1, color: HUD.cyan },    // a1200→packout
-    // vertical drop: magnets→conveyor (col 2, row0 → col1, row1)
-    { fromCol: 3, fromRow: 0, toCol: 1, toRow: 1, color: HUD.amber },
-  ];
-
-  return (
-    <View style={pa1S.wrap}>
-      <View style={pa1S.head}>
-        <Activity size={12} color={HUD.cyan} />
-        <Text style={pa1S.headTitle}>PA1 · PRODUCTION FLOW</Text>
-        <Text style={pa1S.headSub}>TAP EQUIPMENT TO INSPECT</Text>
-      </View>
-
-      <View style={{ height: totalH, position: 'relative' }}>
-        {/* Grid */}
-        {[0.4].map(f => <View key={f} style={[pa1S.gH, { top: totalH * f }]} />)}
-
-        {/* Flow connectors */}
-        {arrows.map((a, i) => {
-          if (a.fromRow === a.toRow) {
-            // Horizontal arrow
-            const x1 = 8 + a.fromCol * colW + nodeW;
-            const x2 = 8 + a.toCol * colW;
-            const y = rowY[a.fromRow] + nodeH / 2;
-            return (
-              <View key={i} style={{ position: 'absolute', left: x1, top: y - 1, width: x2 - x1, height: 2, backgroundColor: a.color + '35' }}>
-                {/* Arrowhead */}
-                <View style={{ position: 'absolute', right: -4, top: -3, width: 0, height: 0, borderTopWidth: 4, borderBottomWidth: 4, borderLeftWidth: 6, borderTopColor: 'transparent', borderBottomColor: 'transparent', borderLeftColor: a.color + '70' }} />
-              </View>
-            );
-          } else {
-            // Vertical drop (magnets→conveyor area): draw an elbow
-            const x = 8 + 2.5 * colW; // midpoint
-            const y1 = rowY[a.fromRow] + nodeH;
-            const y2 = rowY[a.toRow];
-            return (
-              <View key={i}>
-                <View style={{ position: 'absolute', left: x, top: y1, width: 2, height: (y2 - y1) / 2, backgroundColor: a.color + '30' }} />
-                <View style={{ position: 'absolute', left: 8 + 1 * colW + nodeW, top: y1 + (y2 - y1) / 2 - 1, width: x - (8 + 1 * colW + nodeW), height: 2, backgroundColor: a.color + '30' }} />
-              </View>
-            );
-          }
-        })}
-
-        {/* Row labels */}
-        <Text style={[pa1S.rowLabel, { top: rowY[0] - 2 }]}>INGREDIENT FEED ↓</Text>
-        <Text style={[pa1S.rowLabel, { top: rowY[1] - 2 }]}>PACKAGING LINE →</Text>
-
-        {/* Nodes */}
-        {nodes.map(n => {
-          const x = 8 + n.col * colW;
-          const y = rowY[n.row];
-          const active = activeSystem === n.id;
-          const col = n.color;
-          const sCol = n.sensorStatus ? (SC[n.sensorStatus] || col) : col;
-          return (
-            <Pressable key={n.id} disabled={!n.sys}
-              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onSelectSystem(n.id); }}
-              style={[pa1S.node, {
-                left: x, top: y, width: nodeW, height: nodeH,
-                borderColor: active ? col : col + '50',
-                borderWidth: active ? 2 : 1,
-                backgroundColor: active ? col + '1c' : col + '09',
-                shadowColor: col, shadowOpacity: active ? 0.7 : 0.2,
-              }]}
-            >
-              {/* Corner brackets */}
-              <View style={[pa1S.cTL, { borderColor: col + (active ? 'ff' : '60') }]} />
-              <View style={[pa1S.cBR, { borderColor: col + (active ? 'ff' : '60') }]} />
-              {active && <View style={[pa1S.activeDot, { backgroundColor: col, shadowColor: col }]} />}
-              {n.isMachine && <View style={[pa1S.machineBadge, { backgroundColor: HUD.cyan + '20', borderColor: HUD.cyan + '40' }]}>
-                <Text style={{ fontSize: 5, color: HUD.cyan, fontWeight: '800' }}>VFFS</Text>
-              </View>}
-              <Text style={[pa1S.nodeLabel, { color: active ? col : col + 'cc' }]}>{n.label}</Text>
-              {n.sensorVal && (
-                <Text style={[pa1S.sensorVal, { color: sCol }]}>{n.sensorVal}</Text>
-              )}
-            </Pressable>
-          );
-        })}
-
-        {/* Scan line */}
-        <Animated.View style={[pa1S.scan, { transform: [{ translateX: scanX }] }]} pointerEvents="none" />
-      </View>
-
-      {/* Legend */}
-      <View style={pa1S.legend}>
-        {[
-          { col: HUD.purple, label: 'BULK INPUT' },
-          { col: HUD.cyan, label: 'METERING' },
-          { col: HUD.amber, label: 'HOPPER' },
-          { col: HUD.red, label: 'METAL SEP' },
-          { col: HUD.green, label: 'PACKAGING / OUTPUT' },
-        ].map(l => (
-          <View key={l.label} style={pa1S.legendItem}>
-            <View style={[pa1S.legendDot, { backgroundColor: l.col }]} />
-            <Text style={pa1S.legendTxt}>{l.label}</Text>
-          </View>
-        ))}
-      </View>
-    </View>
-  );
-}
-const pa1S = StyleSheet.create({
-  wrap: { backgroundColor: HUD.bgCard, borderRadius: 14, borderWidth: 1, borderColor: HUD.borderBright, padding: 14, marginBottom: 14 },
-  head: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
-  headTitle: { fontSize: 11, fontWeight: '800', color: HUD.cyan, letterSpacing: 1.5, flex: 1 },
-  headSub: { fontSize: 9, color: HUD.textDim, letterSpacing: 1 },
-  gH: { position: 'absolute', left: 0, right: 0, height: 1, backgroundColor: HUD.grid },
-  rowLabel: { position: 'absolute', left: 0, fontSize: 6, fontWeight: '800', color: HUD.textDim, letterSpacing: 1.5 },
-  node: { position: 'absolute', borderRadius: 8, alignItems: 'center', justifyContent: 'center', shadowOffset: { width: 0, height: 0 }, shadowRadius: 8, elevation: 4 },
-  nodeLabel: { fontSize: 7, fontWeight: '800', textAlign: 'center', letterSpacing: 0.3, lineHeight: 10 },
-  sensorVal: { fontSize: 7, fontWeight: '700', marginTop: 2, letterSpacing: 0.3 },
-  cTL: { position: 'absolute', top: 2, left: 2, width: 6, height: 6, borderTopWidth: 1.5, borderLeftWidth: 1.5, borderRadius: 1 },
-  cBR: { position: 'absolute', bottom: 2, right: 2, width: 6, height: 6, borderBottomWidth: 1.5, borderRightWidth: 1.5, borderRadius: 1 },
-  activeDot: { position: 'absolute', top: 3, right: 3, width: 5, height: 5, borderRadius: 3, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 1, shadowRadius: 4 },
-  machineBadge: { position: 'absolute', top: 2, left: 2, paddingHorizontal: 3, paddingVertical: 1, borderRadius: 3, borderWidth: 1 },
-  scan: { position: 'absolute', top: 0, bottom: 0, width: 2, backgroundColor: HUD.cyan + '18', shadowColor: HUD.cyan, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.8, shadowRadius: 6 },
-  legend: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
-  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  legendDot: { width: 5, height: 5, borderRadius: 3 },
-  legendTxt: { fontSize: 8, color: HUD.textSec, fontWeight: '600' },
-});
-
-// Keep A1200Schematic for inside the Avatar modal (machine-internal view)
+// ══════════════════════════ A1200 INTERNAL SCHEMATIC (inside Avatar modal) ══
 function A1200Schematic({ activeSystem, onSelectSystem }: { activeSystem: string | null; onSelectSystem: (id: string) => void }) {
   const schW = W - 48;
   const scanX = useScan(schW, 4000);
-
   const colW = Math.floor((schW - 16) / 5);
   const nodes = [
-    { id: 'film_unwind',     label: 'FILM\nUNWIND',     col: 0, row: 0, color: HUD.green, sys: true },
-    { id: 'belt_drive',      label: 'BELT\nDRIVE',      col: 1, row: 0, color: HUD.cyan,  sys: true },
-    { id: 'vertical_seal',   label: 'VERT\nSEAL',       col: 2, row: 0, color: HUD.amber, sys: true },
-    { id: 'endseal_jaw',     label: 'ENDSEAL\nJAW',     col: 3, row: 0, color: HUD.red,   sys: true },
-    { id: 'filter_regulator',label: 'AIR\nFILTER',      col: 0, row: 1, color: HUD.purple,sys: true },
-    { id: 'plc',             label: 'PLC\nHMI',         col: 1, row: 1, color: HUD.textSec,sys: false },
-    { id: 'bag_out',         label: 'BAGS\nOUT',        col: 3, row: 1, color: HUD.green, sys: false },
+    { id: 'film_unwind', label: 'FILM\nUNWIND', col: 0, row: 0, color: HUD.green, sys: true },
+    { id: 'belt_drive', label: 'BELT\nDRIVE', col: 1, row: 0, color: HUD.cyan, sys: true },
+    { id: 'vertical_seal', label: 'VERT\nSEAL', col: 2, row: 0, color: HUD.amber, sys: true },
+    { id: 'endseal_jaw', label: 'ENDSEAL\nJAW', col: 3, row: 0, color: HUD.red, sys: true },
+    { id: 'filter_regulator', label: 'AIR\nFILTER', col: 0, row: 1, color: HUD.purple, sys: true },
+    { id: 'plc', label: 'PLC\nHMI', col: 1, row: 1, color: HUD.textSec, sys: false },
+    { id: 'bag_out', label: 'BAGS\nOUT', col: 3, row: 1, color: HUD.green, sys: false },
   ];
   const nodeW = colW - 8;
   const rowY = [6, 66];
   const totalH = 118;
-
   return (
     <View style={schS.wrap}>
       <View style={schS.head}>
@@ -773,7 +1267,6 @@ function A1200Schematic({ activeSystem, onSelectSystem }: { activeSystem: string
       </View>
       <View style={{ height: totalH, position: 'relative' }}>
         {[0.5].map(f => <View key={f} style={[schS.gH, { top: totalH * f }]} />)}
-        {/* Film path connector */}
         {[1, 2, 3].map(c => (
           <View key={c} style={{ position: 'absolute', top: rowY[0] + 22, left: 8 + (c - 1) * colW + nodeW, width: colW - nodeW, height: 2, backgroundColor: HUD.cyan + '20' }} />
         ))}
@@ -820,7 +1313,6 @@ function SystemDetailPanel({ system, highlightEvent }: { system: typeof A1200_SY
   const [tab, setTab] = useState<'parts' | 'trouble' | 'repair'>('parts');
   const col = system.color;
   const isFault = system.events.includes(highlightEvent || '');
-
   return (
     <View style={sdS.wrap}>
       <View style={[sdS.sysHead, { borderLeftColor: col }]}>
@@ -833,7 +1325,6 @@ function SystemDetailPanel({ system, highlightEvent }: { system: typeof A1200_SY
         <Text style={[sdS.sysName, { color: col }]}>{system.name}</Text>
         <Text style={sdS.sysDesc}>{system.desc}</Text>
       </View>
-
       <View style={sdS.tabBar}>
         {(['parts', 'trouble', 'repair'] as const).map(t => (
           <Pressable key={t} style={[sdS.tab, tab === t && { borderBottomColor: col, borderBottomWidth: 2 }]} onPress={() => setTab(t)}>
@@ -843,7 +1334,6 @@ function SystemDetailPanel({ system, highlightEvent }: { system: typeof A1200_SY
           </Pressable>
         ))}
       </View>
-
       {tab === 'parts' && (
         <View style={sdS.content}>
           <View style={sdS.pHead}>
@@ -868,7 +1358,6 @@ function SystemDetailPanel({ system, highlightEvent }: { system: typeof A1200_SY
           <Text style={sdS.stockNote}>Red badge = at or below minimum stocking level</Text>
         </View>
       )}
-
       {tab === 'trouble' && (
         <View style={sdS.content}>
           {system.troubleshooting.map((ts, i) => (
@@ -887,7 +1376,6 @@ function SystemDetailPanel({ system, highlightEvent }: { system: typeof A1200_SY
           ))}
         </View>
       )}
-
       {tab === 'repair' && (
         <View style={sdS.content}>
           <View style={[sdS.lockBanner, { borderColor: HUD.red + '50', backgroundColor: HUD.redDim }]}>
@@ -948,20 +1436,17 @@ function EquipmentAvatarModal({ visible, preSelectSystem, highlightEvent, onClos
   const scrollRef = useRef<ScrollView>(null);
   useEffect(() => { if (preSelectSystem) setSelected(preSelectSystem); }, [preSelectSystem]);
   const system = selected ? A1200_SYSTEMS.find(s => s.id === selected) : null;
-
   const handleSelect = (id: string) => {
     setSelected(id);
     setTimeout(() => scrollRef.current?.scrollTo({ y: 360, animated: true }), 150);
   };
-
   if (!visible) return null;
-
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
       <View style={avS.container}>
         <View style={avS.header}>
           <View style={{ flex: 1 }}>
-            <Text style={avS.eyebrow}>EQUIPMENT INTELLIGENCE · TULSENZ OPS</Text>
+            <Text style={avS.eyebrow}>EQUIPMENT INTELLIGENCE · TULKENZ OPS</Text>
             <Text style={avS.mainTitle}>AVATAR A1200 / A2200</Text>
             <Text style={avS.subTitle}>VERTICAL FORM-FILL-SEAL  ·  AFI PUB 4110811  ·  ISSUE 1  ·  JULY 2015</Text>
           </View>
@@ -975,9 +1460,7 @@ function EquipmentAvatarModal({ visible, preSelectSystem, highlightEvent, onClos
             <Pressable onPress={onClose} style={avS.closeBtn}><X size={18} color={HUD.textSec} /></Pressable>
           </View>
         </View>
-
         <ScrollView ref={scrollRef} contentContainerStyle={{ padding: 16, paddingBottom: 60 }}>
-          {/* Machine specs strip */}
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }}>
             <View style={{ flexDirection: 'row', gap: 8 }}>
               {[
@@ -996,17 +1479,12 @@ function EquipmentAvatarModal({ visible, preSelectSystem, highlightEvent, onClos
               ))}
             </View>
           </ScrollView>
-
-          {/* Schematic */}
           <A1200Schematic activeSystem={selected} onSelectSystem={handleSelect} />
-
-          {/* System navigator */}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
             <Layers size={12} color={HUD.cyan} />
             <Text style={{ fontSize: 11, fontWeight: '800', color: HUD.cyan, letterSpacing: 2, flex: 1 }}>SYSTEM NAVIGATOR</Text>
             <Text style={{ fontSize: 9, color: HUD.textDim, letterSpacing: 1 }}>{A1200_SYSTEMS.length} SUBSYSTEMS</Text>
           </View>
-
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }}>
             <View style={{ flexDirection: 'row', gap: 8, paddingRight: 16 }}>
               {A1200_SYSTEMS.map(s => {
@@ -1025,7 +1503,6 @@ function EquipmentAvatarModal({ visible, preSelectSystem, highlightEvent, onClos
               })}
             </View>
           </ScrollView>
-
           {system ? (
             <SystemDetailPanel system={system} highlightEvent={highlightEvent} />
           ) : (
@@ -1057,8 +1534,7 @@ const avS = StyleSheet.create({
   noSelTxt: { fontSize: 11, color: HUD.textDim, textAlign: 'center', letterSpacing: 1, lineHeight: 18 },
 });
 
-// ══════════════════════════ HEX METRIC CARD ══════════════════════════
-// ══════════════════════════ SENSOR SCORECARD ═════════════════════════════
+// ══════════════════════════ SENSOR SCORECARD ═════════════════════════════════
 const BASELINES: Record<string, { min: number; max: number; label: string }> = {
   'Auger Speed':        { min: 110, max: 135, label: 'TARGET 120 RPM' },
   'Auger Motor Temp':   { min: 100, max: 160, label: 'MAX 160°F' },
@@ -1080,11 +1556,9 @@ function SensorCard({ sensor, beatSignal }: { sensor: any; beatSignal: number })
   const [liveVal, setLiveVal] = useState<number>(sensor.value);
   const valRef = useRef<number>(sensor.value);
   useEffect(() => { valRef.current = sensor.value; setLiveVal(sensor.value); }, [sensor.value]);
-
   const col = SC[sensor.status] || HUD.textDim;
   const isCrit = sensor.status === 'critical';
   const baseline = BASELINES[sensor.sensor_name];
-
   useEffect(() => {
     if (!beatSignal) return;
     const base = valRef.current;
@@ -1096,14 +1570,12 @@ function SensorCard({ sensor, beatSignal }: { sensor: any; beatSignal: number })
       ]).start();
     }
   }, [beatSignal]);
-
   const baselinePct = useMemo(() => {
     if (!baseline || liveVal == null) return null;
     const { min, max } = baseline;
     if (max === min) return null;
     return Math.min(Math.max((liveVal - min) / (max - min), 0), 1);
   }, [liveVal, baseline]);
-
   return (
     <Animated.View style={[scS.card, { borderColor: isCrit ? col : col + '35', shadowColor: col, transform: [{ scale: scaleAnim }] }]}>
       <View style={[scS.statusBar, { backgroundColor: col }]} />
@@ -1135,8 +1607,6 @@ const scS = StyleSheet.create({
   baseLbl: { fontSize: 6, color: HUD.textDim, fontWeight: '600', letterSpacing: 0.2 },
 });
 
-
-
 // ══════════════════════════ EQUIPMENT INTELLIGENCE ═══════════════════════════
 const TODAY_D = new Date();
 const addDays = (d: number) => { const dt = new Date(TODAY_D); dt.setDate(dt.getDate() + d); return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); };
@@ -1153,15 +1623,12 @@ const INTEL_DATA: IntelItem[] = [
   { id: 'op-1', category: 'operator', severity: 'warning', title: 'Operator Pattern — Operator A: +52% Downtime', body: 'When Operator A operates PA1, avg downtime is 52% above line baseline (28 min/shift vs 18 min avg). Common cause: manual film tension overrides. Recommend retraining on auto-tension calibration procedure.', source: 'Labor Analytics · 90-day window' },
   { id: 'op-2', category: 'operator', severity: 'info', title: 'Operator Pattern — Operator B: High Efficiency', body: 'Operator B consistently achieves 96–100% OEE on this line. Runs avg 3.2 PKG/min above target. Recommended as peer trainer for film threading and tension calibration.', source: 'Labor Analytics · 90-day window' },
   { id: 'prod-1', category: 'product', severity: 'warning', title: '10 oz Powder SKU — Seal Temp Sensitivity', body: 'This SKU requires vertical seal temp 285–292°F (tighter than standard 270–310). Temps above 295°F cause seal blowouts at 8–12 min into run. Alert maintenance if temp exceeds 293°F.', source: 'Quality History · 7 runs' },
-  { id: 'prod-2', category: 'product', severity: 'warning',
-    title: 'Auger Over-Speed — Damage & Shutdown Pattern',
-    body: 'Historically, when auger runs above 127 RPM for more than 20 continuous minutes, damage to the auger flight or drive coupling occurs within 48 hours — typically resulting in a full line shutdown. Current reading: 124.9 RPM. Monitor closely.',
-    source: 'Work Order History · 4 incidents',
+  { id: 'prod-2', category: 'product', severity: 'warning', title: 'Auger Over-Speed — Damage & Shutdown Pattern', body: 'Historically, when auger runs above 127 RPM for more than 20 continuous minutes, damage to the auger flight or drive coupling occurs within 48 hours. Current reading: 124.9 RPM. Monitor closely.', source: 'Work Order History · 4 incidents',
     incidents: [
       { date: 'Jan 14, 2025', event: 'Auger ran 131 RPM for ~35 min during high-volume run', result: 'Drive coupling sheared — 6.5 hr shutdown, WO-4108' },
-      { date: 'Sep 3, 2024',  event: 'Auger at 129 RPM, operator overrode auto-limit', result: 'Auger flight cracked — 4 hr shutdown, WO-3847' },
+      { date: 'Sep 3, 2024', event: 'Auger at 129 RPM, operator overrode auto-limit', result: 'Auger flight cracked — 4 hr shutdown, WO-3847' },
       { date: 'May 22, 2024', event: 'Speed crept to 128 RPM after encoder recalibration', result: 'Bearing failure 31 hrs later — 9 hr shutdown, WO-3601' },
-      { date: 'Nov 8, 2023',  event: 'New operator set auger to 133 RPM to chase throughput', result: 'Motor overtemp + coupling damage — 11 hr shutdown, WO-3312' },
+      { date: 'Nov 8, 2023', event: 'New operator set auger to 133 RPM to chase throughput', result: 'Motor overtemp + coupling damage — 11 hr shutdown, WO-3312' },
     ],
   },
   { id: 'hist-1', category: 'history', severity: 'info', title: 'Last Unplanned Downtime — Film Jam (34 min)', body: 'Root cause: spliced roll not trimmed flush at splice point. Corrective action: added splice inspection step to job setup SOP. Repeat incidents since corrective action: 0.', dueLabel: '11 days ago', source: 'Work Order WO-4421' },
@@ -1208,14 +1675,7 @@ const EquipmentIntelligence = React.memo(function EquipmentIntelligence({ expand
         const urgent = item.dueDays !== undefined && item.dueDays <= 7;
         return (
           <View key={item.id} style={[eiS.item, { borderLeftColor: sevCol }]}>
-            <TouchableOpacity
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setExpanded(expanded === item.id ? null : item.id);
-              }}
-              activeOpacity={0.7}
-              style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6 }}
-            >
+            <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setExpanded(expanded === item.id ? null : item.id); }} activeOpacity={0.7} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6 }}>
               <View style={{ flex: 1 }}>
                 <View style={eiS.itemHead}>
                   <View style={[eiS.catPill, { backgroundColor: catCol + '15', borderColor: catCol + '40' }]}>
@@ -1283,7 +1743,7 @@ const eiS = StyleSheet.create({
   itemTitle: { fontSize: 12, fontWeight: '800', marginBottom: 4 },
   itemBody: { fontSize: 11, color: HUD.textSec, lineHeight: 17, marginBottom: 6 },
   sourceRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  sourceTxt: { fontSize: 9, color: HUD.textDim, fontWeight: '600', fontStyle: 'italic' },
+  sourceTxt: { fontSize: 9, color: HUD.textDim, fontWeight: '600', fontStyle: 'italic' as any },
   incidentWrap: { marginTop: 10, marginBottom: 8, borderRadius: 8, borderWidth: 1, borderColor: HUD.red + '30', backgroundColor: HUD.red + '06', overflow: 'hidden' },
   incidentHeader: { fontSize: 8, fontWeight: '900', color: HUD.red, letterSpacing: 1.5, paddingHorizontal: 10, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: HUD.red + '25', backgroundColor: HUD.red + '10' },
   incidentRow: { flexDirection: 'row', gap: 8, padding: 8, borderBottomWidth: 1, borderBottomColor: HUD.red + '15' },
@@ -1368,8 +1828,22 @@ export default function RoomDashboard() {
   const bpm = roomStatus?.bags_per_minute || 0;
   const target = roomStatus?.target_bags_per_minute || 1;
   const bpmColor = bpm >= target * 0.9 ? HUD.green : bpm >= target * 0.7 ? HUD.amber : HUD.red;
-  const uptColor = (roomStatus?.uptime_percent || 0) >= 90 ? HUD.green : (roomStatus?.uptime_percent || 0) >= 75 ? HUD.amber : HUD.red;
   const critSensors = sensorReadings.filter(s => s.status === 'critical' && s.value != null);
+
+  // Determine alert node id for schematic highlighting
+  const alertNodeId = useMemo(() => {
+    if (!activeAlert) return null;
+    const eventToNode: Record<string, string> = {
+      seal_temp_drift: 'avatar_a1200',
+      air_pressure_drop: 'avatar_a1200',
+      auger_slowdown: 'screwfeed',
+      film_jam: 'avatar_a1200',
+      vibration_spike: 'screwfeed',
+      metal_detect_rejects: 'metaldet',
+      hopper_low: 'hopper',
+    };
+    return eventToNode[activeAlert.eventType] || null;
+  }, [activeAlert]);
 
   const onRefresh = useCallback(async () => { setRefreshing(true); await queryClient.invalidateQueries({ queryKey: ['rdb', roomCode] }); setRefreshing(false); }, [queryClient, roomCode]);
 
@@ -1382,7 +1856,6 @@ export default function RoomDashboard() {
         await fetch('https://app.tulkenz.net/api/simulator?action=tick', { method: 'POST' });
       }
       await queryClient.invalidateQueries({ queryKey: ['rdb', roomCode] });
-      // Find relevant sensor to surface in alert
       const relevantSensor = sensorReadings.find(s =>
         s.value != null && (
           (eventName === 'seal_temp_drift' && s.sensor_type === 'temperature') ||
@@ -1391,22 +1864,9 @@ export default function RoomDashboard() {
           s.status === 'warning' || s.status === 'critical'
         )
       );
-      // Surface the incident alert card (allows manual review + equipment manual tap)
-      setActiveAlert({
-        eventType: eventName,
-        sensorName: relevantSensor?.sensor_name,
-        value: relevantSensor?.value,
-        unit: relevantSensor?.unit,
-        target: relevantSensor?.target_value,
-      });
-      // Auto-post to Task Feed immediately — no button required
+      setActiveAlert({ eventType: eventName, sensorName: relevantSensor?.sensor_name, value: relevantSensor?.value, unit: relevantSensor?.unit, target: relevantSensor?.target_value });
       const info = EVENT_LABEL[eventName];
-      if (info) {
-        setToastEventTitle(info.title);
-        setToastVisible(true);
-        // In production: call supabase to insert task_feed_posts row here
-        // supabase.from('task_feed_posts').insert({ ... })
-      }
+      if (info) { setToastEventTitle(info.title); setToastVisible(true); }
     } catch (e) { console.error('[Trigger]', e); }
   }, [queryClient, roomCode, sensorReadings]);
 
@@ -1425,6 +1885,13 @@ export default function RoomDashboard() {
     setShowTFModal(false);
     setShowAvatarModal(true);
   }, [activeAlert]);
+
+  const handleSchematicNodeSelect = useCallback((id: string) => {
+    if (id === 'avatar_a1200') {
+      setAvatarPreSystem(undefined);
+      setShowAvatarModal(true);
+    }
+  }, []);
 
   return (
     <View style={mS.container}>
@@ -1455,26 +1922,21 @@ export default function RoomDashboard() {
         <TouchableOpacity activeOpacity={0.6} style={mS.tickBtn} onPress={handleTick}><Zap size={16} color={HUD.purple} /></TouchableOpacity>
       </View>
 
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 120 }} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={andonColor} />}>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: 120 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={andonColor} />}
+      >
 
-        {/* 1. HEARTBEAT — visual only, color = line health */}
-        <HeartbeatMonitor
-          bpm={bpm}
-          color={bpmColor}
-          onBeat={() => setBeatSignal(b => b + 1)}
-        />
+        {/* 1. HEARTBEAT */}
+        <HeartbeatMonitor bpm={bpm} color={bpmColor} onBeat={() => setBeatSignal(b => b + 1)} />
 
-        {/* 2. PA1 PRODUCTION FLOW */}
-        <PA1Schematic
-          activeSystem={activeAlert ? (EVENT_SYSTEM[activeAlert.eventType] || null) : null}
-          onSelectSystem={(id) => {
-            if (id === 'avatar_a1200' || A1200_SYSTEMS.find(s => s.id === id)) {
-              setAvatarPreSystem(id === 'avatar_a1200' ? undefined : id);
-              setShowAvatarModal(true);
-            }
-          }}
+        {/* 2. PRODUCTION FLOW SCHEMATIC — PA1 or PR1/PR2 */}
+        <ProductionFlowSchematic
+          roomCode={roomCode}
+          alertNodeId={alertNodeId}
+          onSelectSystem={handleSchematicNodeSelect}
           sensors={sensorReadings.filter(s => s.value != null)}
-          beatSignal={beatSignal}
         />
 
         {/* 3. SENSOR SCORECARD GRID */}
@@ -1507,12 +1969,7 @@ export default function RoomDashboard() {
             <Text style={[mS.cardTitle, { color: HUD.purple }]}>SIM CONTROLS</Text>
             <Text style={[mS.cardCount, { color: HUD.purple + '80' }]}>DEMO MODE</Text>
           </View>
-
-          <TouchableOpacity
-            activeOpacity={0.7}
-            style={[mS.avatarBtn, { backgroundColor: HUD.bgCardAlt }]}
-            onPress={() => { setAvatarPreSystem(undefined); setShowAvatarModal(true); }}
-          >
+          <TouchableOpacity activeOpacity={0.7} style={[mS.avatarBtn, { backgroundColor: HUD.bgCardAlt }]} onPress={() => { setAvatarPreSystem(undefined); setShowAvatarModal(true); }}>
             <Cpu size={15} color={HUD.cyan} />
             <View style={{ flex: 1 }}>
               <Text style={{ fontSize: 12, fontWeight: '800', color: HUD.cyan }}>AVATAR A1200 EQUIPMENT INTELLIGENCE</Text>
@@ -1520,20 +1977,18 @@ export default function RoomDashboard() {
             </View>
             <ChevronRight size={15} color={HUD.cyan} />
           </TouchableOpacity>
-
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
             {[
-              { e: 'seal_temp_drift',      l: 'SEAL TEMP DRIFT',  c: HUD.amber, r: ['PA1'] },
-              { e: 'air_pressure_drop',    l: 'AIR PRESSURE',     c: HUD.red,   r: ['PA1', 'PR1', 'PR2'] },
-              { e: 'film_jam',             l: 'FILM JAM',         c: HUD.red,   r: ['PA1'] },
-              { e: 'auger_slowdown',       l: 'AUGER SLOWDOWN',   c: HUD.amber, r: ['PA1', 'PR1', 'PR2'] },
-              { e: 'vibration_spike',      l: 'VIBRATION SPIKE',  c: HUD.amber, r: ['PR1', 'PR2'] },
-              { e: 'metal_detect_rejects', l: 'METAL REJECTS',    c: HUD.red,   r: ['PR1', 'PR2'] },
-              { e: 'hopper_low',           l: 'HOPPER LOW',       c: HUD.amber, r: ['PA1', 'PR1', 'PR2'] },
-              { e: 'scheduled_break',      l: 'SCHED BREAK',      c: HUD.cyan,  r: ['PA1', 'PR1', 'PR2'] },
+              { e: 'seal_temp_drift', l: 'SEAL TEMP DRIFT', c: HUD.amber, r: ['PA1'] },
+              { e: 'air_pressure_drop', l: 'AIR PRESSURE', c: HUD.red, r: ['PA1', 'PR1', 'PR2'] },
+              { e: 'film_jam', l: 'FILM JAM', c: HUD.red, r: ['PA1'] },
+              { e: 'auger_slowdown', l: 'AUGER SLOWDOWN', c: HUD.amber, r: ['PA1', 'PR1', 'PR2'] },
+              { e: 'vibration_spike', l: 'VIBRATION SPIKE', c: HUD.amber, r: ['PR1', 'PR2'] },
+              { e: 'metal_detect_rejects', l: 'METAL REJECTS', c: HUD.red, r: ['PR1', 'PR2'] },
+              { e: 'hopper_low', l: 'HOPPER LOW', c: HUD.amber, r: ['PA1', 'PR1', 'PR2'] },
+              { e: 'scheduled_break', l: 'SCHED BREAK', c: HUD.cyan, r: ['PA1', 'PR1', 'PR2'] },
             ].filter(x => x.r.includes(roomCode)).map(x => (
-              <TouchableOpacity key={x.e}
-                activeOpacity={0.6}
+              <TouchableOpacity key={x.e} activeOpacity={0.6}
                 style={[mS.simBtn, { borderColor: x.c + '50', backgroundColor: x.c + '12' }]}
                 onPressIn={() => handleTriggerEvent(x.e)}
               >
@@ -1541,12 +1996,7 @@ export default function RoomDashboard() {
               </TouchableOpacity>
             ))}
           </View>
-
-          <TouchableOpacity
-            activeOpacity={0.6}
-            style={[mS.tickFull, { backgroundColor: HUD.purple + '15', borderColor: HUD.purple + '50' }]}
-            onPressIn={handleTick}
-          >
+          <TouchableOpacity activeOpacity={0.6} style={[mS.tickFull, { backgroundColor: HUD.purple + '15', borderColor: HUD.purple + '50' }]} onPressIn={handleTick}>
             <Zap size={15} color={HUD.purple} />
             <Text style={[mS.tickFullTxt, { color: HUD.purple }]}>ADVANCE TICK{tickCount > 0 ? ` · ${tickCount}` : ''}</Text>
           </TouchableOpacity>
@@ -1554,38 +2004,19 @@ export default function RoomDashboard() {
 
       </ScrollView>
 
-      {/* Auto-post confirmation toast */}
-      <AutoPostToast
-        visible={toastVisible}
-        eventTitle={toastEventTitle}
-        onDismiss={() => setToastVisible(false)}
-      />
+      {/* Toast */}
+      <AutoPostToast visible={toastVisible} eventTitle={toastEventTitle} onDismiss={() => setToastVisible(false)} />
 
       {/* Floating incident alert */}
       {activeAlert && (
-        <IncidentAlertCard
-          alert={activeAlert}
-          onCreatePost={() => setShowTFModal(true)}
-          onDismiss={() => setActiveAlert(null)}
-        />
+        <IncidentAlertCard alert={activeAlert} onCreatePost={() => setShowTFModal(true)} onDismiss={() => setActiveAlert(null)} />
       )}
 
       {/* Task Feed Post Modal */}
-      <TaskFeedPostModal
-        visible={showTFModal}
-        alert={activeAlert}
-        roomCode={roomCode}
-        onClose={() => setShowTFModal(false)}
-        onOpenAvatar={handleOpenAvatarFromWO}
-      />
+      <TaskFeedPostModal visible={showTFModal} alert={activeAlert} roomCode={roomCode} onClose={() => setShowTFModal(false)} onOpenAvatar={handleOpenAvatarFromWO} />
 
       {/* Equipment Avatar Modal */}
-      <EquipmentAvatarModal
-        visible={showAvatarModal}
-        preSelectSystem={avatarPreSystem}
-        highlightEvent={activeAlert?.eventType}
-        onClose={() => setShowAvatarModal(false)}
-      />
+      <EquipmentAvatarModal visible={showAvatarModal} preSelectSystem={avatarPreSystem} highlightEvent={activeAlert?.eventType} onClose={() => setShowAvatarModal(false)} />
     </View>
   );
 }
@@ -1600,21 +2031,10 @@ const mS = StyleSheet.create({
   pill: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 20, borderWidth: 1 },
   pillTxt: { fontSize: 9, fontWeight: '800', letterSpacing: 1.5 },
   tickBtn: { width: 38, height: 38, borderRadius: 10, backgroundColor: HUD.purpleDim, borderWidth: 1, borderColor: HUD.purple + '40', alignItems: 'center', justifyContent: 'center' },
-  critBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: HUD.red + '15', borderWidth: 1, borderColor: HUD.red + '40', borderRadius: 10, padding: 10, marginBottom: 14 },
-  critBannerTxt: { fontSize: 11, fontWeight: '700', color: HUD.red, flex: 1 },
   card: { backgroundColor: HUD.bgCard, borderRadius: 14, borderWidth: 1, borderColor: HUD.borderBright, padding: 14, marginBottom: 16 },
   cardHead: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
   cardTitle: { fontSize: 11, fontWeight: '800', color: HUD.cyan, letterSpacing: 2, flex: 1 },
   cardCount: { fontSize: 9, fontWeight: '700', color: HUD.textDim, letterSpacing: 1 },
-  sRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 9, gap: 10 },
-  sBar: { width: 5, height: 32, borderRadius: 3, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.8, shadowRadius: 4 },
-  sName: { fontSize: 13, fontWeight: '600', color: HUD.text },
-  sEquip: { fontSize: 10, color: HUD.textDim, marginTop: 1 },
-  sVal: { fontSize: 15, fontWeight: '800' },
-  evtRow: { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 9, paddingLeft: 10, borderLeftWidth: 2, gap: 8, marginBottom: 2 },
-  evtDot: { width: 7, height: 7, borderRadius: 4, marginTop: 3, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 1, shadowRadius: 4 },
-  evtReason: { fontSize: 12, fontWeight: '600', color: HUD.text },
-  evtTime: { fontSize: 10, color: HUD.textDim, marginTop: 1 },
   avatarBtn: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 10, borderWidth: 1, borderColor: HUD.cyan + '50' },
   simBtn: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, borderWidth: 1 },
   simBtnTxt: { fontSize: 10, fontWeight: '800', letterSpacing: 1 },
