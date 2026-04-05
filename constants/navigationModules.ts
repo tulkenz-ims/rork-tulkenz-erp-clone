@@ -50,7 +50,7 @@ export const NAVIGATION_MODULES: NavigationModule[] = [
   { key: 'production',     label: 'Production',      icon: Factory,         route: 'production' },
   { key: 'compliance',     label: 'Compliance',      icon: FileText,        route: 'compliance' },
   { key: 'recycling',      label: 'Recycling',       icon: Recycle,         route: 'recycling' },
-  { key: 'plant_designer', label: 'Plant Designer',  icon: Layers,          route: 'plant-designer' }
+  { key: 'plant_designer', label: 'Plant Designer',  icon: Layers,          route: 'plant-designer' },
   { key: 'users',          label: 'Workforce',       icon: UserCheck,       route: 'users',        superAdminOnly: true },
   { key: 'watchscreen',    label: 'Watch Screen',    icon: Eye,             route: 'watchscreen',  superAdminOnly: true },
   { key: 'settings',       label: 'Settings',        icon: Settings,        route: 'settings' },
