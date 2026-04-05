@@ -142,7 +142,7 @@ export default function TabLayout() {
             if (!moduleKeys.includes('users')) moduleKeys.push('users');
             break;
 
-          // Labor Tracking
+          // Directory
           case 'employees':
             if (!moduleKeys.includes('employees')) moduleKeys.push('employees');
             break;
@@ -211,6 +211,7 @@ export default function TabLayout() {
           }}
         >
           <Tabs.Screen name="(dashboard)" />
+          <Tabs.Screen name="live-floor" />
           <Tabs.Screen name="cmms" />
           <Tabs.Screen name="taskfeed" />
           <Tabs.Screen name="timeclock" />
