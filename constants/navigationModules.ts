@@ -41,7 +41,7 @@ export const NAVIGATION_MODULES: NavigationModule[] = [
   { key: 'cmms',           label: 'CMMS',            icon: Cog,             route: 'cmms' },
   { key: 'inventory',      label: 'Inventory',       icon: Package,         route: 'inventory' },
   { key: 'documents',      label: 'Documents',       icon: FolderOpen,      route: 'documents' },
-  { key: 'directory',      label: 'Directory',       icon: BookUser,        route: 'directory',    managerOnly: true },
+  { key: 'directory',      label: 'Directory',       icon: BookUser,        route: 'employees',    managerOnly: true },
   { key: 'procurement',    label: 'Procurement',     icon: ShoppingCart,    route: 'procurement' },
   { key: 'approvals',      label: 'Approvals',       icon: CheckSquare,     route: 'approvals',    managerOnly: true },
   { key: 'quality',        label: 'Quality',         icon: ShieldCheck,     route: 'quality' },
