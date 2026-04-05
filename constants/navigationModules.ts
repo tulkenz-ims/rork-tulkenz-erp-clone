@@ -19,6 +19,8 @@ import {
   Factory,
   Eye,
   UserCheck,
+  Activity,
+  BookUser,
 } from 'lucide-react-native';
 
 export interface NavigationModule {
@@ -32,24 +34,25 @@ export interface NavigationModule {
 }
 
 export const NAVIGATION_MODULES: NavigationModule[] = [
-  { key: 'dashboard',    label: 'Dashboard',          icon: LayoutDashboard, route: '(dashboard)', alwaysVisible: true },
-  { key: 'taskfeed',     label: 'Task Feed',           icon: MessageSquare,   route: 'taskfeed',    alwaysVisible: true },
-  { key: 'timeclock',    label: 'Roll Call',           icon: LogIn,           route: 'timeclock' },
-  { key: 'cmms',         label: 'CMMS',                icon: Cog,             route: 'cmms' },
-  { key: 'inventory',    label: 'Inventory',           icon: Package,         route: 'inventory' },
-  { key: 'documents',    label: 'Documents',           icon: FolderOpen,      route: 'documents' },
-  { key: 'employees',    label: 'Labor Tracking',      icon: Users,           route: 'employees',   managerOnly: true },
-  { key: 'procurement',  label: 'Procurement',         icon: ShoppingCart,    route: 'procurement' },
-  { key: 'approvals',    label: 'Approvals',           icon: CheckSquare,     route: 'approvals',   managerOnly: true },
-  { key: 'quality',      label: 'Quality',             icon: ShieldCheck,     route: 'quality' },
-  { key: 'safety',       label: 'Safety',              icon: AlertTriangle,   route: 'safety' },
-  { key: 'sanitation',   label: 'Sanitation',          icon: Sparkles,        route: 'sanitation' },
-  { key: 'production',   label: 'Production',          icon: Factory,         route: 'production' },
-  { key: 'compliance',   label: 'Compliance',          icon: FileText,        route: 'compliance' },
-  { key: 'recycling',    label: 'Recycling',           icon: Recycle,         route: 'recycling' },
-  { key: 'users',        label: 'Workforce',            icon: UserCheck,       route: 'users',       superAdminOnly: true },
-  { key: 'watchscreen',  label: 'Watch Screen',        icon: Eye,             route: 'watchscreen', superAdminOnly: true },
-  { key: 'settings',     label: 'Settings',            icon: Settings,        route: 'settings' },
+  { key: 'dashboard',      label: 'Dashboard',      icon: LayoutDashboard, route: '(dashboard)',  alwaysVisible: true },
+  { key: 'taskfeed',       label: 'Task Feed',       icon: MessageSquare,   route: 'taskfeed',     alwaysVisible: true },
+  { key: 'timeclock',      label: 'Roll Call',       icon: LogIn,           route: 'timeclock' },
+  { key: 'live-floor',     label: 'Live Floor',      icon: Activity,        route: 'live-floor',   managerOnly: true },
+  { key: 'cmms',           label: 'CMMS',            icon: Cog,             route: 'cmms' },
+  { key: 'inventory',      label: 'Inventory',       icon: Package,         route: 'inventory' },
+  { key: 'documents',      label: 'Documents',       icon: FolderOpen,      route: 'documents' },
+  { key: 'directory',      label: 'Directory',       icon: BookUser,        route: 'directory',    managerOnly: true },
+  { key: 'procurement',    label: 'Procurement',     icon: ShoppingCart,    route: 'procurement' },
+  { key: 'approvals',      label: 'Approvals',       icon: CheckSquare,     route: 'approvals',    managerOnly: true },
+  { key: 'quality',        label: 'Quality',         icon: ShieldCheck,     route: 'quality' },
+  { key: 'safety',         label: 'Safety',          icon: AlertTriangle,   route: 'safety' },
+  { key: 'sanitation',     label: 'Sanitation',      icon: Sparkles,        route: 'sanitation' },
+  { key: 'production',     label: 'Production',      icon: Factory,         route: 'production' },
+  { key: 'compliance',     label: 'Compliance',      icon: FileText,        route: 'compliance' },
+  { key: 'recycling',      label: 'Recycling',       icon: Recycle,         route: 'recycling' },
+  { key: 'users',          label: 'Workforce',       icon: UserCheck,       route: 'users',        superAdminOnly: true },
+  { key: 'watchscreen',    label: 'Watch Screen',    icon: Eye,             route: 'watchscreen',  superAdminOnly: true },
+  { key: 'settings',       label: 'Settings',        icon: Settings,        route: 'settings' },
 ];
 
 export const MODULE_KEYS = NAVIGATION_MODULES.map(m => m.key);
@@ -126,29 +129,29 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
   {
     id: 'production-operator',
     name: 'Production Operator',
-    description: 'Production, Inventory, Time Clock',
-    modules: ['dashboard', 'production', 'inventory', 'timeclock', 'taskfeed'],
+    description: 'Production, Live Floor, Inventory, Time Clock',
+    modules: ['dashboard', 'production', 'live-floor', 'inventory', 'timeclock', 'taskfeed'],
     color: '#F97316',
   },
   {
     id: 'supervisor',
     name: 'Supervisor',
     description: 'Most modules with limited admin access',
-    modules: ['dashboard', 'cmms', 'sanitation', 'production', 'quality', 'safety', 'compliance', 'taskfeed', 'timeclock', 'inventory', 'documents', 'recycling'],
+    modules: ['dashboard', 'cmms', 'live-floor', 'sanitation', 'production', 'quality', 'safety', 'compliance', 'taskfeed', 'timeclock', 'inventory', 'documents', 'recycling'],
     color: '#EC4899',
   },
   {
     id: 'manager',
     name: 'Manager',
     description: 'All operational modules with full access',
-    modules: ['dashboard', 'cmms', 'taskfeed', 'timeclock', 'inventory', 'documents', 'employees', 'procurement', 'approvals', 'quality', 'safety', 'sanitation', 'production', 'compliance', 'recycling', 'settings'],
+    modules: ['dashboard', 'cmms', 'live-floor', 'taskfeed', 'timeclock', 'inventory', 'documents', 'directory', 'procurement', 'approvals', 'quality', 'safety', 'sanitation', 'production', 'compliance', 'recycling', 'settings'],
     color: '#6366F1',
   },
   {
     id: 'admin',
     name: 'Admin',
     description: 'Full access to all modules including Users and Accounts',
-    modules: ['dashboard', 'cmms', 'taskfeed', 'timeclock', 'inventory', 'documents', 'employees', 'procurement', 'approvals', 'quality', 'safety', 'sanitation', 'production', 'compliance', 'recycling', 'users', 'watchscreen', 'settings'],
+    modules: ['dashboard', 'cmms', 'live-floor', 'taskfeed', 'timeclock', 'inventory', 'documents', 'directory', 'procurement', 'approvals', 'quality', 'safety', 'sanitation', 'production', 'compliance', 'recycling', 'users', 'watchscreen', 'settings'],
     color: '#EF4444',
   },
 ];
